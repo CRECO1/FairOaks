@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import json; f=open\\('/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/.mcp.json'\\); json.load\\(f\\); print\\('valid'\\)\")",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__get_publishable_keys",
+      "mcp__supabase__get_project_url",
+      "Bash(npm -v)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npx vercel *)",
+      "Bash(mkdir -p \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/src/app/\\(payload\\)/admin/[[...segments]]\")",
+      "Bash(mkdir -p \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/src/app/\\(payload\\)/api/[...slug]\")",
+      "Bash(npx payload *)",
+      "Bash(xargs sed *)",
+      "mcp__supabase__list_tables",
+      "Bash(vercel --prod)",
+      "WebFetch(domain:crecotx.com)",
+      "Bash(rsync -a --exclude='node_modules' --exclude='.next' --exclude='.vercel' --exclude='.DS_Store' \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/\" \"/Users/zacharya.stovall/Desktop/CRECO Website Rebrand/\")",
+      "Bash(ls src/components/layout/)",
+      "Bash(ls src/components/ui/)",
+      "Bash(mkdir -p \"/Users/zacharya.stovall/Desktop/CRECO Website Rebrand/public/images\")",
+      "Bash(cp \"/Users/zacharya.stovall/Downloads/OfficeEntryLoop/CRECOPrintable.jpeg\" \"/Users/zacharya.stovall/Desktop/CRECO Website Rebrand/public/images/creco-logo.jpg\")",
+      "Bash(cp \"/Users/zacharya.stovall/Downloads/OfficeEntryLoop/riverwalk.jpg\" \"/Users/zacharya.stovall/Desktop/CRECO Website Rebrand/public/images/sa-hero.jpg\")",
+      "Bash(cp \"/Users/zacharya.stovall/Downloads/OfficeEntryLoop/BannerCRECOLeft.png\" \"/Users/zacharya.stovall/Desktop/CRECO Website Rebrand/public/images/creco-banner.png\")",
+      "Bash(rsync -a \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/node_modules/\" \"./node_modules/\")",
+      "Bash(npx tsc *)",
+      "Bash(sed -i '' 's/Fair Oaks <span className=\"text-yellow-600\">Realty Group<\\\\/span>/CRE<span className=\"text-yellow-600\">CO<\\\\/span>/g' src/app/admin/page.tsx)",
+      "Bash(sed -i '' 's|CRECO / Fair Oaks Realty Group|CRECO|g; s|fairoaksrealtygroup\\\\.com|crecotx.com|g; s|CRECO / Fair Oaks<br />Realty Group|CRECO|g' src/app/crm/page.tsx src/app/crm/setup/page.tsx)",
+      "Bash(sed -i '' 's|fairoaksrealtygroup\\\\.com|crecotx.com|g' src/app/api/gmail/auth/route.ts src/app/api/gmail/callback/route.ts src/app/api/crm/invite/route.ts src/app/api/crm/reset-password/route.ts)",
+      "Bash(sed -i '' 's|CRECO / Fair Oaks Realty Group|CRECO|g' src/app/api/crm/invite/route.ts src/app/api/crm/reset-password/route.ts)"
+    ]
+  }
+}

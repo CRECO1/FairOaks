@@ -1,0 +1,494 @@
+/* Import Premium Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+Pro:wght@300;400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Custom Properties for Luxury Theme */
+:root {
+  --gold-primary: #C9A962;
+  --gold-light: #E8DCC4;
+  --gold-dark: #A68B4B;
+  --primary-dark: #1A1A1A;
+  --cream: #FAF8F5;
+
+  /* Animation durations */
+  --duration-fast: 200ms;
+  --duration-normal: 400ms;
+  --duration-slow: 600ms;
+  --duration-slower: 800ms;
+
+  /* Easing curves */
+  --ease-luxury: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+    /* Slightly larger base for better readability on all devices */
+    font-size: 16px;
+  }
+
+  /* Responsive font scaling for better readability */
+  @media (min-width: 768px) {
+    html {
+      font-size: 17px;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    html {
+      font-size: 18px;
+    }
+  }
+
+  body {
+    @apply font-body text-body text-primary antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #FFFFFF;
+    overflow-x: hidden;
+    /* Improved letter spacing for readability */
+    letter-spacing: 0.01em;
+  }
+
+  /* Premium heading styles */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading text-balance;
+    font-feature-settings: 'kern' 1, 'liga' 1;
+  }
+
+  /* Paragraphs get optimal line length for readability */
+  p {
+    max-width: 70ch;
+  }
+
+  /* Improved focus states for accessibility - larger ring */
+  :focus-visible {
+    @apply outline-none ring-2 ring-gold ring-offset-4 ring-offset-white;
+  }
+
+  /* Premium selection color */
+  ::selection {
+    @apply bg-gold/30 text-primary;
+  }
+
+  /* Better form element sizing for seniors */
+  input, select, textarea {
+    @apply text-body;
+    min-height: 3rem; /* 48px minimum for easy tapping */
+  }
+
+  /* Larger checkboxes and radio buttons */
+  input[type="checkbox"],
+  input[type="radio"] {
+    @apply w-5 h-5 cursor-pointer;
+  }
+
+  /* Better link visibility */
+  a:not([class]) {
+    @apply text-gold-dark underline underline-offset-2 decoration-gold/50;
+    transition: color 0.2s ease;
+  }
+
+  a:not([class]):hover {
+    @apply text-gold decoration-gold;
+  }
+
+  /* Smooth scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-background-muted;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border-dark rounded-full;
+    transition: background-color 0.3s ease;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gold;
+  }
+}
+
+@layer components {
+  /* Luxury Section Spacing */
+  .section-luxury {
+    @apply py-20 md:py-28 lg:py-32;
+  }
+
+  .section-compact {
+    @apply py-12 md:py-16 lg:py-20;
+  }
+
+  /* Premium Container */
+  .container-luxury {
+    @apply mx-auto max-w-7xl px-6 md:px-8 lg:px-12;
+  }
+
+  /* Gold Decorative Line */
+  .gold-line {
+    @apply relative;
+  }
+
+  .gold-line::after {
+    content: '';
+    @apply absolute -bottom-3 left-0 h-0.5 w-16 bg-gradient-to-r from-gold to-gold-light;
+  }
+
+  .gold-line-center::after {
+    @apply left-1/2 -translate-x-1/2;
+  }
+
+  /* Luxury Card Styles */
+  .card-luxury {
+    @apply relative overflow-hidden rounded-lg bg-white;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    transition: all var(--duration-normal) var(--ease-luxury);
+  }
+
+  .card-luxury:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    transform: translateY(-4px);
+  }
+
+  /* Premium Image Container */
+  .image-luxury {
+    @apply relative overflow-hidden;
+  }
+
+  .image-luxury img {
+    @apply transition-transform duration-700;
+    transition-timing-function: var(--ease-luxury);
+  }
+
+  .image-luxury:hover img {
+    transform: scale(1.05);
+  }
+
+  /* Gold Gradient Text */
+  .text-gradient-gold {
+    background: linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-light) 50%, var(--gold-primary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Overline Text Style */
+  .overline {
+    @apply text-overline uppercase tracking-widest text-gold font-semibold;
+  }
+
+  /* Luxury Button Styles */
+  .btn-luxury {
+    @apply relative overflow-hidden inline-flex items-center justify-center;
+    @apply px-8 py-4 font-semibold tracking-wide;
+    @apply transition-all duration-400;
+    transition-timing-function: var(--ease-luxury);
+  }
+
+  .btn-luxury::before {
+    content: '';
+    @apply absolute inset-0 opacity-0 transition-opacity duration-400;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 50%);
+  }
+
+  .btn-luxury:hover::before {
+    @apply opacity-100;
+  }
+
+  /* Glass Effect */
+  .glass {
+    @apply backdrop-blur-md bg-white/80;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-dark {
+    @apply backdrop-blur-md bg-black/60;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Divider with Gold Accent */
+  .divider-gold {
+    @apply relative flex items-center justify-center py-8;
+  }
+
+  .divider-gold::before,
+  .divider-gold::after {
+    content: '';
+    @apply flex-1 h-px bg-border;
+  }
+
+  .divider-gold::before {
+    @apply mr-6;
+    background: linear-gradient(90deg, transparent, var(--gold-light));
+  }
+
+  .divider-gold::after {
+    @apply ml-6;
+    background: linear-gradient(90deg, var(--gold-light), transparent);
+  }
+
+  /* Hero Overlay Gradient */
+  .hero-overlay-luxury {
+    background: linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0.4) 0%,
+      rgba(0, 0, 0, 0.1) 30%,
+      rgba(0, 0, 0, 0.1) 60%,
+      rgba(0, 0, 0, 0.5) 100%
+    );
+  }
+
+  /* Animated Underline Link */
+  .link-underline {
+    @apply relative inline-block;
+  }
+
+  .link-underline::after {
+    content: '';
+    @apply absolute bottom-0 left-0 h-0.5 w-0 bg-gold transition-all duration-400;
+    transition-timing-function: var(--ease-luxury);
+  }
+
+  .link-underline:hover::after {
+    @apply w-full;
+  }
+
+  /* Property Price Tag */
+  .price-tag {
+    @apply font-heading text-2xl font-bold text-primary;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  /* Stat Display */
+  .stat-luxury {
+    @apply text-center;
+  }
+
+  .stat-luxury .stat-value {
+    @apply font-heading text-display-sm font-bold text-primary;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  .stat-luxury .stat-label {
+    @apply mt-2 text-caption uppercase tracking-wider text-foreground-muted;
+  }
+
+  /* Testimonial Quote */
+  .quote-luxury {
+    @apply relative pl-8 italic text-body-lg text-foreground-muted;
+  }
+
+  .quote-luxury::before {
+    content: '"';
+    @apply absolute left-0 top-0 font-heading text-6xl text-gold/30 leading-none;
+  }
+
+  /* Loading Shimmer */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+
+  .shimmer::after {
+    content: '';
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.4) 50%,
+      transparent 100%
+    );
+    animation: shimmer 2s linear infinite;
+    background-size: 200% 100%;
+  }
+}
+
+@layer utilities {
+  /* Text Balance for Headings */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Senior-Friendly Readable Text - use for important content */
+  .text-readable {
+    @apply text-body leading-relaxed tracking-wide;
+    max-width: 65ch;
+  }
+
+  .text-readable-lg {
+    @apply text-body-lg leading-relaxed tracking-wide;
+    max-width: 60ch;
+  }
+
+  /* High contrast text for important info */
+  .text-high-contrast {
+    @apply text-primary font-medium;
+    text-shadow: none;
+  }
+
+  /* Large interactive target (for buttons, links in nav) */
+  .touch-target {
+    @apply min-h-[48px] min-w-[48px] flex items-center justify-center;
+  }
+
+  .touch-target-lg {
+    @apply min-h-[56px] min-w-[56px] flex items-center justify-center;
+  }
+
+  /* Readable form labels */
+  .label-readable {
+    @apply text-body-sm font-semibold text-primary mb-2 block;
+  }
+
+  /* Aspect Ratios */
+  .aspect-property {
+    aspect-ratio: 4 / 3;
+  }
+
+  .aspect-hero {
+    aspect-ratio: 16 / 9;
+  }
+
+  .aspect-portrait {
+    aspect-ratio: 3 / 4;
+  }
+
+  .aspect-cinematic {
+    aspect-ratio: 21 / 9;
+  }
+
+  /* Minimum Tap Target */
+  .tap-target {
+    @apply min-h-[48px] min-w-[48px];
+  }
+
+  /* Hide Scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Parallax Container */
+  .parallax-container {
+    perspective: 1000px;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Fade Mask */
+  .fade-mask-b {
+    mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent 100%);
+  }
+
+  /* Text Shadow for Hero */
+  .text-shadow-hero {
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Hover Scale */
+  .hover-scale {
+    @apply transition-transform duration-400;
+    transition-timing-function: var(--ease-luxury);
+  }
+
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+
+  /* Animation Delays */
+  .delay-100 { animation-delay: 100ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-600 { animation-delay: 600ms; }
+  .delay-700 { animation-delay: 700ms; }
+  .delay-800 { animation-delay: 800ms; }
+
+  /* Fill Mode for Animations */
+  .fill-forwards {
+    animation-fill-mode: forwards;
+  }
+
+  .fill-both {
+    animation-fill-mode: both;
+  }
+}
+
+/* Scroll-triggered Animation Classes (for Intersection Observer) */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: all 0.8s var(--ease-luxury);
+}
+
+.reveal.revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: all 0.8s var(--ease-luxury);
+}
+
+.reveal-left.revealed {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-right {
+  opacity: 0;
+  transform: translateX(40px);
+  transition: all 0.8s var(--ease-luxury);
+}
+
+.reveal-right.revealed {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.95);
+  transition: all 0.6s var(--ease-luxury);
+}
+
+.reveal-scale.revealed {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Stagger children animations */
+.stagger-children > * {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.5s var(--ease-luxury);
+}
+
+.stagger-children.revealed > *:nth-child(1) { transition-delay: 0.1s; }
+.stagger-children.revealed > *:nth-child(2) { transition-delay: 0.2s; }
+.stagger-children.revealed > *:nth-child(3) { transition-delay: 0.3s; }
+.stagger-children.revealed > *:nth-child(4) { transition-delay: 0.4s; }
+.stagger-children.revealed > *:nth-child(5) { transition-delay: 0.5s; }
+.stagger-children.revealed > *:nth-child(6) { transition-delay: 0.6s; }
+
+.stagger-children.revealed > * {
+  opacity: 1;
+  transform: translateY(0);
+}

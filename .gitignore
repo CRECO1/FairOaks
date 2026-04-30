@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build
+.next/
+out/
+build/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Vercel
+.vercel
+
+# Payload
+media/

@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fair Oaks Realty Group — CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:#111111; --navy-mid:#1a1a1a; --navy-light:#222222;
+  --gold:#c9922c; --gold-light:#e0aa50;
+  --cream:#ffffff; --smoke:#e8e8e8;
+  --buyer:#1e4d8c; --tenant:#2d5a3d; --seller:#7c3d11; --landlord:#4a1d6e;
+  --success:#2d7a4f; --danger:#991b1b;
+  --text:#111111; --muted:#6b7280;
+  --sidebar:248px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'DM Sans',sans-serif;background:#f2f2f2;color:var(--text);display:flex;height:100vh;overflow:hidden;}
+
+#sidebar{width:var(--sidebar);background:var(--navy);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;}
+.brand{padding:22px 20px 16px;border-bottom:1px solid rgba(201,146,44,.3);}
+.brand-logo{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+.brand-leaf{font-size:20px;line-height:1;}
+.brand h1{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:700;color:var(--gold);letter-spacing:.5px;line-height:1.15;}
+.brand p{font-size:9.5px;color:rgba(255,255,255,.4);letter-spacing:2px;text-transform:uppercase;margin-top:4px;}
+.nav-section{padding:16px 12px 4px;}
+.nav-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.3);padding:0 8px;margin-bottom:6px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.65);font-size:13px;transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;font-family:'DM Sans',sans-serif;text-align:left;}
+.nav-item:hover{background:rgba(255,255,255,.07);color:#fff;}
+.nav-item.active{background:rgba(201,168,76,.15);color:var(--gold);}
+.nav-badge{margin-left:auto;background:var(--gold);color:var(--navy);font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;}
+.sidebar-footer{margin-top:auto;padding:14px 12px;border-top:1px solid rgba(255,255,255,.07);}
+.current-user{display:flex;align-items:center;gap:10px;padding:8px;background:rgba(255,255,255,.05);border-radius:8px;}
+.avatar-sm{width:32px;height:32px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--navy);flex-shrink:0;}
+.user-info p{font-size:12px;color:#fff;font-weight:500;}
+.user-info span{font-size:10px;color:rgba(255,255,255,.4);}
+
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+#topbar{background:#ffffff;border-bottom:1px solid #e0e0e0;padding:13px 26px;display:flex;align-items:center;gap:12px;}
+#topbar h2{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600;flex:1;}
+.btn{padding:8px 18px;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:'DM Sans',sans-serif;}
+.btn-gold{background:var(--gold);color:var(--navy);font-weight:600;}
+.btn-gold:hover{background:var(--gold-light);}
+.btn-ghost{background:transparent;border:1px solid #ccc;color:var(--muted);}
+.btn-ghost:hover{border-color:#999;color:#333;}
+.btn-primary{background:var(--navy);color:#fff;}
+.btn-primary:hover{background:var(--navy-light);}
+.btn-sm{padding:5px 12px;font-size:12px;}
+.btn-danger{background:#fee2e2;color:var(--danger);border:1px solid #fca5a5;}
+#content{flex:1;overflow-y:auto;padding:26px;}
+.page{display:none;}.page.active{display:block;}
+
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:26px;}
+.stat-card{background:#fff;border-radius:10px;padding:18px 20px;border:1px solid #e0e0e0;border-left:4px solid var(--gold);}
+.stat-card .lbl{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.stat-card .val{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:700;color:var(--navy);line-height:1;}
+.stat-card .sub{font-size:11px;color:var(--muted);margin-top:3px;}
+.section-title{font-family:'Cormorant Garamond',serif;font-size:20px;font-weight:600;color:var(--navy);margin-bottom:14px;}
+
+.deals-filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.filter-chip{padding:5px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid #ddd;background:#fff;transition:all .12s;font-family:'DM Sans',sans-serif;}
+.filter-chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+.search-box{margin-left:auto;padding:7px 14px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:13px;font-family:'DM Sans',sans-serif;width:200px;}
+.search-box:focus{outline:none;border-color:var(--gold);}
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1px solid var(--smoke);}
+thead{background:var(--navy);color:#fff;}
+th{padding:10px 14px;text-align:left;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;font-weight:500;}
+td{padding:11px 14px;font-size:13px;border-bottom:1px solid #efefef;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#fafafa;}
+
+.deal-type{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;letter-spacing:.4px;}
+.stage-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:500;}
+.dot{width:6px;height:6px;border-radius:50%;}
+.s-Prospect{background:#f3f4f6;color:#374151;}.s-Prospect .dot{background:#9ca3af;}
+.s-Active{background:#dbeafe;color:#1e40af;}.s-Active .dot{background:#3b82f6;}
+.s-Contract{background:#fef3c7;color:#92400e;}.s-Contract .dot{background:#f59e0b;}
+.s-Closed{background:#d1fae5;color:#065f46;}.s-Closed .dot{background:#10b981;}
+.s-Lost{background:#fee2e2;color:var(--danger);}.s-Lost .dot{background:#ef4444;}
+.link-btn{background:none;border:none;color:var(--navy);font-size:12px;cursor:pointer;text-decoration:underline;font-family:'DM Sans',sans-serif;}
+
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:100;align-items:flex-start;justify-content:center;padding:36px 20px;overflow-y:auto;}
+.overlay.open{display:flex;}
+.modal{background:#fff;border-radius:12px;width:780px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.25);margin-bottom:40px;flex-shrink:0;}
+.modal-header{padding:20px 26px;background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;border-radius:12px 12px 0 0;}
+.modal-header h3{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;flex:1;}
+.modal-close{background:none;border:none;color:rgba(255,255,255,.6);font-size:22px;cursor:pointer;line-height:1;}
+.modal-close:hover{color:#fff;}
+.modal-body{padding:22px 26px;}
+
+.tabs{display:flex;gap:0;border-bottom:2px solid #f0ebe0;margin-bottom:18px;}
+.tab-btn{padding:8px 18px;font-size:13px;cursor:pointer;background:none;border:none;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px;font-family:'DM Sans',sans-serif;transition:all .12s;}
+.tab-btn.active{color:var(--navy);border-bottom-color:var(--gold);font-weight:500;}
+.tab-panel{display:none;}.tab-panel.active{display:block;}
+
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+.form-group{display:flex;flex-direction:column;gap:5px;}
+.form-group.full{grid-column:1/-1;}
+label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:500;}
+input,select,textarea{padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;background:#fff;transition:border .12s;width:100%;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
+textarea{resize:vertical;min-height:76px;}
+
+.pipeline-stages{display:flex;align-items:stretch;margin-bottom:18px;border-radius:6px;overflow:hidden;border:1px solid #e5e7eb;}
+.p-stage{flex:1;text-align:center;padding:9px 4px;font-size:11px;font-weight:500;background:#f3f4f6;color:#9ca3af;cursor:pointer;transition:all .12s;border-right:1px solid #e5e7eb;}
+.p-stage:last-child{border-right:none;}
+.p-stage.done{background:var(--navy-light);color:rgba(255,255,255,.75);}
+.p-stage.current{background:var(--gold);color:var(--navy);font-weight:700;}
+
+.email-log{display:flex;flex-direction:column;gap:10px;}
+.email-entry{background:#f8f8f8;border-radius:8px;padding:13px 15px;border:1px solid #e8e8e8;}
+.email-meta{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
+.email-dir{font-size:10px;font-weight:700;letter-spacing:.8px;padding:2px 7px;border-radius:3px;}
+.dir-sent{background:#dbeafe;color:#1e40af;}.dir-received{background:#d1fae5;color:#065f46;}
+.email-date{font-size:11px;color:var(--muted);margin-left:auto;}
+.email-from{font-size:11px;color:var(--muted);}
+.email-subject{font-size:13px;font-weight:600;margin-bottom:3px;}
+.email-body{font-size:12px;color:#555;line-height:1.5;}
+.add-email-form{background:#f9fafb;border:1px dashed #d1d5db;border-radius:8px;padding:15px;margin-top:14px;}
+.add-email-form h4{font-size:13px;font-weight:600;margin-bottom:12px;color:var(--navy);}
+
+.agents-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.agent-card{background:#fff;border-radius:10px;padding:20px;border:1px solid #e0e0e0;transition:all .15s;}
+.agent-card:hover{border-color:var(--gold);box-shadow:0 4px 16px rgba(0,0,0,.08);}
+.agent-top{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--navy);color:var(--gold);display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:700;flex-shrink:0;}
+.agent-name{font-size:15px;font-weight:600;}
+.agent-email{font-size:12px;color:var(--muted);margin-top:1px;}
+.agent-stats{display:flex;gap:10px;}
+.agent-stat{flex:1;text-align:center;background:#f9fafb;border-radius:6px;padding:8px 4px;}
+.agent-stat .n{font-size:18px;font-family:'Cormorant Garamond',serif;font-weight:700;color:var(--navy);}
+.agent-stat .l{font-size:10px;color:var(--muted);}
+.agent-actions{margin-top:13px;display:flex;gap:8px;}
+.role-badge{font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600;letter-spacing:.5px;margin-left:4px;}
+.role-admin{background:#fef3c7;color:#92400e;}.role-agent{background:#e0f2fe;color:#0369a1;}
+
+.ecb{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:20px 24px;margin-bottom:22px;display:flex;align-items:center;gap:18px;}
+.ecb-text h4{font-size:15px;font-weight:600;color:var(--navy);margin-bottom:3px;}
+.ecb-text p{font-size:12px;color:var(--muted);}
+.ecb-actions{margin-left:auto;display:flex;gap:8px;}
+.prov-btn{display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid #ddd;background:#fff;font-family:'DM Sans',sans-serif;transition:all .12s;}
+.prov-btn:hover{border-color:#999;}
+.connected-badge{display:inline-flex;align-items:center;gap:6px;background:#d1fae5;color:#065f46;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;}
+
+.inbox-item{display:flex;align-items:center;gap:12px;padding:12px 14px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;cursor:pointer;transition:all .12s;margin-bottom:8px;}
+.inbox-item:hover{border-color:var(--gold);background:#fffdf7;}
+.inbox-item.unread{border-left:3px solid var(--gold);}
+
+#toast{position:fixed;bottom:26px;right:26px;background:var(--navy);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;z-index:9999;transform:translateY(80px);opacity:0;transition:all .3s;border-left:4px solid var(--gold);max-width:300px;}
+#toast.show{transform:translateY(0);opacity:1;}
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted);}
+.empty-state .ei{font-size:36px;margin-bottom:10px;}
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div class="brand">
+    <div class="brand-logo"><span class="brand-leaf">🌳</span><h1>FAIR OAKS<br>REALTY GROUP</h1></div>
+    <p>Brokerage CRM</p>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Overview</div>
+    <button class="nav-item active" onclick="nav('dashboard',this)">🏠 &nbsp;Dashboard</button>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">Deal Flow</div>
+    <button class="nav-item" onclick="nav('deals',this,'')">📋 &nbsp;All Deals <span class="nav-badge" id="deal-count">0</span></button>
+    <button class="nav-item" onclick="nav('deals',this,'Buyer Purchase')">🏡 &nbsp;Buyers</button>
+    <button class="nav-item" onclick="nav('deals',this,'Tenant Lease')">🔑 &nbsp;Tenants</button>
+    <button class="nav-item" onclick="nav('deals',this,'Seller Listing')">🪧 &nbsp;Sellers</button>
+    <button class="nav-item" onclick="nav('deals',this,'Landlord Listing')">🏢 &nbsp;Landlords</button>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">People</div>
+    <button class="nav-item" onclick="nav('contacts',this)">👥 &nbsp;Clients</button>
+    <button class="nav-item" onclick="nav('agents',this)">🤝 &nbsp;Agents</button>
+    <button class="nav-item" onclick="nav('inbox',this)">📧 &nbsp;Email Inbox <span class="nav-badge" id="inbox-badge">3</span></button>
+  </div>
+  <div class="sidebar-footer">
+    <div class="current-user">
+      <div class="avatar-sm">AA</div>
+      <div class="user-info"><p>Admin Account</p><span>Broker · Admin</span></div>
+    </div>
+  </div>
+</nav>
+
+<div id="main">
+  <div id="topbar">
+    <h2 id="page-title">Dashboard</h2>
+    <div id="topbar-actions"></div>
+  </div>
+  <div id="content">
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+      <div class="stats-row">
+        <div class="stat-card"><div class="lbl">Active Deals</div><div class="val" id="s-active">0</div><div class="sub">in pipeline</div></div>
+        <div class="stat-card"><div class="lbl">In Contract</div><div class="val" id="s-contract">0</div><div class="sub">pending close</div></div>
+        <div class="stat-card"><div class="lbl">Closed YTD</div><div class="val" id="s-closed">0</div><div class="sub">this year</div></div>
+        <div class="stat-card"><div class="lbl">Agents Rostered</div><div class="val" id="s-agents">0</div><div class="sub">active agents</div></div>
+      </div>
+      <div class="section-title">Recent Activity</div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Client</th><th>Type</th><th>Property</th><th>Stage</th><th>Agent</th><th>Last Touch</th><th></th></tr></thead>
+        <tbody id="dash-body"></tbody></table>
+      </div>
+    </div>
+
+    <!-- DEALS -->
+    <div id="page-deals" class="page">
+      <div class="deals-filters">
+        <button class="filter-chip active" onclick="setFilter('',this)">All</button>
+        <button class="filter-chip" onclick="setFilter('Buyer Purchase',this)">Buyers</button>
+        <button class="filter-chip" onclick="setFilter('Tenant Lease',this)">Tenants</button>
+        <button class="filter-chip" onclick="setFilter('Seller Listing',this)">Sellers</button>
+        <button class="filter-chip" onclick="setFilter('Landlord Listing',this)">Landlords</button>
+        <input class="search-box" id="deal-search" placeholder="🔍  Search…" oninput="renderDeals()">
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>Client</th><th>Type</th><th>Property</th><th>Stage</th><th>Agent</th><th>Value</th><th>Emails</th><th>Last Touch</th><th></th></tr></thead>
+        <tbody id="deals-body"></tbody></table>
+      </div>
+    </div>
+
+    <!-- CONTACTS -->
+    <div id="page-contacts" class="page">
+      <div class="table-wrap">
+        <table><thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Phone</th><th>Linked Deal</th><th>Agent</th><th></th></tr></thead>
+        <tbody id="contacts-body"></tbody></table>
+      </div>
+    </div>
+
+    <!-- AGENTS -->
+    <div id="page-agents" class="page">
+      <div class="agents-grid" id="agents-grid"></div>
+    </div>
+
+    <!-- INBOX -->
+    <div id="page-inbox" class="page">
+      <div class="ecb" id="connect-banner">
+        <div style="font-size:30px">📬</div>
+        <div class="ecb-text">
+          <h4>Connect Your Email Inbox</h4>
+        <p>Sync Gmail or Outlook to track all client communications per deal automatically.</p>
+        </div>
+        <div class="ecb-actions">
+          <button class="prov-btn" onclick="connectEmail('gmail')">
+            <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#4285F4" d="M7.1 14.8l16.9 11 16.9-11C38.4 11.4 31.6 8 24 8S9.6 11.4 7.1 14.8z"/><path fill="#34A853" d="M40 16.2L24 27 8 16.2V36c0 2.2 1.8 4 4 4h24c2.2 0 4-1.8 4-4V16.2z"/><path fill="#FBBC05" d="M8 16.2V36c0 .1 0 .1 0 0z"/><path fill="#EA4335" d="M40 16.2v19.6c0 .1 0 .1 0 0z"/></svg>
+            Connect Gmail
+          </button>
+          <button class="prov-btn" onclick="connectEmail('outlook')">
+            <svg width="16" height="16" viewBox="0 0 48 48"><rect width="48" height="48" rx="4" fill="#0078D4"/><path fill="#fff" d="M8 14h32v20H8z" opacity=".15"/><circle cx="20" cy="24" r="7" fill="#fff"/></svg>
+            Connect Outlook
+          </button>
+        </div>
+      </div>
+      <div id="connected-info" style="display:none;margin-bottom:18px;display:flex;align-items:center;gap:10px;">
+        <span class="connected-badge">✓ Connected: <span id="connected-acct"></span></span>
+        <button class="btn btn-ghost btn-sm" onclick="disconnectEmail()">Disconnect</button>
+      </div>
+      <div class="section-title">Inbox</div>
+      <div id="inbox-list"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- DEAL DETAIL MODAL -->
+<div class="overlay" id="ov-deal" onclick="closeOv('deal')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="md-title">Deal</h3>
+      <span id="md-badge" style="margin-right:8px"></span>
+      <button class="modal-close" onclick="closeOv('deal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="pipeline-stages" id="pipeline-bar"></div>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('overview',this)">Overview</button>
+        <button class="tab-btn" onclick="switchTab('client',this)">Client Info</button>
+        <button class="tab-btn" onclick="switchTab('emails',this)">Email Log</button>
+      </div>
+      <div id="tab-overview" class="tab-panel active"></div>
+      <div id="tab-client" class="tab-panel"></div>
+      <div id="tab-emails" class="tab-panel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD DEAL MODAL -->
+<div class="overlay" id="ov-add-deal" onclick="closeOv('add-deal')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:540px">
+    <div class="modal-header"><h3>New Deal</h3><button class="modal-close" onclick="closeOv('add-deal')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>Client Name *</label><input id="f-client" placeholder="Full name"></div>
+        <div class="form-group"><label>Client Email</label><input id="f-cemail" type="email" placeholder="client@email.com"></div>
+        <div class="form-group"><label>Client Phone</label><input id="f-phone" placeholder="(555) 000-0000"></div>
+        <div class="form-group"><label>Deal Type *</label>
+          <select id="f-type"><option>Buyer Purchase</option><option>Tenant Lease</option><option>Seller Listing</option><option>Landlord Listing</option></select>
+        </div>
+        <div class="form-group full"><label>Property Address</label><input id="f-property" placeholder="123 Main St, City, State"></div>
+        <div class="form-group"><label>Deal Value ($)</label><input id="f-value" type="number" placeholder="0"></div>
+        <div class="form-group"><label>Assign Agent *</label><select id="f-agent"></select></div>
+        <div class="form-group full"><label>Notes</label><textarea id="f-notes" placeholder="Initial notes…"></textarea></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeOv('add-deal')">Cancel</button>
+        <button class="btn btn-gold" onclick="saveDeal()">Create Deal</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD AGENT MODAL -->
+<div class="overlay" id="ov-add-agent" onclick="closeOv('add-agent')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:460px">
+    <div class="modal-header"><h3>Add Agent</h3><button class="modal-close" onclick="closeOv('add-agent')">✕</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="form-group"><label>First Name *</label><input id="ag-first" placeholder="Jane"></div>
+        <div class="form-group"><label>Last Name *</label><input id="ag-last" placeholder="Smith"></div>
+        <div class="form-group full"><label>Email *</label><input id="ag-email" type="email" placeholder="agent@brokerage.com"></div>
+        <div class="form-group"><label>Phone</label><input id="ag-phone" placeholder="(555) 000-0000"></div>
+        <div class="form-group"><label>License #</label><input id="ag-license" placeholder="RE12345678"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeOv('add-agent')">Cancel</button>
+        <button class="btn btn-gold" onclick="saveAgent()">Add Agent</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EMAIL VIEW MODAL -->
+<div class="overlay" id="ov-email" onclick="closeOv('email')">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:580px">
+    <div class="modal-header"><h3 id="em-subject">Email</h3><button class="modal-close" onclick="closeOv('email')">✕</button></div>
+    <div class="modal-body">
+      <div style="margin-bottom:14px;font-size:13px;color:var(--muted)" id="em-meta"></div>
+      <div style="font-size:14px;line-height:1.65;border-top:1px solid var(--smoke);padding-top:14px;white-space:pre-wrap" id="em-body"></div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--smoke)">
+        <label style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:500;">Link to Deal</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <select id="em-link-deal" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-family:'DM Sans',sans-serif;font-size:13px;"></select>
+          <button class="btn btn-gold btn-sm" onclick="linkEmailToDeal()">Link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ──────────────── DATA ────────────────
+let currentFilter = '';
+let activeDealId = null;
+let activeEmailId = null;
+let emailConnected = false;
+let connectedProvider = '';
+
+let agents = [
+  {id:1,first:'Marcus',last:'Rivera',email:'mrivera@fairoaksrealty.com',phone:'(212) 555-0191',license:'RE10023456'},
+  {id:2,first:'Diana',last:'Chen',email:'dchen@fairoaksrealty.com',phone:'(212) 555-0847',license:'RE10034521'},
+  {id:3,first:'Tyler',last:'Brooks',email:'tbrooks@fairoaksrealty.com',phone:'(212) 555-0632',license:'RE10045678'},
+];
+let nextAgentId = 4;
+
+const STAGES = ['Prospect','Active','In Contract','Closed','Lost'];
+const stageCls = {'Prospect':'s-Prospect','Active':'s-Active','In Contract':'s-Contract','Closed':'s-Closed','Lost':'s-Lost'};
+const typeColors = {
+  'Buyer Purchase':'background:#dbeafe;color:#1e4d8c',
+  'Tenant Lease':'background:#d1fae5;color:#2d5a3d',
+  'Seller Listing':'background:#fed7aa;color:#7c3d11',
+  'Landlord Listing':'background:#ede9fe;color:#4a1d6e'
+};
+
+let deals = [
+  {id:1,client:'James & Carol Whitman',email:'jwhitman@email.com',phone:'(917) 555-0244',type:'Buyer Purchase',property:'147 Park Ave N, Unit 4B',value:875000,agentId:1,stage:'In Contract',notes:'Pre-approved $900k. Looking for 3BR+. Closing target end of month.',created:'2025-01-10',lastTouch:'2025-04-22',
+   emails:[
+    {id:1,dir:'sent',from:'mrivera@fairoaksrealty.com',to:'jwhitman@email.com',subject:'Offer Accepted!',body:'Great news! The seller accepted your offer at $875,000. We move to contract review next week.',date:'2025-04-22'},
+    {id:2,dir:'received',from:'jwhitman@email.com',to:'mrivera@fairoaksrealty.com',subject:'Re: Offer Accepted',body:'This is incredible! Thank you so much Marcus. We are beyond excited.',date:'2025-04-22'},
+    {id:3,dir:'sent',from:'mrivera@fairoaksrealty.com',to:'jwhitman@email.com',subject:'Inspection Scheduled',body:'I confirmed the home inspection for Thursday at 10am. Plan to be there about 2 hours.',date:'2025-04-18'},
+   ]},
+  {id:2,client:'Priya Nair',email:'pnair@gmail.com',phone:'(646) 555-0378',type:'Tenant Lease',property:'230 W 14th St, Apt 9',value:4200,agentId:2,stage:'Active',notes:'Looking for 12-month lease. Budget $4,000-$4,500. Needs pet policy confirmed.',created:'2025-02-14',lastTouch:'2025-04-20',
+   emails:[{id:4,dir:'sent',from:'dchen@fairoaksrealty.com',to:'pnair@gmail.com',subject:'Available Units — April',body:'Hi Priya, I found 3 units that match your criteria. Let me know which you would like to tour.',date:'2025-04-20'}]},
+  {id:3,client:'Robert & Linda Ortega',email:'rortega@email.com',phone:'(212) 555-0091',type:'Seller Listing',property:'88 Franklin St, Floor 3',value:1250000,agentId:3,stage:'Active',notes:'Listing at $1.25M. Staging complete. Photos done. Open house next Saturday.',created:'2025-03-01',lastTouch:'2025-04-19',emails:[]},
+  {id:4,client:'Harbor Properties LLC',email:'info@harborprop.com',phone:'(212) 555-0500',type:'Landlord Listing',property:'12-16 Greene St (6 units)',value:28800,agentId:1,stage:'Prospect',notes:'Annual rent roll $28,800. Owner wants qualified tenants only. Background checks required.',created:'2025-04-01',lastTouch:'2025-04-15',emails:[]},
+  {id:5,client:'Alex Thompson',email:'athompson@me.com',phone:'(917) 555-0812',type:'Buyer Purchase',property:'TBD — Midtown West',value:650000,agentId:2,stage:'Prospect',notes:'First-time buyer. Pre-qual in progress. Wants 2BR in Midtown West.',created:'2025-04-10',lastTouch:'2025-04-10',emails:[]},
+  {id:6,client:'Monica Graves',email:'mgraves@outlook.com',phone:'(646) 555-0223',type:'Tenant Lease',property:'305 E 86th St, Apt 2A',value:3100,agentId:3,stage:'Closed',notes:'Signed 13-month lease. Move-in May 1st. Commission collected.',created:'2025-02-01',lastTouch:'2025-03-30',emails:[]},
+];
+let nextDealId = 7;
+
+let inboxEmails = [
+  {id:101,unread:true,from:'jwhitman@email.com',sender:'James Whitman',subject:'Wire transfer question',body:'Hi Marcus — just wanted to confirm the wiring instructions for the down payment. Can you resend those?',date:'Apr 27, 2:14 PM',linkedDealId:1},
+  {id:102,unread:true,from:'pnair@gmail.com',sender:'Priya Nair',subject:'Question about pet policy',body:'Hi Diana, the listing says no pets but I have a small dog under 20lbs. Is there any flexibility with the landlord?',date:'Apr 26, 10:08 AM',linkedDealId:2},
+  {id:103,unread:true,from:'athompson@me.com',sender:'Alex Thompson',subject:'Pre-approval letter attached',body:'Good afternoon! My mortgage broker just sent over the pre-approval letter. Attaching here for your records.',date:'Apr 24, 4:45 PM',linkedDealId:5},
+  {id:104,unread:false,from:'rortega@email.com',sender:'Robert Ortega',subject:'Open house feedback?',body:'Tyler — any feedback from Saturday\'s open house? We had about 14 groups come through.',date:'Apr 21, 9:30 AM',linkedDealId:3},
+];
+
+// ──────────────── NAV ────────────────
+function nav(page, el, filter) {
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+
+  const titles={dashboard:'Dashboard',deals:'Deal Flow',contacts:'Clients',agents:'Agents',inbox:'Email Inbox'};
+  document.getElementById('page-title').textContent = titles[page]||page;
+
+  const act = document.getElementById('topbar-actions');
+  act.innerHTML='';
+  if(page==='deals'){
+    act.innerHTML=`<button class="btn btn-gold" onclick="openOv('add-deal')">+ New Deal</button>`;
+    if(filter!==undefined) currentFilter=filter;
+    renderDeals(); syncFilterChips();
+  } else if(page==='agents'){
+    act.innerHTML=`<button class="btn btn-gold" onclick="openOv('add-agent')">+ Add Agent</button>`;
+    renderAgents();
+  } else if(page==='contacts'){
+    act.innerHTML=`<button class="btn btn-gold" onclick="openOv('add-deal')">+ New Deal</button>`;
+    renderContacts();
+  } else if(page==='inbox'){
+    renderInbox();
+  } else {
+    renderDashboard();
+  }
+  updateBadges();
+}
+
+function syncFilterChips(){
+  document.querySelectorAll('.filter-chip').forEach(c=>{
+    const oc=c.getAttribute('onclick')||'';
+    const match = currentFilter==='' ? oc.includes("''") : oc.includes("'"+currentFilter+"'");
+    c.classList.toggle('active',match);
+  });
+}
+
+// ──────────────── DASHBOARD ────────────────
+function renderDashboard(){
+  document.getElementById('s-active').textContent = deals.filter(d=>d.stage==='Active').length;
+  document.getElementById('s-contract').textContent = deals.filter(d=>d.stage==='In Contract').length;
+  document.getElementById('s-closed').textContent = deals.filter(d=>d.stage==='Closed').length;
+  document.getElementById('s-agents').textContent = agents.length;
+  const recent=[...deals].sort((a,b)=>b.id-a.id).slice(0,6);
+  document.getElementById('dash-body').innerHTML = recent.map(d=>{
+    const ag=agents.find(a=>a.id===d.agentId);
+    return `<tr>
+      <td><strong>${d.client}</strong></td>
+      <td><span class="deal-type" style="${typeColors[d.type]||''};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${d.type}</span></td>
+      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.property||'—'}</td>
+      <td>${sPill(d.stage)}</td>
+      <td>${ag?ag.first+' '+ag.last:'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${d.lastTouch}</td>
+      <td><button class="link-btn" onclick="openDeal(${d.id})">View</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function sPill(s){
+  const c=stageCls[s]||'s-Prospect';
+  return `<span class="stage-pill ${c}"><span class="dot"></span>${s}</span>`;
+}
+
+// ──────────────── DEALS ────────────────
+function setFilter(f,el){
+  currentFilter=f;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderDeals();
+}
+
+function renderDeals(){
+  const q=(document.getElementById('deal-search')?.value||'').toLowerCase();
+  let list=deals;
+  if(currentFilter) list=list.filter(d=>d.type===currentFilter);
+  if(q) list=list.filter(d=>d.client.toLowerCase().includes(q)||d.property.toLowerCase().includes(q));
+  const body=document.getElementById('deals-body');
+  if(!list.length){body.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="ei">📭</div><p>No deals found.</p></div></td></tr>`;return;}
+  body.innerHTML=list.map(d=>{
+    const ag=agents.find(a=>a.id===d.agentId);
+    const val=d.type==='Tenant Lease'?`$${Number(d.value).toLocaleString()}/mo`:`$${Number(d.value).toLocaleString()}`;
+    return `<tr>
+      <td><strong>${d.client}</strong></td>
+      <td><span style="${typeColors[d.type]||''};display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${d.type}</span></td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.property||'—'}</td>
+      <td>${sPill(d.stage)}</td>
+      <td>${ag?ag.first+' '+ag.last:'—'}</td>
+      <td style="font-size:12px">${val}</td>
+      <td style="text-align:center;font-size:12px">${d.emails.length}</td>
+      <td style="font-size:12px;color:var(--muted)">${d.lastTouch}</td>
+      <td><button class="link-btn" onclick="openDeal(${d.id})">Open</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ──────────────── DEAL MODAL ────────────────
+function openDeal(id){
+  activeDealId=id;
+  const d=deals.find(x=>x.id===id); if(!d) return;
+  document.getElementById('md-title').textContent=d.client;
+  document.getElementById('md-badge').innerHTML=`<span style="${typeColors[d.type]||''};display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${d.type}</span>`;
+
+  const ci=STAGES.indexOf(d.stage);
+  document.getElementById('pipeline-bar').innerHTML=STAGES.map((s,i)=>{
+    let cls=''; if(i<ci) cls='done'; else if(i===ci) cls='current';
+    return `<div class="p-stage ${cls}" onclick="setStage(${id},'${s}')">${s}</div>`;
+  }).join('');
+
+  // reset tabs
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  document.querySelectorAll('.tab-panel').forEach((p,i)=>p.classList.toggle('active',i===0));
+
+  renderOverviewTab(d); renderClientTab(d); renderEmailsTab(d);
+  openOv('deal');
+}
+
+function setStage(id,stage){
+  const d=deals.find(x=>x.id===id); if(!d) return;
+  d.stage=stage; d.lastTouch=today();
+  openDeal(id); renderDashboard(); renderDeals();
+  toast('Stage → '+stage);
+}
+
+function renderOverviewTab(d){
+  document.getElementById('tab-overview').innerHTML=`
+    <div class="form-grid">
+      <div class="form-group"><label>Property</label><input value="${d.property}" oninput="ud(${d.id},'property',this.value)"></div>
+      <div class="form-group"><label>Value ($)</label><input type="number" value="${d.value}" oninput="ud(${d.id},'value',+this.value)"></div>
+      <div class="form-group"><label>Stage</label>
+        <select onchange="setStage(${d.id},this.value)">
+          ${STAGES.map(s=>`<option${s===d.stage?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Assigned Agent</label>
+        <select onchange="ud(${d.id},'agentId',+this.value)">
+          ${agents.map(a=>`<option value="${a.id}"${a.id===d.agentId?' selected':''}>${a.first} ${a.last}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group full"><label>Notes</label><textarea oninput="ud(${d.id},'notes',this.value)">${d.notes}</textarea></div>
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:var(--muted)">Created: ${d.created} &nbsp;·&nbsp; Last Touch: ${d.lastTouch}</div>
+    <div style="margin-top:12px;text-align:right"><button class="btn btn-primary btn-sm" onclick="toast('Changes saved.')">Save</button></div>`;
+}
+
+function renderClientTab(d){
+  document.getElementById('tab-client').innerHTML=`
+    <div class="form-grid">
+      <div class="form-group"><label>Client Name</label><input value="${d.client}" oninput="ud(${d.id},'client',this.value)"></div>
+      <div class="form-group"><label>Email</label><input type="email" value="${d.email}" oninput="ud(${d.id},'email',this.value)"></div>
+      <div class="form-group"><label>Phone</label><input value="${d.phone}" oninput="ud(${d.id},'phone',this.value)"></div>
+      <div class="form-group"><label>Deal Type</label>
+        <select onchange="ud(${d.id},'type',this.value)">
+          ${['Buyer Purchase','Tenant Lease','Seller Listing','Landlord Listing'].map(t=>`<option${t===d.type?' selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px;text-align:right"><button class="btn btn-primary btn-sm" onclick="toast('Client info saved.')">Save</button></div>`;
+}
+
+function renderEmailsTab(d){
+  const emails = d.emails.length ? d.emails.map(e=>`
+    <div class="email-entry">
+      <div class="email-meta">
+        <span class="email-dir dir-${e.dir}">${e.dir.toUpperCase()}</span>
+        <span class="email-from">${e.dir==='sent'?'To: '+e.to:'From: '+e.from}</span>
+        <span class="email-date">${e.date}</span>
+      </div>
+      <div class="email-subject">${e.subject}</div>
+      <div class="email-body">${e.body}</div>
+    </div>`).join('') :
+    `<div class="empty-state"><div class="ei">📭</div><p>No emails logged yet.</p></div>`;
+
+  document.getElementById('tab-emails').innerHTML=`
+    <div class="email-log">${emails}</div>
+    <div class="add-email-form">
+      <h4>+ Log Email Touch</h4>
+      <div class="form-grid">
+        <div class="form-group"><label>Direction</label>
+          <select id="ne-dir"><option value="sent">Sent</option><option value="received">Received</option></select>
+        </div>
+        <div class="form-group"><label>Date</label><input id="ne-date" type="date" value="${today()}"></div>
+        <div class="form-group full"><label>Subject</label><input id="ne-subject" placeholder="Email subject…"></div>
+        <div class="form-group full"><label>Body / Summary</label><textarea id="ne-body" placeholder="Paste email content or write a summary…"></textarea></div>
+      </div>
+      <div style="margin-top:10px;text-align:right">
+        <button class="btn btn-primary btn-sm" onclick="logEmail(${d.id})">Log Email</button>
+      </div>
+    </div>`;
+}
+
+function logEmail(dealId){
+  const subject=document.getElementById('ne-subject').value.trim();
+  if(!subject){toast('Subject required.');return;}
+  const d=deals.find(x=>x.id===dealId);
+  const ag=agents.find(a=>a.id===d.agentId);
+  const dir=document.getElementById('ne-dir').value;
+  d.emails.push({id:Date.now(),dir,subject,body:document.getElementById('ne-body').value,date:document.getElementById('ne-date').value,
+    from:dir==='sent'?(ag?ag.email:'agent@fairoaksrealty.com'):d.email,
+    to:dir==='sent'?d.email:(ag?ag.email:'agent@fairoaksrealty.com')});
+  d.lastTouch=today();
+  renderEmailsTab(d);
+  toast('Email logged.');
+}
+
+function ud(id,field,value){
+  const d=deals.find(x=>x.id===id);
+  if(d){d[field]=value;d.lastTouch=today();}
+}
+
+function switchTab(name,btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+// ──────────────── ADD DEAL ────────────────
+function openOv(name){
+  if(name==='add-deal'){
+    document.getElementById('f-agent').innerHTML=agents.map(a=>`<option value="${a.id}">${a.first} ${a.last}</option>`).join('');
+  }
+  document.getElementById('ov-'+name).classList.add('open');
+}
+function closeOv(name){document.getElementById('ov-'+name).classList.remove('open');}
+
+function saveDeal(){
+  const client=document.getElementById('f-client').value.trim();
+  if(!client){toast('Client name required.');return;}
+  const d={id:nextDealId++,client,email:document.getElementById('f-cemail').value,phone:document.getElementById('f-phone').value,
+    type:document.getElementById('f-type').value,property:document.getElementById('f-property').value,
+    value:+document.getElementById('f-value').value||0,agentId:+document.getElementById('f-agent').value,
+    stage:'Prospect',notes:document.getElementById('f-notes').value,created:today(),lastTouch:today(),emails:[]};
+  deals.unshift(d);
+  closeOv('add-deal');
+  ['f-client','f-cemail','f-phone','f-property','f-value','f-notes'].forEach(id=>document.getElementById(id).value='');
+  renderDeals(); renderDashboard(); updateBadges();
+  toast('Deal created: '+d.client);
+}
+
+// ──────────────── AGENTS ────────────────
+function renderAgents(){
+  const grid=document.getElementById('agents-grid');
+  if(!agents.length){grid.innerHTML=`<div class="empty-state"><div class="ei">🤝</div><p>No agents yet. Add one above.</p></div>`;return;}
+  grid.innerHTML=agents.map(a=>{
+    const all=deals.filter(d=>d.agentId===a.id);
+    const active=all.filter(d=>['Active','In Contract'].includes(d.stage)).length;
+    const closed=all.filter(d=>d.stage==='Closed').length;
+    return `<div class="agent-card">
+      <div class="agent-top">
+        <div class="avatar">${a.first[0]+a.last[0]}</div>
+        <div><div class="agent-name">${a.first} ${a.last}<span class="role-badge role-agent">Agent</span></div><div class="agent-email">${a.email}</div></div>
+      </div>
+      <div class="agent-stats">
+        <div class="agent-stat"><div class="n">${all.length}</div><div class="l">Total</div></div>
+        <div class="agent-stat"><div class="n">${active}</div><div class="l">Active</div></div>
+        <div class="agent-stat"><div class="n">${closed}</div><div class="l">Closed</div></div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px">📞 ${a.phone||'—'} &nbsp;·&nbsp; Lic: ${a.license||'—'}</div>
+      <div class="agent-actions">
+        <button class="btn btn-ghost btn-sm" onclick="viewAgentDeals(${a.id})">View Deals</button>
+        <button class="btn btn-danger btn-sm" onclick="removeAgent(${a.id})">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function saveAgent(){
+  const first=document.getElementById('ag-first').value.trim();
+  const last=document.getElementById('ag-last').value.trim();
+  const email=document.getElementById('ag-email').value.trim();
+  if(!first||!last||!email){toast('Name and email required.');return;}
+  agents.push({id:nextAgentId++,first,last,email,phone:document.getElementById('ag-phone').value,license:document.getElementById('ag-license').value});
+  closeOv('add-agent');
+  ['ag-first','ag-last','ag-email','ag-phone','ag-license'].forEach(id=>document.getElementById(id).value='');
+  renderAgents(); updateBadges(); toast('Agent added: '+first+' '+last);
+}
+
+function removeAgent(id){
+  if(!confirm('Remove this agent? Their deals will remain.')) return;
+  agents=agents.filter(a=>a.id!==id);
+  renderAgents(); updateBadges(); toast('Agent removed.');
+}
+
+function viewAgentDeals(agentId){
+  const ag=agents.find(a=>a.id===agentId);
+  currentFilter='';
+  nav('deals',null,'');
+  setTimeout(()=>{document.getElementById('deal-search').value=ag?.first||'';renderDeals();},50);
+}
+
+// ──────────────── CONTACTS ────────────────
+function renderContacts(){
+  document.getElementById('contacts-body').innerHTML=deals.map(d=>{
+    const ag=agents.find(a=>a.id===d.agentId);
+    return `<tr>
+      <td><strong>${d.client}</strong></td>
+      <td><span style="${typeColors[d.type]||''};display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${d.type.split(' ')[0]}</span></td>
+      <td>${d.email||'—'}</td><td>${d.phone||'—'}</td>
+      <td><button class="link-btn" onclick="openDeal(${d.id})">${d.property||'View Deal'}</button></td>
+      <td>${ag?ag.first+' '+ag.last:'—'}</td>
+      <td><button class="link-btn" onclick="openDeal(${d.id})">Open Deal</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ──────────────── INBOX ────────────────
+function renderInbox(){
+  const banner=document.getElementById('connect-banner');
+  const info=document.getElementById('connected-info');
+  banner.style.display=emailConnected?'none':'flex';
+  info.style.display=emailConnected?'flex':'none';
+  if(emailConnected) document.getElementById('connected-acct').textContent=connectedProvider==='gmail'?'Gmail':'Outlook';
+
+  document.getElementById('inbox-list').innerHTML=inboxEmails.map(e=>`
+    <div class="inbox-item${e.unread?' unread':''}" onclick="openEmailView(${e.id})">
+      <div style="font-size:22px">${e.unread?'📩':'📧'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:13px;font-weight:600">${e.sender}</span>
+          ${e.linkedDealId?`<span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:3px;font-weight:600">Linked</span>`:''}
+          ${e.unread?'<span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-weight:600">New</span>':''}
+        </div>
+        <div style="font-size:12.5px;color:var(--muted)">${e.subject}</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);white-space:nowrap">${e.date}</div>
+    </div>`).join('');
+  updateBadges();
+}
+
+function openEmailView(id){
+  activeEmailId=id;
+  const e=inboxEmails.find(x=>x.id===id); if(!e) return;
+  e.unread=false;
+  document.getElementById('em-subject').textContent=e.subject;
+  document.getElementById('em-meta').innerHTML=`<strong>From:</strong> ${e.sender} &lt;${e.from}&gt; &nbsp;·&nbsp; <strong>Date:</strong> ${e.date}`;
+  document.getElementById('em-body').textContent=e.body;
+  const sel=document.getElementById('em-link-deal');
+  sel.innerHTML=`<option value="">— Select a deal —</option>`+deals.map(d=>`<option value="${d.id}"${d.id===e.linkedDealId?' selected':''}>${d.client} · ${d.type}</option>`).join('');
+  openOv('email');
+  renderInbox();
+}
+
+function linkEmailToDeal(){
+  const e=inboxEmails.find(x=>x.id===activeEmailId);
+  const dealId=+document.getElementById('em-link-deal').value;
+  if(!e||!dealId){toast('Please select a deal.');return;}
+  e.linkedDealId=dealId;
+  const d=deals.find(x=>x.id===dealId);
+  if(d){
+    if(!d.emails.find(em=>em.id===e.id)){
+      d.emails.push({id:e.id,dir:'received',from:e.from,to:'agent@fairoaksrealty.com',subject:e.subject,body:e.body,date:e.date});
+      d.lastTouch=today();
+    }
+  }
+  closeOv('email');
+  renderInbox();
+  toast('Email linked to: '+(d?.client||'deal'));
+}
+
+function connectEmail(provider){
+  toast(`Connecting to ${provider==='gmail'?'Gmail':'Outlook'}… (OAuth would open here)`);
+  setTimeout(()=>{
+    emailConnected=true; connectedProvider=provider;
+    renderInbox();
+    toast('✓ '+(provider==='gmail'?'Gmail':'Outlook')+' connected!');
+  },1600);
+}
+
+function disconnectEmail(){
+  emailConnected=false; connectedProvider='';
+  renderInbox(); toast('Email inbox disconnected.');
+}
+
+// ──────────────── UTILS ────────────────
+function updateBadges(){
+  document.getElementById('deal-count').textContent=deals.length;
+  const u=inboxEmails.filter(e=>e.unread).length;
+  const badge=document.getElementById('inbox-badge');
+  badge.textContent=u; badge.style.display=u?'':'none';
+}
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3000);
+}
+function today(){return new Date().toISOString().slice(0,10);}
+
+// ──────────────── INIT ────────────────
+renderDashboard();
+updateBadges();
+</script>
+</body>
+</html>
