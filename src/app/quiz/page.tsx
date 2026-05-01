@@ -191,7 +191,7 @@ export default function QuizPage() {
                   Tell us how to reach you and we&apos;ll send personalized home recommendations within 24 hours.
                 </p>
               </div>
-              <form onSubmit={handleContact} className="space-y-4 bg-white rounded-2xl shadow-card p-8">
+              <form onSubmit={handleContact} className="space-y-4 bg-white rounded-2xl shadow-card p-5 sm:p-8">
                 <div>
                   <label className="label-readable">Your Name *</label>
                   <input required value={name} onChange={e => setName(e.target.value)} placeholder="First & Last Name" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
@@ -244,8 +244,8 @@ export default function QuizPage() {
             </div>
 
             {/* Question */}
-            <div className="bg-white rounded-2xl shadow-card p-8">
-              <h2 className="mb-8 font-heading text-heading-xl font-bold text-primary text-center">
+            <div className="bg-white rounded-2xl shadow-card p-5 sm:p-8">
+              <h2 className="mb-6 sm:mb-8 font-heading text-heading-xl font-bold text-primary text-center">
                 {current.question}
               </h2>
 

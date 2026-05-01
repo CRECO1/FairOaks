@@ -62,9 +62,11 @@
     font-feature-settings: 'kern' 1, 'liga' 1;
   }
 
-  /* Paragraphs get optimal line length for readability */
-  p {
-    max-width: 70ch;
+  /* Paragraphs get optimal line length for readability on larger screens */
+  @media (min-width: 768px) {
+    p {
+      max-width: 70ch;
+    }
   }
 
   /* Improved focus states for accessibility - larger ring */
@@ -427,6 +429,35 @@
   .fill-both {
     animation-fill-mode: both;
   }
+}
+
+/* ── Mobile Responsive Display Text ─────────────────────────────────────────
+   Override the large display font sizes on small screens so headings
+   don't overflow or look oversized on phones.
+   ────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 639px) {
+  .text-display-xl  { font-size: 2.25rem !important; line-height: 1.1 !important; letter-spacing: -0.02em !important; }
+  .text-display-lg  { font-size: 1.875rem !important; line-height: 1.15 !important; }
+  .text-display     { font-size: 1.625rem !important; line-height: 1.2 !important; }
+  .text-display-sm  { font-size: 1.375rem !important; line-height: 1.25 !important; }
+  .text-heading-xl  { font-size: 1.375rem !important; }
+  .text-heading-lg  { font-size: 1.25rem !important; }
+  .text-heading     { font-size: 1.125rem !important; }
+
+  /* Reduce section vertical padding on mobile */
+  .section-luxury   { padding-top: 3.5rem !important; padding-bottom: 3.5rem !important; }
+  .section-compact  { padding-top: 2.5rem !important; padding-bottom: 2.5rem !important; }
+
+  /* Hero adjustments */
+  .text-body-lg     { font-size: 1rem !important; line-height: 1.6 !important; }
+  .text-body-xl     { font-size: 1.0625rem !important; }
+}
+
+@media (min-width: 640px) and (max-width: 767px) {
+  .text-display-xl  { font-size: 3rem !important; line-height: 1.1 !important; }
+  .text-display-lg  { font-size: 2.5rem !important; }
+  .text-display     { font-size: 2.25rem !important; }
+  .text-display-sm  { font-size: 1.875rem !important; }
 }
 
 /* Scroll-triggered Animation Classes (for Intersection Observer) */

@@ -56,7 +56,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
           <Link href="/" className="flex items-center">
             <span
               className={cn(
-                'font-heading text-2xl font-bold tracking-tight',
+                'font-heading text-lg sm:text-2xl font-bold tracking-tight',
                 isTransparent ? 'text-white' : 'text-primary'
               )}
               style={textShadowStyle}

@@ -44,7 +44,7 @@ export default function ContactPage() {
       <Header />
       <main className="min-h-screen pt-20">
         {/* Hero */}
-        <div className="bg-primary py-14 text-white">
+        <div className="bg-primary py-10 sm:py-14 text-white">
           <Container>
             <p className="overline mb-2 text-gold">We&apos;re Here to Help</p>
             <h1 className="font-heading text-display-sm font-bold">Contact Us</h1>
@@ -135,7 +135,7 @@ export default function ContactPage() {
 
               {/* Form */}
               <div className="lg:col-span-2">
-                <div className="rounded-2xl bg-white p-8 shadow-card lg:p-10">
+                <div className="rounded-2xl bg-white p-5 sm:p-8 shadow-card lg:p-10">
                   {submitted ? (
                     <div className="py-12 text-center">
                       <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-gold/20">

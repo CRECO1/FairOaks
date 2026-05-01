@@ -60,7 +60,7 @@ export default function ListingsPage() {
       <Header />
       <main className="min-h-screen pt-20">
         {/* Page Header */}
-        <div className="bg-primary py-14 text-white">
+        <div className="bg-primary py-10 sm:py-14 text-white">
           <Container>
             <p className="overline mb-2 text-gold">Available Now</p>
             <h1 className="font-heading text-display-sm font-bold">Homes for Sale</h1>
@@ -74,7 +74,7 @@ export default function ListingsPage() {
         <div className="sticky top-20 z-30 border-b border-border bg-white shadow-sm">
           <Container>
             <div className="flex flex-wrap items-center gap-3 py-4">
-              <div className="relative flex-1 min-w-[220px]">
+              <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground-muted" />
                 <Input
                   placeholder="Search address or neighborhood…"
@@ -87,7 +87,7 @@ export default function ListingsPage() {
               <select
                 value={city}
                 onChange={e => setCity(e.target.value)}
-                className="h-11 rounded-lg border border-border px-3 text-body-sm text-primary"
+                className="h-11 w-full sm:w-auto rounded-lg border border-border px-3 text-body-sm text-primary"
               >
                 {CITIES.map(c => <option key={c}>{c}</option>)}
               </select>

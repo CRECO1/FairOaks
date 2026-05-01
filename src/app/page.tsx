@@ -129,9 +129,9 @@ export default async function HomePage() {
         )}
         <div className="hero-overlay-luxury absolute inset-0" />
 
-        <Container className="relative z-10 text-center text-white">
-          <p className="overline mb-6 animate-fade-in-down text-gold">Texas Hill Country Real Estate</p>
-          <h1 className="mb-6 animate-fade-in-up font-heading text-display-xl font-bold text-white text-shadow-hero fill-both">
+        <Container className="relative z-10 text-center text-white px-5 sm:px-6">
+          <p className="overline mb-4 sm:mb-6 animate-fade-in-down text-gold text-xs sm:text-overline">Texas Hill Country Real Estate</p>
+          <h1 className="mb-5 sm:mb-6 animate-fade-in-up font-heading text-display-xl font-bold text-white text-shadow-hero fill-both">
             {s.hero_headline.includes('\n')
               ? s.hero_headline.split('\n').map((line: string, i: number) => (
                 <span key={i}>{i > 0 && <br />}{line}</span>
@@ -139,23 +139,23 @@ export default async function HomePage() {
               : <><span className="text-gradient-gold">{s.hero_headline}</span></>
             }
           </h1>
-          <p className="mx-auto mb-10 max-w-2xl animate-fade-in text-body-lg text-white/80 delay-200 fill-both">
+          <p className="mx-auto mb-8 sm:mb-10 max-w-2xl animate-fade-in text-base sm:text-body-lg text-white/80 delay-200 fill-both">
             {s.hero_subheadline}
           </p>
-          <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center animate-fade-in delay-300 fill-both">
-            <Button size="lg" asChild>
+          <div className="flex flex-col items-center gap-3 sm:gap-4 sm:flex-row sm:justify-center animate-fade-in delay-300 fill-both w-full">
+            <Button size="lg" className="w-full sm:w-auto" asChild>
               <Link href="/listings">Browse Homes <ArrowRight className="ml-2 h-5 w-5" /></Link>
             </Button>
-            <Button size="lg" variant="outline" className="border-white text-white hover:bg-white hover:text-primary" asChild>
+            <Button size="lg" variant="outline" className="w-full sm:w-auto border-white text-white hover:bg-white hover:text-primary" asChild>
               <Link href="/quiz"><Sparkles className="mr-2 h-5 w-5" />Find My Home</Link>
             </Button>
           </div>
 
-          <div className="mt-16 grid grid-cols-2 gap-6 sm:grid-cols-4 animate-fade-in delay-500 fill-both">
+          <div className="mt-10 sm:mt-16 grid grid-cols-2 gap-4 sm:gap-6 sm:grid-cols-4 animate-fade-in delay-500 fill-both">
             {STATS.map(({ value, label, icon: Icon }) => (
               <div key={label} className="text-center">
-                <div className="mb-1 font-heading text-3xl font-bold text-gold">{value}</div>
-                <div className="text-caption uppercase tracking-widest text-white/60">{label}</div>
+                <div className="mb-1 font-heading text-2xl sm:text-3xl font-bold text-gold">{value}</div>
+                <div className="text-xs sm:text-caption uppercase tracking-widest text-white/60">{label}</div>
               </div>
             ))}
           </div>
@@ -280,20 +280,20 @@ export default async function HomePage() {
                   </li>
                 ))}
               </ul>
-              <div className="flex gap-4">
-                <Button size="lg" asChild><Link href="/team">Meet the Team</Link></Button>
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <Button size="lg" className="w-full sm:w-auto" asChild><Link href="/team">Meet the Team</Link></Button>
+                <Button size="lg" variant="outline" className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10" asChild>
                   <Link href="/sell">Sell My Home</Link>
                 </Button>
               </div>
             </RevealOnScroll>
             <RevealOnScroll direction="right">
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-2 gap-4 sm:gap-5">
                 {STATS.map(({ value, label, icon: Icon }) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-6 text-center backdrop-blur-sm">
-                    <Icon className="mx-auto mb-3 h-8 w-8 text-gold" />
-                    <div className="font-heading text-display-sm font-bold text-white">{value}</div>
-                    <div className="mt-1 text-caption uppercase tracking-wider text-white/50">{label}</div>
+                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 text-center backdrop-blur-sm">
+                    <Icon className="mx-auto mb-2 sm:mb-3 h-6 w-6 sm:h-8 sm:w-8 text-gold" />
+                    <div className="font-heading text-2xl sm:text-display-sm font-bold text-white">{value}</div>
+                    <div className="mt-1 text-[10px] sm:text-caption uppercase tracking-wider text-white/50">{label}</div>
                   </div>
                 ))}
               </div>
@@ -314,7 +314,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
             {featuredTestimonials.map((t, i) => (
               <RevealOnScroll key={t.id} delay={i * 100}>
-                <div className="rounded-xl bg-white p-8 shadow-card h-full flex flex-col">
+                <div className="rounded-xl bg-white p-5 sm:p-8 shadow-card h-full flex flex-col">
                   <div className="flex gap-1 mb-5">
                     {Array.from({ length: t.rating }).map((_, j) => (
                       <Star key={j} className="h-5 w-5 fill-gold text-gold" />

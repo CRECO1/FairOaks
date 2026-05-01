@@ -17,6 +17,8 @@ export async function POST(req: NextRequest) {
     // ── Save lead to Supabase ───────────────────────────────────────────────────
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    // Service role key bypasses RLS — required for server-side CRM inserts
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseKey;
 
     if (supabaseUrl && supabaseKey) {
       const supabase = createClient(supabaseUrl, supabaseKey);
@@ -29,6 +31,56 @@ export async function POST(req: NextRequest) {
         source: source ?? 'contact',
         status: 'new',
       }]);
+    }
+
+    // ── Auto-create CRM client from lead ────────────────────────────────────────
+    if (supabaseUrl && serviceKey) {
+      try {
+        const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+
+        // Find admin to assign as default owner
+        const { data: adminProfile } = await supabaseAdmin
+          .from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        const adminId = adminProfile?.id;
+
+        if (adminId) {
+          // Skip duplicate — if a client with this email already exists don't double-create
+          const { data: existing } = await supabaseAdmin
+            .from('crm_clients').select('id').eq('email', email).maybeSingle();
+
+          if (!existing) {
+            const nameParts = name.trim().split(/\s+/);
+            const first_name = nameParts[0] ?? name;
+            const last_name = nameParts.slice(1).join(' ') ?? '';
+
+            // Map source → client type
+            const clientType = source === 'valuation' ? 'Seller'
+              : source === 'landlord' ? 'Landlord/Investor'
+              : source === 'tenant' ? 'Tenant'
+              : 'Buyer';
+
+            const noteLines = [
+              `📩 Website lead — ${source ?? 'contact form'}`,
+              message ? `Message: ${message}` : '',
+              property_interest ? `Property interest: ${property_interest}` : '',
+            ].filter(Boolean);
+
+            await supabaseAdmin.from('crm_clients').insert([{
+              first_name,
+              last_name,
+              email,
+              phone: phone ?? '',
+              type: clientType,
+              notes: noteLines.join('\n'),
+              agent_id: adminId,
+              assigned_agent_ids: [],
+            }]);
+          }
+        }
+      } catch (crmErr) {
+        // Non-fatal — lead is already saved, just log CRM sync failure
+        console.error('CRM client sync error:', crmErr);
+      }
     }
 
     // ── Send email notifications via Resend ────────────────────────────────────

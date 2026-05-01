@@ -85,7 +85,7 @@ export default async function ListingDetailPage({ params }: Props) {
 
             {/* Main */}
             <div className="lg:col-span-2">
-              <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+              <div className="mb-6 flex flex-col sm:flex-row sm:flex-wrap sm:items-start sm:justify-between gap-3 sm:gap-4">
                 <div>
                   <p className="text-caption text-foreground-muted mb-1">
                     <MapPin className="mr-1 inline h-3 w-3" />
@@ -95,7 +95,7 @@ export default async function ListingDetailPage({ params }: Props) {
                     {listing!.title}
                   </h1>
                 </div>
-                <div className="text-right">
+                <div className="sm:text-right">
                   <p className="font-heading text-display-sm font-bold text-primary">
                     {formatPrice(listing!.price)}
                   </p>

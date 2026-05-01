@@ -60,7 +60,7 @@ export default async function NeighborhoodsPage() {
       <Header />
       <main className="min-h-screen pt-20">
         {/* Hero */}
-        <div className="bg-primary py-16 text-white">
+        <div className="bg-primary py-10 sm:py-16 text-white">
           <Container>
             <p className="overline mb-2 text-gold">Where You&apos;ll Live</p>
             <h1 className="font-heading text-display-sm font-bold">Explore Neighborhoods</h1>

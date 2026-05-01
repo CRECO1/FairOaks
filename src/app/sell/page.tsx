@@ -51,31 +51,31 @@ export default function SellPage() {
       <Header />
       <main className="min-h-screen pt-20">
         {/* Hero */}
-        <section className="bg-primary py-20 text-white">
+        <section className="bg-primary py-14 sm:py-20 text-white">
           <Container>
-            <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
               <div>
-                <p className="overline mb-4 text-gold">Sell with Confidence</p>
-                <h1 className="mb-6 font-heading text-display font-bold text-white">
+                <p className="overline mb-3 sm:mb-4 text-gold">Sell with Confidence</p>
+                <h1 className="mb-5 sm:mb-6 font-heading text-display font-bold text-white">
                   Get the Best Price<br />
                   <span className="text-gradient-gold">for Your Home</span>
                 </h1>
-                <p className="mb-8 max-w-lg text-body-lg text-white/70">
+                <p className="mb-6 sm:mb-8 max-w-lg text-body-lg text-white/70">
                   Our proven marketing system and deep knowledge of the Texas Hill Country market consistently delivers results above asking price — and fewer days on market.
                 </p>
-                <div className="flex flex-wrap gap-4">
-                  <Button size="lg" asChild>
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                  <Button size="lg" className="w-full sm:w-auto" asChild>
                     <a href="#valuation">Get My Free Valuation</a>
                   </Button>
-                  <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10" asChild>
                     <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />(210) 390-9997</a>
                   </Button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-2 gap-4 sm:gap-5">
                 {STATS.map(({ icon: Icon, value, label }) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-6 text-center backdrop-blur-sm">
+                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 text-center backdrop-blur-sm">
                     <Icon className="mx-auto mb-3 h-8 w-8 text-gold" />
                     <div className="font-heading text-display-sm font-bold text-white">{value}</div>
                     <div className="mt-1 text-caption uppercase tracking-wider text-white/50">{label}</div>
@@ -98,7 +98,7 @@ export default function SellPage() {
               </div>
             </RevealOnScroll>
 
-            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {STEPS.map((step, i) => (
                 <RevealOnScroll key={step.number} delay={i * 100}>
                   <div className="text-center">
@@ -142,7 +142,7 @@ export default function SellPage() {
 
               {/* Valuation Form */}
               <RevealOnScroll direction="right">
-                <div id="valuation" className="rounded-2xl bg-background-cream p-8 lg:p-10">
+                <div id="valuation" className="rounded-2xl bg-background-cream p-5 sm:p-8 lg:p-10">
                   {submitted ? (
                     <div className="text-center py-8">
                       <CheckCircle className="mx-auto mb-4 h-14 w-14 text-gold" />
@@ -156,7 +156,7 @@ export default function SellPage() {
                       <h3 className="mb-2 font-heading text-heading-xl font-bold text-primary">Get Your Free Home Valuation</h3>
                       <p className="mb-6 text-body-sm text-foreground-muted">No obligations. We&apos;ll provide a detailed market analysis within 24 hours.</p>
                       <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <input name="name" required placeholder="Your Name" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                           <input name="phone" type="tel" placeholder="Phone Number" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                         </div>

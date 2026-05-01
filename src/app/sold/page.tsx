@@ -65,7 +65,7 @@ export default async function SoldPage() {
       <Header />
       <main className="min-h-screen pt-20">
         {/* Hero */}
-        <div className="bg-primary py-16 text-white">
+        <div className="bg-primary py-10 sm:py-16 text-white">
           <Container>
             <p className="overline mb-2 text-gold">Our Track Record</p>
             <h1 className="font-heading text-display-sm font-bold">Recently Sold</h1>
@@ -81,9 +81,9 @@ export default async function SoldPage() {
             <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
               {STATS.map(({ icon: Icon, value, label }) => (
                 <div key={label} className="text-center">
-                  <Icon className="mx-auto mb-2 h-6 w-6 text-primary/60" />
-                  <div className="font-heading text-display-sm font-bold text-primary">{value}</div>
-                  <div className="text-caption uppercase tracking-wider text-primary/60">{label}</div>
+                  <Icon className="mx-auto mb-1 sm:mb-2 h-5 w-5 sm:h-6 sm:w-6 text-primary/60" />
+                  <div className="font-heading text-2xl sm:text-display-sm font-bold text-primary">{value}</div>
+                  <div className="text-[10px] sm:text-caption uppercase tracking-wider text-primary/60 leading-tight">{label}</div>
                 </div>
               ))}
             </div>
