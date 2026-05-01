@@ -334,6 +334,10 @@ export default function CRMPage() {
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
 
+  // Follow-Up Report
+  const [followUpDays, setFollowUpDays] = useState(30);
+  const [followUpTypeFilter, setFollowUpTypeFilter] = useState('');
+
   // Action Plans
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
   const [activeActionPlan, setActiveActionPlan] = useState<ActionPlan | null>(null);
@@ -1892,6 +1896,121 @@ export default function CRMPage() {
                 </div>
                 ); // end desktop table return
               })() /* end filteredContacts IIFE */}
+
+              {/* ── Follow-Up Report ── */}
+              {clients.length > 0 && (() => {
+                const cutoff = new Date(Date.now() - followUpDays * 24 * 60 * 60 * 1000);
+                const stale = clients
+                  .filter(c => {
+                    const lastTouch = c.last_touched_at ? new Date(c.last_touched_at) : c.created_at ? new Date(c.created_at) : null;
+                    if (!lastTouch || lastTouch < cutoff) {
+                      if (followUpTypeFilter && c.type !== followUpTypeFilter) return false;
+                      return true;
+                    }
+                    return false;
+                  })
+                  .sort((a, b) => {
+                    const aDate = a.last_touched_at ?? a.created_at ?? '';
+                    const bDate = b.last_touched_at ?? b.created_at ?? '';
+                    return aDate < bDate ? -1 : 1; // oldest first
+                  });
+
+                return (
+                  <div style={{ marginTop: 36, borderTop: '2px solid #f0f0f0', paddingTop: 28 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                      <div>
+                        <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', marginBottom: 2 }}>Follow-Up Report</h3>
+                        <p style={{ fontSize: 12, color: '#6b7280' }}>Contacts with no activity in the selected period</p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Day range buttons */}
+                        {[30, 60, 90].map(d => (
+                          <button key={d} onClick={() => setFollowUpDays(d)}
+                            style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: followUpDays === d ? '#111' : '#fff', color: followUpDays === d ? '#fff' : '#6b7280', borderColor: followUpDays === d ? '#111' : '#e5e7eb' }}>
+                            {d}d+
+                          </button>
+                        ))}
+                        <button onClick={() => setFollowUpDays(180)}
+                          style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: followUpDays === 180 ? '#111' : '#fff', color: followUpDays === 180 ? '#fff' : '#6b7280', borderColor: followUpDays === 180 ? '#111' : '#e5e7eb' }}>
+                          6mo+
+                        </button>
+                        {/* Type filter */}
+                        <select value={followUpTypeFilter} onChange={e => setFollowUpTypeFilter(e.target.value)}
+                          style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: followUpTypeFilter ? '#111' : '#9ca3af', background: followUpTypeFilter ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
+                          <option value="">All Types</option>
+                          {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {stale.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '28px 20px', background: '#f0fdf4', borderRadius: 10, border: '1px dashed #bbf7d0' }}>
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#166534', marginBottom: 4 }}>All caught up!</div>
+                        <div style={{ fontSize: 12, color: '#6b7280' }}>No contacts have gone {followUpDays}+ days without a touch.</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, color: '#dc2626', fontWeight: 600, marginBottom: 12 }}>
+                          ⚠️ {stale.length} contact{stale.length !== 1 ? 's' : ''} need{stale.length === 1 ? 's' : ''} follow-up ({followUpDays}d+ since last touch)
+                        </div>
+                        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                                {['Contact', 'Type', 'Last Touch', 'Days Overdue', 'Source', ''].map(h => (
+                                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stale.map((c, i) => {
+                                const lastDate = c.last_touched_at ?? c.created_at;
+                                const daysAgo = lastDate ? Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                const urgency = daysAgo === null ? '#dc2626' : daysAgo >= 90 ? '#dc2626' : daysAgo >= 60 ? '#d97706' : '#6b7280';
+                                return (
+                                  <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                                    <td style={{ padding: '11px 14px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                          {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
+                                        </div>
+                                        <div>
+                                          <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{c.first_name} {c.last_name}</div>
+                                          {c.email && <div style={{ fontSize: 11, color: '#9ca3af' }}>{c.email}</div>}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '11px 14px' }}>
+                                      <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>{c.type}</span>
+                                    </td>
+                                    <td style={{ padding: '11px 14px', fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                      {lastDate ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                                      {!c.last_touched_at && c.created_at && <div style={{ fontSize: 10, color: '#9ca3af' }}>added date</div>}
+                                    </td>
+                                    <td style={{ padding: '11px 14px', textAlign: 'center' }}>
+                                      <span style={{ background: urgency + '18', color: urgency, padding: '3px 10px', borderRadius: 10, fontWeight: 700, fontSize: 12 }}>
+                                        {daysAgo !== null ? `${daysAgo}d` : 'Never'}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '11px 14px', fontSize: 12, color: '#9ca3af' }}>{c.lead_source || '—'}</td>
+                                    <td style={{ padding: '11px 14px' }}>
+                                      <button onClick={() => setActiveClient(c)}
+                                        style={{ padding: '5px 12px', fontSize: 11, fontWeight: 600, background: '#fef3e2', color: '#92400e', border: '1px solid #fde68a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+                                        Open →
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
