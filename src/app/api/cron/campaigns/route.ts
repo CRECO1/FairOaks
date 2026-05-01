@@ -26,7 +26,8 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
-function computeNextSend(frequency: string): string {
+function computeNextSend(frequency: string): string | null {
+  if (frequency === 'one-time') return null; // one-time campaigns don't recur
   const now = new Date();
   switch (frequency) {
     case 'monthly':     now.setMonth(now.getMonth() + 1); break;
@@ -49,17 +50,18 @@ export async function POST(req: NextRequest) {
 
   // Get all due active enrollments (limit 50 per run to stay within Vercel timeout)
   const now = new Date().toISOString();
+  const today = new Date().toISOString().slice(0, 10);
   const { data: enrollments, error: fetchErr } = await supabase
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at,
-      campaign:crm_campaigns!inner(id, name, type, frequency, status, email_subject, email_body, sms_body),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, status, email_subject, email_body, sms_body),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
-    .lte('next_send_at', now)
     .eq('campaign.status', 'active')
     .is('client.unsubscribed_at', null)
+    .or(`next_send_at.lte.${now},and(campaign.frequency.eq.one-time,campaign.send_date.eq.${today})`)
     .limit(50);
 
   if (fetchErr) {
@@ -156,10 +158,15 @@ export async function POST(req: NextRequest) {
       body_preview: bodyPreview || null,
     }]);
 
-    // Advance next_send_at
-    await supabase.from('crm_campaign_enrollments')
-      .update({ next_send_at: computeNextSend(campaign.frequency) })
-      .eq('id', enrollment.id);
+    // Advance next_send_at — for one-time campaigns, deactivate the enrollment
+    const nextSend = computeNextSend(campaign.frequency);
+    if (campaign.frequency === 'one-time') {
+      await supabase.from('crm_campaign_enrollments').update({ active: false, next_send_at: null }).eq('id', enrollment.id);
+      // Also pause the campaign itself so it doesn't re-trigger
+      await supabase.from('crm_campaigns').update({ status: 'paused' }).eq('id', campaign.id);
+    } else {
+      await supabase.from('crm_campaign_enrollments').update({ next_send_at: nextSend }).eq('id', enrollment.id);
+    }
 
     if (status === 'sent') sent++;
     else if (status === 'failed') failed++;

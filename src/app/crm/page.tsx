@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
 
 // Invite flow is now handled by /crm/setup — this page is login only.
@@ -18,7 +18,7 @@ interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual'; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
@@ -267,6 +267,7 @@ export default function CRMPage() {
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs'>('overview');
+  const emailEditorRef = useRef<HTMLDivElement>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
@@ -312,7 +313,7 @@ export default function CRMPage() {
   const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
-  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; status: string; email_subject: string; email_body: string; sms_body: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; status: string; email_subject: string; email_body: string; sms_body: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
 
@@ -344,6 +345,13 @@ export default function CRMPage() {
       setClientActivities([]);
     }
   }, [activeClient?.id]); // eslint-disable-line
+
+  // Sync email editor content when switching to builder view
+  useLayoutEffect(() => {
+    if (campaignView === 'builder' && emailEditorRef.current) {
+      emailEditorRef.current.innerHTML = newCampaign.email_body || '';
+    }
+  }, [campaignView]); // eslint-disable-line
 
   // Sync URL hash → page state on browser back/forward
   useEffect(() => {
@@ -927,7 +935,7 @@ export default function CRMPage() {
       showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
       setCampaignView('list');
       setActiveCampaign(null);
-      setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
+      setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
       loadCampaigns();
     }
     setSaving(false);
@@ -1831,7 +1839,7 @@ export default function CRMPage() {
                       <p style={{ fontSize: 13, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
                     </div>
                     {isAdmin && (
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>
                         + New Campaign
                       </button>
                     )}
@@ -1844,7 +1852,7 @@ export default function CRMPage() {
                       <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
                       <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
                       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
-                      {isAdmin && <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>}
+                      {isAdmin && <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>}
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
@@ -1866,7 +1874,7 @@ export default function CRMPage() {
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setCampaignView('detail'); }}>Manage</button>
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '' }); setCampaignView('builder'); }}>Edit</button>}
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '' }); setCampaignView('builder'); }}>Edit</button>}
                           </div>
                         </div>
                       ))}
@@ -1886,7 +1894,7 @@ export default function CRMPage() {
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '' }); setCampaignView('builder'); }}>Edit Campaign</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '' }); setCampaignView('builder'); }}>Edit Campaign</button>
                         {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); }}>▶ Activate</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); }}>⏸ Pause</button>}
                       </div>
@@ -2033,13 +2041,21 @@ export default function CRMPage() {
                         </div>
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Frequency</label>
-                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.frequency} onChange={e => setNewCampaign({ ...newCampaign, frequency: e.target.value })}>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.frequency} onChange={e => setNewCampaign({ ...newCampaign, frequency: e.target.value, send_date: '' })}>
+                            <option value="one-time">One-Time (specific date)</option>
                             <option value="monthly">Monthly</option>
                             <option value="quarterly">Quarterly</option>
                             <option value="semi-annual">Semi-Annual</option>
                             <option value="annual">Annual</option>
                           </select>
                         </div>
+                        {newCampaign.frequency === 'one-time' && (
+                          <div style={{ gridColumn: '1/-1' }}>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Date *</label>
+                            <input className="crm-input" type="date" style={{ marginTop: 4 }} value={newCampaign.send_date} min={new Date().toISOString().slice(0, 10)} onChange={e => setNewCampaign({ ...newCampaign, send_date: e.target.value })} />
+                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>The campaign will send on this date and then deactivate automatically.</div>
+                          </div>
+                        )}
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.status} onChange={e => setNewCampaign({ ...newCampaign, status: e.target.value })}>
@@ -2052,31 +2068,70 @@ export default function CRMPage() {
                     </div>
                   </div>
 
-                  {/* Merge field reference */}
-                  <div style={{ background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>✨ Available Merge Fields</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {['{{first_name}}','{{last_name}}','{{full_name}}','{{agent_name}}','{{agent_email}}','{{agent_phone}}','{{brokerage}}','{{unsubscribe_url}}'].map(f => (
-                        <code key={f} style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#92400e', cursor: 'pointer', fontFamily: 'monospace' }} onClick={() => {
-                          if (newCampaign.type === 'email') setNewCampaign(prev => ({ ...prev, email_body: prev.email_body + f }));
-                          else setNewCampaign(prev => ({ ...prev, sms_body: prev.sms_body + f }));
-                        }}>{f}</code>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Email fields */}
                   {newCampaign.type === 'email' && (
                     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
                       <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 14 }}>Email Content</div>
-                      <div style={{ display: 'grid', gap: 12 }}>
+                      <div style={{ display: 'grid', gap: 14 }}>
                         <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject Line *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Hi {{first_name}}, here's your market update!" value={newCampaign.email_subject} onChange={e => setNewCampaign({ ...newCampaign, email_subject: e.target.value })} /></div>
                         <div>
-                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email Body (HTML) *</label>
-                          <textarea className="crm-input" style={{ marginTop: 4, minHeight: 220, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} value={newCampaign.email_body} onChange={e => setNewCampaign({ ...newCampaign, email_body: e.target.value })} />
-                          {!newCampaign.email_body.includes('{{unsubscribe_url}}') && newCampaign.email_body.length > 0 && (
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email Body *</label>
+                          {/* Rich text toolbar */}
+                          <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: '6px 6px 0 0', background: '#f9fafb', padding: '6px 10px', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {[
+                              { label: 'B', cmd: 'bold', title: 'Bold', style: { fontWeight: 700 } },
+                              { label: 'I', cmd: 'italic', title: 'Italic', style: { fontStyle: 'italic' } },
+                              { label: 'U', cmd: 'underline', title: 'Underline', style: { textDecoration: 'underline' } },
+                            ].map(btn => (
+                              <button key={btn.cmd} type="button" title={btn.title}
+                                onMouseDown={e => { e.preventDefault(); document.execCommand(btn.cmd, false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
+                                style={{ ...btn.style, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {btn.label}
+                              </button>
+                            ))}
+                            <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
+                            <button type="button" title="Heading"
+                              onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'h3'); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
+                              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>H</button>
+                            <button type="button" title="Bullet List"
+                              onMouseDown={e => { e.preventDefault(); document.execCommand('insertUnorderedList', false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
+                              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>•</button>
+                            <button type="button" title="Insert Link"
+                              onMouseDown={e => {
+                                e.preventDefault();
+                                const url = window.prompt('Enter URL (e.g. https://fairoaksrealtygroup.com):');
+                                if (url) { document.execCommand('createLink', false, url); const links = emailEditorRef.current?.querySelectorAll('a'); links?.forEach(a => { a.target = '_blank'; a.rel = 'noopener'; }); }
+                                emailEditorRef.current?.focus();
+                                setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
+                              }}
+                              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 4 }}>🔗 Link</button>
+                            <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
+                            {/* Merge field chips */}
+                            {['{{first_name}}','{{full_name}}','{{agent_name}}','{{agent_phone}}','{{unsubscribe_url}}'].map(f => (
+                              <button key={f} type="button" title={`Insert ${f}`}
+                                onMouseDown={e => {
+                                  e.preventDefault();
+                                  document.execCommand('insertText', false, f);
+                                  emailEditorRef.current?.focus();
+                                  setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
+                                }}
+                                style={{ background: '#fef3e2', border: '1px solid #fde68a', borderRadius: 4, padding: '2px 7px', fontSize: 10, color: '#92400e', cursor: 'pointer', fontFamily: 'monospace', height: 26, display: 'flex', alignItems: 'center' }}>
+                                {f.replace(/[{}]/g, '')}
+                              </button>
+                            ))}
+                          </div>
+                          {/* Editable body */}
+                          <div
+                            ref={emailEditorRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onInput={() => setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? '' }))}
+                            style={{ minHeight: 240, border: '1px solid #d1d5db', borderTop: 'none', borderRadius: '0 0 6px 6px', padding: '14px 16px', fontSize: 14, lineHeight: 1.7, color: '#111', outline: 'none', fontFamily: "'DM Sans',sans-serif", background: '#fff', overflowY: 'auto' }}
+                            dangerouslySetInnerHTML={undefined}
+                          />
+                          {!newCampaign.email_body.includes('{{unsubscribe_url}}') && newCampaign.email_body.replace(/<[^>]*>/g, '').length > 0 && (
                             <div style={{ marginTop: 6, fontSize: 11, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '5px 10px' }}>
-                              ⚠️ Add <code>{'{{unsubscribe_url}}'}</code> to your email body for CAN-SPAM compliance
+                              ⚠️ Include the <strong>unsubscribe_url</strong> merge field for CAN-SPAM compliance (click it above to insert)
                             </div>
                           )}
                         </div>
