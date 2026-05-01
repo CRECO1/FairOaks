@@ -35,6 +35,38 @@ export async function POST(req: NextRequest) {
       }]);
     }
 
+    // ── Auto-create CRM client from quiz lead ──────────────────────────────────
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceKey) {
+      try {
+        const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+        const { data: adminProfile } = await supabaseAdmin.from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        const adminId = adminProfile?.id;
+        if (adminId) {
+          const { data: existing } = await supabaseAdmin.from('crm_clients').select('id').eq('email', email).maybeSingle();
+          if (!existing) {
+            const nameParts = name.trim().split(/\s+/);
+            const unsubscribe_token = crypto.randomUUID();
+            await supabaseAdmin.from('crm_clients').insert([{
+              first_name: nameParts[0] ?? name,
+              last_name: nameParts.slice(1).join(' ') ?? '',
+              email,
+              phone: phone ?? '',
+              type: 'Buyer',
+              notes: `📩 Website Quiz lead\nQuiz Answers:\n${answerSummary}`,
+              agent_id: adminId,
+              assigned_agent_ids: [],
+              lead_source: 'Website Quiz',
+              tags: ['New Lead'],
+              unsubscribe_token,
+            }]);
+          }
+        }
+      } catch (crmErr) {
+        console.error('Quiz CRM sync error:', crmErr);
+      }
+    }
+
     // ── Send email notifications via Resend ────────────────────────────────────
     if (process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);

@@ -65,6 +65,8 @@ export async function POST(req: NextRequest) {
               property_interest ? `Property interest: ${property_interest}` : '',
             ].filter(Boolean);
 
+            const unsubscribe_token = crypto.randomUUID();
+
             await supabaseAdmin.from('crm_clients').insert([{
               first_name,
               last_name,
@@ -74,6 +76,9 @@ export async function POST(req: NextRequest) {
               notes: noteLines.join('\n'),
               agent_id: adminId,
               assigned_agent_ids: [],
+              lead_source: 'Website',
+              tags: ['New Lead'],
+              unsubscribe_token,
             }]);
           }
         }
