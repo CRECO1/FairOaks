@@ -1040,7 +1040,7 @@ export default function CRMPage() {
     { id: 'contacts', icon: '👥', label: 'Contacts' },
     { id: 'calendar', icon: '📅', label: 'Calendar' },
     ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
-    ...(isAdmin ? [{ id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' }] : []),
+    { id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' },
   ];
 
   const pageLabel: Record<typeof page, string> = {
