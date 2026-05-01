@@ -1010,18 +1010,7 @@ export default function CRMPage() {
   });
 
   function getDefaultEmailBody(): string {
-    return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-  <h2 style="color:#1a1a2e">Hi {{first_name}},</h2>
-  <p>I wanted to reach out and check in with you.</p>
-  <p>Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p>
-  <p>Feel free to reply to this email or call me directly at {{agent_phone}}.</p>
-  <br/>
-  <p>Best regards,<br/><strong>{{agent_name}}</strong><br/>{{brokerage}}<br/>{{agent_email}}</p>
-  <br/>
-  <p style="font-size:11px;color:#9ca3af">
-    <a href="{{unsubscribe_url}}" style="color:#9ca3af">Unsubscribe</a> · 7510 FM 1560 N, Suite 101, Fair Oaks Ranch, TX 78015
-  </p>
-</div>`;
+    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · 7510 FM 1560 N, Suite 101, Fair Oaks Ranch, TX 78015</small></p>`;
   }
 
   // ── Render guards ─────────────────────────────────────────────────────────────
@@ -1838,11 +1827,9 @@ export default function CRMPage() {
                       <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
                       <p style={{ fontSize: 13, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
                     </div>
-                    {isAdmin && (
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>
-                        + New Campaign
-                      </button>
-                    )}
+                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>
+                      + New Campaign
+                    </button>
                   </div>
 
                   {campaignLoading ? (
@@ -1852,7 +1839,7 @@ export default function CRMPage() {
                       <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
                       <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
                       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
-                      {isAdmin && <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>}
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
@@ -2122,12 +2109,12 @@ export default function CRMPage() {
                           </div>
                           {/* Editable body */}
                           <div
+                            key={`editor-${activeCampaign?.id ?? 'new'}`}
                             ref={emailEditorRef}
                             contentEditable
                             suppressContentEditableWarning
                             onInput={() => setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? '' }))}
                             style={{ minHeight: 240, border: '1px solid #d1d5db', borderTop: 'none', borderRadius: '0 0 6px 6px', padding: '14px 16px', fontSize: 14, lineHeight: 1.7, color: '#111', outline: 'none', fontFamily: "'DM Sans',sans-serif", background: '#fff', overflowY: 'auto' }}
-                            dangerouslySetInnerHTML={undefined}
                           />
                           {!newCampaign.email_body.includes('{{unsubscribe_url}}') && newCampaign.email_body.replace(/<[^>]*>/g, '').length > 0 && (
                             <div style={{ marginTop: 6, fontSize: 11, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '5px 10px' }}>
