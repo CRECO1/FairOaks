@@ -501,6 +501,8 @@ export default function CRMPage() {
   }, []);
 
   const loadProfiles = useCallback(async () => {
+    // Sync real last_sign_in_at from Supabase Auth → crm_profiles first
+    await fetch('/api/crm/sync-logins', { method: 'POST' }).catch(() => {});
     const { data } = await supabase.from('crm_profiles').select('*').order('last_name');
     setProfiles((data ?? []) as Profile[]);
   }, []);
