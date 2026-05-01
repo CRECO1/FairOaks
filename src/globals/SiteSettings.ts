@@ -25,7 +25,7 @@ export const SiteSettings: GlobalConfig = {
       name: 'address',
       type: 'group',
       fields: [
-        { name: 'street', type: 'text', defaultValue: '7510 FM 1560 N, Ste 101' },
+        { name: 'street', type: 'text', defaultValue: '8000 Fair Oaks Pkwy Suite 102' },
         { name: 'city', type: 'text', defaultValue: 'Fair Oaks Ranch' },
         { name: 'state', type: 'text', defaultValue: 'TX' },
         { name: 'zip', type: 'text', defaultValue: '78015' },

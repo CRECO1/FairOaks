@@ -24,7 +24,7 @@ const footerLinks = {
 const DEFAULTS = {
   phone: '(210) 390-9997',
   email: 'info@fairoaksrealtygroup.com',
-  address: '7510 FM 1560 N, Ste 101\nFair Oaks Ranch, TX 78015',
+  address: '8000 Fair Oaks Pkwy Suite 102\nFair Oaks Ranch, TX 78015',
 };
 
 export function Footer() {

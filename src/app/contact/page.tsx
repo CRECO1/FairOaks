@@ -99,7 +99,7 @@ export default function ContactPage() {
                     <div>
                       <p className="font-semibold text-primary">Office</p>
                       <p className="text-body-sm text-foreground-muted">
-                        7510 FM 1560 N, Ste 101<br />
+                        8000 Fair Oaks Pkwy Suite 102<br />
                         Fair Oaks Ranch, TX 78015
                       </p>
                     </div>

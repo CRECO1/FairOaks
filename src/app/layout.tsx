@@ -121,7 +121,7 @@ export default function RootLayout({
                   email: 'info@fairoaksrealtygroup.com',
                   address: {
                     '@type': 'PostalAddress',
-                    streetAddress: 'Fair Oaks Ranch',
+                    streetAddress: '8000 Fair Oaks Pkwy Suite 102',
                     addressLocality: 'Fair Oaks Ranch',
                     addressRegion: 'TX',
                     postalCode: '78015',

@@ -77,7 +77,7 @@ const DEFAULT_SETTINGS = {
   cta_subheadline: 'Take our 2-minute quiz and we\'ll match you with your perfect neighborhood.',
   phone: '(210) 390-9997',
   email: 'info@fairoaksrealtygroup.com',
-  address: '123 Fair Oaks Pkwy, Fair Oaks Ranch, TX 78015',
+  address: '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015',
 };
 
 export default async function HomePage() {
