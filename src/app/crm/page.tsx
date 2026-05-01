@@ -850,6 +850,14 @@ export default function CRMPage() {
   }
 
   // ── Delete agent ──────────────────────────────────────────────────────────────
+  async function updateAgentRole(userId: string, firstName: string, newRole: 'admin' | 'agent') {
+    const action = newRole === 'admin' ? `Make ${firstName} an admin?` : `Remove admin access from ${firstName}?`;
+    if (!confirm(action)) return;
+    const { error } = await supabase.from('crm_profiles').update({ role: newRole }).eq('id', userId);
+    if (error) showToast('Error: ' + error.message);
+    else { showToast(`${firstName} is now ${newRole === 'admin' ? 'an Admin' : 'an Agent'}`); loadProfiles(); }
+  }
+
   async function deleteAgent(userId: string, firstName: string, lastName: string) {
     if (!confirm(`Remove ${firstName} ${lastName} from the CRM? This cannot be undone.`)) return;
     const res = await fetch('/api/crm/delete-agent', {
@@ -1794,19 +1802,29 @@ export default function CRMPage() {
                     <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
                       🕐 Last login: {a.last_sign_in_at ? new Date(a.last_sign_in_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'}
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={() => resetAgentPassword(a.email, a.first_name)}
-                        style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                        🔑 Reset Password
-                      </button>
-                      {a.role !== 'admin' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {/* Role toggle — only for other users */}
+                      {a.id !== profile.id && (
                         <button
-                          onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
-                          style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                          🗑
+                          onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
+                          style={{ width: '100%', padding: '7px 0', fontSize: 12, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#f0fdf4', color: a.role === 'admin' ? '#92400e' : '#166534', border: `1px solid ${a.role === 'admin' ? '#fde68a' : '#bbf7d0'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                          {a.role === 'admin' ? '⬇️ Remove Admin' : '⬆️ Make Admin'}
                         </button>
                       )}
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => resetAgentPassword(a.email, a.first_name)}
+                          style={{ flex: 1, padding: '7px 0', fontSize: 12, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                          🔑 Reset Password
+                        </button>
+                        {a.id !== profile.id && a.role !== 'admin' && (
+                          <button
+                            onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
+                            style={{ padding: '7px 10px', fontSize: 12, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                            🗑
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
