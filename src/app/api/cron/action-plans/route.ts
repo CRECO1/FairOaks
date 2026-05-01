@@ -155,7 +155,12 @@ export async function GET(req: NextRequest) {
       agent_id: agentId,
       type: step.type === 'email' ? 'email' : step.type === 'sms' ? 'sms' : 'note',
       notes: `[Action Plan: ${plan.name} — Step ${stepOrder}] ${stepStatus === 'failed' ? 'FAILED: ' + errorMessage : stepStatus === 'skipped' ? 'Skipped: ' + errorMessage : 'Executed'}`,
-    }]).then(() => {}); // fire-and-forget
+    }]).then(() => {});
+
+    // Stamp last_touched_at on the client for any successfully executed step
+    if (stepStatus === 'sent') {
+      await supabase.from('crm_clients').update({ last_touched_at: now }).eq('id', client.id);
+    }
 
     // Check if there's a next step
     const { data: nextStep } = await supabase

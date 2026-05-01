@@ -172,6 +172,11 @@ export async function GET(req: NextRequest) {
       body_preview: bodyPreview || null,
     }]);
 
+    // Stamp last_touched_at on the client so the contact shows as recently touched
+    if (status === 'sent') {
+      await supabase.from('crm_clients').update({ last_touched_at: now }).eq('id', client.id);
+    }
+
     // Advance next_send_at — for one-time campaigns, deactivate the enrollment
     const nextSend = computeNextSend(campaign.frequency);
     if (campaign.frequency === 'one-time') {
