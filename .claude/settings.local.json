@@ -65,7 +65,11 @@
       "Bash(sudo npm *)",
       "WebFetch(domain:www.followupboss.com)",
       "WebSearch",
-      "Bash(awk '/page === .campaigns. &&/,0' \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/src/app/crm/page.tsx\")"
+      "Bash(awk '/page === .campaigns. &&/,0' \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/src/app/crm/page.tsx\")",
+      "Bash(git commit -m 'feat: show send time in campaign settings tab + 15-min time picker *)",
+      "Bash(git commit -m 'feat: universal lead webhook + fix lead source/tags on website leads *)",
+      "Bash(curl -s -X POST \"https://www.fairoaksrealtygroup.com/api/cron/campaigns\" -H \"Authorization: Bearer focrmadab609b379bbf02de61bc80f7279ad6\" -H \"Content-Type: application/json\")",
+      "Bash(git commit -m 'fix: update office address to 8000 Fair Oaks Pkwy Suite 102 *)"
     ]
   }
 }

@@ -22,7 +22,7 @@ interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
@@ -318,7 +318,7 @@ export default function CRMPage() {
   const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
-  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; status: string; email_subject: string; email_body: string; sms_body: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
   const [enrollTypeFilter, setEnrollTypeFilter] = useState('');
@@ -353,6 +353,11 @@ export default function CRMPage() {
   const [activityReport, setActivityReport] = useState<{ agent_id: string; name: string; calls: number; emails: number; meetings: number; notes: number; total: number }[]>([]);
   const [activityReportDays, setActivityReportDays] = useState(30);
   const [activityReportLoading, setActivityReportLoading] = useState(false);
+
+  // Agent profile editing
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [editAgentForm, setEditAgentForm] = useState({ first_name: '', last_name: '', email: '', phone: '', license: '' });
+  const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
@@ -911,6 +916,24 @@ export default function CRMPage() {
     else { showToast(`${firstName} ${lastName} removed`); loadProfiles(); }
   }
 
+  async function saveAgentProfile() {
+    if (!editingAgentId) return;
+    setEditAgentSaving(true);
+    const res = await fetch(`/api/crm/profiles/${editingAgentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editAgentForm),
+    });
+    const json = await res.json();
+    if (!res.ok) { showToast('Error: ' + json.error); }
+    else {
+      showToast('Profile updated ✓');
+      setEditingAgentId(null);
+      loadProfiles();
+    }
+    setEditAgentSaving(false);
+  }
+
   // ── Disconnect Gmail account ──────────────────────────────────────────────────
   async function disconnectGmailAccount(connectionId: string) {
     await fetch('/api/gmail/status', {
@@ -984,7 +1007,7 @@ export default function CRMPage() {
       showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
       setCampaignView('list');
       setActiveCampaign(null);
-      setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
+      setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
       loadCampaigns();
     }
     setSaving(false);
@@ -2040,27 +2063,82 @@ export default function CRMPage() {
                 const agDeals = deals.filter(d => d.agent_id === a.id);
                 const active = agDeals.filter(d => ['Active', 'In Contract'].includes(d.stage)).length;
                 const closed = agDeals.filter(d => d.stage === 'Closed').length;
+                const isEditing = editingAgentId === a.id;
                 return (
-                  <div key={a.id} style={{ background: '#fff', borderRadius: 10, padding: 20, border: '1px solid #e0e0e0' }}>
+                  <div key={a.id} style={{ background: '#fff', borderRadius: 10, padding: 20, border: `1px solid ${isEditing ? '#c9922c' : '#e0e0e0'}` }}>
+                    {/* Header row with avatar + name + edit toggle */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>{(a.first_name[0] ?? '') + (a.last_name[0] ?? '')}</div>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 600 }}>{a.first_name} {a.last_name} <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: a.role === 'admin' ? '#92400e' : '#0369a1' }}>{a.role}</span></div>
-                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{a.email}</div>
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>
+                        {(isEditing ? (editAgentForm.first_name[0] ?? '') : (a.first_name[0] ?? '')) + (isEditing ? (editAgentForm.last_name[0] ?? '') : (a.last_name[0] ?? ''))}
                       </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                      {[{ n: agDeals.length, l: 'Total' }, { n: active, l: 'Active' }, { n: closed, l: 'Closed' }].map(s => (
-                        <div key={s.l} style={{ flex: 1, textAlign: 'center', background: '#f9fafb', borderRadius: 6, padding: '8px 4px' }}>
-                          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: '#111' }}>{s.n}</div>
-                          <div style={{ fontSize: 10, color: '#6b7280' }}>{s.l}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>
+                          {isEditing ? `${editAgentForm.first_name} ${editAgentForm.last_name}`.trim() || 'Editing…' : `${a.first_name} ${a.last_name}`}
+                          {' '}<span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: a.role === 'admin' ? '#92400e' : '#0369a1' }}>{a.role}</span>
                         </div>
-                      ))}
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{isEditing ? editAgentForm.email : a.email}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (isEditing) { setEditingAgentId(null); }
+                          else { setEditingAgentId(a.id); setEditAgentForm({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone || '', license: a.license || '' }); }
+                        }}
+                        style={{ flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: isEditing ? '#f3f4f6' : '#fffbeb', color: isEditing ? '#374151' : '#92400e', border: `1px solid ${isEditing ? '#e5e7eb' : '#fde68a'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                        {isEditing ? '✕ Cancel' : '✏️ Edit'}
+                      </button>
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>📞 {a.phone || '—'} &nbsp;·&nbsp; Lic: {a.license || '—'}</div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
-                      🕐 Last login: {a.last_sign_in_at ? new Date(a.last_sign_in_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'}
-                    </div>
+
+                    {/* Edit form */}
+                    {isEditing ? (
+                      <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name</label>
+                            <input className="crm-input" style={{ marginTop: 3 }} value={editAgentForm.first_name} onChange={e => setEditAgentForm({ ...editAgentForm, first_name: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Last Name</label>
+                            <input className="crm-input" style={{ marginTop: 3 }} value={editAgentForm.last_name} onChange={e => setEditAgentForm({ ...editAgentForm, last_name: e.target.value })} />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label>
+                          <input className="crm-input" style={{ marginTop: 3 }} type="email" value={editAgentForm.email} onChange={e => setEditAgentForm({ ...editAgentForm, email: e.target.value })} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
+                            <input className="crm-input" style={{ marginTop: 3 }} type="tel" placeholder="(210) 555-0000" value={editAgentForm.phone} onChange={e => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>License #</label>
+                            <input className="crm-input" style={{ marginTop: 3 }} placeholder="TX-XXXXXXX" value={editAgentForm.license} onChange={e => setEditAgentForm({ ...editAgentForm, license: e.target.value })} />
+                          </div>
+                        </div>
+                        <button
+                          onClick={saveAgentProfile}
+                          disabled={editAgentSaving}
+                          style={{ width: '100%', padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 7, cursor: editAgentSaving ? 'not-allowed' : 'pointer', fontFamily: "'DM Sans',sans-serif", opacity: editAgentSaving ? 0.7 : 1 }}>
+                          {editAgentSaving ? 'Saving…' : '💾 Save Changes'}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                          {[{ n: agDeals.length, l: 'Total' }, { n: active, l: 'Active' }, { n: closed, l: 'Closed' }].map(s => (
+                            <div key={s.l} style={{ flex: 1, textAlign: 'center', background: '#f9fafb', borderRadius: 6, padding: '8px 4px' }}>
+                              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: '#111' }}>{s.n}</div>
+                              <div style={{ fontSize: 10, color: '#6b7280' }}>{s.l}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>📞 {a.phone || '—'} &nbsp;·&nbsp; Lic: {a.license || '—'}</div>
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
+                          🕐 Last login: {a.last_sign_in_at ? new Date(a.last_sign_in_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'}
+                        </div>
+                      </>
+                    )}
+
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {/* Role toggle — only for other users */}
                       {a.id !== profile.id && (
@@ -2162,7 +2240,7 @@ export default function CRMPage() {
                       <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
                       <p style={{ fontSize: 13, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
                     </div>
-                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>
+                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>
                       + New Campaign
                     </button>
                   </div>
@@ -2174,7 +2252,7 @@ export default function CRMPage() {
                       <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
                       <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
                       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
@@ -2200,7 +2278,7 @@ export default function CRMPage() {
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '' }); setCampaignView('builder'); }}>Edit</button>}
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
                           </div>
                         </div>
@@ -2221,7 +2299,7 @@ export default function CRMPage() {
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '' }); setCampaignView('builder'); }}>Edit</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
                         {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); }}>▶ Activate</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); }}>⏸ Pause</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
@@ -2414,6 +2492,17 @@ export default function CRMPage() {
                           <span style={{ color: label === 'Scheduled Time (CT)' ? '#c9922c' : '#111', fontWeight: 600 }}>{val}</span>
                         </div>
                       ))}
+                      {/* Send As Agent row */}
+                      {isAdmin && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
+                          <span style={{ color: '#6b7280', fontWeight: 500 }}>Send As</span>
+                          <span style={{ fontWeight: 600, color: '#111' }}>
+                            {activeCampaign.sender_agent_id
+                              ? (() => { const a = profiles.find(p => p.id === activeCampaign.sender_agent_id); return a ? `${a.first_name} ${a.last_name}` : 'Unknown Agent'; })()
+                              : "Contact's assigned agent (default)"}
+                          </span>
+                        </div>
+                      )}
                       {activeCampaign.type === 'email' && activeCampaign.email_subject && (
                         <div style={{ padding: '12px 14px', background: '#f9fafb', borderRadius: 8 }}>
                           <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Subject Line</div>
@@ -2488,6 +2577,18 @@ export default function CRMPage() {
                           </select>
                         </div>
                       </div>
+                      {isAdmin && (
+                        <div style={{ marginTop: 12 }}>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send As (Agent)</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.sender_agent_id} onChange={e => setNewCampaign({ ...newCampaign, sender_agent_id: e.target.value })}>
+                            <option value="">— Contact&apos;s assigned agent (default) —</option>
+                            {profiles.map(a => (
+                              <option key={a.id} value={a.id}>{a.first_name} {a.last_name}{a.email ? ` (${a.email})` : ''}</option>
+                            ))}
+                          </select>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Override whose name &amp; reply-to appear on every email in this campaign.</div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

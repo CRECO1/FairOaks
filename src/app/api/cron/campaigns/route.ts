@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -73,9 +73,11 @@ export async function POST(req: NextRequest) {
 
   if (!enrollments?.length) return NextResponse.json({ processed: 0, sent: 0, failed: 0 });
 
-  // Get agent profiles for all unique agent_ids
-  const agentIds = [...new Set((enrollments as any[]).map((e: any) => e.client?.agent_id).filter(Boolean))];
-  const { data: agents } = await supabase.from('crm_profiles').select('id, first_name, last_name, email, phone').in('id', agentIds);
+  // Get agent profiles for all unique agent_ids (client's assigned agent) + sender_agent_ids (campaign override)
+  const clientAgentIds = [...new Set((enrollments as any[]).map((e: any) => e.client?.agent_id).filter(Boolean))];
+  const senderAgentIds = [...new Set((enrollments as any[]).map((e: any) => e.campaign?.sender_agent_id).filter(Boolean))];
+  const allAgentIds = [...new Set([...clientAgentIds, ...senderAgentIds])];
+  const { data: agents } = await supabase.from('crm_profiles').select('id, first_name, last_name, email, phone').in('id', allAgentIds);
   const agentMap = Object.fromEntries((agents ?? []).map((a: any) => [a.id, a]));
 
   let sent = 0;
@@ -86,7 +88,11 @@ export async function POST(req: NextRequest) {
     const client = enrollment.client;
     if (!campaign || !client) continue;
 
-    const agent = agentMap[client.agent_id] ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
+    // Use campaign's sender_agent if set, otherwise fall back to client's assigned agent
+    const senderAgent = campaign.sender_agent_id
+      ? agentMap[campaign.sender_agent_id]
+      : agentMap[client.agent_id];
+    const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
 
     const ctx = {
       client: {
@@ -120,11 +126,17 @@ export async function POST(req: NextRequest) {
           const renderedBody = applyMergeFields(campaign.email_body || '', ctx);
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
 
+          // Use sender agent's email as reply-to if they have one
+          const replyTo = agent.email && agent.email !== 'info@fairoaksrealtygroup.com'
+            ? `${agent.first_name} ${agent.last_name} <${agent.email}>`
+            : undefined;
+
           const emailResult = await resend.emails.send({
             from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,
+            ...(replyTo ? { reply_to: replyTo } : {}),
           });
           providerId = emailResult.data?.id ?? null;
         }

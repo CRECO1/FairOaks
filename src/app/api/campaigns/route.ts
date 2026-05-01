@@ -43,7 +43,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, description, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, created_by } = body;
+  const { name, description, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, created_by, sender_agent_id } = body;
 
   if (!name || !type || !frequency) {
     return NextResponse.json({ error: 'name, type, and frequency are required' }, { status: 400 });
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
     email_body: email_body ?? null,
     sms_body: sms_body ?? null,
     created_by: created_by ?? null,
+    sender_agent_id: sender_agent_id || null,
   }]).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

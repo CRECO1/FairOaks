@@ -23,7 +23,10 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = adminClient();
-  const { data, error } = await supabase.from('crm_campaigns').select('*').eq('id', id).single();
+  const { data, error } = await supabase
+    .from('crm_campaigns')
+    .select('*, sender_agent:crm_profiles!crm_campaigns_sender_agent_id_fkey(id, first_name, last_name, email, phone)')
+    .eq('id', id).single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
   return NextResponse.json({ campaign: data });
 }
