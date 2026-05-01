@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -520,7 +520,7 @@ function DataTable({ tab }: { tab: Exclude<Tab, 'settings'> }) {
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
 const VALID_TABS = new Set<Tab>(['settings', 'listings', 'sold', 'agents', 'neighborhoods', 'testimonials', 'leads']);
 
-export default function AdminPage() {
+function AdminPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [session, setSession] = useState<Session | null>(null);
@@ -602,5 +602,17 @@ export default function AdminPage() {
         }
       </div>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-yellow-500 border-t-transparent" />
+      </div>
+    }>
+      <AdminPageInner />
+    </Suspense>
   );
 }
