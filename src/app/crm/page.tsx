@@ -316,8 +316,10 @@ export default function CRMPage() {
   const [campaignView, setCampaignView] = useState<'list' | 'builder' | 'detail'>('list');
   const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'settings'>('enrolled');
   const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
+  const [campaignEnrollmentsLoading, setCampaignEnrollmentsLoading] = useState(false);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
+  const [campaignActivating, setCampaignActivating] = useState(false);
   const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
@@ -472,6 +474,7 @@ export default function CRMPage() {
       loadDeals(updated);
       loadClients(updated);
       loadProfiles();
+      loadSmartLists();
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -489,6 +492,7 @@ export default function CRMPage() {
       loadDeals(newProfile);
       loadClients(newProfile);
       loadProfiles();
+      loadSmartLists();
     }
     setLoading(false);
   }, [session]);
@@ -1044,8 +1048,10 @@ export default function CRMPage() {
   }
 
   async function loadCampaignEnrollments(campaignId: string) {
+    setCampaignEnrollmentsLoading(true);
     const res = await fetch(`/api/campaigns/${campaignId}/enrollments`);
     if (res.ok) { const j = await res.json(); setCampaignEnrollments(j.enrollments ?? []); }
+    setCampaignEnrollmentsLoading(false);
   }
 
   async function loadCampaignSends(campaignId: string) {
@@ -1093,9 +1099,9 @@ export default function CRMPage() {
   }
 
   async function deleteSmartList(id: string) {
-    await fetch(`/api/smart-lists?id=${id}`, { method: 'DELETE' });
-    setSmartLists(prev => prev.filter(s => s.id !== id));
-    showToast('List deleted');
+    const res = await fetch(`/api/smart-lists?id=${id}`, { method: 'DELETE' });
+    if (res.ok) { setSmartLists(prev => prev.filter(s => s.id !== id)); showToast('List deleted'); }
+    else showToast('Error deleting list');
   }
 
   function applySmartList(sl: SmartList) {
@@ -2436,8 +2442,8 @@ export default function CRMPage() {
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
-                        {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); }}>▶ Activate</button>}
-                        {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); }}>⏸ Pause</button>}
+                        {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated ✓'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '▶ Activate'}</button>}
+                        {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
                       </div>
                     )}
@@ -2450,8 +2456,8 @@ export default function CRMPage() {
                         <div style={{ fontWeight: 700, color: '#92400e', fontSize: 13 }}>⚠️ This campaign is a Draft — emails will NOT send</div>
                         <div style={{ fontSize: 12, color: '#92400e', marginTop: 2 }}>Click &quot;Activate&quot; to schedule sends for all enrolled contacts.</div>
                       </div>
-                      <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                        onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated — sends scheduled!'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); }}>▶ Activate Now</button>
+                      <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 12, cursor: campaignActivating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: campaignActivating ? 0.7 : 1 }}
+                        onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated — sends scheduled!'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? 'Activating…' : '▶ Activate Now'}</button>
                     </div>
                   )}
 
@@ -2560,7 +2566,9 @@ export default function CRMPage() {
 
                       {/* Currently enrolled list */}
                       <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Currently Enrolled ({campaignEnrollments.filter(e => e.active).length})</div>
-                      {campaignEnrollments.filter(e => e.active).length === 0 ? (
+                      {campaignEnrollmentsLoading ? (
+                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>Loading…</div>
+                      ) : campaignEnrollments.filter(e => e.active).length === 0 ? (
                         <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>No clients enrolled yet</div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -3140,12 +3148,12 @@ export default function CRMPage() {
 
       {/* ── Deal Modal ── */}
       {activeDeal && (
-        <div className="overlay" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); }}>
+        <div className="overlay" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>{activeDeal.client}</h3>
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
-              <button onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}>
               {/* Pipeline bar */}
