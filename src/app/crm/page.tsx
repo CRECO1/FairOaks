@@ -1772,7 +1772,9 @@ export default function CRMPage() {
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Active Deals</th>
+                        <th>Tagged</th>
                         {isAdmin && <th>Owner</th>}
+                        <th>Added</th>
                         <th>Last Contact</th>
                         {isAdmin && <th></th>}
                       </tr>
@@ -1845,23 +1847,6 @@ export default function CRMPage() {
                             {/* Phone */}
                             <td style={{ fontSize: 12 }}>
                               {c.phone ? <a href={`tel:${c.phone}`} style={{ color: '#374151', textDecoration: 'none' }}>{c.phone}</a> : '—'}
-                            </td>
-
-                            {/* Cell */}
-                            <td style={{ fontSize: 12 }}>
-                              {c.cell_phone ? <a href={`tel:${c.cell_phone}`} style={{ color: '#374151', textDecoration: 'none' }}>{c.cell_phone}</a> : <span style={{ color: '#d1d5db' }}>—</span>}
-                            </td>
-
-                            {/* Address */}
-                            <td style={{ fontSize: 11, color: '#6b7280', minWidth: 140 }}>
-                              {c.address ? (
-                                <div>
-                                  <div>{c.address}</div>
-                                  {(c.city || c.state || c.zip) && (
-                                    <div style={{ color: '#9ca3af' }}>{[c.city, c.state, c.zip].filter(Boolean).join(', ')}</div>
-                                  )}
-                                </div>
-                              ) : <span style={{ color: '#d1d5db' }}>—</span>}
                             </td>
 
                             {/* Active deals */}
