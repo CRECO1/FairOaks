@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Fair Oaks CRM',
   description: 'Fair Oaks Realty Group — Agent CRM',
