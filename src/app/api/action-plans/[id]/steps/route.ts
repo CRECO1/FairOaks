@@ -88,11 +88,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { data, error } = await supabase
     .from('crm_action_plan_steps')
     .insert(rows)
-    .select()
-    .order('step_order', { ascending: true });
+    .select();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ steps: data ?? [] });
+
+  // Return steps sorted by step_order
+  const sorted = (data ?? []).sort((a: any, b: any) => a.step_order - b.step_order);
+  return NextResponse.json({ steps: sorted });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

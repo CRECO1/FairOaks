@@ -1063,6 +1063,11 @@ export default function CRMPage() {
   }
 
   async function saveActionPlan() {
+    if (!newPlan.name.trim()) { showToast('Plan name is required'); return; }
+    // Validate steps — each step needs at least some content
+    const emptyStep = planSteps.find(s => !s.body?.trim());
+    if (emptyStep) { showToast(`Step ${emptyStep.step_order} needs content`); return; }
+
     setSaving(true);
     const url = activeActionPlan ? `/api/action-plans/${activeActionPlan.id}` : '/api/action-plans';
     const method = activeActionPlan ? 'PATCH' : 'POST';
@@ -1074,14 +1079,22 @@ export default function CRMPage() {
     const j = await res.json();
     if (!res.ok) { showToast('Error: ' + j.error); setSaving(false); return; }
     const planId = activeActionPlan?.id ?? j.plan?.id;
-    // Save steps
-    if (planId && planSteps.length > 0) {
-      await fetch(`/api/action-plans/${planId}/steps`, {
+
+    // Save steps (always call PUT so we can clear steps too)
+    if (planId) {
+      const stepsRes = await fetch(`/api/action-plans/${planId}/steps`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ steps: planSteps }),
       });
+      if (!stepsRes.ok) {
+        const stepsErr = await stepsRes.json();
+        showToast('Steps error: ' + (stepsErr.error ?? 'Unknown error'));
+        setSaving(false);
+        return;
+      }
     }
+
     showToast(activeActionPlan ? 'Plan updated' : 'Plan created');
     setActionPlanView('list');
     setActiveActionPlan(null);
