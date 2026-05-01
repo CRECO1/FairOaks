@@ -10,16 +10,33 @@ function adminClient() {
 
 export async function GET() {
   const supabase = adminClient();
-  const { data, error } = await supabase
-    .from('crm_campaigns')
-    .select(`*, enrollment_count:crm_campaign_enrollments(count)`)
-    .order('created_at', { ascending: false });
+
+  const [{ data, error }, { data: sends }] = await Promise.all([
+    supabase
+      .from('crm_campaigns')
+      .select(`*, enrollment_count:crm_campaign_enrollments(count)`)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('crm_campaign_sends')
+      .select('campaign_id, sent_at')
+      .eq('status', 'sent')
+      .order('sent_at', { ascending: false }),
+  ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  // Flatten count
+
+  // Build a map of campaign_id → latest sent_at
+  const lastSentMap: Record<string, string> = {};
+  for (const s of (sends ?? [])) {
+    if (!lastSentMap[s.campaign_id]) {
+      lastSentMap[s.campaign_id] = s.sent_at;
+    }
+  }
+
   const campaigns = (data ?? []).map((c: any) => ({
     ...c,
     enrollment_count: c.enrollment_count?.[0]?.count ?? 0,
+    last_sent_at: lastSentMap[c.id] ?? null,
   }));
   return NextResponse.json({ campaigns });
 }

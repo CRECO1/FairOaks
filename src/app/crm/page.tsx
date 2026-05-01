@@ -22,7 +22,7 @@ interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
@@ -321,6 +321,9 @@ export default function CRMPage() {
   const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; status: string; email_subject: string; email_body: string; sms_body: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
+  const [enrollTypeFilter, setEnrollTypeFilter] = useState('');
+  const [enrollAssetFilter, setEnrollAssetFilter] = useState('');
+  const [enrollTagFilter, setEnrollTagFilter] = useState('');
 
   // Smart Lists & Contact Filters
   const [smartLists, setSmartLists] = useState<SmartList[]>([]);
@@ -339,9 +342,12 @@ export default function CRMPage() {
   const [actionPlanEnrollments, setActionPlanEnrollments] = useState<ActionPlanEnrollment[]>([]);
   const [actionPlanLoading, setActionPlanLoading] = useState(false);
   const [planSteps, setPlanSteps] = useState<ActionPlanStep[]>([]);
-  const [newPlan, setNewPlan] = useState({ name: '', description: '', trigger_type: 'manual' as ActionPlan['trigger_type'], trigger_value: '', status: 'active' as 'active' | 'paused' });
+  const [newPlan, setNewPlan] = useState({ name: '', description: '', trigger_type: 'manual' as ActionPlan['trigger_type'], trigger_value: '', status: 'active' as 'active' | 'paused', completion_campaign_id: '' });
   const [selectedPlanEnrollIds, setSelectedPlanEnrollIds] = useState<string[]>([]);
   const [planEnrollSearch, setPlanEnrollSearch] = useState('');
+  const [planEnrollTypeFilter, setPlanEnrollTypeFilter] = useState('');
+  const [planEnrollAssetFilter, setPlanEnrollAssetFilter] = useState('');
+  const [planEnrollTagFilter, setPlanEnrollTagFilter] = useState('');
 
   // Activity Report
   const [activityReport, setActivityReport] = useState<{ agent_id: string; name: string; calls: number; emails: number; meetings: number; notes: number; total: number }[]>([]);
@@ -1098,7 +1104,7 @@ export default function CRMPage() {
     showToast(activeActionPlan ? 'Plan updated' : 'Plan created');
     setActionPlanView('list');
     setActiveActionPlan(null);
-    setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active' });
+    setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active', completion_campaign_id: '' });
     setPlanSteps([]);
     loadActionPlans();
     setSaving(false);
@@ -1301,7 +1307,7 @@ export default function CRMPage() {
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); }}>📣 &nbsp;Campaigns</button>
-          <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); }}>⚡ &nbsp;Action Plans</button>
+          <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); }}>⚡ &nbsp;Action Plans</button>
         </div>
         <div style={{ marginTop: 'auto', padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
           {/* Gmail / Calendar accounts */}
@@ -2185,11 +2191,15 @@ export default function CRMPage() {
                             </div>
                             <div style={{ fontSize: 12, color: '#6b7280' }}>
                               {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)} · {camp.enrollment_count ?? 0} enrolled
+                              {camp.last_sent_at
+                                ? <span style={{ color: '#16a34a', fontWeight: 500 }}> · Last sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                : <span style={{ color: '#9ca3af' }}> · Never sent</span>
+                              }
                               {camp.description && ` · ${camp.description}`}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setCampaignView('detail'); }}>Manage</button>
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '' }); setCampaignView('builder'); }}>Edit</button>}
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
                           </div>
@@ -2219,6 +2229,18 @@ export default function CRMPage() {
                     )}
                   </div>
 
+                  {/* Draft warning banner */}
+                  {activeCampaign.status === 'draft' && (
+                    <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#92400e', fontSize: 13 }}>⚠️ This campaign is a Draft — emails will NOT send</div>
+                        <div style={{ fontSize: 12, color: '#92400e', marginTop: 2 }}>Click &quot;Activate&quot; to schedule sends for all enrolled contacts.</div>
+                      </div>
+                      <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated — sends scheduled!'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); }}>▶ Activate Now</button>
+                    </div>
+                  )}
+
                   {/* Tabs */}
                   <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 20 }}>
                     {(['enrolled', 'history', 'settings'] as const).map(t => (
@@ -2234,22 +2256,87 @@ export default function CRMPage() {
                       {/* Enroll new clients */}
                       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 10 }}>Enroll Clients</div>
-                        <input className="crm-input" placeholder="Search contacts…" value={enrollClientSearch} onChange={e => setEnrollClientSearch(e.target.value)} style={{ marginBottom: 10 }} />
-                        <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {clients.filter(c => {
+
+                        {/* Filter row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                          <select className="crm-input" style={{ fontSize: 12 }} value={enrollTypeFilter} onChange={e => setEnrollTypeFilter(e.target.value)}>
+                            <option value="">All Types</option>
+                            {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <select className="crm-input" style={{ fontSize: 12 }} value={enrollAssetFilter} onChange={e => setEnrollAssetFilter(e.target.value)}>
+                            <option value="">All Asset Types</option>
+                            {ASSET_TYPES.map(a => <option key={a} value={a}>{a}</option>)}
+                          </select>
+                          <select className="crm-input" style={{ fontSize: 12 }} value={enrollTagFilter} onChange={e => setEnrollTagFilter(e.target.value)}>
+                            <option value="">All Tags</option>
+                            {[...new Set(clients.flatMap(c => c.tags ?? []))].sort().map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                          </select>
+                        </div>
+
+                        <input className="crm-input" placeholder="Search by name or email…" value={enrollClientSearch} onChange={e => setEnrollClientSearch(e.target.value)} style={{ marginBottom: 8 }} />
+
+                        {(() => {
+                          const filtered = clients.filter(c => {
                             const q = enrollClientSearch.toLowerCase();
                             const enrolled = campaignEnrollments.some(e => e.client_id === c.id && e.active);
-                            return !enrolled && (`${c.first_name} ${c.last_name}`.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
-                          }).slice(0, 30).map(c => (
-                            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent' }}>
-                              <input type="checkbox" checked={selectedEnrollIds.includes(c.id)} onChange={() => setSelectedEnrollIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: '#c9922c' }} />
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 500 }}>{c.first_name} {c.last_name}</div>
-                                <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email || 'No email'}</div>
+                            if (enrolled) return false;
+                            if (enrollTypeFilter && c.type !== enrollTypeFilter) return false;
+                            if (enrollAssetFilter && !(c.asset_types ?? []).includes(enrollAssetFilter)) return false;
+                            if (enrollTagFilter && !(c.tags ?? []).includes(enrollTagFilter)) return false;
+                            if (q && !`${c.first_name} ${c.last_name}`.toLowerCase().includes(q) && !c.email?.toLowerCase().includes(q)) return false;
+                            return true;
+                          });
+                          const allSelected = filtered.length > 0 && filtered.every(c => selectedEnrollIds.includes(c.id));
+
+                          return (
+                            <>
+                              {/* Select all bar */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, marginBottom: 6 }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                                  <input type="checkbox" style={{ accentColor: '#c9922c' }}
+                                    checked={allSelected}
+                                    onChange={() => {
+                                      if (allSelected) {
+                                        setSelectedEnrollIds(prev => prev.filter(id => !filtered.find(c => c.id === id)));
+                                      } else {
+                                        setSelectedEnrollIds(prev => [...new Set([...prev, ...filtered.map(c => c.id)])]);
+                                      }
+                                    }} />
+                                  Select all ({filtered.length})
+                                </label>
+                                {(enrollTypeFilter || enrollAssetFilter || enrollTagFilter || enrollClientSearch) && (
+                                  <button onClick={() => { setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Clear filters</button>
+                                )}
                               </div>
-                            </label>
-                          ))}
-                        </div>
+
+                              <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                {filtered.slice(0, 50).map(c => (
+                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
+                                    <input type="checkbox" checked={selectedEnrollIds.includes(c.id)} onChange={() => setSelectedEnrollIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: 13, fontWeight: 500 }}>{c.first_name} {c.last_name}</span>
+                                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#e5e7eb', color: '#374151', fontWeight: 600 }}>{c.type}</span>
+                                        {(c.asset_types ?? []).slice(0, 2).map(at => (
+                                          <span key={at} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#dbeafe', color: '#1e40af', fontWeight: 500 }}>{at}</span>
+                                        ))}
+                                        {(c.tags ?? []).slice(0, 2).map(tag => (
+                                          <span key={tag} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#fef3c7', color: '#92400e', fontWeight: 500 }}>{tag}</span>
+                                        ))}
+                                      </div>
+                                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {c.email || 'No email'}{c.business_name ? ` · ${c.business_name}` : ''}{c.city ? ` · ${c.city}` : ''}
+                                      </div>
+                                    </div>
+                                  </label>
+                                ))}
+                                {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 12 }}>No contacts match these filters</div>}
+                                {filtered.length > 50 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 11 }}>Showing 50 of {filtered.length} — refine filters to narrow down</div>}
+                              </div>
+                            </>
+                          );
+                        })()}
+
                         {selectedEnrollIds.length > 0 && (
                           <button className="crm-btn crm-btn-gold" style={{ marginTop: 10, width: '100%' }} onClick={() => enrollClients(activeCampaign.id)}>
                             Enroll {selectedEnrollIds.length} Client{selectedEnrollIds.length !== 1 ? 's' : ''}
@@ -2501,7 +2588,7 @@ export default function CRMPage() {
                       <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Action Plans</h2>
                       <p style={{ fontSize: 13, color: '#6b7280' }}>Multi-step sequences triggered automatically or manually applied to contacts</p>
                     </div>
-                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ New Plan</button>
+                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active', completion_campaign_id: '' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ New Plan</button>
                   </div>
 
                   {actionPlanLoading ? (
@@ -2511,7 +2598,7 @@ export default function CRMPage() {
                       <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
                       <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No action plans yet</div>
                       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Build multi-step follow-up sequences that run automatically</div>
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ Create First Plan</button>
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active', completion_campaign_id: '' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ Create First Plan</button>
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
@@ -2530,8 +2617,8 @@ export default function CRMPage() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setActionPlanView('detail'); }}>Manage</button>
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); setNewPlan({ name: plan.name, description: plan.description, trigger_type: plan.trigger_type, trigger_value: plan.trigger_value ?? '', status: plan.status }); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setPlanSteps(j.plan?.steps ?? [])); setActionPlanView('builder'); }}>Edit</button>}
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setSelectedPlanEnrollIds([]); setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); setActionPlanView('detail'); }}>Manage</button>
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); setNewPlan({ name: plan.name, description: plan.description, trigger_type: plan.trigger_type, trigger_value: plan.trigger_value ?? '', status: plan.status, completion_campaign_id: (plan as any).completion_campaign_id ?? '' }); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setPlanSteps(j.plan?.steps ?? [])); setActionPlanView('builder'); }}>Edit</button>}
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteActionPlan(plan.id)}>🗑</button>}
                           </div>
                         </div>
@@ -2569,23 +2656,88 @@ export default function CRMPage() {
                       {/* Enroll clients */}
                       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, marginBottom: 20 }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Enroll Contacts</div>
-                        <input className="crm-input" placeholder="🔍 Search contacts…" value={planEnrollSearch} onChange={e => setPlanEnrollSearch(e.target.value)} style={{ marginBottom: 10 }} />
-                        <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {clients.filter(c => {
+
+                        {/* Filter row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                          <select className="crm-input" style={{ fontSize: 12 }} value={planEnrollTypeFilter} onChange={e => setPlanEnrollTypeFilter(e.target.value)}>
+                            <option value="">All Types</option>
+                            {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                          <select className="crm-input" style={{ fontSize: 12 }} value={planEnrollAssetFilter} onChange={e => setPlanEnrollAssetFilter(e.target.value)}>
+                            <option value="">All Asset Types</option>
+                            {ASSET_TYPES.map(a => <option key={a} value={a}>{a}</option>)}
+                          </select>
+                          <select className="crm-input" style={{ fontSize: 12 }} value={planEnrollTagFilter} onChange={e => setPlanEnrollTagFilter(e.target.value)}>
+                            <option value="">All Tags</option>
+                            {[...new Set(clients.flatMap(c => c.tags ?? []))].sort().map(tag => <option key={tag} value={tag}>{tag}</option>)}
+                          </select>
+                        </div>
+
+                        <input className="crm-input" placeholder="Search by name or email…" value={planEnrollSearch} onChange={e => setPlanEnrollSearch(e.target.value)} style={{ marginBottom: 8 }} />
+
+                        {(() => {
+                          const filtered = clients.filter(c => {
                             const enrolled = actionPlanEnrollments.some(e => e.client_id === c.id && e.active);
                             if (enrolled) return false;
-                            if (!planEnrollSearch) return true;
-                            return `${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(planEnrollSearch.toLowerCase());
-                          }).map(c => (
-                            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? '#fef9f0' : 'transparent' }}>
-                              <input type="checkbox" checked={selectedPlanEnrollIds.includes(c.id)} onChange={e => setSelectedPlanEnrollIds(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} style={{ accentColor: '#c9922c' }} />
-                              <span style={{ fontSize: 13, color: '#111' }}>{c.first_name} {c.last_name}</span>
-                              <span style={{ fontSize: 11, color: '#9ca3af' }}>{c.type}</span>
-                            </label>
-                          ))}
-                        </div>
+                            if (planEnrollTypeFilter && c.type !== planEnrollTypeFilter) return false;
+                            if (planEnrollAssetFilter && !(c.asset_types ?? []).includes(planEnrollAssetFilter)) return false;
+                            if (planEnrollTagFilter && !(c.tags ?? []).includes(planEnrollTagFilter)) return false;
+                            if (planEnrollSearch && !`${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(planEnrollSearch.toLowerCase())) return false;
+                            return true;
+                          });
+                          const allSelected = filtered.length > 0 && filtered.every(c => selectedPlanEnrollIds.includes(c.id));
+
+                          return (
+                            <>
+                              {/* Select all bar */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: '#f3f4f6', borderRadius: 6, marginBottom: 6 }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                                  <input type="checkbox" style={{ accentColor: '#c9922c' }}
+                                    checked={allSelected}
+                                    onChange={() => {
+                                      if (allSelected) {
+                                        setSelectedPlanEnrollIds(prev => prev.filter(id => !filtered.find(c => c.id === id)));
+                                      } else {
+                                        setSelectedPlanEnrollIds(prev => [...new Set([...prev, ...filtered.map(c => c.id)])]);
+                                      }
+                                    }} />
+                                  Select all ({filtered.length})
+                                </label>
+                                {(planEnrollTypeFilter || planEnrollAssetFilter || planEnrollTagFilter || planEnrollSearch) && (
+                                  <button onClick={() => { setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Clear filters</button>
+                                )}
+                              </div>
+
+                              <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                {filtered.slice(0, 50).map(c => (
+                                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
+                                    <input type="checkbox" checked={selectedPlanEnrollIds.includes(c.id)} onChange={e => setSelectedPlanEnrollIds(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: 13, fontWeight: 500 }}>{c.first_name} {c.last_name}</span>
+                                        <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#e5e7eb', color: '#374151', fontWeight: 600 }}>{c.type}</span>
+                                        {(c.asset_types ?? []).slice(0, 2).map(at => (
+                                          <span key={at} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#dbeafe', color: '#1e40af', fontWeight: 500 }}>{at}</span>
+                                        ))}
+                                        {(c.tags ?? []).slice(0, 2).map(tag => (
+                                          <span key={tag} style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: '#fef3c7', color: '#92400e', fontWeight: 500 }}>{tag}</span>
+                                        ))}
+                                      </div>
+                                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {c.email || 'No email'}{c.business_name ? ` · ${c.business_name}` : ''}{c.city ? ` · ${c.city}` : ''}
+                                      </div>
+                                    </div>
+                                  </label>
+                                ))}
+                                {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 12 }}>No contacts match these filters</div>}
+                                {filtered.length > 50 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 11 }}>Showing 50 of {filtered.length} — refine filters to narrow down</div>}
+                              </div>
+                            </>
+                          );
+                        })()}
+
                         <button className="crm-btn crm-btn-gold" style={{ marginTop: 10 }} onClick={() => enrollInActionPlan(activeActionPlan.id)} disabled={selectedPlanEnrollIds.length === 0}>
-                          Enroll {selectedPlanEnrollIds.length > 0 ? `(${selectedPlanEnrollIds.length})` : ''}
+                          {selectedPlanEnrollIds.length > 0 ? `Enroll ${selectedPlanEnrollIds.length} Contact${selectedPlanEnrollIds.length !== 1 ? 's' : ''}` : 'Enroll'}
                         </button>
                       </div>
                       {/* Enrolled list */}
@@ -2664,6 +2816,14 @@ export default function CRMPage() {
                           </select>
                         </div>
                       )}
+                      <div>
+                        <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>When Complete → Enroll in Campaign</label>
+                        <select className="crm-input" style={{ marginTop: 4 }} value={newPlan.completion_campaign_id} onChange={e => setNewPlan({ ...newPlan, completion_campaign_id: e.target.value })}>
+                          <option value="">None (no handoff)</option>
+                          {campaigns.filter(c => c.status === 'active').map(c => <option key={c.id} value={c.id}>{c.name} ({c.frequency})</option>)}
+                        </select>
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>When a contact finishes all steps, they&apos;ll be auto-enrolled into this campaign.</div>
+                      </div>
                     </div>
                   </div>
 

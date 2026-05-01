@@ -30,7 +30,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, description, trigger_type, trigger_value, status, created_by } = body;
+  const { name, description, trigger_type, trigger_value, status, created_by, completion_campaign_id } = body;
 
   if (!name || !trigger_type) {
     return NextResponse.json({ error: 'name and trigger_type are required' }, { status: 400 });
@@ -44,8 +44,9 @@ export async function POST(req: NextRequest) {
       description: description ?? null,
       trigger_type,
       trigger_value: trigger_value ?? null,
-      status: status ?? 'draft',
+      status: status ?? 'active',
       created_by: created_by ?? null,
+      completion_campaign_id: completion_campaign_id || null,
     }])
     .select()
     .single();
