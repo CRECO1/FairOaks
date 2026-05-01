@@ -12,12 +12,15 @@ const supabase = createClient(
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; notes: string; created_at: string; last_touched_at?: string; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; }
 interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual'; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; }
+interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
+interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
 const STAGES = ['Prospect', 'Active', 'In Contract', 'Closed', 'Lost'];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
@@ -250,7 +253,7 @@ export default function CRMPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -300,6 +303,18 @@ export default function CRMPage() {
   const [calendarScopeError, setCalendarScopeError] = useState(false);
   const [calViewMonth, setCalViewMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [calSelectedDate, setCalSelectedDate] = useState<string | null>(new Date().toDateString());
+
+  // Campaigns
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
+  const [campaignView, setCampaignView] = useState<'list' | 'builder' | 'detail'>('list');
+  const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'settings'>('enrolled');
+  const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
+  const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; status: string; email_subject: string; email_body: string; sms_body: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
+  const [enrollClientSearch, setEnrollClientSearch] = useState('');
+  const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
@@ -892,6 +907,69 @@ export default function CRMPage() {
     setSyncing(false);
   }
 
+  // ── Campaigns ─────────────────────────────────────────────────────────────────
+  async function loadCampaigns() {
+    setCampaignLoading(true);
+    const res = await fetch('/api/campaigns');
+    if (res.ok) { const j = await res.json(); setCampaigns(j.campaigns ?? []); }
+    setCampaignLoading(false);
+  }
+
+  async function saveCampaign() {
+    setSaving(true);
+    const payload = { ...newCampaign, created_by: session!.user.id };
+    const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
+    const method = activeCampaign ? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const j = await res.json();
+    if (!res.ok) { showToast('Error: ' + j.error); }
+    else {
+      showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
+      setCampaignView('list');
+      setActiveCampaign(null);
+      setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: '', sms_body: '' });
+      loadCampaigns();
+    }
+    setSaving(false);
+  }
+
+  async function deleteCampaign(id: string) {
+    if (!confirm('Delete this campaign? This cannot be undone.')) return;
+    await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
+    showToast('Campaign deleted');
+    setActiveCampaign(null);
+    setCampaignView('list');
+    loadCampaigns();
+  }
+
+  async function loadCampaignEnrollments(campaignId: string) {
+    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`);
+    if (res.ok) { const j = await res.json(); setCampaignEnrollments(j.enrollments ?? []); }
+  }
+
+  async function loadCampaignSends(campaignId: string) {
+    const { data } = await supabase.from('crm_campaign_sends').select('*').eq('campaign_id', campaignId).order('sent_at', { ascending: false }).limit(100);
+    setCampaignSends(data ?? []);
+  }
+
+  async function enrollClients(campaignId: string) {
+    if (!selectedEnrollIds.length) { showToast('Select at least one client'); return; }
+    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_ids: selectedEnrollIds, enrolled_by: session!.user.id }),
+    });
+    const j = await res.json();
+    if (!res.ok) showToast('Error: ' + j.error);
+    else { showToast(`Enrolled ${j.enrolled} client${j.enrolled !== 1 ? 's' : ''}`); setSelectedEnrollIds([]); loadCampaignEnrollments(campaignId); }
+  }
+
+  async function unenrollClient(campaignId: string, clientId: string) {
+    await fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
+    showToast('Client unenrolled');
+    loadCampaignEnrollments(campaignId);
+  }
+
   // ── Kanban drag & drop ────────────────────────────────────────────────────────
   async function updateDealStage(dealId: string, newStage: string) {
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, stage: newStage, last_touch: today() } : d));
@@ -923,6 +1001,21 @@ export default function CRMPage() {
     return true;
   });
 
+  function getDefaultEmailBody(): string {
+    return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+  <h2 style="color:#1a1a2e">Hi {{first_name}},</h2>
+  <p>I wanted to reach out and check in with you.</p>
+  <p>Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p>
+  <p>Feel free to reply to this email or call me directly at {{agent_phone}}.</p>
+  <br/>
+  <p>Best regards,<br/><strong>{{agent_name}}</strong><br/>{{brokerage}}<br/>{{agent_email}}</p>
+  <br/>
+  <p style="font-size:11px;color:#9ca3af">
+    <a href="{{unsubscribe_url}}" style="color:#9ca3af">Unsubscribe</a> · 7510 FM 1560 N, Suite 101, Fair Oaks Ranch, TX 78015
+  </p>
+</div>`;
+  }
+
   // ── Render guards ─────────────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', fontFamily: 'sans-serif', color: '#fff' }}>
@@ -947,11 +1040,12 @@ export default function CRMPage() {
     { id: 'contacts', icon: '👥', label: 'Contacts' },
     { id: 'calendar', icon: '📅', label: 'Calendar' },
     ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
+    ...(isAdmin ? [{ id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' }] : []),
   ];
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -1014,6 +1108,7 @@ export default function CRMPage() {
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
+          {isAdmin && <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); }}>📣 &nbsp;Campaigns</button>}
         </div>
         <div style={{ marginTop: 'auto', padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
           {/* Gmail / Calendar accounts */}
@@ -1084,7 +1179,7 @@ export default function CRMPage() {
         </div>}
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: page === 'calendar' ? 'hidden' : 'auto', padding: page === 'calendar' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setTagClientId(null); setAssetDropdownOpen(null); }}>
+        <div style={{ flex: 1, overflowY: page === 'calendar' ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setTagClientId(null); setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
@@ -1722,13 +1817,305 @@ export default function CRMPage() {
               {profiles.length === 0 && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: '#9ca3af' }}>No agents yet. Invite one above.</div>}
             </div>
           )}
+
+          {/* ── Campaigns Page ── */}
+          {page === 'campaigns' && (
+            <div style={{ padding: isMobile ? '16px' : '28px', flex: 1, overflowY: 'auto' }}>
+
+              {/* List view */}
+              {campaignView === 'list' && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                    <div>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
+                      <p style={{ fontSize: 13, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
+                    </div>
+                    {isAdmin && (
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>
+                        + New Campaign
+                      </button>
+                    )}
+                  </div>
+
+                  {campaignLoading ? (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading campaigns…</div>
+                  ) : campaigns.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+                      <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
+                      {isAdmin && <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {campaigns.map(camp => (
+                        <div key={camp.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+                            {camp.type === 'email' ? '✉️' : '💬'}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{camp.name}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 8px', borderRadius: 10, background: camp.status === 'active' ? '#dcfce7' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'paused' ? '#92400e' : '#6b7280', textTransform: 'uppercase' }}>{camp.status}</span>
+                              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', color: camp.type === 'email' ? '#1e40af' : '#065f46' }}>{camp.type.toUpperCase()}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#6b7280' }}>
+                              {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)} · {camp.enrollment_count ?? 0} enrolled
+                              {camp.description && ` · ${camp.description}`}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setCampaignView('detail'); }}>Manage</button>
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '' }); setCampaignView('builder'); }}>Edit</button>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Detail view */}
+              {campaignView === 'detail' && activeCampaign && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                    <button onClick={() => { setCampaignView('list'); setActiveCampaign(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', padding: 0 }}>←</button>
+                    <div style={{ flex: 1 }}>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{activeCampaign.name}</h2>
+                      <div style={{ fontSize: 12, color: '#6b7280' }}>{activeCampaign.type.toUpperCase()} · {activeCampaign.frequency} · <span style={{ color: activeCampaign.status === 'active' ? '#16a34a' : activeCampaign.status === 'paused' ? '#d97706' : '#6b7280', fontWeight: 600 }}>{activeCampaign.status}</span></div>
+                    </div>
+                    {isAdmin && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '' }); setCampaignView('builder'); }}>Edit Campaign</button>
+                        {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); }}>▶ Activate</button>}
+                        {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }} onClick={async () => { await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); }}>⏸ Pause</button>}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tabs */}
+                  <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 20 }}>
+                    {(['enrolled', 'history', 'settings'] as const).map(t => (
+                      <button key={t} onClick={() => setCampaignTab(t)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: campaignTab === t ? 700 : 400, color: campaignTab === t ? '#c9922c' : '#6b7280', background: 'none', border: 'none', borderBottom: campaignTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textTransform: 'capitalize' }}>
+                        {t === 'enrolled' ? `Enrolled (${campaignEnrollments.filter(e => e.active).length})` : t.charAt(0).toUpperCase() + t.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Enrolled tab */}
+                  {campaignTab === 'enrolled' && (
+                    <div>
+                      {/* Enroll new clients */}
+                      <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 10 }}>Enroll Clients</div>
+                        <input className="crm-input" placeholder="Search contacts…" value={enrollClientSearch} onChange={e => setEnrollClientSearch(e.target.value)} style={{ marginBottom: 10 }} />
+                        <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {clients.filter(c => {
+                            const q = enrollClientSearch.toLowerCase();
+                            const enrolled = campaignEnrollments.some(e => e.client_id === c.id && e.active);
+                            return !enrolled && (`${c.first_name} ${c.last_name}`.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
+                          }).slice(0, 30).map(c => (
+                            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent' }}>
+                              <input type="checkbox" checked={selectedEnrollIds.includes(c.id)} onChange={() => setSelectedEnrollIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: '#c9922c' }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500 }}>{c.first_name} {c.last_name}</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email || 'No email'}</div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                        {selectedEnrollIds.length > 0 && (
+                          <button className="crm-btn crm-btn-gold" style={{ marginTop: 10, width: '100%' }} onClick={() => enrollClients(activeCampaign.id)}>
+                            Enroll {selectedEnrollIds.length} Client{selectedEnrollIds.length !== 1 ? 's' : ''}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Currently enrolled list */}
+                      <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Currently Enrolled ({campaignEnrollments.filter(e => e.active).length})</div>
+                      {campaignEnrollments.filter(e => e.active).length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>No clients enrolled yet</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {campaignEnrollments.filter(e => e.active).map(en => (
+                            <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#111', flexShrink: 0 }}>
+                                {(en.client?.first_name?.[0] ?? '') + (en.client?.last_name?.[0] ?? '')}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 500 }}>{en.client?.first_name} {en.client?.last_name}</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                                  Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}
+                                  {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
+                                </div>
+                              </div>
+                              <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 11, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* History tab */}
+                  {campaignTab === 'history' && (
+                    <div>
+                      {campaignSends.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No sends yet — activate the campaign to start sending.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {campaignSends.map(s => {
+                            const client = clients.find(c => c.id === s.client_id);
+                            return (
+                              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: s.status === 'sent' ? '#dcfce7' : s.status === 'failed' ? '#fee2e2' : '#f3f4f6', color: s.status === 'sent' ? '#166534' : s.status === 'failed' ? '#991b1b' : '#6b7280' }}>{s.status.toUpperCase()}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 500 }}>{client ? `${client.first_name} ${client.last_name}` : 'Unknown client'}</div>
+                                  {s.subject && <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.subject}</div>}
+                                </div>
+                                <div style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{new Date(s.sent_at).toLocaleDateString()}</div>
+                                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 8, background: s.type === 'email' ? '#dbeafe' : '#d1fae5', color: s.type === 'email' ? '#1e40af' : '#065f46' }}>{s.type.toUpperCase()}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Settings tab */}
+                  {campaignTab === 'settings' && (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {[
+                        ['Type', activeCampaign.type.toUpperCase()],
+                        ['Frequency', activeCampaign.frequency.charAt(0).toUpperCase() + activeCampaign.frequency.slice(1)],
+                        ['Status', activeCampaign.status.charAt(0).toUpperCase() + activeCampaign.status.slice(1)],
+                        ['Created', new Date(activeCampaign.created_at).toLocaleDateString()],
+                      ].map(([label, val]) => (
+                        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
+                          <span style={{ color: '#6b7280', fontWeight: 500 }}>{label}</span>
+                          <span style={{ color: '#111', fontWeight: 600 }}>{val}</span>
+                        </div>
+                      ))}
+                      {activeCampaign.type === 'email' && activeCampaign.email_subject && (
+                        <div style={{ padding: '12px 14px', background: '#f9fafb', borderRadius: 8 }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Subject Line</div>
+                          <div style={{ fontSize: 13, fontWeight: 500 }}>{activeCampaign.email_subject}</div>
+                        </div>
+                      )}
+                      {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca', marginTop: 8 }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete Campaign</button>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Builder view */}
+              {campaignView === 'builder' && (
+                <div style={{ maxWidth: 680 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                    <button onClick={() => { setCampaignView(activeCampaign ? 'detail' : 'list'); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', padding: 0 }}>←</button>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{activeCampaign ? 'Edit Campaign' : 'New Campaign'}</h2>
+                  </div>
+
+                  {/* Basics */}
+                  <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 14 }}>Campaign Details</div>
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Campaign Name *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Monthly Market Update" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} /></div>
+                      <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Brief description of the campaign purpose" value={newCampaign.description} onChange={e => setNewCampaign({ ...newCampaign, description: e.target.value })} /></div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Channel</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.type} onChange={e => setNewCampaign({ ...newCampaign, type: e.target.value as 'email' | 'sms' })}>
+                            <option value="email">✉️ Email</option>
+                            <option value="sms">💬 SMS / Text</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Frequency</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.frequency} onChange={e => setNewCampaign({ ...newCampaign, frequency: e.target.value })}>
+                            <option value="monthly">Monthly</option>
+                            <option value="quarterly">Quarterly</option>
+                            <option value="semi-annual">Semi-Annual</option>
+                            <option value="annual">Annual</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.status} onChange={e => setNewCampaign({ ...newCampaign, status: e.target.value })}>
+                            <option value="draft">Draft</option>
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Merge field reference */}
+                  <div style={{ background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>✨ Available Merge Fields</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {['{{first_name}}','{{last_name}}','{{full_name}}','{{agent_name}}','{{agent_email}}','{{agent_phone}}','{{brokerage}}','{{unsubscribe_url}}'].map(f => (
+                        <code key={f} style={{ background: '#fff', border: '1px solid #fde68a', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#92400e', cursor: 'pointer', fontFamily: 'monospace' }} onClick={() => {
+                          if (newCampaign.type === 'email') setNewCampaign(prev => ({ ...prev, email_body: prev.email_body + f }));
+                          else setNewCampaign(prev => ({ ...prev, sms_body: prev.sms_body + f }));
+                        }}>{f}</code>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Email fields */}
+                  {newCampaign.type === 'email' && (
+                    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 14 }}>Email Content</div>
+                      <div style={{ display: 'grid', gap: 12 }}>
+                        <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject Line *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Hi {{first_name}}, here's your market update!" value={newCampaign.email_subject} onChange={e => setNewCampaign({ ...newCampaign, email_subject: e.target.value })} /></div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email Body (HTML) *</label>
+                          <textarea className="crm-input" style={{ marginTop: 4, minHeight: 220, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} value={newCampaign.email_body} onChange={e => setNewCampaign({ ...newCampaign, email_body: e.target.value })} />
+                          {!newCampaign.email_body.includes('{{unsubscribe_url}}') && newCampaign.email_body.length > 0 && (
+                            <div style={{ marginTop: 6, fontSize: 11, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '5px 10px' }}>
+                              ⚠️ Add <code>{'{{unsubscribe_url}}'}</code> to your email body for CAN-SPAM compliance
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SMS fields */}
+                  {newCampaign.type === 'sms' && (
+                    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 14 }}>SMS Content</div>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Message *</label>
+                          <span style={{ fontSize: 11, color: newCampaign.sms_body.length > 160 ? '#ef4444' : '#9ca3af', fontWeight: newCampaign.sms_body.length > 160 ? 700 : 400 }}>{newCampaign.sms_body.length}/160</span>
+                        </div>
+                        <textarea className="crm-input" style={{ marginTop: 0, minHeight: 100, resize: 'vertical' }} placeholder={`Hi {{first_name}}, this is {{agent_name}} from {{brokerage}}. Just checking in — are you still looking for properties? Reply STOP to opt out.`} value={newCampaign.sms_body} onChange={e => setNewCampaign({ ...newCampaign, sms_body: e.target.value })} />
+                        <div style={{ marginTop: 6, fontSize: 11, color: '#6b7280', background: '#f9fafb', borderRadius: 6, padding: '6px 10px' }}>
+                          💡 Twilio automatically appends opt-out instructions for compliant SMS campaigns. Keep your message concise and personal.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button className="crm-btn crm-btn-ghost" onClick={() => { setCampaignView(activeCampaign ? 'detail' : 'list'); }}>Cancel</button>
+                    <button className="crm-btn crm-btn-gold" onClick={saveCampaign} disabled={saving}>{saving ? 'Saving…' : activeCampaign ? 'Save Changes' : 'Create Campaign'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {/* Mobile bottom nav */}
         {isMobile && (
           <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.08)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
             {mobileNavItems.map(item => (
               <button key={item.id}
-                onClick={() => { setPage(item.id); if (item.id === 'contacts') loadClients(); if (item.id === 'calendar') loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); }}
+                onClick={() => { setPage(item.id); if (item.id === 'contacts') loadClients(); if (item.id === 'calendar') loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); if (item.id === 'campaigns') { setCampaignView('list'); loadCampaigns(); } }}
                 style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 0 6px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'color .15s', color: page === item.id ? '#c9922c' : 'rgba(255,255,255,.4)' }}>
                 <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
                 <span style={{ fontSize: 10, marginTop: 3, fontWeight: page === item.id ? 700 : 400, letterSpacing: .3 }}>{item.label}</span>
