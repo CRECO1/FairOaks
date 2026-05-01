@@ -2038,7 +2038,7 @@ export default function CRMPage() {
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Campaign Name *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Monthly Market Update" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} /></div>
                       <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Brief description of the campaign purpose" value={newCampaign.description} onChange={e => setNewCampaign({ ...newCampaign, description: e.target.value })} /></div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Channel</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.type} onChange={e => setNewCampaign({ ...newCampaign, type: e.target.value as 'email' | 'sms' })}>
@@ -2056,16 +2056,19 @@ export default function CRMPage() {
                             <option value="annual">Annual</option>
                           </select>
                         </div>
-                        {newCampaign.frequency === 'one-time' && (
-                          <div style={{ gridColumn: '1/-1' }}>
-                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Date & Time *</label>
-                            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                              <input className="crm-input" type="date" style={{ flex: 2 }} value={newCampaign.send_date} min={new Date().toISOString().slice(0, 10)} onChange={e => setNewCampaign({ ...newCampaign, send_date: e.target.value })} />
-                              <input className="crm-input" type="time" style={{ flex: 1 }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })} />
-                            </div>
-                            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>Sends once on this date & time (Central Time), then deactivates automatically.</div>
+                        {newCampaign.frequency === 'one-time' && (<>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Date *</label>
+                            <input className="crm-input" type="date" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_date} min={new Date().toISOString().slice(0, 10)} onChange={e => setNewCampaign({ ...newCampaign, send_date: e.target.value })} />
                           </div>
-                        )}
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Time (CT) *</label>
+                            <input className="crm-input" type="time" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })} />
+                          </div>
+                          <div style={{ gridColumn: '1/-1' }}>
+                            <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>⏰ Sends once on the selected date & time (Central Time), then deactivates automatically.</div>
+                          </div>
+                        </>)}
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.status} onChange={e => setNewCampaign({ ...newCampaign, status: e.target.value })}>
