@@ -31,7 +31,7 @@ function computeNextStepAt(delayDays: number): string {
   return d.toISOString();
 }
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   // Secure the cron endpoint
   const authHeader = req.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
