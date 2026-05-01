@@ -61,15 +61,17 @@ const STAGE_CLS: Record<string, string> = {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
-function timeAgo(dateStr: string | undefined | null): { label: string; color: string } {
-  if (!dateStr) return { label: 'Never', color: '#9ca3af' };
+function timeAgo(dateStr: string | undefined | null): { label: string; color: string; bg: string } {
+  if (!dateStr) return { label: 'Never', color: '#dc2626', bg: '#fee2e2' };
   const diff = Date.now() - new Date(dateStr).getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days < 1) return { label: 'Today', color: '#16a34a' };
-  if (days === 1) return { label: 'Yesterday', color: '#16a34a' };
-  if (days < 14) return { label: `${days}d ago`, color: '#16a34a' };
-  if (days < 30) return { label: `${days}d ago`, color: '#d97706' };
-  return { label: `${days}d ago`, color: '#dc2626' };
+  if (days < 1)  return { label: 'Today',     color: '#16a34a', bg: '#dcfce7' };
+  if (days === 1) return { label: 'Yesterday', color: '#16a34a', bg: '#dcfce7' };
+  if (days < 14) return { label: `${days}d ago`, color: '#16a34a', bg: '#dcfce7' };
+  if (days < 30) return { label: `${days}d ago`, color: '#d97706', bg: '#fef9c3' };
+  if (days < 60) return { label: `${days}d ago`, color: '#a16207', bg: '#fef9c3' };
+  if (days < 90) return { label: `${days}d ago`, color: '#c2410c', bg: '#fed7aa' };
+  return { label: `${days}d ago`, color: '#dc2626', bg: '#fee2e2' };
 }
 
 function activityIcon(type: CRMActivity['type']): string {
@@ -1581,8 +1583,7 @@ export default function CRMPage() {
                     {/* Top 5 most overdue */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {top5.map(c => {
-                        const urgColor = c.daysSince >= 90 ? '#dc2626' : c.daysSince >= 60 ? '#c2410c' : '#a16207';
-                        const urgBg = c.daysSince >= 90 ? '#fee2e2' : c.daysSince >= 60 ? '#fed7aa' : '#fef9c3';
+                        const ta = timeAgo(c.last_touched_at);
                         return (
                           <button key={c.id}
                             onClick={() => { setPage('contacts'); setActiveClient(c); }}
@@ -1594,8 +1595,8 @@ export default function CRMPage() {
                               <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
                               <div style={{ fontSize: 10, color: '#6b7280' }}>{c.type}{c.last_touched_at ? ` · Last touch ${new Date(c.last_touched_at).toLocaleDateString()}` : ' · Never contacted'}</div>
                             </div>
-                            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: urgBg, color: urgColor, fontWeight: 700, flexShrink: 0 }}>
-                              {c.daysSince >= 9000 ? 'Never' : `${c.daysSince}d`}
+                            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: ta.bg, color: ta.color, fontWeight: 700, flexShrink: 0 }}>
+                              {ta.label}
                             </span>
                           </button>
                         );
@@ -1712,7 +1713,7 @@ export default function CRMPage() {
                           {c.business_name && <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 4 }}>{c.business_name}</div>}
                           <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '1px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>{c.type}</span>
                         </div>
-                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: ta.color + '18', color: ta.color, fontWeight: 700, flexShrink: 0, alignSelf: 'flex-start' }}>{ta.label}</span>
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: ta.bg, color: ta.color, fontWeight: 700, flexShrink: 0, alignSelf: 'flex-start' }}>{ta.label}</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                         {c.email && (
@@ -1949,7 +1950,7 @@ export default function CRMPage() {
                               {(() => {
                                 const ta = timeAgo(c.last_touched_at);
                                 return (
-                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: ta.color + '18', color: ta.color, whiteSpace: 'nowrap' }}>
+                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: ta.bg, color: ta.color, whiteSpace: 'nowrap' }}>
                                     {ta.label}
                                   </span>
                                 );
