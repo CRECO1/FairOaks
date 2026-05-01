@@ -314,8 +314,10 @@ function DataTable({ tab }: { tab: Exclude<Tab, 'settings'> }) {
     setSaving(true);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, created_at, updated_at, search_vector, ...fields } = editing;
+    const tablesWithUpdatedAt = new Set(['listings', 'agents', 'neighborhoods', 'leads']);
     if (id && rows.find(r => r.id === id)) {
-      const { error } = await supabase.from(table).update({ ...fields, updated_at: new Date().toISOString() }).eq('id', id);
+      const payload = tablesWithUpdatedAt.has(table) ? { ...fields, updated_at: new Date().toISOString() } : fields;
+      const { error } = await supabase.from(table).update(payload).eq('id', id);
       if (error) alert(error.message);
     } else {
       const { error } = await supabase.from(table).insert([fields]);
