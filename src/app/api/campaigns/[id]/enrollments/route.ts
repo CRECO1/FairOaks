@@ -5,7 +5,14 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
-function computeNextSend(frequency: string): string {
+// CT = UTC-5 (CDT summer) / UTC-6 (CST winter). Using -05:00 as default (CDT).
+// The Date constructor with an explicit offset handles the UTC conversion correctly.
+function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
+  if (frequency === 'one-time' && sendDate) {
+    const time = sendTime || '08:00';
+    // Parse as Central Time (CDT = -05:00). JS Date will convert to UTC automatically.
+    return new Date(`${sendDate}T${time}:00-05:00`).toISOString();
+  }
   const now = new Date();
   switch (frequency) {
     case 'monthly':     now.setMonth(now.getMonth() + 1); break;
@@ -34,11 +41,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!client_ids?.length) return NextResponse.json({ error: 'client_ids required' }, { status: 400 });
 
   const supabase = adminClient();
-  // Get campaign frequency
-  const { data: campaign } = await supabase.from('crm_campaigns').select('frequency, status').eq('id', id).single();
+  // Get campaign details including send_date and send_time for one-time campaigns
+  const { data: campaign } = await supabase.from('crm_campaigns').select('frequency, status, send_date, send_time').eq('id', id).single();
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
 
-  const next_send_at = campaign.status === 'active' ? computeNextSend(campaign.frequency) : null;
+  const next_send_at = campaign.status === 'active'
+    ? computeNextSend(campaign.frequency, campaign.send_date, campaign.send_time)
+    : null;
 
   const rows = client_ids.map((client_id: string) => ({
     campaign_id: id,

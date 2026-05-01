@@ -49,19 +49,21 @@ export async function POST(req: NextRequest) {
   const resend = new Resend(process.env.RESEND_API_KEY!);
 
   // Get all due active enrollments (limit 50 per run to stay within Vercel timeout)
+  // next_send_at is set to the exact send datetime (CT converted to UTC) at enrollment time,
+  // so a simple lte check handles both recurring and one-time campaigns correctly.
   const now = new Date().toISOString();
-  const today = new Date().toISOString().slice(0, 10);
   const { data: enrollments, error: fetchErr } = await supabase
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, status, email_subject, email_body, sms_body),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
     .eq('campaign.status', 'active')
     .is('client.unsubscribed_at', null)
-    .or(`next_send_at.lte.${now},and(campaign.frequency.eq.one-time,campaign.send_date.eq.${today})`)
+    .not('next_send_at', 'is', null)
+    .lte('next_send_at', now)
     .limit(50);
 
   if (fetchErr) {
