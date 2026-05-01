@@ -372,19 +372,22 @@ export default function CRMPage() {
   const [clientActivities, setClientActivities] = useState<CRMActivity[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [newActivity, setNewActivity] = useState<{ type: CRMActivity['type']; note: string }>({ type: 'call', note: '' });
+  const [clientCampaignSends, setClientCampaignSends] = useState<(CampaignSend & { campaign_name?: string })[]>([]);
 
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(''), 3000);
   }
 
-  // Load activities whenever profile modal opens/closes
+  // Load activities + campaign sends whenever client modal opens/closes
   useEffect(() => {
     if (activeClient) {
       loadClientActivities(activeClient.id);
+      loadClientCampaignSends(activeClient.id);
       setNewActivity({ type: 'call', note: '' });
     } else {
       setClientActivities([]);
+      setClientCampaignSends([]);
     }
   }, [activeClient?.id]); // eslint-disable-line
 
@@ -654,6 +657,18 @@ export default function CRMPage() {
       .order('created_at', { ascending: false });
     setClientActivities((data ?? []) as CRMActivity[]);
     setActivityLoading(false);
+  }
+
+  async function loadClientCampaignSends(clientId: string) {
+    const { data } = await supabase
+      .from('crm_campaign_sends')
+      .select('*, campaign:crm_campaigns(name)')
+      .eq('client_id', clientId)
+      .order('sent_at', { ascending: false })
+      .limit(50);
+    setClientCampaignSends(
+      (data ?? []).map((s: any) => ({ ...s, campaign_name: s.campaign?.name ?? 'Campaign' }))
+    );
   }
 
   async function logActivity(clientId: string, type: CRMActivity['type'], note: string) {
@@ -3837,40 +3852,87 @@ export default function CRMPage() {
                     </div>
                   </div>
 
-                  {/* Activity feed */}
-                  {activityLoading ? (
-                    <div style={{ textAlign: 'center', padding: '16px 0', color: '#9ca3af', fontSize: 12 }}>Loading…</div>
-                  ) : clientActivities.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '16px 0', color: '#d1d5db', fontSize: 12 }}>No activity logged yet</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
-                      {clientActivities.map((act, i) => {
-                        const ta = timeAgo(act.created_at);
-                        const agentP = profiles.find(p => p.id === act.agent_id);
-                        const agentLabel = agentP ? `${agentP.first_name} ${agentP.last_name}` : profile!.id === act.agent_id ? `${profile!.first_name} ${profile!.last_name}` : 'Agent';
-                        return (
-                          <div key={act.id} style={{ display: 'flex', gap: 10, paddingBottom: 12 }}>
-                            {/* Timeline line */}
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f3f4f6', border: '2px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{activityIcon(act.type)}</div>
-                              {i < clientActivities.length - 1 && <div style={{ width: 2, flex: 1, background: '#f0f0f0', marginTop: 4, minHeight: 12 }} />}
-                            </div>
-                            {/* Content */}
-                            <div style={{ flex: 1, paddingTop: 3, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'capitalize' }}>{act.type.replace('_', ' ')}</span>
-                                <span style={{ fontSize: 10, color: '#9ca3af' }}>by {agentLabel}</span>
-                                <span style={{ marginLeft: 'auto', fontSize: 10, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                  {/* Activity feed — manual activities + campaign sends merged chronologically */}
+                  {(() => {
+                    // Build unified timeline entries
+                    const manualItems = clientActivities.map(act => ({
+                      id: act.id,
+                      kind: 'activity' as const,
+                      date: act.created_at,
+                      act,
+                    }));
+                    const campaignItems = clientCampaignSends.map(s => ({
+                      id: s.id,
+                      kind: 'campaign' as const,
+                      date: s.sent_at,
+                      send: s,
+                    }));
+                    const allItems = [...manualItems, ...campaignItems]
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                    if (activityLoading) return (
+                      <div style={{ textAlign: 'center', padding: '16px 0', color: '#9ca3af', fontSize: 12 }}>Loading…</div>
+                    );
+                    if (allItems.length === 0) return (
+                      <div style={{ textAlign: 'center', padding: '16px 0', color: '#d1d5db', fontSize: 12 }}>No activity logged yet</div>
+                    );
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
+                        {allItems.map((item, i) => {
+                          const ta = timeAgo(item.date);
+                          const isLast = i === allItems.length - 1;
+
+                          if (item.kind === 'activity') {
+                            const act = item.act;
+                            const agentP = profiles.find(p => p.id === act.agent_id);
+                            const agentLabel = agentP ? `${agentP.first_name} ${agentP.last_name}` : profile!.id === act.agent_id ? `${profile!.first_name} ${profile!.last_name}` : 'Agent';
+                            return (
+                              <div key={act.id} style={{ display: 'flex', gap: 10, paddingBottom: 12 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#f3f4f6', border: '2px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>{activityIcon(act.type)}</div>
+                                  {!isLast && <div style={{ width: 2, flex: 1, background: '#f0f0f0', marginTop: 4, minHeight: 12 }} />}
+                                </div>
+                                <div style={{ flex: 1, paddingTop: 3, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'capitalize' }}>{act.type.replace('_', ' ')}</span>
+                                    <span style={{ fontSize: 10, color: '#9ca3af' }}>by {agentLabel}</span>
+                                    <span style={{ marginLeft: 'auto', fontSize: 10, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                  </div>
+                                  {act.note && (
+                                    <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, background: '#f9fafb', borderRadius: 6, padding: '6px 8px' }}>{act.note}</div>
+                                  )}
+                                </div>
                               </div>
-                              {act.note && (
-                                <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, background: '#f9fafb', borderRadius: 6, padding: '6px 8px' }}>{act.note}</div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                            );
+                          } else {
+                            // Campaign send entry
+                            const s = item.send;
+                            const statusColor = s.status === 'sent' ? { bg: '#dcfce7', color: '#166534' } : s.status === 'failed' ? { bg: '#fee2e2', color: '#991b1b' } : { bg: '#f3f4f6', color: '#6b7280' };
+                            return (
+                              <div key={s.id} style={{ display: 'flex', gap: 10, paddingBottom: 12 }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#fef3e2', border: '2px solid #fde68a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0 }}>📧</div>
+                                  {!isLast && <div style={{ width: 2, flex: 1, background: '#f0f0f0', marginTop: 4, minHeight: 12 }} />}
+                                </div>
+                                <div style={{ flex: 1, paddingTop: 3, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#374151' }}>Campaign Email</span>
+                                    <span style={{ fontSize: 9, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: statusColor.bg, color: statusColor.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.status}</span>
+                                    <span style={{ marginLeft: 'auto', fontSize: 10, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#374151', fontWeight: 600, marginBottom: 2 }}>{s.campaign_name}</div>
+                                  {s.subject && <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 3 }}>Subject: {s.subject}</div>}
+                                  {s.body_preview && (
+                                    <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.4, background: '#f9fafb', borderRadius: 6, padding: '5px 8px', whiteSpace: 'pre-wrap', overflow: 'hidden', maxHeight: 48, textOverflow: 'ellipsis' }}>{s.body_preview}</div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          }
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Meta */}
