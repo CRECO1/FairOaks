@@ -2399,15 +2399,19 @@ export default function CRMPage() {
                   {/* Settings tab */}
                   {campaignTab === 'settings' && (
                     <div style={{ display: 'grid', gap: 12 }}>
-                      {[
+                      {([
                         ['Type', activeCampaign.type.toUpperCase()],
                         ['Frequency', activeCampaign.frequency.charAt(0).toUpperCase() + activeCampaign.frequency.slice(1)],
                         ['Status', activeCampaign.status.charAt(0).toUpperCase() + activeCampaign.status.slice(1)],
+                        ...(activeCampaign.frequency === 'one-time' && activeCampaign.send_date ? [
+                          ['Scheduled Date', new Date(activeCampaign.send_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })],
+                          ['Scheduled Time (CT)', (() => { const [h, m] = (activeCampaign.send_time || '08:00').split(':'); const hr = parseInt(h); return `${hr % 12 || 12}:${m} ${hr < 12 ? 'AM' : 'PM'}`; })()],
+                        ] : []),
                         ['Created', new Date(activeCampaign.created_at).toLocaleDateString()],
-                      ].map(([label, val]) => (
+                      ] as [string, string][]).map(([label, val]) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
                           <span style={{ color: '#6b7280', fontWeight: 500 }}>{label}</span>
-                          <span style={{ color: '#111', fontWeight: 600 }}>{val}</span>
+                          <span style={{ color: label === 'Scheduled Time (CT)' ? '#c9922c' : '#111', fontWeight: 600 }}>{val}</span>
                         </div>
                       ))}
                       {activeCampaign.type === 'email' && activeCampaign.email_subject && (
@@ -2461,7 +2465,15 @@ export default function CRMPage() {
                           </div>
                           <div>
                             <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Time (CT) *</label>
-                            <input className="crm-input" type="time" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })} />
+                            <select className="crm-input" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
+                              {Array.from({ length: 24 * 4 }, (_, i) => {
+                                const h = Math.floor(i / 4);
+                                const m = (i % 4) * 15;
+                                const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                                const label = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+                                return <option key={val} value={val}>{label}</option>;
+                              })}
+                            </select>
                           </div>
                           <div style={{ gridColumn: '1/-1' }}>
                             <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>⏰ Sends once on the selected date & time (Central Time), then deactivates automatically.</div>
