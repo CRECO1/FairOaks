@@ -12,7 +12,11 @@ const supabase = createClient(
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; }
+interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
+interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
+interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
+interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
@@ -22,6 +26,7 @@ interface Campaign { id: string; created_by: string; name: string; description: 
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
+const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
 const STAGES = ['Prospect', 'Active', 'In Contract', 'Closed', 'Lost'];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
@@ -253,7 +258,7 @@ export default function CRMPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -280,7 +285,7 @@ export default function CRMPage() {
   const [showAddClient, setShowAddClient] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
-  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], notes: '' });
+  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '' });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState<'nc' | 'ec' | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -317,10 +322,36 @@ export default function CRMPage() {
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
 
+  // Smart Lists & Contact Filters
+  const [smartLists, setSmartLists] = useState<SmartList[]>([]);
+  const [contactTypeFilter, setContactTypeFilter] = useState('');
+  const [contactTagFilter, setContactTagFilter] = useState('');
+  const [contactSourceFilter, setContactSourceFilter] = useState('');
+  const [showSaveList, setShowSaveList] = useState(false);
+  const [newListName, setNewListName] = useState('');
+  const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
+
+  // Action Plans
+  const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
+  const [activeActionPlan, setActiveActionPlan] = useState<ActionPlan | null>(null);
+  const [actionPlanView, setActionPlanView] = useState<'list' | 'builder' | 'detail'>('list');
+  const [actionPlanTab, setActionPlanTab] = useState<'enrolled' | 'history' | 'settings'>('enrolled');
+  const [actionPlanEnrollments, setActionPlanEnrollments] = useState<ActionPlanEnrollment[]>([]);
+  const [actionPlanLoading, setActionPlanLoading] = useState(false);
+  const [planSteps, setPlanSteps] = useState<ActionPlanStep[]>([]);
+  const [newPlan, setNewPlan] = useState({ name: '', description: '', trigger_type: 'manual' as ActionPlan['trigger_type'], trigger_value: '', status: 'active' as 'active' | 'paused' });
+  const [selectedPlanEnrollIds, setSelectedPlanEnrollIds] = useState<string[]>([]);
+  const [planEnrollSearch, setPlanEnrollSearch] = useState('');
+
+  // Activity Report
+  const [activityReport, setActivityReport] = useState<{ agent_id: string; name: string; calls: number; emails: number; meetings: number; notes: number; total: number }[]>([]);
+  const [activityReportDays, setActivityReportDays] = useState(30);
+  const [activityReportLoading, setActivityReportLoading] = useState(false);
+
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
   // New client form
-  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], notes: '' });
+  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '' });
   // Invite form
   const [inv, setInv] = useState({ email: '', first_name: '', last_name: '', phone: '', license: '' });
   // New email form
@@ -525,7 +556,7 @@ export default function CRMPage() {
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
-      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', notes: '' });
+      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '' });
       setShowAddClient(false);
       loadClients(profile!);
     }
@@ -558,6 +589,8 @@ export default function CRMPage() {
       size_range: c.size_range ?? '',
       asset_types: c.asset_types ?? [],
       type: c.type,
+      tags: c.tags ?? [],
+      lead_source: c.lead_source ?? '',
       notes: c.notes ?? '',
     });
     setEditClient(c);
@@ -586,6 +619,8 @@ export default function CRMPage() {
       size_range: ec.size_range,
       asset_types: ec.asset_types,
       type: ec.type,
+      tags: ec.tags,
+      lead_source: ec.lead_source,
       notes: ec.notes,
     }).eq('id', editClient.id);
     if (error) {
@@ -986,6 +1021,145 @@ export default function CRMPage() {
     loadCampaignEnrollments(campaignId);
   }
 
+  // ── Smart Lists ───────────────────────────────────────────────────────────────
+  async function loadSmartLists() {
+    const res = await fetch('/api/smart-lists');
+    if (res.ok) { const j = await res.json(); setSmartLists(j.smartLists ?? []); }
+  }
+
+  async function saveSmartList() {
+    if (!newListName.trim()) { showToast('Enter a list name'); return; }
+    const filters: Record<string, any> = {};
+    if (contactTypeFilter) filters.type = contactTypeFilter;
+    if (contactTagFilter) filters.tag = contactTagFilter;
+    if (contactSourceFilter) filters.lead_source = contactSourceFilter;
+    const res = await fetch('/api/smart-lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newListName.trim(), filters, created_by: session!.user.id, is_shared: true }),
+    });
+    if (res.ok) { showToast(`"${newListName}" saved`); setNewListName(''); setShowSaveList(false); loadSmartLists(); }
+    else showToast('Error saving list');
+  }
+
+  async function deleteSmartList(id: string) {
+    await fetch(`/api/smart-lists?id=${id}`, { method: 'DELETE' });
+    setSmartLists(prev => prev.filter(s => s.id !== id));
+    showToast('List deleted');
+  }
+
+  function applySmartList(sl: SmartList) {
+    setContactTypeFilter(sl.filters.type ?? '');
+    setContactTagFilter(sl.filters.tag ?? '');
+    setContactSourceFilter(sl.filters.lead_source ?? '');
+  }
+
+  // ── Action Plans ──────────────────────────────────────────────────────────────
+  async function loadActionPlans() {
+    setActionPlanLoading(true);
+    const res = await fetch('/api/action-plans');
+    if (res.ok) { const j = await res.json(); setActionPlans(j.plans ?? []); }
+    setActionPlanLoading(false);
+  }
+
+  async function saveActionPlan() {
+    setSaving(true);
+    const url = activeActionPlan ? `/api/action-plans/${activeActionPlan.id}` : '/api/action-plans';
+    const method = activeActionPlan ? 'PATCH' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newPlan, created_by: session!.user.id }),
+    });
+    const j = await res.json();
+    if (!res.ok) { showToast('Error: ' + j.error); setSaving(false); return; }
+    const planId = activeActionPlan?.id ?? j.plan?.id;
+    // Save steps
+    if (planId && planSteps.length > 0) {
+      await fetch(`/api/action-plans/${planId}/steps`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steps: planSteps }),
+      });
+    }
+    showToast(activeActionPlan ? 'Plan updated' : 'Plan created');
+    setActionPlanView('list');
+    setActiveActionPlan(null);
+    setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active' });
+    setPlanSteps([]);
+    loadActionPlans();
+    setSaving(false);
+  }
+
+  async function deleteActionPlan(id: string) {
+    if (!confirm('Delete this action plan? This cannot be undone.')) return;
+    await fetch(`/api/action-plans/${id}`, { method: 'DELETE' });
+    showToast('Plan deleted');
+    setActiveActionPlan(null);
+    setActionPlanView('list');
+    loadActionPlans();
+  }
+
+  async function loadActionPlanEnrollments(planId: string) {
+    const res = await fetch(`/api/action-plans/${planId}/enrollments`);
+    if (res.ok) { const j = await res.json(); setActionPlanEnrollments(j.enrollments ?? []); }
+  }
+
+  async function enrollInActionPlan(planId: string) {
+    if (!selectedPlanEnrollIds.length) { showToast('Select at least one client'); return; }
+    const res = await fetch(`/api/action-plans/${planId}/enrollments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_ids: selectedPlanEnrollIds, agent_id: session!.user.id }),
+    });
+    const j = await res.json();
+    if (!res.ok) showToast('Error: ' + j.error);
+    else { showToast(`Enrolled ${j.enrolled} client${j.enrolled !== 1 ? 's' : ''}`); setSelectedPlanEnrollIds([]); loadActionPlanEnrollments(planId); }
+  }
+
+  async function unenrollFromActionPlan(planId: string, clientId: string) {
+    await fetch(`/api/action-plans/${planId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
+    showToast('Client removed from plan');
+    loadActionPlanEnrollments(planId);
+  }
+
+  function addPlanStep() {
+    const order = planSteps.length + 1;
+    setPlanSteps(prev => [...prev, { step_order: order, type: 'email', delay_days: order === 1 ? 0 : 3, subject: '', body: '' }]);
+  }
+
+  function updatePlanStep(idx: number, patch: Partial<ActionPlanStep>) {
+    setPlanSteps(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
+  }
+
+  function removePlanStep(idx: number) {
+    setPlanSteps(prev => prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, step_order: i + 1 })));
+  }
+
+  // ── Activity Report ───────────────────────────────────────────────────────────
+  async function loadActivityReport(days: number) {
+    setActivityReportLoading(true);
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    const { data } = await supabase
+      .from('crm_activity')
+      .select('agent_id, type')
+      .gte('created_at', since);
+    const map: Record<string, { calls: number; emails: number; meetings: number; notes: number }> = {};
+    (data ?? []).forEach((row: any) => {
+      if (!map[row.agent_id]) map[row.agent_id] = { calls: 0, emails: 0, meetings: 0, notes: 0 };
+      if (row.type === 'call') map[row.agent_id].calls++;
+      else if (row.type === 'email') map[row.agent_id].emails++;
+      else if (row.type === 'meeting') map[row.agent_id].meetings++;
+      else map[row.agent_id].notes++;
+    });
+    const report = Object.entries(map).map(([agent_id, counts]) => {
+      const p = profiles.find(x => x.id === agent_id);
+      return { agent_id, name: p ? `${p.first_name} ${p.last_name}` : 'Unknown', ...counts, total: counts.calls + counts.emails + counts.meetings + counts.notes };
+    }).sort((a, b) => b.total - a.total);
+    setActivityReport(report);
+    setActivityReportLoading(false);
+  }
+
   // ── Kanban drag & drop ────────────────────────────────────────────────────────
   async function updateDealStage(dealId: string, newStage: string) {
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, stage: newStage, last_touch: today() } : d));
@@ -1050,7 +1224,7 @@ export default function CRMPage() {
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -1107,13 +1281,14 @@ export default function CRMPage() {
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>People</div>
-          <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); }}>👥 &nbsp;Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
-          {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); }}>🤝 &nbsp;Broker / Agents</button>}
+          <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>👥 &nbsp;Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
+          {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}>🤝 &nbsp;Broker / Agents</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); }}>📣 &nbsp;Campaigns</button>
+          <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); }}>⚡ &nbsp;Action Plans</button>
         </div>
         <div style={{ marginTop: 'auto', padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
           {/* Gmail / Calendar accounts */}
@@ -1309,6 +1484,56 @@ export default function CRMPage() {
           {/* ── Clients ── */}
           {page === 'contacts' && (
             <div>
+              {/* Smart Filter Bar */}
+              {clients.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  {/* Saved Smart Lists */}
+                  {smartLists.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, alignSelf: 'center', textTransform: 'uppercase', letterSpacing: 1 }}>Lists:</span>
+                      {smartLists.map(sl => (
+                        <button key={sl.id} onClick={() => applySmartList(sl)}
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 4 }}>
+                          📋 {sl.name}
+                          <span onClick={e => { e.stopPropagation(); deleteSmartList(sl.id); }} style={{ color: '#9ca3af', fontSize: 10, marginLeft: 2, cursor: 'pointer' }}>✕</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Filter row */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {/* Type filter */}
+                    <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: contactTypeFilter ? '#111' : '#9ca3af', background: contactTypeFilter ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
+                      <option value="">All Types</option>
+                      {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    {/* Lead source filter */}
+                    <select value={contactSourceFilter} onChange={e => setContactSourceFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: contactSourceFilter ? '#111' : '#9ca3af', background: contactSourceFilter ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
+                      <option value="">All Sources</option>
+                      {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    {/* Tag filter */}
+                    <input placeholder="🏷 Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
+                      style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140, background: contactTagFilter ? '#f0fdf4' : '#fff' }} />
+                    {/* Clear */}
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter) && (
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
+                    )}
+                    {/* Save as Smart List */}
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter) && !showSaveList && (
+                      <button onClick={() => setShowSaveList(true)} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #c9922c', fontSize: 12, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>💾 Save List</button>
+                    )}
+                    {showSaveList && (
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input autoFocus placeholder="List name…" value={newListName} onChange={e => setNewListName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveSmartList(); if (e.key === 'Escape') setShowSaveList(false); }}
+                          style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #c9922c', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140 }} />
+                        <button onClick={saveSmartList} style={{ padding: '4px 10px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Save</button>
+                        <button onClick={() => setShowSaveList(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {clients.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0' }}>
                   <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
@@ -1316,10 +1541,18 @@ export default function CRMPage() {
                   <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Add buyers, sellers, tenants, landlords, and outside brokers/agents — all in one place.</div>
                   <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add First Client</button>
                 </div>
-              ) : isMobile ? (
+              ) : (() => {
+                const filteredContacts = clients.filter(c => {
+                  if (contactTypeFilter && c.type !== contactTypeFilter) return false;
+                  if (contactSourceFilter && c.lead_source !== contactSourceFilter) return false;
+                  if (contactTagFilter && !(c.tags ?? []).some(t => t.toLowerCase().includes(contactTagFilter.toLowerCase()))) return false;
+                  return true;
+                });
+                return isMobile ? (
               /* ── Mobile Contact Cards ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {clients.map(c => {
+                {filteredContacts.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</div>}
+                {filteredContacts.map(c => {
                   const ta = timeAgo(c.last_touched_at);
                   const clientDeals = deals.filter(d => d.client_id === c.id);
                   const activeDeals = clientDeals.filter(d => ['Active', 'In Contract'].includes(d.stage));
@@ -1377,11 +1610,11 @@ export default function CRMPage() {
                         <th style={{ width: 36, paddingRight: 0 }}>
                           <input
                             type="checkbox"
-                            title={selectedClientIds.size === clients.length ? 'Deselect all' : 'Select all'}
-                            checked={clients.length > 0 && selectedClientIds.size === clients.length}
-                            ref={el => { if (el) el.indeterminate = selectedClientIds.size > 0 && selectedClientIds.size < clients.length; }}
+                            title={selectedClientIds.size === filteredContacts.length ? 'Deselect all' : 'Select all'}
+                            checked={filteredContacts.length > 0 && selectedClientIds.size === filteredContacts.length}
+                            ref={el => { if (el) el.indeterminate = selectedClientIds.size > 0 && selectedClientIds.size < filteredContacts.length; }}
                             onChange={e => {
-                              if (e.target.checked) setSelectedClientIds(new Set(clients.map(c => c.id)));
+                              if (e.target.checked) setSelectedClientIds(new Set(filteredContacts.map(c => c.id)));
                               else setSelectedClientIds(new Set());
                             }}
                             style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
@@ -1389,21 +1622,19 @@ export default function CRMPage() {
                         </th>
                         <th>Name</th>
                         <th>Type</th>
-                        <th>Business / Brokerage</th>
+                        <th>Source</th>
+                        <th>Tags</th>
                         <th>Email</th>
                         <th>Phone</th>
-                        <th>Cell</th>
-                        <th>Address</th>
                         <th>Active Deals</th>
-                        <th>Tagged Agents</th>
                         {isAdmin && <th>Owner</th>}
-                        <th>Added</th>
                         <th>Last Contact</th>
                         {isAdmin && <th></th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {clients.map(c => {
+                      {filteredContacts.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
+                      {filteredContacts.map(c => {
                         const clientDeals = deals.filter(d => d.client_id === c.id);
                         const activeDeals = clientDeals.filter(d => ['Active', 'In Contract'].includes(d.stage));
                         const taggedAgents = (c.assigned_agent_ids ?? []).map(aid => profiles.find(p => p.id === aid)).filter(Boolean) as Profile[];
@@ -1446,11 +1677,19 @@ export default function CRMPage() {
                               </span>
                             </td>
 
-                            {/* Business / Brokerage */}
-                            <td style={{ fontSize: 12, color: '#374151' }}>
-                              {c.business_name || c.brokerage
-                                ? <div><div style={{ fontWeight: 500 }}>{c.business_name || ''}</div>{c.brokerage && <div style={{ color: '#9ca3af', fontSize: 11 }}>{c.brokerage}</div>}</div>
-                                : <span style={{ color: '#d1d5db' }}>—</span>}
+                            {/* Lead Source */}
+                            <td style={{ fontSize: 11, color: '#6b7280' }}>
+                              {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 500 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
+                            </td>
+
+                            {/* Tags */}
+                            <td>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                                {(c.tags ?? []).slice(0, 3).map(tag => (
+                                  <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>{tag}</span>
+                                ))}
+                                {(c.tags ?? []).length > 3 && <span style={{ fontSize: 10, color: '#9ca3af' }}>+{(c.tags ?? []).length - 3}</span>}
+                              </div>
                             </td>
 
                             {/* Email */}
@@ -1594,7 +1833,8 @@ export default function CRMPage() {
                     </tbody>
                   </table>
                 </div>
-              )}
+                ); // end desktop table return
+              })() /* end filteredContacts IIFE */}
             </div>
           )}
 
@@ -1775,7 +2015,7 @@ export default function CRMPage() {
           )}
 
           {/* ── Agents (admin only) ── */}
-          {page === 'agents' && isAdmin && (
+          {page === 'agents' && isAdmin && (<>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
               {profiles.map(a => {
                 const agDeals = deals.filter(d => d.agent_id === a.id);
@@ -1831,7 +2071,65 @@ export default function CRMPage() {
               })}
               {profiles.length === 0 && <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 40, color: '#9ca3af' }}>No agents yet. Invite one above.</div>}
             </div>
-          )}
+
+            {/* ── Activity Report ── */}
+
+            {isAdmin && (
+              <div style={{ marginTop: 32 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div>
+                    <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', marginBottom: 2 }}>Activity Report</h3>
+                    <p style={{ fontSize: 12, color: '#6b7280' }}>Calls, emails, meetings & notes logged by each agent</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[7, 30, 90].map(d => (
+                      <button key={d} onClick={() => { setActivityReportDays(d); loadActivityReport(d); }}
+                        style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", background: activityReportDays === d ? '#111' : '#fff', color: activityReportDays === d ? '#fff' : '#6b7280', borderColor: activityReportDays === d ? '#111' : '#e5e7eb' }}>
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {activityReportLoading ? (
+                  <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>Loading…</div>
+                ) : activityReport.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb' }}>No activity logged in the last {activityReportDays} days.</div>
+                ) : (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                          {['Agent', 'Calls', 'Emails', 'Meetings', 'Notes', 'Total'].map(h => (
+                            <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Agent' ? 'left' : 'center', fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: 0.5, textTransform: 'uppercase' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityReport.map((row, i) => (
+                          <tr key={row.agent_id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                            <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: 13 }}>{row.name}</td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13 }}>
+                              <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 8, fontWeight: 600, fontSize: 12 }}>{row.calls}</span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13 }}>
+                              <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: 8, fontWeight: 600, fontSize: 12 }}>{row.emails}</span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13 }}>
+                              <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 8, fontWeight: 600, fontSize: 12 }}>{row.meetings}</span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: 13 }}>
+                              <span style={{ background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 8, fontWeight: 600, fontSize: 12 }}>{row.notes}</span>
+                            </td>
+                            <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: 700, fontSize: 14, color: '#c9922c' }}>{row.total}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </>)}
 
           {/* ── Campaigns Page ── */}
           {page === 'campaigns' && (
@@ -2177,6 +2475,231 @@ export default function CRMPage() {
               )}
             </div>
           )}
+
+          {/* ── Action Plans Page ── */}
+          {page === 'action-plans' && (
+            <div style={{ padding: isMobile ? '16px' : '28px', flex: 1, overflowY: 'auto' }}>
+
+              {/* List view */}
+              {actionPlanView === 'list' && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                    <div>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Action Plans</h2>
+                      <p style={{ fontSize: 13, color: '#6b7280' }}>Multi-step sequences triggered automatically or manually applied to contacts</p>
+                    </div>
+                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ New Plan</button>
+                  </div>
+
+                  {actionPlanLoading ? (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading…</div>
+                  ) : actionPlans.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+                      <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
+                      <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No action plans yet</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Build multi-step follow-up sequences that run automatically</div>
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ Create First Plan</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {actionPlans.map(plan => (
+                        <div key={plan.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>⚡</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{plan.name}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
+                              <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#ede9fe', color: '#6d28d9' }}>{plan.trigger_type.replace('_', ' ')}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: '#6b7280' }}>
+                              {plan.step_count ?? 0} steps · {plan.enrollment_count ?? 0} enrolled
+                              {plan.description && ` · ${plan.description}`}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setActionPlanView('detail'); }}>Manage</button>
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); setNewPlan({ name: plan.name, description: plan.description, trigger_type: plan.trigger_type, trigger_value: plan.trigger_value ?? '', status: plan.status }); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setPlanSteps(j.plan?.steps ?? [])); setActionPlanView('builder'); }}>Edit</button>}
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteActionPlan(plan.id)}>🗑</button>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Detail view */}
+              {actionPlanView === 'detail' && activeActionPlan && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                    <button onClick={() => { setActionPlanView('list'); setActiveActionPlan(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', padding: 0 }}>←</button>
+                    <div style={{ flex: 1 }}>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{activeActionPlan.name}</h2>
+                      <div style={{ fontSize: 12, color: '#6b7280' }}>{activeActionPlan.trigger_type.replace(/_/g, ' ')} · <span style={{ color: activeActionPlan.status === 'active' ? '#16a34a' : '#d97706', fontWeight: 600 }}>{activeActionPlan.status}</span></div>
+                    </div>
+                    {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteActionPlan(activeActionPlan.id)}>🗑 Delete</button>}
+                  </div>
+
+                  {/* Tabs */}
+                  <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #e5e7eb' }}>
+                    {(['enrolled', 'history', 'settings'] as const).map(tab => (
+                      <button key={tab} onClick={() => setActionPlanTab(tab)}
+                        style={{ padding: '8px 18px', background: 'none', border: 'none', borderBottom: actionPlanTab === tab ? '2px solid #c9922c' : '2px solid transparent', color: actionPlanTab === tab ? '#c9922c' : '#6b7280', fontWeight: actionPlanTab === tab ? 700 : 400, cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", marginBottom: -1, textTransform: 'capitalize' }}>
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Enrolled tab */}
+                  {actionPlanTab === 'enrolled' && (
+                    <div>
+                      {/* Enroll clients */}
+                      <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Enroll Contacts</div>
+                        <input className="crm-input" placeholder="🔍 Search contacts…" value={planEnrollSearch} onChange={e => setPlanEnrollSearch(e.target.value)} style={{ marginBottom: 10 }} />
+                        <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {clients.filter(c => {
+                            const enrolled = actionPlanEnrollments.some(e => e.client_id === c.id && e.active);
+                            if (enrolled) return false;
+                            if (!planEnrollSearch) return true;
+                            return `${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(planEnrollSearch.toLowerCase());
+                          }).map(c => (
+                            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? '#fef9f0' : 'transparent' }}>
+                              <input type="checkbox" checked={selectedPlanEnrollIds.includes(c.id)} onChange={e => setSelectedPlanEnrollIds(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} style={{ accentColor: '#c9922c' }} />
+                              <span style={{ fontSize: 13, color: '#111' }}>{c.first_name} {c.last_name}</span>
+                              <span style={{ fontSize: 11, color: '#9ca3af' }}>{c.type}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <button className="crm-btn crm-btn-gold" style={{ marginTop: 10 }} onClick={() => enrollInActionPlan(activeActionPlan.id)} disabled={selectedPlanEnrollIds.length === 0}>
+                          Enroll {selectedPlanEnrollIds.length > 0 ? `(${selectedPlanEnrollIds.length})` : ''}
+                        </button>
+                      </div>
+                      {/* Enrolled list */}
+                      {actionPlanEnrollments.filter(e => e.active).length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af' }}>No contacts enrolled yet.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {actionPlanEnrollments.filter(e => e.active).map(e => (
+                            <div key={e.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, fontSize: 13 }}>{e.client?.first_name} {e.client?.last_name}</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af' }}>Step {e.current_step} · {e.next_step_at ? `Next: ${new Date(e.next_step_at).toLocaleDateString()}` : 'Completed'}</div>
+                              </div>
+                              <button onClick={() => unenrollFromActionPlan(activeActionPlan.id, e.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 6, color: '#ef4444', fontSize: 11, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Settings tab */}
+                  {actionPlanTab === 'settings' && (
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {[['Trigger', activeActionPlan.trigger_type.replace(/_/g, ' ')], ['Trigger Value', activeActionPlan.trigger_value || '—'], ['Status', activeActionPlan.status], ['Created', new Date(activeActionPlan.created_at).toLocaleDateString()]].map(([l, v]) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
+                          <span style={{ color: '#6b7280', fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 600 }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Builder view */}
+              {actionPlanView === 'builder' && (
+                <div style={{ maxWidth: 680 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                    <button onClick={() => setActionPlanView(activeActionPlan ? 'detail' : 'list')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', padding: 0 }}>←</button>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{activeActionPlan ? 'Edit Plan' : 'New Action Plan'}</h2>
+                  </div>
+
+                  {/* Plan details */}
+                  <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 14 }}>Plan Details</div>
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Plan Name *</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.name} onChange={e => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="e.g. New Buyer Welcome Sequence" /></div>
+                      <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.description} onChange={e => setNewPlan({ ...newPlan, description: e.target.value })} placeholder="What does this plan do?" /></div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Trigger</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newPlan.trigger_type} onChange={e => setNewPlan({ ...newPlan, trigger_type: e.target.value as ActionPlan['trigger_type'], trigger_value: '' })}>
+                            <option value="manual">Manual (apply manually)</option>
+                            <option value="new_contact">New Contact Added</option>
+                            <option value="tag_added">Tag Added</option>
+                            <option value="stage_change">Deal Stage Change</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newPlan.status} onChange={e => setNewPlan({ ...newPlan, status: e.target.value as 'active' | 'paused' })}>
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                          </select>
+                        </div>
+                      </div>
+                      {(newPlan.trigger_type === 'tag_added') && (
+                        <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Tag Name</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.trigger_value} onChange={e => setNewPlan({ ...newPlan, trigger_value: e.target.value })} placeholder="e.g. Hot Lead" /></div>
+                      )}
+                      {(newPlan.trigger_type === 'stage_change') && (
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Stage</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newPlan.trigger_value} onChange={e => setNewPlan({ ...newPlan, trigger_value: e.target.value })}>
+                            <option value="">Select stage…</option>
+                            {STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Steps */}
+                  <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Steps ({planSteps.length})</div>
+                      <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={addPlanStep}>+ Add Step</button>
+                    </div>
+                    {planSteps.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 13 }}>No steps yet. Add your first step above.</div>}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {planSteps.map((step, idx) => (
+                        <div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, background: '#fafafa', position: 'relative' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{step.step_order}</div>
+                            <select value={step.type} onChange={e => updatePlanStep(idx, { type: e.target.value as ActionPlanStep['type'] })}
+                              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", background: '#fff' }}>
+                              <option value="email">✉️ Email</option>
+                              <option value="sms">💬 SMS</option>
+                              <option value="task">✅ Task (reminder)</option>
+                              <option value="note">📝 Note</option>
+                            </select>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                              <span style={{ fontSize: 11, color: '#9ca3af' }}>Day</span>
+                              <input type="number" min={0} value={step.delay_days} onChange={e => updatePlanStep(idx, { delay_days: +e.target.value })}
+                                style={{ width: 52, padding: '4px 6px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", textAlign: 'center' }} />
+                            </div>
+                            <button onClick={() => removePlanStep(idx)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+                          </div>
+                          {(step.type === 'email') && (
+                            <input className="crm-input" placeholder="Subject line…" value={step.subject ?? ''} onChange={e => updatePlanStep(idx, { subject: e.target.value })} style={{ marginBottom: 8 }} />
+                          )}
+                          <textarea className="crm-input" style={{ minHeight: 80, resize: 'vertical', fontSize: 13 }}
+                            placeholder={step.type === 'email' ? 'Email body… (use {{first_name}}, {{agent_name}}, etc.)' : step.type === 'sms' ? 'SMS message…' : step.type === 'task' ? 'Task description for the agent…' : 'Note content…'}
+                            value={step.body} onChange={e => updatePlanStep(idx, { body: e.target.value })} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <button className="crm-btn crm-btn-ghost" onClick={() => setActionPlanView(activeActionPlan ? 'detail' : 'list')}>Cancel</button>
+                    <button className="crm-btn crm-btn-gold" onClick={saveActionPlan} disabled={saving || !newPlan.name}>{saving ? 'Saving…' : activeActionPlan ? 'Save Changes' : 'Create Plan'}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
         {/* Mobile bottom nav */}
         {isMobile && (
@@ -2742,6 +3265,32 @@ export default function CRMPage() {
 
               {/* ── Section: Notes ── */}
               <div>
+                {/* Lead Source & Tags */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Lead Source</label>
+                    <select className="crm-input" style={{ marginTop: 4 }} value={nc.lead_source} onChange={e => setNc({ ...nc, lead_source: e.target.value })}>
+                      <option value="">Select source…</option>
+                      {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tags</label>
+                    <div style={{ marginTop: 4, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
+                      onClick={() => document.getElementById('nc-tag-input')?.focus()}>
+                      {nc.tags.map(tag => (
+                        <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                          {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
+                        </span>
+                      ))}
+                      <input id="nc-tag-input" placeholder={nc.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
+                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!nc.tags.includes(tag)) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
+                        style={{ border: 'none', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>Press Enter or comma to add</div>
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                   <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
@@ -3314,6 +3863,32 @@ export default function CRMPage() {
                       <input className="crm-input" style={{ marginTop: 4 }} value={ec.zip} onChange={e => setEc({ ...ec, zip: e.target.value })} />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* ── Lead Source & Tags ── */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <label style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Lead Source</label>
+                  <select className="crm-input" style={{ marginTop: 4 }} value={ec.lead_source} onChange={e => setEc({ ...ec, lead_source: e.target.value })}>
+                    <option value="">Select source…</option>
+                    {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tags</label>
+                  <div style={{ marginTop: 4, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
+                    onClick={() => document.getElementById('ec-tag-input')?.focus()}>
+                    {ec.tags.map(tag => (
+                      <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                        {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
+                      </span>
+                    ))}
+                    <input id="ec-tag-input" placeholder={ec.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
+                      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!ec.tags.includes(tag)) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
+                      style={{ border: 'none', outline: 'none', fontSize: 12, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>Press Enter or comma to add</div>
                 </div>
               </div>
 

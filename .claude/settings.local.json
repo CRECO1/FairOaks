@@ -62,7 +62,10 @@
       "Bash(/usr/bin/curl -s --max-time 15 \"https://crecotx.com/\")",
       "Bash(/usr/bin/grep -oE \"2250 Chipley|1222 Chulie|1346 Parkridge|523 Seventh|Move-In Ready\")",
       "Bash(npm list *)",
-      "Bash(sudo npm *)"
+      "Bash(sudo npm *)",
+      "WebFetch(domain:www.followupboss.com)",
+      "WebSearch",
+      "Bash(awk '/page === .campaigns. &&/,0' \"/Users/zacharya.stovall/Downloads/Fairoaksrealtygroup-copy 2/src/app/crm/page.tsx\")"
     ]
   }
 }
