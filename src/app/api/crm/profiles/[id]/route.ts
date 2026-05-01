@@ -25,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_profiles')
-    .update({ ...update, updated_at: new Date().toISOString() })
+    .update(update)
     .eq('id', id)
     .select()
     .single();
