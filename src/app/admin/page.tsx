@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 
@@ -517,10 +518,22 @@ function DataTable({ tab }: { tab: Exclude<Tab, 'settings'> }) {
 }
 
 // ─── Main Admin Page ──────────────────────────────────────────────────────────
+const VALID_TABS = new Set<Tab>(['settings', 'listings', 'sold', 'agents', 'neighborhoods', 'testimonials', 'leads']);
+
 export default function AdminPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('settings');
+
+  const rawTab = searchParams.get('tab') as Tab | null;
+  const tab: Tab = rawTab && VALID_TABS.has(rawTab) ? rawTab : 'settings';
+
+  function setTab(t: Tab) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', t);
+    router.replace(`/admin?${params.toString()}`);
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
