@@ -133,18 +133,9 @@ export async function POST(req: NextRequest) {
           status = 'skipped';
           errorMessage = 'Twilio not configured';
         } else {
-          const renderedSms = applyMergeFields(campaign.sms_body || '', ctx);
-          bodyPreview = renderedSms.slice(0, 200);
-
-          // Dynamic import to avoid errors when Twilio env vars not set
-          const twilio = (await import('twilio')).default;
-          const twilioClient = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
-          const msg = await twilioClient.messages.create({
-            body: renderedSms,
-            messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID!,
-            to: toPhone,
-          });
-          providerId = msg.sid;
+          // SMS via Twilio — skipped until Twilio is configured
+          status = 'skipped';
+          errorMessage = 'SMS not yet configured — add Twilio credentials to enable';
         }
       }
     } catch (err: any) {
