@@ -176,8 +176,8 @@ export async function GET(req: NextRequest) {
     const nextSend = computeNextSend(campaign.frequency);
     if (campaign.frequency === 'one-time') {
       await supabase.from('crm_campaign_enrollments').update({ active: false, next_send_at: null }).eq('id', enrollment.id);
-      // Also pause the campaign itself so it doesn't re-trigger
-      await supabase.from('crm_campaigns').update({ status: 'paused' }).eq('id', campaign.id);
+      // Mark the campaign as completed so it doesn't re-trigger and shows in Completed filter
+      await supabase.from('crm_campaigns').update({ status: 'completed' }).eq('id', campaign.id);
     } else {
       await supabase.from('crm_campaign_enrollments').update({ next_send_at: nextSend }).eq('id', enrollment.id);
     }

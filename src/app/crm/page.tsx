@@ -22,7 +22,7 @@ interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
@@ -360,6 +360,23 @@ export default function CRMPage() {
   const [activityReportDays, setActivityReportDays] = useState(30);
   const [activityReportLoading, setActivityReportLoading] = useState(false);
 
+  // Global search (⌘K)
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Email preview
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
+
+  // Bulk unenroll
+  const [selectedUnenrollIds, setSelectedUnenrollIds] = useState<string[]>([]);
+
+  // Campaign completed filter
+  const [campaignFilter, setCampaignFilter] = useState<'all' | 'active' | 'draft' | 'paused' | 'completed'>('all');
+
+  // Action plan test send
+  const [testSending, setTestSending] = useState(false);
+
   // Agent profile editing
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editAgentForm, setEditAgentForm] = useState({ first_name: '', last_name: '', email: '', phone: '', license: '' });
@@ -403,6 +420,20 @@ export default function CRMPage() {
       emailEditorRef.current.innerHTML = newCampaign.email_body || '';
     }
   }, [campaignView]); // eslint-disable-line
+
+  // Global search keyboard shortcut (⌘K / Ctrl+K)
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowSearch(s => !s); setSearchQuery(''); }
+      if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); }
+    }
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
+  useEffect(() => {
+    if (showSearch) setTimeout(() => searchRef.current?.focus(), 50);
+  }, [showSearch]);
 
   // Sync URL hash → page state on browser back/forward
   useEffect(() => {
@@ -1192,6 +1223,30 @@ export default function CRMPage() {
     loadActionPlanEnrollments(planId);
   }
 
+  async function sendActionPlanTest(planId: string) {
+    if (!profile) return;
+    setTestSending(true);
+    const res = await fetch('/api/action-plans/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_id: planId, agent_id: profile.id }),
+    });
+    const j = await res.json();
+    if (res.ok) showToast(`Test email sent to ${j.to} ✓`);
+    else showToast('Error: ' + j.error);
+    setTestSending(false);
+  }
+
+  async function bulkUnenrollClients(campaignId: string) {
+    if (!selectedUnenrollIds.length) return;
+    await Promise.all(selectedUnenrollIds.map(clientId =>
+      fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) })
+    ));
+    showToast(`Removed ${selectedUnenrollIds.length} client${selectedUnenrollIds.length !== 1 ? 's' : ''}`);
+    setSelectedUnenrollIds([]);
+    loadCampaignEnrollments(campaignId);
+  }
+
   function addPlanStep() {
     const order = planSteps.length + 1;
     setPlanSteps(prev => [...prev, { step_order: order, type: 'email', delay_days: order === 1 ? 0 : 3, subject: '', body: '' }]);
@@ -1409,6 +1464,14 @@ export default function CRMPage() {
           <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1 }}>
             {pageLabel[page]}
           </h2>
+          {/* Global search trigger */}
+          <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: '#9ca3af', fontSize: 13, transition: 'all .15s' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#c9922c'; e.currentTarget.style.color = '#374151'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#9ca3af'; }}>
+            🔍 <span>Search…</span>
+            <kbd style={{ fontSize: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontFamily: 'monospace', marginLeft: 4 }}>⌘K</kbd>
+          </button>
           {page === 'deals' && <button className="crm-btn crm-btn-gold" onClick={() => setShowAddDeal(true)}>+ New Deal</button>}
           {page === 'contacts' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1488,28 +1551,38 @@ export default function CRMPage() {
 
               {/* Needs Attention widget */}
               {(() => {
-                const needsAttention = clients
-                  .filter(c => {
-                    if (!c.last_touched_at) return true;
-                    const days = Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / (1000 * 60 * 60 * 24));
-                    return days >= 30;
-                  })
-                  .sort((a, b) => {
-                    if (!a.last_touched_at) return -1;
-                    if (!b.last_touched_at) return 1;
-                    return new Date(a.last_touched_at).getTime() - new Date(b.last_touched_at).getTime();
-                  })
+                const withDays = clients.map(c => {
+                  const days = c.last_touched_at
+                    ? Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / (1000 * 60 * 60 * 24))
+                    : 9999;
+                  return { ...c, daysSince: days };
+                });
+                const overdue30  = withDays.filter(c => c.daysSince >= 30 && c.daysSince < 60).length;
+                const overdue60  = withDays.filter(c => c.daysSince >= 60 && c.daysSince < 90).length;
+                const overdue90  = withDays.filter(c => c.daysSince >= 90).length;
+                const totalOverdue = overdue30 + overdue60 + overdue90;
+                const top5 = withDays
+                  .filter(c => c.daysSince >= 30)
+                  .sort((a, b) => b.daysSince - a.daysSince)
                   .slice(0, 5);
-                if (needsAttention.length === 0) return null;
+                if (totalOverdue === 0) return null;
                 return (
                   <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fee2e2', padding: '16px 20px', marginBottom: 26 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>⚠️ Needs Attention</div>
-                      <button onClick={() => setPage('contacts')} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View all contacts →</button>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>⚠️ Needs Attention — {totalOverdue} Contact{totalOverdue !== 1 ? 's' : ''}</div>
+                      <button onClick={() => { setPage('contacts'); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View Follow-Up Report →</button>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
-                      {needsAttention.map(c => {
-                        const ta = timeAgo(c.last_touched_at);
+                    {/* Tier summary pills */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                      {overdue30 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>⏱ 30–60d: {overdue30}</span>}
+                      {overdue60 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fed7aa', color: '#c2410c' }}>⚡ 60–90d: {overdue60}</span>}
+                      {overdue90 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>🔥 90d+: {overdue90}</span>}
+                    </div>
+                    {/* Top 5 most overdue */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {top5.map(c => {
+                        const urgColor = c.daysSince >= 90 ? '#dc2626' : c.daysSince >= 60 ? '#c2410c' : '#a16207';
+                        const urgBg = c.daysSince >= 90 ? '#fee2e2' : c.daysSince >= 60 ? '#fed7aa' : '#fef9c3';
                         return (
                           <button key={c.id}
                             onClick={() => { setPage('contacts'); setActiveClient(c); }}
@@ -1519,9 +1592,11 @@ export default function CRMPage() {
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
-                              <div style={{ fontSize: 10, color: '#6b7280' }}>{c.type}</div>
+                              <div style={{ fontSize: 10, color: '#6b7280' }}>{c.type}{c.last_touched_at ? ` · Last touch ${new Date(c.last_touched_at).toLocaleDateString()}` : ' · Never contacted'}</div>
                             </div>
-                            <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: ta.color + '18', color: ta.color, fontWeight: 700, flexShrink: 0 }}>{ta.label}</span>
+                            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: urgBg, color: urgColor, fontWeight: 700, flexShrink: 0 }}>
+                              {c.daysSince >= 9000 ? 'Never' : `${c.daysSince}d`}
+                            </span>
                           </button>
                         );
                       })}
@@ -2387,6 +2462,18 @@ export default function CRMPage() {
                     </button>
                   </div>
 
+                  {/* Status filter tabs */}
+                  {campaigns.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+                      {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
+                        <button key={f} onClick={() => setCampaignFilter(f)}
+                          style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
+                          {f === 'all' ? `All (${campaigns.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${campaigns.filter(c => c.status === f).length})`}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {campaignLoading ? (
                     <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading campaigns…</div>
                   ) : campaigns.length === 0 ? (
@@ -2398,7 +2485,7 @@ export default function CRMPage() {
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
-                      {campaigns.map(camp => (
+                      {campaigns.filter(c => campaignFilter === 'all' || c.status === campaignFilter).map(camp => (
                         <div key={camp.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
                           <div style={{ width: 44, height: 44, borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
                             {camp.type === 'email' ? '✉️' : '💬'}
@@ -2406,7 +2493,7 @@ export default function CRMPage() {
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
                               <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{camp.name}</span>
-                              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 8px', borderRadius: 10, background: camp.status === 'active' ? '#dcfce7' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'paused' ? '#92400e' : '#6b7280', textTransform: 'uppercase' }}>{camp.status}</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                               <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', color: camp.type === 'email' ? '#1e40af' : '#065f46' }}>{camp.type.toUpperCase()}</span>
                             </div>
                             <div style={{ fontSize: 12, color: '#6b7280' }}>
@@ -2565,30 +2652,54 @@ export default function CRMPage() {
                       </div>
 
                       {/* Currently enrolled list */}
-                      <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Currently Enrolled ({campaignEnrollments.filter(e => e.active).length})</div>
-                      {campaignEnrollmentsLoading ? (
-                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>Loading…</div>
-                      ) : campaignEnrollments.filter(e => e.active).length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>No clients enrolled yet</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {campaignEnrollments.filter(e => e.active).map(en => (
-                            <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-                              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#111', flexShrink: 0 }}>
-                                {(en.client?.first_name?.[0] ?? '') + (en.client?.last_name?.[0] ?? '')}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 500 }}>{en.client?.first_name} {en.client?.last_name}</div>
-                                <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                                  Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}
-                                  {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
-                                </div>
-                              </div>
-                              <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 11, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
+                      {(() => {
+                        const activeEnrollments = campaignEnrollments.filter(e => e.active);
+                        const allUnenrollChecked = activeEnrollments.length > 0 && selectedUnenrollIds.length === activeEnrollments.length;
+                        return (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                              <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Currently Enrolled ({activeEnrollments.length})</div>
+                              {selectedUnenrollIds.length > 0 && (
+                                <button onClick={() => bulkUnenrollClients(activeCampaign.id)}
+                                  style={{ fontSize: 12, fontWeight: 700, color: '#991b1b', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                  Remove {selectedUnenrollIds.length} selected
+                                </button>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            {campaignEnrollmentsLoading ? (
+                              <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>Loading…</div>
+                            ) : activeEnrollments.length === 0 ? (
+                              <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>No clients enrolled yet</div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {/* Select all row */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px', background: '#f9fafb', borderRadius: 6, border: '1px dashed #e5e7eb' }}>
+                                  <input type="checkbox" checked={allUnenrollChecked} style={{ accentColor: '#c9922c', cursor: 'pointer' }}
+                                    onChange={e => setSelectedUnenrollIds(e.target.checked ? activeEnrollments.map(en => en.client_id) : [])} />
+                                  <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>Select all to remove</span>
+                                </div>
+                                {activeEnrollments.map(en => (
+                                  <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: selectedUnenrollIds.includes(en.client_id) ? '#fff5f5' : '#fff', border: `1px solid ${selectedUnenrollIds.includes(en.client_id) ? '#fecaca' : '#e5e7eb'}`, borderRadius: 8, transition: 'all .1s' }}>
+                                    <input type="checkbox" checked={selectedUnenrollIds.includes(en.client_id)} style={{ accentColor: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
+                                      onChange={e => setSelectedUnenrollIds(prev => e.target.checked ? [...prev, en.client_id] : prev.filter(id => id !== en.client_id))} />
+                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#111', flexShrink: 0 }}>
+                                      {(en.client?.first_name?.[0] ?? '') + (en.client?.last_name?.[0] ?? '')}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 500 }}>{en.client?.first_name} {en.client?.last_name}</div>
+                                      <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                                        Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}
+                                        {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
+                                      </div>
+                                    </div>
+                                    <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 11, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -2743,7 +2854,15 @@ export default function CRMPage() {
                       <div style={{ display: 'grid', gap: 14 }}>
                         <div><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject Line *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Hi {{first_name}}, here's your market update!" value={newCampaign.email_subject} onChange={e => setNewCampaign({ ...newCampaign, email_subject: e.target.value })} /></div>
                         <div>
-                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email Body *</label>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email Body *</label>
+                            {newCampaign.email_body.replace(/<[^>]*>/g, '').trim() && (
+                              <button type="button" onClick={() => setShowEmailPreview(true)}
+                                style={{ fontSize: 11, color: '#c9922c', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                👁 Preview
+                              </button>
+                            )}
+                          </div>
                           {/* Rich text toolbar */}
                           <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: '6px 6px 0 0', background: '#f9fafb', padding: '6px 10px', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                             {[
@@ -3019,11 +3138,22 @@ export default function CRMPage() {
                   {/* Settings tab */}
                   {actionPlanTab === 'settings' && (
                     <div style={{ display: 'grid', gap: 10 }}>
-                      {[['Trigger', activeActionPlan.trigger_type.replace(/_/g, ' ')], ['Trigger Value', activeActionPlan.trigger_value || '—'], ['Status', activeActionPlan.status], ['Created', new Date(activeActionPlan.created_at).toLocaleDateString()]].map(([l, v]) => (
+                      {[['Trigger', activeActionPlan.trigger_type.replace(/_/g, ' ')], ['Trigger Value', activeActionPlan.trigger_value || '—'], ['Status', activeActionPlan.status], ['Steps', String(activeActionPlan.steps?.length ?? activeActionPlan.step_count ?? 0)], ['Created', new Date(activeActionPlan.created_at).toLocaleDateString()]].map(([l, v]) => (
                         <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
-                          <span style={{ color: '#6b7280', fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 600 }}>{v}</span>
+                          <span style={{ color: '#6b7280', fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 600, textTransform: l === 'Trigger' ? 'capitalize' : undefined }}>{v}</span>
                         </div>
                       ))}
+                      {/* Test Send */}
+                      <div style={{ marginTop: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>🧪 Send Test Email</div>
+                        <div style={{ fontSize: 12, color: '#92400e', marginBottom: 12 }}>Sends Step 1 of this plan to your email with sample merge fields so you can see exactly how it looks before enrolling real contacts.</div>
+                        <button className="crm-btn crm-btn-sm" disabled={testSending}
+                          onClick={() => sendActionPlanTest(activeActionPlan.id)}
+                          style={{ background: '#c9922c', color: '#fff', border: 'none', padding: '7px 18px', fontSize: 13, borderRadius: 7, cursor: testSending ? 'not-allowed' : 'pointer', opacity: testSending ? 0.7 : 1, fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>
+                          {testSending ? 'Sending…' : `Send Test to ${profile?.email ?? 'me'}`}
+                        </button>
+                      </div>
+                      {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca', marginTop: 4 }} onClick={() => deleteActionPlan(activeActionPlan.id)}>🗑 Delete Plan</button>}
                     </div>
                   )}
                 </div>
@@ -4389,6 +4519,154 @@ export default function CRMPage() {
           </div>
         </div>
       )}
+
+      {/* ── Email Preview Modal ── */}
+      {showEmailPreview && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setShowEmailPreview(false)}>
+          <div style={{ background: '#f9fafb', borderRadius: 12, width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ background: '#111', color: '#fff', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', marginBottom: 2, letterSpacing: 1, textTransform: 'uppercase' }}>Email Preview</div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  {newCampaign.email_subject
+                    .replace('{{first_name}}', 'Jane').replace('{{full_name}}', 'Jane Smith').replace('{{last_name}}', 'Smith')
+                    .replace('{{agent_name}}', `${profile?.first_name} ${profile?.last_name}`) || '(no subject)'}
+                </div>
+              </div>
+              <button onClick={() => setShowEmailPreview(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            {/* Email meta bar */}
+            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#6b7280', display: 'flex', gap: 16 }}>
+              <span><strong>To:</strong> Jane Smith &lt;jane@example.com&gt;</span>
+              <span><strong>From:</strong> Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;</span>
+            </div>
+            <div style={{ fontSize: 10, background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '6px 20px', color: '#92400e', fontWeight: 500 }}>
+              ✦ Merge fields replaced with sample data for preview — actual emails use each contact&apos;s real info
+            </div>
+            {/* Rendered body */}
+            <div style={{ flex: 1, overflowY: 'auto', background: '#fff', padding: 24 }}
+              dangerouslySetInnerHTML={{
+                __html: newCampaign.email_body
+                  .replace(/\{\{first_name\}\}/g, 'Jane').replace(/\{\{last_name\}\}/g, 'Smith')
+                  .replace(/\{\{full_name\}\}/g, 'Jane Smith').replace(/\{\{email\}\}/g, 'jane@example.com')
+                  .replace(/\{\{client_type\}\}/g, 'Buyer')
+                  .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`)
+                  .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
+                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                  .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                  .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview')
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── Global Search (⌘K) ── */}
+      {showSearch && (() => {
+        const q = searchQuery.toLowerCase().trim();
+        const contactResults = q.length >= 1 ? clients.filter(c =>
+          `${c.first_name} ${c.last_name} ${c.email} ${c.phone} ${c.business_name}`.toLowerCase().includes(q)
+        ).slice(0, 5) : [];
+        const dealResults = q.length >= 1 ? deals.filter(d =>
+          `${d.client} ${d.property} ${d.type}`.toLowerCase().includes(q)
+        ).slice(0, 4) : [];
+        const campaignResults = q.length >= 1 ? campaigns.filter(c =>
+          `${c.name} ${c.description}`.toLowerCase().includes(q)
+        ).slice(0, 3) : [];
+        const hasResults = contactResults.length + dealResults.length + campaignResults.length > 0;
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}
+            onClick={() => { setShowSearch(false); setSearchQuery(''); }}>
+            <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 580, margin: '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}
+              onClick={e => e.stopPropagation()}>
+              {/* Search input */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #f0f0f0' }}>
+                <span style={{ fontSize: 18, color: '#9ca3af' }}>🔍</span>
+                <input
+                  ref={searchRef}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search contacts, deals, campaigns…"
+                  style={{ flex: 1, border: 'none', outline: 'none', fontSize: 16, fontFamily: "'DM Sans',sans-serif", color: '#111', background: 'transparent' }}
+                />
+                <kbd style={{ fontSize: 10, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 4, padding: '2px 6px', color: '#6b7280', fontFamily: 'monospace' }}>ESC</kbd>
+              </div>
+              {/* Results */}
+              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                {!q && (
+                  <div style={{ padding: '20px 18px', color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>
+                    Start typing to search contacts, deals, and campaigns
+                  </div>
+                )}
+                {q && !hasResults && (
+                  <div style={{ padding: '20px 18px', color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>No results for &quot;{searchQuery}&quot;</div>
+                )}
+                {contactResults.length > 0 && (
+                  <div>
+                    <div style={{ padding: '8px 18px 4px', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Contacts</div>
+                    {contactResults.map(c => (
+                      <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowSearch(false); setSearchQuery(''); }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                        <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                          {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{c.first_name} {c.last_name}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email || c.phone || c.type}</div>
+                        </div>
+                        <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 600, flexShrink: 0 } as React.CSSProperties}>{c.type}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {dealResults.length > 0 && (
+                  <div>
+                    <div style={{ padding: '8px 18px 4px', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Deals</div>
+                    {dealResults.map(d => (
+                      <button key={d.id} onClick={() => { setPage('deals'); setFilter(''); openDeal(d); setShowSearch(false); setSearchQuery(''); }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                        <span style={{ fontSize: 20 }}>{d.type.startsWith('Buyer') ? '🏡' : d.type.startsWith('Tenant') ? '🔑' : d.type.startsWith('Seller') ? '🪧' : '🏢'}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{d.client}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>{d.property || d.type} · {d.stage}</div>
+                        </div>
+                        {d.value > 0 && <div style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>${d.value.toLocaleString()}</div>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {campaignResults.length > 0 && (
+                  <div>
+                    <div style={{ padding: '8px 18px 4px', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Campaigns</div>
+                    {campaignResults.map(c => (
+                      <button key={c.id} onClick={() => { setPage('campaigns'); setActiveCampaign(c); setCampaignView('detail'); setCampaignTab('enrolled'); loadCampaignEnrollments(c.id); loadCampaignSends(c.id); setShowSearch(false); setSearchQuery(''); }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                        <span style={{ fontSize: 20 }}>📣</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{c.name}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>{c.type.toUpperCase()} · {c.frequency}</div>
+                        </div>
+                        <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, background: c.status === 'active' ? '#dcfce7' : c.status === 'completed' ? '#dbeafe' : '#f3f4f6', color: c.status === 'active' ? '#166534' : c.status === 'completed' ? '#1e40af' : '#6b7280' }}>{c.status}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {hasResults && (
+                  <div style={{ padding: '8px 18px', borderTop: '1px solid #f0f0f0', fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <kbd style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px', fontFamily: 'monospace', fontSize: 10 }}>↵</kbd> to open &nbsp;·&nbsp; <kbd style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px', fontFamily: 'monospace', fontSize: 10 }}>ESC</kbd> to close
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (
