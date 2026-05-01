@@ -26,10 +26,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, description, type, frequency, status, email_subject, email_body, sms_body, created_by } = body;
+  const { name, description, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, created_by } = body;
 
   if (!name || !type || !frequency) {
-    return NextResponse.json({ error: 'name, type, frequency required' }, { status: 400 });
+    return NextResponse.json({ error: 'name, type, and frequency are required' }, { status: 400 });
+  }
+  if (frequency === 'one-time' && !send_date) {
+    return NextResponse.json({ error: 'Send date is required for one-time campaigns' }, { status: 400 });
   }
   if (type === 'email' && (!email_subject || !email_body)) {
     return NextResponse.json({ error: 'email_subject and email_body required for email campaigns' }, { status: 400 });
@@ -41,6 +44,8 @@ export async function POST(req: NextRequest) {
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_campaigns').insert([{
     name, description, type, frequency,
+    send_date: send_date || null,
+    send_time: send_time || null,
     status: status ?? 'draft',
     email_subject: email_subject ?? null,
     email_body: email_body ?? null,
