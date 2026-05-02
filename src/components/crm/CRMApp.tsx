@@ -94,13 +94,54 @@ const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> 
   'Lost':        { bg: '#fef2f2', border: '#fecaca', dot: '#ef4444' },
 };
 
-function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal }: {
+function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal, isMobile }: {
   deals: Deal[]; isAdmin: boolean; agentName: (id: string) => string;
   draggedDealId: string | null; dragOverStage: string | null;
   setDraggedDealId: (id: string | null) => void; setDragOverStage: (s: string | null) => void;
   handleDrop: (stage: string) => void; openDeal: (deal: Deal) => void;
+  isMobile: boolean;
 }) {
   const STAGES = ['Prospect', 'Active', 'In Contract', 'Closed', 'Lost'];
+
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {STAGES.map(stage => {
+          const col = STAGE_COLORS[stage];
+          const stageDeals = deals.filter(d => d.stage === stage);
+          if (stageDeals.length === 0) return null;
+          return (
+            <div key={stage}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, fontSize: 12, color: '#374151', textTransform: 'uppercase', letterSpacing: 1 }}>{stage}</span>
+                <span style={{ background: '#e5e7eb', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 600, color: '#6b7280' }}>{stageDeals.length}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {stageDeals.map(deal => (
+                  <div key={deal.id} onClick={() => openDeal(deal)}
+                    style={{ background: '#fff', border: `1px solid ${col.border}`, borderRadius: 10, padding: '12px 14px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111', marginBottom: 4 }}>{deal.client}</div>
+                    {deal.property && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>{deal.property}</div>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((s: string) => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>
+                        {deal.type.split(' ')[0]}
+                      </span>
+                      {deal.value > 0 && <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>}
+                      {isAdmin && <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>👤 {agentName(deal.agent_id)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {deals.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af', fontSize: 14 }}>No deals yet</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start', minHeight: 500 }}>
@@ -1366,9 +1407,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     { id: 'dashboard', icon: '🏠', label: 'Home' },
     { id: 'deals', icon: '📋', label: 'Deals' },
     { id: 'contacts', icon: '👥', label: 'Contacts' },
-    { id: 'calendar', icon: '📅', label: 'Calendar' },
-    ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
     { id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' },
+    { id: 'action-plans' as typeof page, icon: '⚡', label: 'Plans' },
+    ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
   ];
 
   const pageLabel: Record<typeof page, string> = {
@@ -1405,7 +1446,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
           .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
           .crm-btn{padding:10px 18px;font-size:14px;}
-          .crm-input{padding:10px 12px;font-size:14px;}
+          .crm-btn-sm{padding:8px 14px!important;font-size:13px!important;}
+          .crm-input{padding:10px 12px;font-size:16px;}
+          .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
         }
       `}</style>
 
@@ -1494,13 +1537,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
         {/* Mobile top header */}
         {isMobile && (
-          <div style={{ background: '#111', color: '#fff', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.2)' }}>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c' }}>{brand.shortName}</div>
-            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,.15)' }} />
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 600, color: '#fff', flex: 1 }}>{pageLabel[page]}</div>
-            {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ flexShrink: 0, padding: '6px 14px', fontSize: 13 }}>+ Add</button>}
-            {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ flexShrink: 0, padding: '6px 14px', fontSize: 13 }}>+ Deal</button>}
-            <button onClick={signOut} style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 20, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, fontWeight: 600, padding: '5px 12px', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", letterSpacing: .3 }}>Sign Out</button>
+          <div style={{ background: '#111', color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.2)' }}>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</div>
+            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,.15)', flexShrink: 0 }} />
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, fontWeight: 600, color: '#fff', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageLabel[page]}</div>
+            {/* Search */}
+            <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
+              style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 16, padding: '6px 10px', flexShrink: 0, lineHeight: 1 }}>🔍</button>
+            {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ Add</button>}
+            {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ Deal</button>}
+            {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ New</button>}
           </div>
         )}
 
@@ -1536,7 +1582,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>}
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: page === 'calendar' ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setTagClientId(null); setAssetDropdownOpen(null); }}>
+        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setTagClientId(null); setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
@@ -1649,7 +1695,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
               })()}
 
-              <KanbanBoard deals={deals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} />
+              <KanbanBoard deals={deals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} />
             </div>
           )}
 
@@ -1665,7 +1711,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ))}
                 <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginLeft: 'auto', width: 200 }} />
               </div>
-              <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} />
+              <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} />
             </div>
           )}
 
@@ -2067,6 +2113,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           ⚠️ {stale.length} contact{stale.length !== 1 ? 's' : ''} need{stale.length === 1 ? 's' : ''} follow-up ({followUpDays}d+ since last touch)
                         </div>
                         <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                          <div className="mobile-table-scroll">
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                               <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -2117,6 +2164,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               })}
                             </tbody>
                           </table>
+                          </div>
                         </div>
                       </>
                     )}
@@ -2128,7 +2176,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Calendar ── */}
           {page === 'calendar' && (
-            <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: isMobile ? 'auto' : '100%', overflow: isMobile ? 'visible' : 'hidden' }}>
               {!gmailConnected ? (
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 40 }}>
                   <div style={{ fontSize: 56 }}>📅</div>
@@ -2173,7 +2221,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return (
                   <>
                     {/* Left: Month Grid */}
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: isMobile ? 'none' : '1px solid #e5e7eb', borderBottom: isMobile ? '1px solid #e5e7eb' : 'none', overflow: 'hidden' }}>
                       {/* Month header */}
                       <div style={{ display: 'flex', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb', background: '#fff', gap: 12 }}>
                         <button onClick={() => setCalViewMonth(new Date(year, month - 1, 1))}
@@ -2242,7 +2290,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
 
                     {/* Right: Event Detail Panel */}
-                    <div style={{ width: 320, display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden' }}>
+                    <div style={{ width: isMobile ? '100%' : 320, flexShrink: 0, display: 'flex', flexDirection: 'column', background: '#fff', overflow: 'hidden', maxHeight: isMobile ? 300 : undefined }}>
                       <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
                         <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: '#111' }}>
                           {calSelectedDate ? (() => {
@@ -2304,7 +2352,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Agents (admin only) ── */}
           {page === 'agents' && isAdmin && (<>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 16 }}>
               {profiles.map(a => {
                 const agDeals = deals.filter(d => d.agent_id === a.id);
                 const active = agDeals.filter(d => ['Active', 'In Contract'].includes(d.stage)).length;
@@ -2451,6 +2499,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb' }}>No activity logged in the last {activityReportDays} days.</div>
                 ) : (
                   <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                    <div className="mobile-table-scroll">
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
                         <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
@@ -2480,6 +2529,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2606,7 +2656,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 10 }}>Enroll Clients</div>
 
                         {/* Filter row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
                           <select className="crm-input" style={{ fontSize: 12 }} value={enrollTypeFilter} onChange={e => setEnrollTypeFilter(e.target.value)}>
                             <option value="">All Types</option>
                             {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -3075,7 +3125,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Enroll Contacts</div>
 
                         {/* Filter row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
                           <select className="crm-input" style={{ fontSize: 12 }} value={planEnrollTypeFilter} onChange={e => setPlanEnrollTypeFilter(e.target.value)}>
                             <option value="">All Types</option>
                             {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
