@@ -70,7 +70,8 @@
       "Bash(git commit -m 'feat: universal lead webhook + fix lead source/tags on website leads *)",
       "Bash(curl -s -X POST \"https://www.fairoaksrealtygroup.com/api/cron/campaigns\" -H \"Authorization: Bearer focrmadab609b379bbf02de61bc80f7279ad6\" -H \"Content-Type: application/json\")",
       "Bash(git commit -m 'fix: update office address to 8000 Fair Oaks Pkwy Suite 102 *)",
-      "Bash(xargs ls *)"
+      "Bash(xargs ls *)",
+      "Bash(sort -t\"'\" -k2)"
     ]
   }
 }
