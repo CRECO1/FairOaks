@@ -1406,22 +1406,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setClosedEnrolling(true);
     const clientId = closedDealPrompt.client_id;
     const agentId = session!.user.id;
-    await Promise.all([
-      ...closedEnrollPlanIds.map(planId =>
-        fetch(`/api/action-plans/${planId}/enrollments`, {
+
+    // Enroll in action plans, then immediately fire step 1 (don't wait for cron)
+    await Promise.all(
+      closedEnrollPlanIds.map(async planId => {
+        await fetch(`/api/action-plans/${planId}/enrollments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ client_ids: [clientId], agent_id: agentId }),
-        })
-      ),
-      ...closedEnrollCampaignIds.map(campaignId =>
+        });
+        // Send step 1 right now instead of waiting up to 15 min for the cron
+        await fetch(`/api/action-plans/${planId}/send-now`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_id: clientId, agent_id: agentId }),
+        });
+      })
+    );
+
+    // Enroll in campaigns (cron handles sending on their schedule)
+    await Promise.all(
+      closedEnrollCampaignIds.map(campaignId =>
         fetch(`/api/campaigns/${campaignId}/enrollments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ client_ids: [clientId], enrolled_by: agentId }),
         })
-      ),
-    ]);
+      )
+    );
+
     const total = closedEnrollPlanIds.length + closedEnrollCampaignIds.length;
     if (total > 0) showToast(`✅ Enrolled in ${total} item${total !== 1 ? 's' : ''}`);
     setClosedEnrolling(false);
