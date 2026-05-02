@@ -28,7 +28,7 @@ interface CampaignEnrollment { id: string; campaign_id: string; client_id: strin
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
-const STAGES = ['Prospect', 'Active', 'In Contract', 'Closed', 'Lost'];
+const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
 const ASSET_TYPES = ['Home', 'Condo', 'Multi-Family', 'Land', 'Industrial', 'Flex/Warehouse', 'Retail', 'Office', 'Storage'] as const;
@@ -55,6 +55,7 @@ const CLIENT_TYPE_COLORS: Record<string, string> = {
 const STAGE_CLS: Record<string, string> = {
   'Prospect': 'bg-gray-100 text-gray-600',
   'Active': 'bg-blue-100 text-blue-700',
+  'LOI': 'bg-purple-100 text-purple-700',
   'In Contract': 'bg-amber-100 text-amber-700',
   'Closed': 'bg-green-100 text-green-700',
   'Lost': 'bg-red-100 text-red-700',
@@ -89,6 +90,7 @@ function fmtVal(deal: Deal) {
 const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> = {
   'Prospect':    { bg: '#f9fafb', border: '#d1d5db', dot: '#9ca3af' },
   'Active':      { bg: '#eff6ff', border: '#bfdbfe', dot: '#3b82f6' },
+  'LOI':         { bg: '#faf5ff', border: '#e9d5ff', dot: '#a855f7' },
   'In Contract': { bg: '#fffbeb', border: '#fde68a', dot: '#f59e0b' },
   'Closed':      { bg: '#f0fdf4', border: '#bbf7d0', dot: '#22c55e' },
   'Lost':        { bg: '#fef2f2', border: '#fecaca', dot: '#ef4444' },
@@ -101,7 +103,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
   handleDrop: (stage: string) => void; openDeal: (deal: Deal) => void;
   isMobile: boolean;
 }) {
-  const STAGES = ['Prospect', 'Active', 'In Contract', 'Closed', 'Lost'];
+  const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 
   if (isMobile) {
     return (
@@ -1870,7 +1872,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {filteredContacts.map(c => {
                   const ta = timeAgo(c.last_touched_at);
                   const clientDeals = deals.filter(d => d.client_id === c.id);
-                  const activeDeals = clientDeals.filter(d => ['Active', 'In Contract'].includes(d.stage));
+                  const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
                   return (
                     <div key={c.id} onClick={() => setActiveClient(c)}
                       style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '14px 16px', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
@@ -1953,7 +1955,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {filteredContacts.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
                       {filteredContacts.map(c => {
                         const clientDeals = deals.filter(d => d.client_id === c.id);
-                        const activeDeals = clientDeals.filter(d => ['Active', 'In Contract'].includes(d.stage));
+                        const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
                         const taggedAgents = (c.assigned_agent_ids ?? []).map(aid => profiles.find(p => p.id === aid)).filter(Boolean) as Profile[];
                         const canTag = isAdmin || c.agent_id === profile!.id;
                         const isTagPickerOpen = tagClientId === c.id;
@@ -2436,7 +2438,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 16 }}>
               {profiles.map(a => {
                 const agDeals = deals.filter(d => d.agent_id === a.id);
-                const active = agDeals.filter(d => ['Active', 'In Contract'].includes(d.stage)).length;
+                const active = agDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage)).length;
                 const closed = agDeals.filter(d => d.stage === 'Closed').length;
                 const isEditing = editingAgentId === a.id;
                 return (
@@ -4260,7 +4262,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {d.type.split(' ')[0]}
                           </span>
                           <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flex: 1 }}>{d.property || `${c.first_name}'s deal`}</span>
-                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, fontWeight: 600, ...({ 'Prospect': { background: '#f3f4f6', color: '#6b7280' }, 'Active': { background: '#dbeafe', color: '#1e40af' }, 'In Contract': { background: '#fef3c7', color: '#92400e' }, 'Closed': { background: '#dcfce7', color: '#166534' }, 'Lost': { background: '#fee2e2', color: '#991b1b' } }[d.stage] ?? {}) } as React.CSSProperties}>
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, fontWeight: 600, ...({ 'Prospect': { background: '#f3f4f6', color: '#6b7280' }, 'Active': { background: '#dbeafe', color: '#1e40af' }, 'LOI': { background: '#f3e8ff', color: '#7e22ce' }, 'In Contract': { background: '#fef3c7', color: '#92400e' }, 'Closed': { background: '#dcfce7', color: '#166534' }, 'Lost': { background: '#fee2e2', color: '#991b1b' } }[d.stage] ?? {}) } as React.CSSProperties}>
                             {d.stage}
                           </span>
                           {d.value > 0 && <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>{fmtVal(d)}</span>}
@@ -5005,11 +5007,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
               {/* Footer */}
               <div style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#f9fafb' }}>
-                <button
-                  onClick={() => setLostDealPrompt(null)}
-                  style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
-                  Skip
-                </button>
                 <button
                   onClick={handleLostSave}
                   disabled={lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())}
