@@ -4963,55 +4963,53 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           'Other',
         ];
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setLostDealPrompt(null)}>
-            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+            <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 400, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
               onClick={e => e.stopPropagation()}>
               {/* Header — fixed */}
-              <div style={{ background: '#dc2626', padding: '16px 24px', color: '#fff', flexShrink: 0 }}>
-                <div style={{ fontSize: 20, marginBottom: 2 }}>📋</div>
-                <div style={{ fontSize: 17, fontWeight: 700 }}>Deal Marked as Lost</div>
-                <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
-                  Why did we lose <strong>{lostDealPrompt.client}</strong>?
+              <div style={{ background: '#dc2626', padding: '12px 18px', color: '#fff', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 18 }}>📋</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>Why did we lose this deal?</div>
+                  <div style={{ fontSize: 12, opacity: 0.85 }}>{lostDealPrompt.client}</div>
                 </div>
               </div>
 
               {/* Scrollable reasons */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Select a reason</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '10px 14px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                   {LOST_REASONS.map(reason => (
-                    <label key={reason} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: `2px solid ${lostReason === reason ? '#dc2626' : '#e5e7eb'}`, background: lostReason === reason ? '#fef2f2' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
+                    <label key={reason} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 12px', borderRadius: 7, border: `1.5px solid ${lostReason === reason ? '#dc2626' : '#e5e7eb'}`, background: lostReason === reason ? '#fef2f2' : '#fff', cursor: 'pointer' }}>
                       <input
                         type="radio"
                         name="lostReason"
                         value={reason}
                         checked={lostReason === reason}
                         onChange={() => setLostReason(reason)}
-                        style={{ accentColor: '#dc2626', width: 15, height: 15, flexShrink: 0 }}
+                        style={{ accentColor: '#dc2626', width: 14, height: 14, flexShrink: 0 }}
                       />
-                      <span style={{ fontSize: 14, fontWeight: lostReason === reason ? 600 : 400, color: lostReason === reason ? '#dc2626' : '#374151' }}>{reason}</span>
+                      <span style={{ fontSize: 13, fontWeight: lostReason === reason ? 600 : 400, color: lostReason === reason ? '#dc2626' : '#374151' }}>{reason}</span>
                     </label>
                   ))}
                 </div>
-
                 {lostReason === 'Other' && (
                   <textarea
                     placeholder="Describe why the deal was lost…"
                     value={lostReasonOther}
                     onChange={e => setLostReasonOther(e.target.value)}
-                    rows={3}
-                    style={{ marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    rows={2}
+                    style={{ marginTop: 8, width: '100%', padding: '8px 10px', borderRadius: 7, border: '1px solid #d1d5db', fontSize: 13, resize: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
                   />
                 )}
               </div>
 
               {/* Footer — pinned */}
-              <div style={{ padding: '12px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', background: '#f9fafb', flexShrink: 0 }}>
+              <div style={{ padding: '10px 14px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', background: '#f9fafb', flexShrink: 0 }}>
                 <button
                   onClick={handleLostSave}
                   disabled={lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())}
-                  style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : '#d1d5db', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
+                  style={{ padding: '8px 22px', borderRadius: 7, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : '#d1d5db', color: '#fff', fontSize: 13, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
                   {lostSaving ? 'Saving…' : 'Save Reason'}
                 </button>
               </div>
