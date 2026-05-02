@@ -25,6 +25,12 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
+function fromAddress(businessUnit?: string) {
+  return businessUnit === 'commercial'
+    ? 'CRECO <info@crecotx.com>'
+    : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
+}
+
 function computeNextStepAt(delayDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + delayDays);
@@ -47,7 +53,7 @@ export async function GET(req: NextRequest) {
     .from('crm_action_plan_enrollments')
     .select(`
       id, plan_id, client_id, agent_id, current_step, next_step_at,
-      plan:crm_action_plans!inner(id, name, status, completion_campaign_id),
+      plan:crm_action_plans!inner(id, name, status, business_unit, completion_campaign_id),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -124,7 +130,7 @@ export async function GET(req: NextRequest) {
           const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
           const body = applyMergeFields(step.body || '', ctx);
           await resend.emails.send({
-            from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
+            from: fromAddress(plan.business_unit),
             to: client.email,
             subject,
             html: body,

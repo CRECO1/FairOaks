@@ -6,6 +6,12 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
+function fromAddress(businessUnit?: string) {
+  return businessUnit === 'commercial'
+    ? 'CRECO <info@crecotx.com>'
+    : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
+}
+
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Fetch the plan
   const { data: plan } = await supabase
     .from('crm_action_plans')
-    .select('id, name, status')
+    .select('id, name, status, business_unit')
     .eq('id', planId)
     .single();
 
@@ -129,7 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
       const body = applyMergeFields(step.body || '', ctx);
       const result = await resend.emails.send({
-        from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
+        from: fromAddress(plan.business_unit),
         to: client.email,
         subject,
         html: body,
