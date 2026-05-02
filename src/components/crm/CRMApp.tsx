@@ -429,6 +429,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [closedEnrollCampaignIds, setClosedEnrollCampaignIds] = useState<string[]>([]);
   const [closedEnrolling, setClosedEnrolling] = useState(false);
 
+  // Action plan step preview tabs (idx → 'code' | 'preview')
+  const [stepViewMode, setStepViewMode] = useState<Record<number, 'code' | 'preview'>>({});
+
   // Lost deal reason prompt
   const [lostDealPrompt, setLostDealPrompt] = useState<Deal | null>(null);
   const [lostReason, setLostReason] = useState('');
@@ -3427,12 +3430,71 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                             <button onClick={() => removePlanStep(idx)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
                           </div>
-                          {(step.type === 'email') && (
+                          {step.type === 'email' && (
                             <input className="crm-input" placeholder="Subject line…" value={step.subject ?? ''} onChange={e => updatePlanStep(idx, { subject: e.target.value })} style={{ marginBottom: 8 }} />
                           )}
-                          <textarea className="crm-input" style={{ minHeight: 80, resize: 'vertical', fontSize: 13 }}
-                            placeholder={step.type === 'email' ? 'Email body… (use {{first_name}}, {{agent_name}}, etc.)' : step.type === 'sms' ? 'SMS message…' : step.type === 'task' ? 'Task description for the agent…' : 'Note content…'}
-                            value={step.body} onChange={e => updatePlanStep(idx, { body: e.target.value })} />
+                          {step.type === 'email' ? (() => {
+                            const mode = stepViewMode[idx] ?? 'code';
+                            const preview = (step.body || '')
+                              .replaceAll('{{first_name}}', 'John')
+                              .replaceAll('{{last_name}}', 'Smith')
+                              .replaceAll('{{full_name}}', 'John Smith')
+                              .replaceAll('{{email}}', 'john.smith@email.com')
+                              .replaceAll('{{client_type}}', 'Buyer')
+                              .replaceAll('{{agent_name}}', 'Zachary Stovall')
+                              .replaceAll('{{agent_email}}', 'info@fairoaksrealtygroup.com')
+                              .replaceAll('{{agent_phone}}', '(210) 390-9997')
+                              .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
+                              .replaceAll('{{unsubscribe_url}}', '#');
+                            return (
+                              <div>
+                                {/* Tab bar */}
+                                <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                                  {(['code', 'preview'] as const).map(m => (
+                                    <button key={m} onClick={() => setStepViewMode(prev => ({ ...prev, [idx]: m }))}
+                                      style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: mode === m ? 600 : 400, background: mode === m ? '#111' : '#fff', color: mode === m ? '#fff' : '#6b7280' }}>
+                                      {m === 'code' ? '</> Code' : '👁 Preview'}
+                                    </button>
+                                  ))}
+                                  <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', alignSelf: 'center' }}>
+                                    Merge fields: {'{{first_name}}'} {'{{agent_name}}'} {'{{unsubscribe_url}}'}
+                                  </span>
+                                </div>
+                                {mode === 'code' ? (
+                                  <textarea
+                                    className="crm-input"
+                                    style={{ minHeight: 200, resize: 'vertical', fontSize: 12, fontFamily: "'Courier New', Courier, monospace", lineHeight: 1.6 }}
+                                    placeholder={'Paste HTML here… e.g. <p>Hi {{first_name}},</p>'}
+                                    value={step.body}
+                                    onChange={e => updatePlanStep(idx, { body: e.target.value })}
+                                  />
+                                ) : (
+                                  <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', minHeight: 200, overflow: 'hidden' }}>
+                                    {/* Email chrome */}
+                                    <div style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', padding: '8px 14px', fontSize: 12, color: '#6b7280' }}>
+                                      <div><strong>From:</strong> Fair Oaks Realty Group &lt;info@fairoaksrealtygroup.com&gt;</div>
+                                      <div><strong>To:</strong> john.smith@email.com</div>
+                                      <div><strong>Subject:</strong> {(step.subject || '(no subject)').replaceAll('{{first_name}}', 'John').replaceAll('{{agent_name}}', 'Zachary Stovall')}</div>
+                                    </div>
+                                    <iframe
+                                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:20px;font-family:Arial,sans-serif;font-size:15px;color:#222;line-height:1.6}a{color:#c9922c}</style></head><body>${preview || '<p style="color:#9ca3af">Nothing to preview yet — add some HTML in the Code tab.</p>'}</body></html>`}
+                                      style={{ width: '100%', minHeight: 300, border: 'none', display: 'block' }}
+                                      sandbox="allow-same-origin"
+                                      onLoad={e => {
+                                        const iframe = e.currentTarget;
+                                        const body = iframe.contentDocument?.body;
+                                        if (body) iframe.style.height = body.scrollHeight + 40 + 'px';
+                                      }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })() : (
+                            <textarea className="crm-input" style={{ minHeight: 80, resize: 'vertical', fontSize: 13 }}
+                              placeholder={step.type === 'sms' ? 'SMS message…' : step.type === 'task' ? 'Task description for the agent…' : 'Note content…'}
+                              value={step.body} onChange={e => updatePlanStep(idx, { body: e.target.value })} />
+                          )}
                         </div>
                       ))}
                     </div>
