@@ -5,7 +5,7 @@ const REDIRECT_URL = 'https://www.fairoaksrealtygroup.com/crm/setup';
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, firstName, lastName, phone, license } = await req.json();
+    const { email, firstName, lastName, phone, license, business_unit } = await req.json();
 
     if (!email || !firstName || !lastName) {
       return NextResponse.json({ error: 'Email, first name and last name are required' }, { status: 400 });
@@ -126,6 +126,7 @@ export async function POST(req: NextRequest) {
           phone: phone ?? null,
           license: license ?? null,
           role: 'agent',
+          business_unit: business_unit ?? 'residential',
         }),
       });
     }

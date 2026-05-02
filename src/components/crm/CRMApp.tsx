@@ -536,6 +536,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         last_name: session.user.user_metadata?.lastName ?? '',
         role: isAdmin ? 'admin' : 'agent',
         last_sign_in_at: authLastSignIn,
+        business_unit: businessUnit,
       };
       await supabase.from('crm_profiles').insert([newProfile]);
       setProfile(newProfile);
@@ -949,7 +950,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const res = await fetch('/api/crm/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...inv, firstName: inv.first_name, lastName: inv.last_name }),
+      body: JSON.stringify({ ...inv, firstName: inv.first_name, lastName: inv.last_name, business_unit: businessUnit }),
     });
     const json = await res.json();
     if (!res.ok) { showToast('Error: ' + json.error); } else {
