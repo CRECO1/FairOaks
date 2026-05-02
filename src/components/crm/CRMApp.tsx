@@ -566,6 +566,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadClients(updated);
       loadProfiles();
       loadSmartLists();
+      loadActionPlans();
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -585,6 +586,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadClients(newProfile);
       loadProfiles();
       loadSmartLists();
+      loadActionPlans();
     }
     setLoading(false);
   }, [session]);
@@ -951,6 +953,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     showToast('Stage → ' + stage);
     if (deal.client_id) {
       logActivity(deal.client_id, 'deal_update', `Stage moved to "${stage}"${deal.property ? ` — ${deal.property}` : ''}`);
+    }
+    if (stage === 'Closed') {
+      autoEnrollClosedWon({ ...deal, stage });
     }
   }
 
@@ -1350,10 +1355,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setActivityReportLoading(false);
   }
 
+  // ── Auto-enroll in "Closed & Won" action plan ─────────────────────────────────
+  async function autoEnrollClosedWon(deal: Deal) {
+    if (!deal.client_id) return;
+    const plan = actionPlans.find(p =>
+      p.status === 'active' &&
+      p.name.toLowerCase().includes('closed') &&
+      p.name.toLowerCase().includes('won')
+    );
+    if (!plan) return; // No matching plan configured — silently skip
+    const res = await fetch(`/api/action-plans/${plan.id}/enrollments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_ids: [deal.client_id], agent_id: session!.user.id }),
+    });
+    if (res.ok) {
+      showToast(`🎉 "${deal.client}" auto-enrolled in "${plan.name}"`);
+    }
+  }
+
   // ── Kanban drag & drop ────────────────────────────────────────────────────────
   async function updateDealStage(dealId: string, newStage: string) {
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, stage: newStage, last_touch: today() } : d));
     await supabase.from('crm_deals').update({ stage: newStage, last_touch: today() }).eq('id', dealId);
+    if (newStage === 'Closed') {
+      const deal = deals.find(d => d.id === dealId);
+      if (deal) autoEnrollClosedWon({ ...deal, stage: newStage });
+    }
   }
 
   function handleDrop(stage: string) {
