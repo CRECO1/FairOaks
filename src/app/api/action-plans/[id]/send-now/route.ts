@@ -12,6 +12,13 @@ function fromAddress(businessUnit?: string) {
     : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
 
+function resendClient(businessUnit?: string) {
+  const key = businessUnit === 'commercial'
+    ? process.env.RESEND_API_KEY_COMMERCIAL!
+    : process.env.RESEND_API_KEY!;
+  return new Resend(key);
+}
+
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
@@ -50,7 +57,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const supabase = adminClient();
-  const resend = new Resend(process.env.RESEND_API_KEY!);
   const now = new Date().toISOString();
 
   // Fetch the enrollment
@@ -134,7 +140,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (step.type === 'email') {
       const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
       const body = applyMergeFields(step.body || '', ctx);
-      const result = await resend.emails.send({
+      const result = await resendClient(plan.business_unit).emails.send({
         from: fromAddress(plan.business_unit),
         to: client.email,
         subject,

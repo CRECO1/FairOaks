@@ -31,6 +31,13 @@ function fromAddress(businessUnit?: string) {
     : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
 
+function resendClient(businessUnit?: string) {
+  const key = businessUnit === 'commercial'
+    ? process.env.RESEND_API_KEY_COMMERCIAL!
+    : process.env.RESEND_API_KEY!;
+  return new Resend(key);
+}
+
 function computeNextStepAt(delayDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + delayDays);
@@ -45,7 +52,6 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = adminClient();
-  const resend = new Resend(process.env.RESEND_API_KEY!);
   const now = new Date().toISOString();
 
   // Get active enrollments with a step due to run
@@ -129,7 +135,7 @@ export async function GET(req: NextRequest) {
         } else {
           const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
           const body = applyMergeFields(step.body || '', ctx);
-          await resend.emails.send({
+          await resendClient(plan.business_unit).emails.send({
             from: fromAddress(plan.business_unit),
             to: client.email,
             subject,
