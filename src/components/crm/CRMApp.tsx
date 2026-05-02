@@ -18,7 +18,7 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
@@ -421,6 +421,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Email preview
   const [showEmailPreview, setShowEmailPreview] = useState(false);
 
+  // Closed deal enrollment prompt
+  const [closedDealPrompt, setClosedDealPrompt] = useState<Deal | null>(null);
+  const [closedEnrollPlanIds, setClosedEnrollPlanIds] = useState<string[]>([]);
+  const [closedEnrollCampaignIds, setClosedEnrollCampaignIds] = useState<string[]>([]);
+  const [closedEnrolling, setClosedEnrolling] = useState(false);
+
+  // Lost deal reason prompt
+  const [lostDealPrompt, setLostDealPrompt] = useState<Deal | null>(null);
+  const [lostReason, setLostReason] = useState('');
+  const [lostReasonOther, setLostReasonOther] = useState('');
+  const [lostSaving, setLostSaving] = useState(false);
+
   // Bulk unenroll
   const [selectedUnenrollIds, setSelectedUnenrollIds] = useState<string[]>([]);
 
@@ -567,6 +579,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadProfiles();
       loadSmartLists();
       loadActionPlans();
+      loadCampaigns();
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -587,6 +600,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadProfiles();
       loadSmartLists();
       loadActionPlans();
+      loadCampaigns();
     }
     setLoading(false);
   }, [session]);
@@ -954,9 +968,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (deal.client_id) {
       logActivity(deal.client_id, 'deal_update', `Stage moved to "${stage}"${deal.property ? ` — ${deal.property}` : ''}`);
     }
-    if (stage === 'Closed') {
-      autoEnrollClosedWon({ ...deal, stage });
-    }
+    if (stage === 'Closed') triggerClosedPrompt({ ...deal, stage });
+    if (stage === 'Lost') triggerLostPrompt({ ...deal, stage });
   }
 
   async function deleteDeal(id: string) {
@@ -1355,32 +1368,72 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setActivityReportLoading(false);
   }
 
-  // ── Auto-enroll in "Closed & Won" action plan ─────────────────────────────────
-  async function autoEnrollClosedWon(deal: Deal) {
-    if (!deal.client_id) return;
-    const plan = actionPlans.find(p =>
-      p.status === 'active' &&
-      p.name.toLowerCase().includes('closed') &&
-      p.name.toLowerCase().includes('won')
-    );
-    if (!plan) return; // No matching plan configured — silently skip
-    const res = await fetch(`/api/action-plans/${plan.id}/enrollments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_ids: [deal.client_id], agent_id: session!.user.id }),
-    });
-    if (res.ok) {
-      showToast(`🎉 "${deal.client}" auto-enrolled in "${plan.name}"`);
+  // ── Lost deal reason prompt ────────────────────────────────────────────────────
+  function triggerLostPrompt(deal: Deal) {
+    setLostReason('');
+    setLostReasonOther('');
+    setLostDealPrompt(deal);
+  }
+
+  async function handleLostSave() {
+    if (!lostDealPrompt) return;
+    const finalReason = lostReason === 'Other' ? lostReasonOther.trim() : lostReason;
+    if (!finalReason) { showToast('Please select or enter a reason'); return; }
+    setLostSaving(true);
+    await supabase.from('crm_deals').update({ lost_reason: finalReason }).eq('id', lostDealPrompt.id);
+    setDeals(prev => prev.map(d => d.id === lostDealPrompt.id ? { ...d, lost_reason: finalReason } : d));
+    if (activeDeal?.id === lostDealPrompt.id) setActiveDeal(prev => prev ? { ...prev, lost_reason: finalReason } : prev);
+    if (lostDealPrompt.client_id) {
+      logActivity(lostDealPrompt.client_id, 'deal_update', `Deal lost — ${finalReason}`);
     }
+    showToast('📋 Loss reason saved');
+    setLostSaving(false);
+    setLostDealPrompt(null);
+  }
+
+  // ── Closed deal enrollment prompt ─────────────────────────────────────────────
+  function triggerClosedPrompt(deal: Deal) {
+    if (!deal.client_id) return;
+    setClosedEnrollPlanIds([]);
+    setClosedEnrollCampaignIds([]);
+    setClosedDealPrompt(deal);
+  }
+
+  async function handleClosedEnroll() {
+    if (!closedDealPrompt?.client_id) return;
+    setClosedEnrolling(true);
+    const clientId = closedDealPrompt.client_id;
+    const agentId = session!.user.id;
+    await Promise.all([
+      ...closedEnrollPlanIds.map(planId =>
+        fetch(`/api/action-plans/${planId}/enrollments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_ids: [clientId], agent_id: agentId }),
+        })
+      ),
+      ...closedEnrollCampaignIds.map(campaignId =>
+        fetch(`/api/campaigns/${campaignId}/enrollments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ client_ids: [clientId], enrolled_by: agentId }),
+        })
+      ),
+    ]);
+    const total = closedEnrollPlanIds.length + closedEnrollCampaignIds.length;
+    if (total > 0) showToast(`✅ Enrolled in ${total} item${total !== 1 ? 's' : ''}`);
+    setClosedEnrolling(false);
+    setClosedDealPrompt(null);
   }
 
   // ── Kanban drag & drop ────────────────────────────────────────────────────────
   async function updateDealStage(dealId: string, newStage: string) {
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, stage: newStage, last_touch: today() } : d));
     await supabase.from('crm_deals').update({ stage: newStage, last_touch: today() }).eq('id', dealId);
-    if (newStage === 'Closed') {
-      const deal = deals.find(d => d.id === dealId);
-      if (deal) autoEnrollClosedWon({ ...deal, stage: newStage });
+    const deal = deals.find(d => d.id === dealId);
+    if (deal) {
+      if (newStage === 'Closed') triggerClosedPrompt({ ...deal, stage: newStage });
+      if (newStage === 'Lost') triggerLostPrompt({ ...deal, stage: newStage });
     }
   }
 
@@ -3444,6 +3497,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ gridColumn: '1/-1' }}><label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Notes</label><textarea className="crm-input" style={{ marginTop: 4, minHeight: 80, resize: 'vertical' }} defaultValue={activeDeal.notes} onBlur={e => updateDeal(activeDeal.id, { notes: e.target.value })} /></div>
                   </div>
 
+                  {/* ── Loss Reason Banner ── */}
+                  {activeDeal.stage === 'Lost' && (
+                    <div style={{ marginTop: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 18, flexShrink: 0 }}>📋</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#dc2626', marginBottom: 2 }}>Loss Reason</div>
+                        {activeDeal.lost_reason ? (
+                          <div style={{ fontSize: 14, color: '#374151' }}>{activeDeal.lost_reason}</div>
+                        ) : (
+                          <button onClick={() => triggerLostPrompt(activeDeal)} style={{ fontSize: 13, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', textDecoration: 'underline' }}>
+                            + Add loss reason
+                          </button>
+                        )}
+                      </div>
+                      {activeDeal.lost_reason && (
+                        <button onClick={() => triggerLostPrompt(activeDeal)} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit', flexShrink: 0 }}>Edit</button>
+                      )}
+                    </div>
+                  )}
+
                   {/* ── Agent Tags ── */}
                   <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -4781,6 +4854,168 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <kbd style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px', fontFamily: 'monospace', fontSize: 10 }}>↵</kbd> to open &nbsp;·&nbsp; <kbd style={{ background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 3, padding: '1px 5px', fontFamily: 'monospace', fontSize: 10 }}>ESC</kbd> to close
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Closed Deal Enrollment Prompt ── */}
+      {closedDealPrompt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setClosedDealPrompt(null)}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ background: '#16a34a', padding: '20px 24px', color: '#fff' }}>
+              <div style={{ fontSize: 24, marginBottom: 4 }}>🎉</div>
+              <div style={{ fontSize: 18, fontWeight: 700 }}>Deal Closed!</div>
+              <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
+                Enroll <strong>{closedDealPrompt.client}</strong> in a follow-up campaign or action plan?
+              </div>
+            </div>
+
+            <div style={{ padding: '20px 24px', maxHeight: 400, overflowY: 'auto' }}>
+              {/* Action Plans */}
+              {actionPlans.filter(p => p.status === 'active').length > 0 && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>⚡ Action Plans</div>
+                  {actionPlans.filter(p => p.status === 'active').map(plan => (
+                    <label key={plan.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
+                      <input
+                        type="checkbox"
+                        checked={closedEnrollPlanIds.includes(plan.id)}
+                        onChange={e => setClosedEnrollPlanIds(prev =>
+                          e.target.checked ? [...prev, plan.id] : prev.filter(id => id !== plan.id)
+                        )}
+                        style={{ marginTop: 2, accentColor: '#16a34a', width: 15, height: 15, flexShrink: 0 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{plan.name}</div>
+                        {plan.description && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{plan.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Campaigns */}
+              {campaigns.filter(c => c.status === 'active').length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>📣 Campaigns</div>
+                  {campaigns.filter(c => c.status === 'active').map(camp => (
+                    <label key={camp.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
+                      <input
+                        type="checkbox"
+                        checked={closedEnrollCampaignIds.includes(camp.id)}
+                        onChange={e => setClosedEnrollCampaignIds(prev =>
+                          e.target.checked ? [...prev, camp.id] : prev.filter(id => id !== camp.id)
+                        )}
+                        style={{ marginTop: 2, accentColor: '#16a34a', width: 15, height: 15, flexShrink: 0 }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{camp.name}</div>
+                        {camp.description && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{camp.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {actionPlans.filter(p => p.status === 'active').length === 0 && campaigns.filter(c => c.status === 'active').length === 0 && (
+                <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 14 }}>
+                  No active campaigns or action plans found.<br />
+                  <span style={{ fontSize: 12 }}>Create one in the Campaigns or Action Plans tab.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#f9fafb' }}>
+              <button
+                onClick={() => setClosedDealPrompt(null)}
+                style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
+                Skip
+              </button>
+              <button
+                onClick={handleClosedEnroll}
+                disabled={closedEnrolling || (closedEnrollPlanIds.length === 0 && closedEnrollCampaignIds.length === 0)}
+                style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: (closedEnrollPlanIds.length + closedEnrollCampaignIds.length > 0) ? '#16a34a' : '#d1d5db', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (closedEnrolling || (closedEnrollPlanIds.length === 0 && closedEnrollCampaignIds.length === 0)) ? 'not-allowed' : 'pointer' }}>
+                {closedEnrolling ? 'Enrolling…' : `Enroll${(closedEnrollPlanIds.length + closedEnrollCampaignIds.length) > 0 ? ` (${closedEnrollPlanIds.length + closedEnrollCampaignIds.length} selected)` : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lost Deal Reason Prompt ── */}
+      {lostDealPrompt && (() => {
+        const LOST_REASONS = [
+          'Price / budget',
+          'Went with another agent',
+          'Property fell through',
+          'Client changed their mind',
+          'Timeline didn\'t work',
+          'Lost contact',
+          'Financing fell through',
+          'Other',
+        ];
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+            onClick={() => setLostDealPrompt(null)}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+              onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div style={{ background: '#dc2626', padding: '20px 24px', color: '#fff' }}>
+                <div style={{ fontSize: 24, marginBottom: 4 }}>📋</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>Deal Marked as Lost</div>
+                <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
+                  Why did we lose <strong>{lostDealPrompt.client}</strong>?
+                </div>
+              </div>
+
+              <div style={{ padding: '20px 24px' }}>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Select a reason</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {LOST_REASONS.map(reason => (
+                    <label key={reason} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: `2px solid ${lostReason === reason ? '#dc2626' : '#e5e7eb'}`, background: lostReason === reason ? '#fef2f2' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
+                      <input
+                        type="radio"
+                        name="lostReason"
+                        value={reason}
+                        checked={lostReason === reason}
+                        onChange={() => setLostReason(reason)}
+                        style={{ accentColor: '#dc2626', width: 15, height: 15, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: 14, fontWeight: lostReason === reason ? 600 : 400, color: lostReason === reason ? '#dc2626' : '#374151' }}>{reason}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {lostReason === 'Other' && (
+                  <textarea
+                    placeholder="Describe why the deal was lost…"
+                    value={lostReasonOther}
+                    onChange={e => setLostReasonOther(e.target.value)}
+                    rows={3}
+                    style={{ marginTop: 12, width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                  />
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#f9fafb' }}>
+                <button
+                  onClick={() => setLostDealPrompt(null)}
+                  style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
+                  Skip
+                </button>
+                <button
+                  onClick={handleLostSave}
+                  disabled={lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())}
+                  style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : '#d1d5db', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
+                  {lostSaving ? 'Saving…' : 'Save Reason'}
+                </button>
               </div>
             </div>
           </div>
