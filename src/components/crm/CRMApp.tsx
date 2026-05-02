@@ -558,8 +558,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadProfiles = useCallback(async () => {
     // Sync real last_sign_in_at from Supabase Auth → crm_profiles first
     await fetch('/api/crm/sync-logins', { method: 'POST' }).catch(() => {});
-    // Each workspace only shows its own agents
-    const { data } = await supabase.from('crm_profiles').select('*').eq('business_unit', businessUnit).order('last_name');
+    // Each workspace shows its own agents + all admins
+    const { data } = await supabase.from('crm_profiles').select('*')
+      .or(`business_unit.eq.${businessUnit},role.eq.admin`)
+      .order('last_name');
     setProfiles((data ?? []) as Profile[]);
   }, [businessUnit]);
 
