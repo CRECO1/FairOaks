@@ -4965,19 +4965,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         return (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
             onClick={() => setLostDealPrompt(null)}>
-            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
               onClick={e => e.stopPropagation()}>
-              {/* Header */}
-              <div style={{ background: '#dc2626', padding: '20px 24px', color: '#fff' }}>
-                <div style={{ fontSize: 24, marginBottom: 4 }}>📋</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>Deal Marked as Lost</div>
+              {/* Header — fixed */}
+              <div style={{ background: '#dc2626', padding: '16px 24px', color: '#fff', flexShrink: 0 }}>
+                <div style={{ fontSize: 20, marginBottom: 2 }}>📋</div>
+                <div style={{ fontSize: 17, fontWeight: 700 }}>Deal Marked as Lost</div>
                 <div style={{ fontSize: 13, opacity: 0.85, marginTop: 2 }}>
                   Why did we lose <strong>{lostDealPrompt.client}</strong>?
                 </div>
               </div>
 
-              <div style={{ padding: '20px 24px' }}>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Select a reason</div>
+              {/* Scrollable reasons */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Select a reason</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {LOST_REASONS.map(reason => (
                     <label key={reason} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: `2px solid ${lostReason === reason ? '#dc2626' : '#e5e7eb'}`, background: lostReason === reason ? '#fef2f2' : '#fff', cursor: 'pointer', transition: 'all .15s' }}>
@@ -5000,17 +5001,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     value={lostReasonOther}
                     onChange={e => setLostReasonOther(e.target.value)}
                     rows={3}
-                    style={{ marginTop: 12, width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                    style={{ marginTop: 10, width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
                   />
                 )}
               </div>
 
-              {/* Footer */}
-              <div style={{ padding: '14px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#f9fafb' }}>
+              {/* Footer — pinned */}
+              <div style={{ padding: '12px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', background: '#f9fafb', flexShrink: 0 }}>
                 <button
                   onClick={handleLostSave}
                   disabled={lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())}
-                  style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : '#d1d5db', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
+                  style={{ padding: '9px 24px', borderRadius: 8, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : '#d1d5db', color: '#fff', fontSize: 14, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
                   {lostSaving ? 'Saving…' : 'Save Reason'}
                 </button>
               </div>
