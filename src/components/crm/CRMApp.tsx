@@ -1400,7 +1400,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {!isMobile && <nav style={{ width: 248, background: '#111', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
         <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid rgba(201,146,44,.3)' }}>
           <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
-          <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.4)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4 }}>{brand.tagline}</div>
+          <div style={{ fontSize: 9.5, color: 'rgba(255,255,255,.4)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 12 }}>{brand.tagline}</div>
+          {/* Workspace switcher — admin only */}
+          {isAdmin && (
+            <a
+              href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)',
+                borderRadius: 8, padding: '6px 10px', textDecoration: 'none', cursor: 'pointer',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,.35)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,.7)' }}>
+                  {businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}
+                </div>
+              </div>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>→</span>
+            </a>
+          )}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
