@@ -10,7 +10,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json();
 
   // Only allow safe profile fields — never role, never id
-  const allowed = ['first_name', 'last_name', 'phone', 'license', 'email'];
+  const allowed = ['first_name', 'last_name', 'phone', 'license', 'email', 'business_unit'];
   const update: Record<string, string> = {};
   for (const key of allowed) {
     if (key in body && body[key] !== undefined) {

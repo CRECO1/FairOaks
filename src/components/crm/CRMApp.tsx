@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient, Session } from '@supabase/supabase-js';
 
 // Invite flow is now handled by /crm/setup — this page is login only.
@@ -11,7 +12,7 @@ const supabase = createClient(
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
-interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; }
+interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
@@ -263,6 +264,7 @@ const BRANDING: Record<BusinessUnit, { name: string; shortName: string; tagline:
 
 export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit }) {
   const brand = BRANDING[businessUnit];
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -389,7 +391,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Agent profile editing
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-  const [editAgentForm, setEditAgentForm] = useState({ first_name: '', last_name: '', email: '', phone: '', license: '' });
+  const [editAgentForm, setEditAgentForm] = useState({ first_name: '', last_name: '', email: '', phone: '', license: '', business_unit: 'residential' });
   const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // New deal form
@@ -511,6 +513,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // Update last_sign_in_at on every authenticated page load
       await supabase.from('crm_profiles').update({ last_sign_in_at: authLastSignIn }).eq('id', session.user.id);
       const updated = { ...data, last_sign_in_at: authLastSignIn } as Profile;
+
+      // Access control: non-admins are locked to their assigned business_unit
+      if (updated.role !== 'admin' && updated.business_unit && updated.business_unit !== businessUnit) {
+        router.replace(`/crm/${updated.business_unit}`);
+        return;
+      }
+
       setProfile(updated);
       loadDeals(updated);
       loadClients(updated);
@@ -548,9 +557,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadProfiles = useCallback(async () => {
     // Sync real last_sign_in_at from Supabase Auth → crm_profiles first
     await fetch('/api/crm/sync-logins', { method: 'POST' }).catch(() => {});
-    const { data } = await supabase.from('crm_profiles').select('*').order('last_name');
+    // Each workspace only shows its own agents
+    const { data } = await supabase.from('crm_profiles').select('*').eq('business_unit', businessUnit).order('last_name');
     setProfiles((data ?? []) as Profile[]);
-  }, []);
+  }, [businessUnit]);
 
   const loadDealEmails = useCallback(async (dealId: string) => {
     const { data } = await supabase.from('crm_deal_emails').select('*').eq('deal_id', dealId).order('email_date', { ascending: false });
@@ -2314,7 +2324,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button
                         onClick={() => {
                           if (isEditing) { setEditingAgentId(null); }
-                          else { setEditingAgentId(a.id); setEditAgentForm({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone || '', license: a.license || '' }); }
+                          else { setEditingAgentId(a.id); setEditAgentForm({ first_name: a.first_name, last_name: a.last_name, email: a.email, phone: a.phone || '', license: a.license || '', business_unit: (a as any).business_unit || 'residential' }); }
                         }}
                         style={{ flexShrink: 0, padding: '4px 10px', fontSize: 11, fontWeight: 600, background: isEditing ? '#f3f4f6' : '#fffbeb', color: isEditing ? '#374151' : '#92400e', border: `1px solid ${isEditing ? '#e5e7eb' : '#fde68a'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                         {isEditing ? '✕ Cancel' : '✏️ Edit'}
@@ -2348,6 +2358,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <input className="crm-input" style={{ marginTop: 3 }} placeholder="TX-XXXXXXX" value={editAgentForm.license} onChange={e => setEditAgentForm({ ...editAgentForm, license: e.target.value })} />
                           </div>
                         </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Workspace</label>
+                          <select className="crm-input" style={{ marginTop: 3 }} value={editAgentForm.business_unit} onChange={e => setEditAgentForm({ ...editAgentForm, business_unit: e.target.value })}>
+                            <option value="residential">🏡 Fair Oaks Realty Group (Residential)</option>
+                            <option value="commercial">🏢 CRECO (Commercial)</option>
+                          </select>
+                        </div>
                         <button
                           onClick={saveAgentProfile}
                           disabled={editAgentSaving}
@@ -2366,6 +2383,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           ))}
                         </div>
                         <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>📞 {a.phone || '—'} &nbsp;·&nbsp; Lic: {a.license || '—'}</div>
+                        <div style={{ marginBottom: 8 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 8, background: (a as any).business_unit === 'commercial' ? '#eff6ff' : '#fef9f0', color: (a as any).business_unit === 'commercial' ? '#1d4ed8' : '#92400e' }}>
+                            {(a as any).business_unit === 'commercial' ? '🏢 CRECO' : '🏡 Fair Oaks'}
+                          </span>
+                        </div>
                         <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
                           🕐 Last login: {a.last_sign_in_at ? new Date(a.last_sign_in_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'}
                         </div>
