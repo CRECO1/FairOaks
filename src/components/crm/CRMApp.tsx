@@ -361,6 +361,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [composeSending, setComposeSending] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
+  const attachInputRef = useRef<HTMLInputElement>(null);
 
   // Responsive
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -1168,10 +1170,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       threadId: replyToEmail.gmail_thread_id,
       inReplyTo: replyToEmail.rfc_message_id,
     } : {};
+
+    // Convert any attachments to base64
+    const attachments = await Promise.all(
+      composeAttachments.map(file => new Promise<{ name: string; mimeType: string; data: string }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve({ name: file.name, mimeType: file.type || 'application/octet-stream', data: (reader.result as string).split(',')[1] });
+        reader.onerror = reject;
+      }))
+    );
+
     const res = await fetch('/api/gmail/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], ...threadingParams }),
+      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
     });
     const j = await res.json();
     if (!res.ok) { showToast('Send failed: ' + (j.error || 'Unknown error')); }
@@ -1181,6 +1194,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setComposeSubject('');
       setComposeBody('');
       setReplyToEmail(null);
+      setComposeAttachments([]);
       loadDealEmails(deal.id);
       if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
     }
@@ -3808,6 +3822,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <textarea className="crm-input" style={{ marginTop: 4, minHeight: 160, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
                             value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder="Write your message… signature auto-loads below" />
                         </div>
+                        {/* Attachments */}
+                        <div>
+                          <input
+                            ref={attachInputRef}
+                            type="file"
+                            multiple
+                            style={{ display: 'none' }}
+                            onChange={e => {
+                              const files = Array.from(e.target.files ?? []);
+                              setComposeAttachments(prev => [...prev, ...files]);
+                              e.target.value = '';
+                            }}
+                          />
+                          {composeAttachments.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+                              {composeAttachments.map((file, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 11, color: '#374151' }}>
+                                  <span>📎</span>
+                                  <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                                  <span style={{ color: '#9ca3af', fontSize: 10 }}>({(file.size / 1024).toFixed(0)} KB)</span>
+                                  <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 13, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         {profile?.email_signature && (
                           <div style={{ fontSize: 11, color: '#9ca3af', borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
                             <span style={{ fontWeight: 600 }}>Signature preview:</span>
@@ -3815,15 +3856,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               dangerouslySetInnerHTML={{ __html: profile.email_signature }} />
                           </div>
                         )}
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 2 }}>
-                          <button className="crm-btn crm-btn-sm" onClick={() => { setShowCompose(false); setReplyToEmail(null); }}
-                            style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
-                            Cancel
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 2 }}>
+                          <button onClick={() => attachInputRef.current?.click()}
+                            style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', color: '#374151', display: 'flex', alignItems: 'center', gap: 5 }}>
+                            📎 Attach
                           </button>
-                          <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => sendGmailEmail(activeDeal)} disabled={composeSending}
-                            style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
-                            {composeSending ? 'Sending…' : 'Send via Gmail'}
-                          </button>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button className="crm-btn crm-btn-sm" onClick={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); }}
+                              style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
+                              Cancel
+                            </button>
+                            <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => sendGmailEmail(activeDeal)} disabled={composeSending}
+                              style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
+                              {composeSending ? 'Sending…' : 'Send via Gmail'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>

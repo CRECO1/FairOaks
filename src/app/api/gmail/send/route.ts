@@ -82,12 +82,55 @@ async function getValidConnection(
   return { accessToken, agentEmail };
 }
 
+interface Attachment {
+  name: string;
+  mimeType: string;
+  data: string; // base64
+}
+
+function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attachment[]): string {
+  if (!attachments.length) {
+    return [...headers, '', htmlBody].join('\r\n');
+  }
+
+  const boundary = `==boundary_${crypto.randomUUID().replace(/-/g, '')}`;
+
+  // Replace Content-Type header with multipart/mixed
+  const baseHeaders = headers.filter(h => !h.toLowerCase().startsWith('content-type:'));
+  baseHeaders.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+  const parts: string[] = [
+    ...baseHeaders,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    htmlBody,
+  ];
+
+  for (const att of attachments) {
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: ${att.mimeType}; name="${att.name}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${att.name}"`,
+      '',
+      // chunk base64 into 76-char lines per RFC 2045
+      att.data.match(/.{1,76}/g)?.join('\r\n') ?? att.data,
+    );
+  }
+
+  parts.push(`--${boundary}--`);
+  return parts.join('\r\n');
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo } = await req.json();
+    const { userId, dealId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
     if (!userId || !dealId || !to || !subject || !body) {
       return NextResponse.json({ error: 'userId, dealId, to, subject, body are required' }, { status: 400 });
     }
+    const attList: Attachment[] = Array.isArray(attachments) ? attachments : [];
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -133,10 +176,8 @@ export async function POST(req: NextRequest) {
       clientHeaderLines.push(`In-Reply-To: ${inReplyTo}`);
       clientHeaderLines.push(`References: ${inReplyTo}`);
     }
-    clientHeaderLines.push('');
-    clientHeaderLines.push(bodyWithPixel);
 
-    const rawEmail = clientHeaderLines.join('\r\n');
+    const rawEmail = buildMimeEmail(clientHeaderLines, bodyWithPixel, attList);
 
     const encoded = Buffer.from(rawEmail)
       .toString('base64')
@@ -170,15 +211,14 @@ export async function POST(req: NextRequest) {
         ${body}
       `;
       for (const ccEmail of ccEmails) {
-        const ccRaw = [
+        const ccHeaders = [
           `From: ${fromLine}`,
           `To: ${ccEmail}`,
           `Subject: [Copy] ${subject}`,
           'MIME-Version: 1.0',
           'Content-Type: text/html; charset=utf-8',
-          '',
-          ccNoticeBody,
-        ].join('\r\n');
+        ];
+        const ccRaw = buildMimeEmail(ccHeaders, ccNoticeBody, attList);
         const ccEncoded = Buffer.from(ccRaw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         // Fire and forget — don't block on CC delivery
         fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
