@@ -19,7 +19,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; }
+interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -353,6 +353,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [gmailEmail, setGmailEmail] = useState('');
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
+
+  // Compose state
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeSending, setComposeSending] = useState(false);
 
   // Responsive
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -1130,6 +1136,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!res.ok) showToast('Sync error: ' + json.error);
     else { showToast(`Re-synced ${json.synced} email${json.synced !== 1 ? 's' : ''} between you and ${deal.client_email}`); loadDealEmails(deal.id); }
     setSyncing(false);
+  }
+
+  // ── Gmail compose & send ─────────────────────────────────────────────────────
+  async function sendGmailEmail(deal: Deal) {
+    if (!composeSubject.trim() || !composeBody.trim()) { showToast('Subject and body are required'); return; }
+    setComposeSending(true);
+    const agentName = `${profile!.first_name} ${profile!.last_name}`;
+    const res = await fetch('/api/gmail/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: composeBody, agentName }),
+    });
+    const j = await res.json();
+    if (!res.ok) { showToast('Send failed: ' + (j.error || 'Unknown error')); }
+    else {
+      showToast('✉️ Email sent via Gmail');
+      setShowCompose(false);
+      setComposeSubject('');
+      setComposeBody('');
+      loadDealEmails(deal.id);
+      if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
+    }
+    setComposeSending(false);
   }
 
   // ── Campaigns ─────────────────────────────────────────────────────────────────
@@ -3694,6 +3723,51 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Emails tab */}
               {dealTab === 'emails' && (
                 <div>
+                  {/* Compose button */}
+                  {gmailConnected && activeDeal?.client_email && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                      <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowCompose(v => !v)}
+                        style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        ✉️ Compose
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Compose panel */}
+                  {showCompose && activeDeal && (
+                    <div style={{ marginBottom: 14, border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>New Email</span>
+                        <button onClick={() => setShowCompose(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                      </div>
+                      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>To</label>
+                          <div style={{ marginTop: 4, padding: '6px 10px', background: '#f3f4f6', borderRadius: 5, fontSize: 12, color: '#6b7280' }}>{activeDeal.client_email}</div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject</label>
+                          <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Body</label>
+                          <textarea className="crm-input" style={{ marginTop: 4, minHeight: 160, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+                            value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder="HTML supported · {{first_name}} etc." />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 2 }}>
+                          <button className="crm-btn crm-btn-sm" onClick={() => setShowCompose(false)}
+                            style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
+                            Cancel
+                          </button>
+                          <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => sendGmailEmail(activeDeal)} disabled={composeSending}
+                            style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
+                            {composeSending ? 'Sending…' : 'Send via Gmail'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {gmailConnected && activeDeal?.client_email && (
                     <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
@@ -3718,6 +3792,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div key={e.id} style={{ background: '#f8f8f8', borderRadius: 8, padding: '13px 15px', border: '1px solid #e8e8e8' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: e.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: e.direction === 'sent' ? '#1e40af' : '#065f46' }}>{e.direction.toUpperCase()}</span>
+                          {e.direction === 'sent' && e.opened_at && (
+                            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46' }}>
+                              👁 Opened {new Date(e.opened_at).toLocaleDateString()}
+                            </span>
+                          )}
+                          {e.direction === 'sent' && !e.opened_at && e.tracking_id && (
+                            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#6b7280' }}>
+                              Not opened
+                            </span>
+                          )}
                           <span style={{ fontSize: 11, color: '#6b7280' }}>{e.direction === 'sent' ? `To: ${e.to_email}` : `From: ${e.from_email}`}</span>
                           <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 'auto' }}>{e.email_date}</span>
                         </div>
