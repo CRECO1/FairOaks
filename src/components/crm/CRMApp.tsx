@@ -12,7 +12,7 @@ const supabase = createClient(
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
-interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; }
+interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
@@ -558,12 +558,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           setGmailConnected(true);
           setGmailEmail(d.email);
           setGmailAccounts(d.accounts ?? []);
+          // Fetch & save Gmail signature in the background
+          fetch(`/api/gmail/signature?userId=${session.user.id}`)
+            .then(r => r.json())
+            .then(s => {
+              if (s.signature !== undefined) {
+                setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev);
+              }
+            })
+            .catch(() => {});
         }
       });
     // Handle OAuth redirect result
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmail') === 'connected') {
       setGmailConnected(true);
+      // Fetch signature after fresh OAuth connect
+      fetch(`/api/gmail/signature?userId=${session.user.id}`)
+        .then(r => r.json())
+        .then(s => { if (s.signature !== undefined) setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); })
+        .catch(() => {});
       window.history.replaceState({}, '', '/crm');
     }
   }, [session]); // eslint-disable-line
@@ -1143,10 +1157,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!composeSubject.trim() || !composeBody.trim()) { showToast('Subject and body are required'); return; }
     setComposeSending(true);
     const agentName = `${profile!.first_name} ${profile!.last_name}`;
+    // Append signature if present and not already included
+    const sig = profile?.email_signature ?? '';
+    const fullBody = sig
+      ? `${composeBody}<br/><br/><div class="gmail_signature">${sig}</div>`
+      : composeBody;
     const res = await fetch('/api/gmail/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: composeBody, agentName }),
+      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName }),
     });
     const j = await res.json();
     if (!res.ok) { showToast('Send failed: ' + (j.error || 'Unknown error')); }
@@ -3726,7 +3745,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Compose button */}
                   {gmailConnected && activeDeal?.client_email && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-                      <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowCompose(v => !v)}
+                      <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
+                        // Pre-load signature when opening compose
+                        if (!showCompose) {
+                          const sig = profile?.email_signature ?? '';
+                          setComposeBody(sig ? `<br/><br/>${sig}` : '');
+                          setComposeSubject('');
+                        }
+                        setShowCompose(v => !v);
+                      }}
                         style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                         ✉️ Compose
                       </button>
@@ -3738,7 +3765,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ marginBottom: 14, border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
                         <span style={{ fontSize: 13, fontWeight: 600 }}>New Email</span>
-                        <button onClick={() => setShowCompose(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <button
+                            onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced from Gmail'); } })}
+                            style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
+                            ↻ Sync signature
+                          </button>
+                          <button onClick={() => setShowCompose(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                        </div>
                       </div>
                       <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <div>
@@ -3752,8 +3786,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Body</label>
                           <textarea className="crm-input" style={{ marginTop: 4, minHeight: 160, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
-                            value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder="HTML supported · {{first_name}} etc." />
+                            value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder="Write your message… signature auto-loads below" />
                         </div>
+                        {profile?.email_signature && (
+                          <div style={{ fontSize: 11, color: '#9ca3af', borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+                            <span style={{ fontWeight: 600 }}>Signature preview:</span>
+                            <div style={{ marginTop: 4, padding: '6px 10px', background: '#f9fafb', borderRadius: 5, fontSize: 12, color: '#374151' }}
+                              dangerouslySetInnerHTML={{ __html: profile.email_signature }} />
+                          </div>
+                        )}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 2 }}>
                           <button className="crm-btn crm-btn-sm" onClick={() => setShowCompose(false)}
                             style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
