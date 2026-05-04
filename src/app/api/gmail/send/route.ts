@@ -117,14 +117,18 @@ export async function POST(req: NextRequest) {
     const bodyWithPixel = `${body}${pixel}`;
 
     const fromLine = agentName ? `${agentName} <${gmailEmail}>` : gmailEmail;
-    const headers: string[] = [
+
+    // Send to client ONLY — no Cc header so the pixel only fires when the client opens it
+    const clientHeaders = [
       `From: ${fromLine}`,
       `To: ${to}`,
+      `Subject: ${subject}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      bodyWithPixel,
     ];
-    if (ccEmails.length) headers.push(`Cc: ${ccEmails.join(', ')}`);
-    headers.push(`Subject: ${subject}`, 'MIME-Version: 1.0', 'Content-Type: text/html; charset=utf-8', '', bodyWithPixel);
-
-    const rawEmail = headers.join('\r\n');
+    const rawEmail = clientHeaders.join('\r\n');
 
     const encoded = Buffer.from(rawEmail)
       .toString('base64')
@@ -144,6 +148,34 @@ export async function POST(req: NextRequest) {
     const sendData = await sendRes.json();
     if (!sendRes.ok) {
       return NextResponse.json({ error: sendData.error?.message ?? 'Gmail send failed' }, { status: 500 });
+    }
+
+    // Send a separate copy to CC agents — NO tracking pixel so only the client's open counts
+    if (ccEmails.length) {
+      const ccNoticeBody = `
+        <div style="background:#f3f4f6;border-left:4px solid #c9922c;padding:10px 16px;margin-bottom:20px;font-family:sans-serif;font-size:13px;color:#374151;">
+          <strong>FYI:</strong> You were copied on this email sent to <strong>${to}</strong>.
+        </div>
+        ${body}
+      `;
+      for (const ccEmail of ccEmails) {
+        const ccRaw = [
+          `From: ${fromLine}`,
+          `To: ${ccEmail}`,
+          `Subject: [Copy] ${subject}`,
+          'MIME-Version: 1.0',
+          'Content-Type: text/html; charset=utf-8',
+          '',
+          ccNoticeBody,
+        ].join('\r\n');
+        const ccEncoded = Buffer.from(ccRaw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        // Fire and forget — don't block on CC delivery
+        fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw: ccEncoded }),
+        }).catch(() => {});
+      }
     }
 
     // Strip HTML tags for the stored plain-text body summary
