@@ -3831,65 +3831,77 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
                         </div>
                         {/* Rich text editor */}
-                        <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                        <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
                           {/* Formatting toolbar */}
-                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, padding: '5px 8px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                            <select defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)}
-                              style={{ fontSize: 11, border: '1px solid #d1d5db', borderRadius: 3, padding: '2px 4px', background: '#fff', cursor: 'pointer' }}>
-                              <option value="Arial">Arial</option>
-                              <option value="Georgia">Georgia</option>
-                              <option value="Times New Roman">Times New Roman</option>
-                              <option value="Courier New">Courier New</option>
-                              <option value="Verdana">Verdana</option>
-                              <option value="Trebuchet MS">Trebuchet MS</option>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: '#fafafa', borderBottom: '1px solid #e9ecef' }}>
+                            {/* Font family */}
+                            <select className="rtb-select" defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
+                              {['Arial','Georgia','Times New Roman','Courier New','Verdana','Trebuchet MS'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f === 'Trebuchet MS' ? 'Trebuchet' : f}</option>)}
                             </select>
-                            <select defaultValue="3" onChange={e => richCmd('fontSize', e.target.value)}
-                              style={{ fontSize: 11, border: '1px solid #d1d5db', borderRadius: 3, padding: '2px 4px', background: '#fff', cursor: 'pointer', width: 52 }}>
-                              <option value="1">8</option>
-                              <option value="2">10</option>
-                              <option value="3">12</option>
-                              <option value="4">14</option>
-                              <option value="5">18</option>
-                              <option value="6">24</option>
-                              <option value="7">36</option>
+                            {/* Font size */}
+                            <select className="rtb-select" defaultValue="3" onChange={e => richCmd('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
+                              {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24'],['7','36']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
-                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
-                            {([['B', 'bold'], ['I', 'italic'], ['U', 'underline']] as [string, string][]).map(([lbl, cmd]) => (
-                              <button key={cmd} onMouseDown={e => { e.preventDefault(); richCmd(cmd); }} title={cmd}
-                                style={{ minWidth: 24, background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 12, fontWeight: cmd === 'bold' ? 700 : 400, fontStyle: cmd === 'italic' ? 'italic' : 'normal', textDecoration: cmd === 'underline' ? 'underline' : 'none', color: '#374151' }}>
-                                {lbl}
-                              </button>
-                            ))}
-                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
-                            <label title="Text color" style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>A</span>
-                              <input type="color" defaultValue="#000000"
-                                onChange={e => richCmd('foreColor', e.target.value)}
-                                style={{ width: 18, height: 18, border: '1px solid #d1d5db', padding: 0, cursor: 'pointer', borderRadius: 2 }} />
+
+                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
+
+                            {/* Bold */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('bold'); }} title="Bold" style={{ fontWeight: 700, fontSize: 13 }}>B</button>
+                            {/* Italic */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('italic'); }} title="Italic" style={{ fontStyle: 'italic', fontSize: 13 }}>I</button>
+                            {/* Underline */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('underline'); }} title="Underline" style={{ textDecoration: 'underline', fontSize: 13 }}>U</button>
+
+                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
+
+                            {/* Text color — hidden input overlaid behind A */}
+                            <label className="rtb" title="Text color" style={{ position: 'relative', flexDirection: 'column', gap: 0 }}>
+                              <span style={{ fontWeight: 800, fontSize: 13, lineHeight: 1, display: 'block' }}>A</span>
+                              <span style={{ display: 'block', height: 3, background: '#c9922c', borderRadius: 1, marginTop: 1 }} />
+                              <input type="color" defaultValue="#000000" onChange={e => richCmd('foreColor', e.target.value)}
+                                style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
                             </label>
-                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('justifyLeft'); }} title="Align left"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>≡</button>
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('justifyCenter'); }} title="Align center"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>≡</button>
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('justifyRight'); }} title="Align right"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>≡</button>
-                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('insertUnorderedList'); }} title="Bullet list"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 5px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>•</button>
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('insertOrderedList'); }} title="Numbered list"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 5px', cursor: 'pointer', fontSize: 11, color: '#374151' }}>1.</button>
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('outdent'); }} title="Outdent"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>⇤</button>
-                            <button onMouseDown={e => { e.preventDefault(); richCmd('indent'); }} title="Indent"
-                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>⇥</button>
+
+                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
+
+                            {/* Align left */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyLeft'); }} title="Align left">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="0" y="4.5" width="9" height="2" rx="1"/><rect x="0" y="9" width="12" height="2" rx="1"/></svg>
+                            </button>
+                            {/* Align center */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyCenter'); }} title="Align center">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="2.5" y="4.5" width="9" height="2" rx="1"/><rect x="1" y="9" width="12" height="2" rx="1"/></svg>
+                            </button>
+                            {/* Align right */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyRight'); }} title="Align right">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="2" y="9" width="12" height="2" rx="1"/></svg>
+                            </button>
+
+                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
+
+                            {/* Bullet list */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertUnorderedList'); }} title="Bullet list">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><rect x="4" y="0.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="5.5" r="1.5"/><rect x="4" y="4.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="9.5" r="1.5"/><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
+                            </button>
+                            {/* Numbered list */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertOrderedList'); }} title="Numbered list">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><text x="0" y="3" fontSize="3.5" fontFamily="Arial" fontWeight="bold">1.</text><rect x="4" y="0.5" width="10" height="2" rx="1"/><text x="0" y="7" fontSize="3.5" fontFamily="Arial" fontWeight="bold">2.</text><rect x="4" y="4.5" width="10" height="2" rx="1"/><text x="0" y="11" fontSize="3.5" fontFamily="Arial" fontWeight="bold">3.</text><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
+                            </button>
+                            {/* Outdent */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('outdent'); }} title="Decrease indent">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><polygon points="0,4.5 3.5,7 0,9.5"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="5" y="8.5" width="9" height="2" rx="1"/></svg>
+                            </button>
+                            {/* Indent */}
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('indent'); }} title="Increase indent">
+                              <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><polygon points="0,4.5 3.5,7 0,9.5" transform="rotate(180 1.75 7)"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="5" y="8.5" width="9" height="2" rx="1"/></svg>
+                            </button>
                           </div>
                           {/* Editable body */}
                           <div
                             ref={composeBodyRef}
                             contentEditable
                             suppressContentEditableWarning
-                            style={{ minHeight: 160, maxHeight: 320, overflowY: 'auto', padding: '10px 12px', fontSize: 13, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, outline: 'none', color: '#111' }}
+                            style={{ minHeight: 180, maxHeight: 340, overflowY: 'auto', padding: '12px 14px', fontSize: 13, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: '#111' }}
                             data-placeholder="Write your message…"
                           />
                         </div>

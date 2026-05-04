@@ -531,8 +531,35 @@
   pointer-events: none;
 }
 
-/* Toolbar button hover state */
-.rich-toolbar-btn:hover {
-  background: #e5e7eb !important;
-  border-color: #d1d5db !important;
+/* Compose toolbar buttons */
+.rtb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #374151;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+.rtb:hover {
+  background: #f0f0f0;
+}
+.rtb-select {
+  height: 26px;
+  font-size: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  color: #374151;
+  transition: border-color 0.12s;
+  outline: none;
+}
+.rtb-select:hover, .rtb-select:focus {
+  border-color: #c9922c;
 }
