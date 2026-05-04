@@ -1158,14 +1158,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Gmail compose & send ─────────────────────────────────────────────────────
   async function sendGmailEmail(deal: Deal) {
-    if (!composeSubject.trim() || !composeBody.trim()) { showToast('Subject and body are required'); return; }
+    if (!composeSubject.trim()) { showToast('Subject is required'); return; }
     setComposeSending(true);
     const agentName = `${profile!.first_name} ${profile!.last_name}`;
-    // Append signature if present and not already included
+    // Append signature below message body
     const sig = profile?.email_signature ?? '';
+    const messageText = composeBody.trim();
     const fullBody = sig
-      ? `${composeBody}<br/><br/><div class="gmail_signature">${sig}</div>`
-      : composeBody;
+      ? `${messageText}<br/><br/><div class="gmail_signature">${sig}</div>`
+      : messageText || '&nbsp;';
     const threadingParams = replyToEmail ? {
       threadId: replyToEmail.gmail_thread_id,
       inReplyTo: replyToEmail.rfc_message_id,
@@ -3767,10 +3768,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {gmailConnected && activeDeal?.client_email && (
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
-                        // Pre-load signature when opening compose
                         if (!showCompose) {
-                          const sig = profile?.email_signature ?? '';
-                          setComposeBody(sig ? `<br/><br/>${sig}` : '');
+                          setComposeBody('');
                           setComposeSubject('');
                         }
                         setShowCompose(v => !v);
@@ -3977,8 +3976,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
                                         setReplyToEmail(lastEmail);
                                         setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                        const sig = profile?.email_signature ?? '';
-                                        setComposeBody(sig ? `<br/><br/>${sig}` : '');
+                                        setComposeBody('');
                                         setShowCompose(true);
                                       }}
                                       style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
