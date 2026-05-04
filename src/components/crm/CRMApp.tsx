@@ -357,12 +357,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Compose state
   const [showCompose, setShowCompose] = useState(false);
   const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
   const [composeSending, setComposeSending] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
   const attachInputRef = useRef<HTMLInputElement>(null);
+  const composeBodyRef = useRef<HTMLDivElement>(null);
+
+  function clearComposeBody() {
+    if (composeBodyRef.current) composeBodyRef.current.innerHTML = '';
+  }
+  function richCmd(cmd: string, value?: string) {
+    composeBodyRef.current?.focus();
+    document.execCommand(cmd, false, value);
+  }
 
   // Responsive
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -1160,46 +1168,52 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function sendGmailEmail(deal: Deal) {
     if (!composeSubject.trim()) { showToast('Subject is required'); return; }
     setComposeSending(true);
-    const agentName = `${profile!.first_name} ${profile!.last_name}`;
-    // Append signature below message body
-    const sig = profile?.email_signature ?? '';
-    const messageText = composeBody.trim();
-    const fullBody = sig
-      ? `${messageText}<br/><br/><div class="gmail_signature">${sig}</div>`
-      : messageText || '&nbsp;';
-    const threadingParams = replyToEmail ? {
-      threadId: replyToEmail.gmail_thread_id,
-      inReplyTo: replyToEmail.rfc_message_id,
-    } : {};
+    try {
+      const agentName = `${profile!.first_name} ${profile!.last_name}`;
+      const sig = profile?.email_signature ?? '';
+      const messageHtml = composeBodyRef.current?.innerHTML ?? '';
+      const fullBody = sig
+        ? `${messageHtml}<br/><br/><div class="gmail_signature">${sig}</div>`
+        : messageHtml || '&nbsp;';
+      const threadingParams = replyToEmail ? {
+        threadId: replyToEmail.gmail_thread_id,
+        inReplyTo: replyToEmail.rfc_message_id,
+      } : {};
 
-    // Convert any attachments to base64
-    const attachments = await Promise.all(
-      composeAttachments.map(file => new Promise<{ name: string; mimeType: string; data: string }>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve({ name: file.name, mimeType: file.type || 'application/octet-stream', data: (reader.result as string).split(',')[1] });
-        reader.onerror = reject;
-      }))
-    );
+      // Convert attachments to base64
+      const attachments = await Promise.all(
+        composeAttachments.map(file => new Promise<{ name: string; mimeType: string; data: string }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve({ name: file.name, mimeType: file.type || 'application/octet-stream', data: (reader.result as string).split(',')[1] });
+          reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        }))
+      );
 
-    const res = await fetch('/api/gmail/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
-    });
-    const j = await res.json();
-    if (!res.ok) { showToast('Send failed: ' + (j.error || 'Unknown error')); }
-    else {
-      showToast('✉️ Email sent via Gmail');
-      setShowCompose(false);
-      setComposeSubject('');
-      setComposeBody('');
-      setReplyToEmail(null);
-      setComposeAttachments([]);
-      loadDealEmails(deal.id);
-      if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
+      const res = await fetch('/api/gmail/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
+      });
+      let j: any = {};
+      try { j = await res.json(); } catch {}
+      if (!res.ok) {
+        showToast('Send failed: ' + (j.error || `HTTP ${res.status}`));
+      } else {
+        showToast('✉️ Email sent via Gmail');
+        setShowCompose(false);
+        setComposeSubject('');
+        clearComposeBody();
+        setReplyToEmail(null);
+        setComposeAttachments([]);
+        loadDealEmails(deal.id);
+        if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
+      }
+    } catch (err) {
+      showToast('Send failed: ' + String(err));
+    } finally {
+      setComposeSending(false);
     }
-    setComposeSending(false);
   }
 
   // ── Campaigns ─────────────────────────────────────────────────────────────────
@@ -3769,7 +3783,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showCompose) {
-                          setComposeBody('');
+                          clearComposeBody();
                           setComposeSubject('');
                         }
                         setShowCompose(v => !v);
@@ -3791,7 +3805,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                             ↻ Sync signature
                           </button>
-                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                         </div>
                       </div>
                       {replyToEmail && (
@@ -3816,10 +3830,68 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject</label>
                           <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
                         </div>
-                        <div>
-                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Body</label>
-                          <textarea className="crm-input" style={{ marginTop: 4, minHeight: 160, resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
-                            value={composeBody} onChange={e => setComposeBody(e.target.value)} placeholder="Write your message… signature auto-loads below" />
+                        {/* Rich text editor */}
+                        <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                          {/* Formatting toolbar */}
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, padding: '5px 8px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                            <select defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)}
+                              style={{ fontSize: 11, border: '1px solid #d1d5db', borderRadius: 3, padding: '2px 4px', background: '#fff', cursor: 'pointer' }}>
+                              <option value="Arial">Arial</option>
+                              <option value="Georgia">Georgia</option>
+                              <option value="Times New Roman">Times New Roman</option>
+                              <option value="Courier New">Courier New</option>
+                              <option value="Verdana">Verdana</option>
+                              <option value="Trebuchet MS">Trebuchet MS</option>
+                            </select>
+                            <select defaultValue="3" onChange={e => richCmd('fontSize', e.target.value)}
+                              style={{ fontSize: 11, border: '1px solid #d1d5db', borderRadius: 3, padding: '2px 4px', background: '#fff', cursor: 'pointer', width: 52 }}>
+                              <option value="1">8</option>
+                              <option value="2">10</option>
+                              <option value="3">12</option>
+                              <option value="4">14</option>
+                              <option value="5">18</option>
+                              <option value="6">24</option>
+                              <option value="7">36</option>
+                            </select>
+                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
+                            {([['B', 'bold'], ['I', 'italic'], ['U', 'underline']] as [string, string][]).map(([lbl, cmd]) => (
+                              <button key={cmd} onMouseDown={e => { e.preventDefault(); richCmd(cmd); }} title={cmd}
+                                style={{ minWidth: 24, background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 12, fontWeight: cmd === 'bold' ? 700 : 400, fontStyle: cmd === 'italic' ? 'italic' : 'normal', textDecoration: cmd === 'underline' ? 'underline' : 'none', color: '#374151' }}>
+                                {lbl}
+                              </button>
+                            ))}
+                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
+                            <label title="Text color" style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>A</span>
+                              <input type="color" defaultValue="#000000"
+                                onChange={e => richCmd('foreColor', e.target.value)}
+                                style={{ width: 18, height: 18, border: '1px solid #d1d5db', padding: 0, cursor: 'pointer', borderRadius: 2 }} />
+                            </label>
+                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('justifyLeft'); }} title="Align left"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>≡</button>
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('justifyCenter'); }} title="Align center"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>≡</button>
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('justifyRight'); }} title="Align right"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>≡</button>
+                            <span style={{ width: 1, height: 16, background: '#d1d5db', margin: '0 3px', flexShrink: 0 }} />
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('insertUnorderedList'); }} title="Bullet list"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 5px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>•</button>
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('insertOrderedList'); }} title="Numbered list"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 5px', cursor: 'pointer', fontSize: 11, color: '#374151' }}>1.</button>
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('outdent'); }} title="Outdent"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>⇤</button>
+                            <button onMouseDown={e => { e.preventDefault(); richCmd('indent'); }} title="Indent"
+                              style={{ background: 'none', border: '1px solid transparent', borderRadius: 3, padding: '1px 4px', cursor: 'pointer', fontSize: 13, color: '#374151' }}>⇥</button>
+                          </div>
+                          {/* Editable body */}
+                          <div
+                            ref={composeBodyRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            style={{ minHeight: 160, maxHeight: 320, overflowY: 'auto', padding: '10px 12px', fontSize: 13, fontFamily: 'Arial, sans-serif', lineHeight: 1.6, outline: 'none', color: '#111' }}
+                            data-placeholder="Write your message…"
+                          />
                         </div>
                         {/* Attachments */}
                         <div>
@@ -3861,7 +3933,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             📎 Attach
                           </button>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            <button className="crm-btn crm-btn-sm" onClick={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); }}
+                            <button className="crm-btn crm-btn-sm" onClick={() => { setShowCompose(false); setReplyToEmail(null); setComposeAttachments([]); clearComposeBody(); }}
                               style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
                               Cancel
                             </button>
@@ -3976,7 +4048,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
                                         setReplyToEmail(lastEmail);
                                         setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                        setComposeBody('');
+                                        clearComposeBody();
                                         setShowCompose(true);
                                       }}
                                       style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>

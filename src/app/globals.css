@@ -523,3 +523,16 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Rich text compose editor placeholder */
+[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+/* Toolbar button hover state */
+.rich-toolbar-btn:hover {
+  background: #e5e7eb !important;
+  border-color: #d1d5db !important;
+}
