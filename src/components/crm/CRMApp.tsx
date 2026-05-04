@@ -19,7 +19,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; }
+interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -359,6 +359,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [composeSending, setComposeSending] = useState(false);
+  const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
 
   // Responsive
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -1162,10 +1164,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const fullBody = sig
       ? `${composeBody}<br/><br/><div class="gmail_signature">${sig}</div>`
       : composeBody;
+    const threadingParams = replyToEmail ? {
+      threadId: replyToEmail.gmail_thread_id,
+      inReplyTo: replyToEmail.rfc_message_id,
+    } : {};
     const res = await fetch('/api/gmail/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [] }),
+      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], ...threadingParams }),
     });
     const j = await res.json();
     if (!res.ok) { showToast('Send failed: ' + (j.error || 'Unknown error')); }
@@ -1174,6 +1180,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setShowCompose(false);
       setComposeSubject('');
       setComposeBody('');
+      setReplyToEmail(null);
       loadDealEmails(deal.id);
       if (deal.client_id) logActivity(deal.client_id, 'email', `Sent email: ${composeSubject}`);
     }
@@ -3764,16 +3771,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {showCompose && activeDeal && (
                     <div style={{ marginBottom: 14, border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>New Email</span>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{replyToEmail ? '↩ Reply' : 'New Email'}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <button
                             onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced from Gmail'); } })}
                             style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                             ↻ Sync signature
                           </button>
-                          <button onClick={() => setShowCompose(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                         </div>
                       </div>
+                      {replyToEmail && (
+                        <div style={{ padding: '8px 12px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', fontSize: 12, color: '#1d4ed8' }}>
+                          ↩ Replying to: &ldquo;{replyToEmail.subject}&rdquo; — this will appear in the same Gmail thread
+                        </div>
+                      )}
                       <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>To</label>
@@ -3804,7 +3816,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 2 }}>
-                          <button className="crm-btn crm-btn-sm" onClick={() => setShowCompose(false)}
+                          <button className="crm-btn crm-btn-sm" onClick={() => { setShowCompose(false); setReplyToEmail(null); }}
                             style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}>
                             Cancel
                           </button>
@@ -3835,29 +3847,104 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     </div>
                   )}
+
+                  {/* Threaded email list */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
                     {dealEmails.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af' }}>📭 No emails logged yet.</div>}
-                    {dealEmails.map(e => (
-                      <div key={e.id} style={{ background: '#f8f8f8', borderRadius: 8, padding: '13px 15px', border: '1px solid #e8e8e8' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: e.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: e.direction === 'sent' ? '#1e40af' : '#065f46' }}>{e.direction.toUpperCase()}</span>
-                          {e.direction === 'sent' && e.opened_at && (
-                            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46' }}>
-                              👁 Opened {new Date(e.opened_at).toLocaleDateString()}
-                            </span>
-                          )}
-                          {e.direction === 'sent' && !e.opened_at && e.tracking_id && (
-                            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#6b7280' }}>
-                              Not opened
-                            </span>
-                          )}
-                          <span style={{ fontSize: 11, color: '#6b7280' }}>{e.direction === 'sent' ? `To: ${e.to_email}` : `From: ${e.from_email}`}</span>
-                          <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 'auto' }}>{e.email_date}</span>
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 3 }}>{e.subject}</div>
-                        <div style={{ fontSize: 12, color: '#555', lineHeight: 1.5 }}>{e.body}</div>
-                      </div>
-                    ))}
+                    {(() => {
+                      // Group emails by gmail_thread_id; emails without a thread ID each get their own group keyed by id
+                      const threadMap = new Map<string, DealEmail[]>();
+                      for (const email of dealEmails) {
+                        const key = email.gmail_thread_id ?? `solo_${email.id}`;
+                        const existing = threadMap.get(key) ?? [];
+                        existing.push(email);
+                        threadMap.set(key, existing);
+                      }
+                      // Sort groups by most recent email (descending)
+                      const groups = Array.from(threadMap.entries()).sort((a, b) => {
+                        const latestA = a[1].reduce((mx, e) => e.email_date > mx ? e.email_date : mx, '');
+                        const latestB = b[1].reduce((mx, e) => e.email_date > mx ? e.email_date : mx, '');
+                        return latestB.localeCompare(latestA);
+                      });
+                      return groups.map(([threadKey, threadEmails]) => {
+                        const isExpanded = expandedThreads.has(threadKey);
+                        const latest = threadEmails.reduce((mx, e) => e.email_date > mx.email_date ? e : mx, threadEmails[0]);
+                        const snippet = latest.body.slice(0, 120).replace(/\s+/g, ' ');
+                        return (
+                          <div key={threadKey} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
+                            {/* Thread header row */}
+                            <div
+                              onClick={() => setExpandedThreads(prev => {
+                                const next = new Set(prev);
+                                if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey);
+                                return next;
+                              })}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', cursor: 'pointer', background: isExpanded ? '#f9fafb' : '#fff', transition: 'background .12s' }}
+                            >
+                              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: latest.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: latest.direction === 'sent' ? '#1e40af' : '#065f46', flexShrink: 0 }}>
+                                {latest.direction.toUpperCase()}
+                              </span>
+                              <span style={{ fontSize: 12, color: '#374151', flexShrink: 0 }}>
+                                {latest.direction === 'sent' ? latest.to_email : latest.from_email}
+                              </span>
+                              {threadEmails.length > 1 && (
+                                <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>({threadEmails.length})</span>
+                              )}
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', maxWidth: 180 }}>
+                                {latest.subject}
+                              </span>
+                              <span style={{ fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
+                                — {snippet}
+                              </span>
+                              <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0, marginLeft: 8 }}>{latest.email_date}</span>
+                              <span style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, marginLeft: 4 }}>{isExpanded ? '▼' : '▶'}</span>
+                            </div>
+
+                            {/* Expanded thread emails */}
+                            {isExpanded && (
+                              <div style={{ borderTop: '1px solid #f0f0f0' }}>
+                                {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map(e => (
+                                  <div key={e.id} style={{ borderLeft: `3px solid ${e.direction === 'sent' ? '#3b82f6' : '#16a34a'}`, padding: '12px 14px', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
+                                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: e.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: e.direction === 'sent' ? '#1e40af' : '#065f46' }}>{e.direction.toUpperCase()}</span>
+                                      {e.direction === 'sent' && e.opened_at && (
+                                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46' }}>
+                                          👁 Opened {new Date(e.opened_at).toLocaleDateString()}
+                                        </span>
+                                      )}
+                                      {e.direction === 'sent' && !e.opened_at && e.tracking_id && (
+                                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#6b7280' }}>Not opened</span>
+                                      )}
+                                      <span style={{ fontSize: 11, color: '#6b7280' }}>{e.direction === 'sent' ? `To: ${e.to_email}` : `From: ${e.from_email}`}</span>
+                                      <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>{e.email_date}</span>
+                                    </div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.subject}</div>
+                                    <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>{e.body}</div>
+                                  </div>
+                                ))}
+                                {/* Reply button at the bottom of expanded thread */}
+                                {gmailConnected && activeDeal?.client_email && (
+                                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 14px', background: '#fff' }}>
+                                    <button
+                                      onClick={() => {
+                                        const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
+                                        setReplyToEmail(lastEmail);
+                                        setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                        const sig = profile?.email_signature ?? '';
+                                        setComposeBody(sig ? `<br/><br/>${sig}` : '');
+                                        setShowCompose(true);
+                                      }}
+                                      style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                      ↩ Reply
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                   <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: 15 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: '#111' }}>+ Log Email Touch</div>

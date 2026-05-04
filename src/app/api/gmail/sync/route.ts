@@ -203,6 +203,8 @@ export async function POST(req: NextRequest) {
           subject,
           body: body.slice(0, 4000),
           email_date: emailDate,
+          gmail_thread_id: msgData.threadId ?? null,
+          rfc_message_id: get('Message-ID') || null,
         }),
       });
 

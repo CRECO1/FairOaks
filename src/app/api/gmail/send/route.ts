@@ -84,7 +84,7 @@ async function getValidConnection(
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, to, subject, body, agentName, ccAgentIds } = await req.json();
+    const { userId, dealId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo } = await req.json();
     if (!userId || !dealId || !to || !subject || !body) {
       return NextResponse.json({ error: 'userId, dealId, to, subject, body are required' }, { status: 400 });
     }
@@ -118,17 +118,25 @@ export async function POST(req: NextRequest) {
 
     const fromLine = agentName ? `${agentName} <${gmailEmail}>` : gmailEmail;
 
+    // Prefix subject with Re: if replying and not already prefixed
+    const finalSubject = inReplyTo && !subject.startsWith('Re:') ? `Re: ${subject}` : subject;
+
     // Send to client ONLY — no Cc header so the pixel only fires when the client opens it
-    const clientHeaders = [
+    const clientHeaderLines = [
       `From: ${fromLine}`,
       `To: ${to}`,
-      `Subject: ${subject}`,
+      `Subject: ${finalSubject}`,
       'MIME-Version: 1.0',
       'Content-Type: text/html; charset=utf-8',
-      '',
-      bodyWithPixel,
     ];
-    const rawEmail = clientHeaders.join('\r\n');
+    if (inReplyTo) {
+      clientHeaderLines.push(`In-Reply-To: ${inReplyTo}`);
+      clientHeaderLines.push(`References: ${inReplyTo}`);
+    }
+    clientHeaderLines.push('');
+    clientHeaderLines.push(bodyWithPixel);
+
+    const rawEmail = clientHeaderLines.join('\r\n');
 
     const encoded = Buffer.from(rawEmail)
       .toString('base64')
@@ -136,13 +144,16 @@ export async function POST(req: NextRequest) {
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
+    const sendBody: Record<string, string> = { raw: encoded };
+    if (threadId) sendBody.threadId = threadId;
+
     const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ raw: encoded }),
+      body: JSON.stringify(sendBody),
     });
 
     const sendData = await sendRes.json();
@@ -195,11 +206,12 @@ export async function POST(req: NextRequest) {
         direction: 'sent',
         from_email: gmailEmail,
         to_email: to,
-        subject,
+        subject: finalSubject,
         body: plainBody,
         email_date: emailDate,
         gmail_message_id: sendData.id,
         tracking_id: trackingId,
+        gmail_thread_id: threadId ?? sendData.threadId ?? null,
         ...(ccEmails.length ? { cc_emails: ccEmails.join(', ') } : {}),
       }),
     });
