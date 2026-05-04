@@ -84,7 +84,7 @@ async function getValidConnection(
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, to, subject, body, agentName } = await req.json();
+    const { userId, dealId, to, subject, body, agentName, ccAgentIds } = await req.json();
     if (!userId || !dealId || !to || !subject || !body) {
       return NextResponse.json({ error: 'userId, dealId, to, subject, body are required' }, { status: 400 });
     }
@@ -99,19 +99,32 @@ export async function POST(req: NextRequest) {
     const gmailEmail = agentEmail ?? '';
     const trackingId = crypto.randomUUID();
 
+    // Look up CC agent emails (exclude the sender)
+    let ccEmails: string[] = [];
+    if (ccAgentIds?.length) {
+      const ids = (ccAgentIds as string[]).filter(id => id !== userId);
+      if (ids.length) {
+        const profilesRes = await fetch(
+          `${SUPABASE_URL}/rest/v1/crm_profiles?id=in.(${ids.join(',')})&select=email`,
+          { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } }
+        );
+        const profiles: { email: string }[] = await profilesRes.json();
+        ccEmails = profiles.map(p => p.email).filter(Boolean);
+      }
+    }
+
     const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${trackingId}" width="1" height="1" style="display:none" />`;
     const bodyWithPixel = `${body}${pixel}`;
 
     const fromLine = agentName ? `${agentName} <${gmailEmail}>` : gmailEmail;
-    const rawEmail = [
+    const headers: string[] = [
       `From: ${fromLine}`,
       `To: ${to}`,
-      `Subject: ${subject}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/html; charset=utf-8',
-      '',
-      bodyWithPixel,
-    ].join('\r\n');
+    ];
+    if (ccEmails.length) headers.push(`Cc: ${ccEmails.join(', ')}`);
+    headers.push(`Subject: ${subject}`, 'MIME-Version: 1.0', 'Content-Type: text/html; charset=utf-8', '', bodyWithPixel);
+
+    const rawEmail = headers.join('\r\n');
 
     const encoded = Buffer.from(rawEmail)
       .toString('base64')
@@ -155,6 +168,7 @@ export async function POST(req: NextRequest) {
         email_date: emailDate,
         gmail_message_id: sendData.id,
         tracking_id: trackingId,
+        ...(ccEmails.length ? { cc_emails: ccEmails.join(', ') } : {}),
       }),
     });
 

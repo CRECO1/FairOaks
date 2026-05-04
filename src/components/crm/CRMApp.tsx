@@ -1165,7 +1165,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const res = await fetch('/api/gmail/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName }),
+      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [] }),
     });
     const j = await res.json();
     if (!res.ok) { showToast('Send failed: ' + (j.error || 'Unknown error')); }
@@ -3779,6 +3779,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>To</label>
                           <div style={{ marginTop: 4, padding: '6px 10px', background: '#f3f4f6', borderRadius: 5, fontSize: 12, color: '#6b7280' }}>{activeDeal.client_email}</div>
                         </div>
+                        {activeDeal.assigned_agent_ids?.filter(id => id !== session!.user.id).length > 0 && (
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>CC (tagged agents)</label>
+                            <div style={{ marginTop: 4, padding: '6px 10px', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 5, fontSize: 12, color: '#92400e' }}>
+                              {activeDeal.assigned_agent_ids.filter(id => id !== session!.user.id).map(id => agentName(id)).join(', ')}
+                            </div>
+                          </div>
+                        )}
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject</label>
                           <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
