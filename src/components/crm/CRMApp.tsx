@@ -406,6 +406,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [contactTypeFilter, setContactTypeFilter] = useState('');
   const [contactTagFilter, setContactTagFilter] = useState('');
   const [contactSourceFilter, setContactSourceFilter] = useState('');
+  const [contactSpecFilter, setContactSpecFilter] = useState('');
   const [showSaveList, setShowSaveList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
@@ -755,6 +756,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     await supabase.from('crm_clients').delete().eq('id', id);
     setClients(prev => prev.filter(c => c.id !== id));
     showToast(`${name} removed.`);
+  }
+
+  async function massDeleteClients() {
+    const count = selectedClientIds.size;
+    if (count === 0) return;
+    if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    const ids = [...selectedClientIds];
+    await supabase.from('crm_clients').delete().in('id', ids);
+    setClients(prev => prev.filter(c => !ids.includes(c.id)));
+    setSelectedClientIds(new Set());
+    showToast(`${count} contact${count !== 1 ? 's' : ''} deleted.`);
   }
 
   function openEditClient(c: Client) {
@@ -1948,12 +1960,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Tag filter */}
                     <input placeholder="🏷 Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
                       style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140, background: contactTagFilter ? '#f0fdf4' : '#fff' }} />
+                    {/* Specialization filter (most useful for Agent/Broker) */}
+                    <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: contactSpecFilter ? '#111' : '#9ca3af', background: contactSpecFilter ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
+                      <option value="">All Specialties</option>
+                      {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
+                    </select>
                     {/* Clear */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter) && (
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
                     )}
                     {/* Save as Smart List */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter) && !showSaveList && (
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter) && !showSaveList && (
                       <button onClick={() => setShowSaveList(true)} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #c9922c', fontSize: 12, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>💾 Save List</button>
                     )}
                     {showSaveList && (
@@ -1979,6 +1996,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   if (contactTypeFilter && c.type !== contactTypeFilter) return false;
                   if (contactSourceFilter && c.lead_source !== contactSourceFilter) return false;
                   if (contactTagFilter && !(c.tags ?? []).some(t => t.toLowerCase().includes(contactTagFilter.toLowerCase()))) return false;
+                  if (contactSpecFilter && !(c.asset_types ?? []).includes(contactSpecFilter)) return false;
                   return true;
                 });
                 return isMobile ? (
@@ -2036,6 +2054,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })}
               </div>
             ) : (
+                <>
+                {/* Bulk action bar */}
+                {selectedClientIds.size > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, padding: '10px 14px', background: '#fef9f0', border: '1px solid #f0d9a8', borderRadius: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+                      {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''} selected
+                    </span>
+                    <button
+                      onClick={massDeleteClients}
+                      style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      🗑 Delete Selected
+                    </button>
+                    <button
+                      onClick={() => setSelectedClientIds(new Set())}
+                      style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
+                      Clear selection
+                    </button>
+                  </div>
+                )}
                 <div style={{ overflowX: 'auto' }}>
                   <table>
                     <thead>
@@ -2055,6 +2092,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </th>
                         <th>Name</th>
                         <th>Type</th>
+                        <th>Specializes In</th>
                         <th>Source</th>
                         <th>Tags</th>
                         <th>Email</th>
@@ -2105,11 +2143,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </button>
                             </td>
 
-                            {/* Type badge */}
+                            {/* Type — inline dropdown to change without opening contact */}
+                            <td onClick={e => e.stopPropagation()}>
+                              <select
+                                value={c.type}
+                                title="Change contact type"
+                                onChange={async e => {
+                                  const newType = e.target.value as Client['type'];
+                                  await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
+                                  setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
+                                }}
+                                style={{
+                                  ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties,
+                                  border: '1px solid transparent',
+                                  borderRadius: 4,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  padding: '2px 6px',
+                                  cursor: 'pointer',
+                                  appearance: 'none' as const,
+                                  WebkitAppearance: 'none' as const,
+                                  outline: 'none',
+                                }}
+                                onFocus={e => { e.currentTarget.style.borderColor = '#c9922c'; }}
+                                onBlur={e => { e.currentTarget.style.borderColor = 'transparent'; }}
+                              >
+                                {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                            </td>
+
+                            {/* Specializes In / Property Interest */}
                             <td>
-                              <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>
-                                {c.type}
-                              </span>
+                              {(c.asset_types ?? []).length > 0 ? (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                                  {(c.asset_types ?? []).slice(0, 2).map(at => (
+                                    <span key={at} style={{ background: (c.type === 'Agent' || c.type === 'Broker') ? '#e0f2fe' : '#fef3e2', color: (c.type === 'Agent' || c.type === 'Broker') ? '#075985' : '#92400e', padding: '1px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>{at}</span>
+                                  ))}
+                                  {(c.asset_types ?? []).length > 2 && <span style={{ fontSize: 10, color: '#9ca3af' }}>+{(c.asset_types ?? []).length - 2}</span>}
+                                </div>
+                              ) : <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>}
                             </td>
 
                             {/* Lead Source */}
@@ -2251,6 +2323,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </tbody>
                   </table>
                 </div>
+                </> // end desktop view (bulk bar + table)
                 ); // end desktop table return
               })() /* end filteredContacts IIFE */}
 
@@ -4435,7 +4508,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Professional</div>
                     <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Brokerage</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="Century 21, KW…" value={nc.brokerage} onChange={e => setNc({ ...nc, brokerage: e.target.value })} />
@@ -4444,6 +4517,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>License #</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="TX-0000000" value={nc.license} onChange={e => setNc({ ...nc, license: e.target.value })} />
                     </div>
+                  </div>
+                  {/* Specializes In — asset type checkboxes */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>Specializes In</label>
+                    <button type="button"
+                      onClick={e => { e.stopPropagation(); setAssetDropdownOpen(assetDropdownOpen === 'nc' ? null : 'nc'); }}
+                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: '#fff', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: nc.asset_types.length ? '#111' : '#9ca3af' }}>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {nc.asset_types.length === 0 ? 'Office, Industrial, Retail…' : nc.asset_types.join(', ')}
+                      </span>
+                      <span style={{ marginLeft: 8, fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>{assetDropdownOpen === 'nc' ? '▲' : '▼'}</span>
+                    </button>
+                    {assetDropdownOpen === 'nc' && (
+                      <div onClick={e => e.stopPropagation()}
+                        style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: '6px 0', marginTop: 4 }}>
+                        <div style={{ padding: '4px 12px 6px', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, borderBottom: '1px solid #f0f0f0', marginBottom: 4 }}>Select all that apply</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, padding: '0 6px 6px' }}>
+                          {ASSET_TYPES.map(at => {
+                            const checked = nc.asset_types.includes(at);
+                            return (
+                              <label key={at} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? '#e0f2fe' : 'transparent', transition: 'background .1s' }}>
+                                <input type="checkbox" checked={checked} onChange={() => {
+                                  const next = checked ? nc.asset_types.filter(x => x !== at) : [...nc.asset_types, at];
+                                  setNc({ ...nc, asset_types: next });
+                                }} style={{ accentColor: '#0369a1', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+                                <span style={{ fontSize: 12, fontWeight: checked ? 600 : 400, color: checked ? '#075985' : '#374151' }}>{at}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={{ borderTop: '1px solid #f0f0f0', padding: '6px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>{nc.asset_types.length} selected</span>
+                          <button onClick={() => setAssetDropdownOpen(null)} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Done</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -4661,13 +4770,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 </div>
 
-                {/* Asset Types */}
+                {/* Asset Types / Specializes In */}
                 {(c.asset_types ?? []).length > 0 && (
                   <div>
-                    <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>Asset Type(s)</div>
+                    <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>
+                      {(c.type === 'Agent' || c.type === 'Broker') ? 'Specializes In' : 'Property Interest'}
+                    </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {(c.asset_types ?? []).map(at => (
-                        <span key={at} style={{ display: 'inline-block', background: '#fef3e2', border: '1px solid #fde68a', color: '#92400e', borderRadius: 20, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>{at}</span>
+                        <span key={at} style={{ display: 'inline-block', background: (c.type === 'Agent' || c.type === 'Broker') ? '#e0f2fe' : '#fef3e2', border: `1px solid ${(c.type === 'Agent' || c.type === 'Broker') ? '#bae6fd' : '#fde68a'}`, color: (c.type === 'Agent' || c.type === 'Broker') ? '#075985' : '#92400e', borderRadius: 20, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>{at}</span>
                       ))}
                     </div>
                   </div>
@@ -5086,7 +5197,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Professional</div>
                     <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Brokerage</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="Century 21, KW…" value={ec.brokerage} onChange={e => setEc({ ...ec, brokerage: e.target.value })} />
@@ -5095,6 +5206,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>License #</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="TX-0000000" value={ec.license} onChange={e => setEc({ ...ec, license: e.target.value })} />
                     </div>
+                  </div>
+                  {/* Specializes In — supports multiple */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>Specializes In</label>
+                    <button type="button"
+                      onClick={e => { e.stopPropagation(); setAssetDropdownOpen(assetDropdownOpen === 'ec' ? null : 'ec'); }}
+                      style={{ width: '100%', padding: '8px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: '#fff', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: ec.asset_types.length ? '#111' : '#9ca3af' }}>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ec.asset_types.length === 0 ? 'Office, Industrial, Retail…' : ec.asset_types.join(', ')}
+                      </span>
+                      <span style={{ marginLeft: 8, fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>{assetDropdownOpen === 'ec' ? '▲' : '▼'}</span>
+                    </button>
+                    {assetDropdownOpen === 'ec' && (
+                      <div onClick={e => e.stopPropagation()}
+                        style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: '6px 0', marginTop: 4 }}>
+                        <div style={{ padding: '4px 12px 6px', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, borderBottom: '1px solid #f0f0f0', marginBottom: 4 }}>Select all that apply</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2, padding: '0 6px 6px' }}>
+                          {ASSET_TYPES.map(at => {
+                            const checked = ec.asset_types.includes(at);
+                            return (
+                              <label key={at} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', background: checked ? '#e0f2fe' : 'transparent', transition: 'background .1s' }}>
+                                <input type="checkbox" checked={checked} onChange={() => {
+                                  const next = checked ? ec.asset_types.filter(x => x !== at) : [...ec.asset_types, at];
+                                  setEc({ ...ec, asset_types: next });
+                                }} style={{ accentColor: '#0369a1', width: 14, height: 14, flexShrink: 0, cursor: 'pointer' }} />
+                                <span style={{ fontSize: 12, fontWeight: checked ? 600 : 400, color: checked ? '#075985' : '#374151' }}>{at}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div style={{ borderTop: '1px solid #f0f0f0', padding: '6px 12px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>{ec.asset_types.length} selected</span>
+                          <button onClick={() => setAssetDropdownOpen(null)} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Done</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
