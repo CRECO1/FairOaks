@@ -977,9 +977,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const brokerage = (row['brokerage'] ?? row['Brokerage'] ?? '').toString().trim();
         const license = (row['license'] ?? row['License'] ?? row['License #'] ?? '').toString().trim();
         const notes = (row['notes'] ?? row['Notes'] ?? '').toString().trim();
+        const lead_source = (row['lead_source'] ?? row['Lead Source'] ?? row['source'] ?? row['Source'] ?? '').toString().trim();
+        // Asset Types: accept comma-separated string and validate against known types
+        const VALID_ASSET_TYPES = ['Home','Condo','Multi-Family','Land','Industrial','Flex/Warehouse','Retail','Office','Storage'];
+        const rawAssetTypes = (row['asset_types'] ?? row['Asset Types'] ?? row['Specializes In'] ?? row['specializes_in'] ?? '').toString();
+        const asset_types = rawAssetTypes.split(',').map(s => s.trim()).filter(s => VALID_ASSET_TYPES.includes(s));
+        // Tags: accept comma-separated string
+        const rawTags = (row['tags'] ?? row['Tags'] ?? '').toString();
+        const tags = rawTags ? rawTags.split(',').map(s => s.trim()).filter(Boolean) : [];
         if (!first_name) { errors++; continue; }
         const { error } = await supabase.from('crm_clients').insert([{
-          first_name, last_name, business_name, email, phone, cell_phone, address, city, state, zip, type, brokerage, license, notes, agent_id: profile!.id, business_unit: businessUnit,
+          first_name, last_name, business_name, email, phone, cell_phone, address, city, state, zip, type, brokerage, license, notes, lead_source, asset_types, tags, agent_id: profile!.id, business_unit: businessUnit,
         }]);
         if (error) errors++; else added++;
       }
