@@ -1970,7 +1970,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140, background: contactTagFilter ? '#f0fdf4' : '#fff' }} />
                     {/* Specialization filter (most useful for Agent/Broker) */}
                     <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: contactSpecFilter ? '#111' : '#9ca3af', background: contactSpecFilter ? '#f0fdf4' : '#fff', cursor: 'pointer' }}>
-                      <option value="">All Specialties</option>
+                      <option value="">All Asset Types</option>
                       {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
                     </select>
                     {/* Clear */}
