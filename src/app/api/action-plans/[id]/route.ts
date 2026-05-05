@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const supabase = adminClient();
   const { data, error } = await supabase
@@ -18,13 +18,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   // Sort steps by step_order in JS (embedded ordering not supported in select string)
   if (data?.steps) {
-    data.steps = (data.steps as any[]).sort((a, b) => a.step_order - b.step_order);
+    data.steps = (data.steps as { step_order: number }[]).sort((a, b) => a.step_order - b.step_order);
   }
 
   return NextResponse.json({ plan: data });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const { name, description, trigger_type, trigger_value, status, completion_campaign_id } = body;
@@ -50,6 +53,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const supabase = adminClient();
   const { error } = await supabase.from('crm_action_plans').delete().eq('id', id);

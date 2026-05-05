@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
-
 export async function POST(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { plan_id, agent_id } = await req.json();
   if (!plan_id || !agent_id) return NextResponse.json({ error: 'plan_id and agent_id required' }, { status: 400 });
 
@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
     .single();
   if (!plan) return NextResponse.json({ error: 'Plan not found' }, { status: 404 });
 
-  const steps = (plan.steps ?? []).sort((a: any, b: any) => a.step_order - b.step_order);
+  const steps = (plan.steps ?? []).sort(
+    (a: { step_order: number }, b: { step_order: number }) => a.step_order - b.step_order
+  );
   const step = steps[0];
   if (!step) return NextResponse.json({ error: 'No steps in this plan' }, { status: 400 });
   if (step.type !== 'email') return NextResponse.json({ error: 'First step is not an email — nothing to preview' }, { status: 400 });

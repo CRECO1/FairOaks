@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
+import { getCrmUser, forbidden } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
+  const caller = await getCrmUser();
+  if (!caller) return forbidden('Not authenticated');
+
+  // Allow user to update their own profile; admin can update any
+  if (caller.id !== id) {
+    const { data: callerProfile } = await adminClient().from('crm_profiles').select('role').eq('id', caller.id).single();
+    if (callerProfile?.role !== 'admin') return forbidden('Cannot update another agent\'s profile');
+  }
+
   const body = await req.json();
 
   // Only allow safe profile fields — never role, never id

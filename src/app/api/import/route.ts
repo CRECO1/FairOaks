@@ -1,10 +1,5 @@
-// STUBBED: Original implementation removed for sanitized handoff. Restore from version control.
+import { NextResponse } from 'next/server';
 
-import { NextRequest, NextResponse } from 'next/server';
-
-export async function POST(request: NextRequest) {
-  return NextResponse.json({
-    success: true,
-    message: 'Stubbed for code review — implementation removed'
-  });
+export async function POST() {
+  return NextResponse.json({ error: 'Import not yet implemented' }, { status: 501 });
 }

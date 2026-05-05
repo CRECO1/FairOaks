@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 const VALID_TYPES = ['email', 'sms', 'task', 'note'] as const;
 
+type StepInput = {
+  step_order?: number;
+  type: string;
+  delay_days?: number;
+  subject?: string;
+  body: string;
+};
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const supabase = adminClient();
   const { data, error } = await supabase
@@ -21,6 +29,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const { step_order, type, delay_days, subject, body: stepBody } = body;
@@ -54,6 +65,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const { steps } = body;
@@ -76,7 +90,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ steps: [] });
   }
 
-  const rows = steps.map((s: any) => ({
+  const rows = (steps as StepInput[]).map((s) => ({
     plan_id: id,
     step_order: s.step_order ?? 0,
     type: s.type,
@@ -93,11 +107,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Return steps sorted by step_order
-  const sorted = (data ?? []).sort((a: any, b: any) => a.step_order - b.step_order);
+  const sorted = (data ?? []).sort((a, b) => (a.step_order as number) - (b.step_order as number));
   return NextResponse.json({ steps: sorted });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const stepId = searchParams.get('stepId');

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const supabase = adminClient();
   const unit = new URL(req.url).searchParams.get('unit');
 
@@ -18,6 +18,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const body = await req.json();
   const { name, filters, created_by, is_shared, business_unit } = body;
 
@@ -46,6 +49,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
 

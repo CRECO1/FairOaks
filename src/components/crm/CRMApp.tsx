@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient, Session } from '@supabase/supabase-js';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 // Invite flow is now handled by /crm/setup — this page is login only.
 const supabase = createClient(
@@ -505,7 +506,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Sync email editor content when switching to builder view
   useLayoutEffect(() => {
     if (campaignView === 'builder' && emailEditorRef.current) {
-      emailEditorRef.current.innerHTML = newCampaign.email_body || '';
+      emailEditorRef.current.innerHTML = sanitizeHtml(newCampaign.email_body);
     }
   }, [campaignView]); // eslint-disable-line
 
@@ -646,8 +647,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     let q = supabase.from('crm_deals').select('*').eq('business_unit', businessUnit).order('last_touch', { ascending: false });
     if (p.role === 'agent') q = q.eq('agent_id', p.id);
     const { data } = await q;
-    setDeals((data ?? []) as Deal[]);
-  }, [businessUnit]);
+    const loaded = (data ?? []) as Deal[];
+    setDeals(loaded);
+    // Restore active deal after page refresh
+    const savedDealId = typeof window !== 'undefined' ? sessionStorage.getItem('activeDealId') : null;
+    if (savedDealId) {
+      const saved = loaded.find(d => d.id === savedDealId);
+      if (saved) {
+        setActiveDeal(saved);
+        setDealTab('emails');
+        loadDealEmails(saved.id);
+        loadDealDocs(saved.id);
+        sessionStorage.removeItem('activeDealId');
+      }
+    }
+  }, [businessUnit]); // eslint-disable-line
 
   const loadProfiles = useCallback(async () => {
     // Sync real last_sign_in_at from Supabase Auth → crm_profiles first
@@ -1014,6 +1028,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     await supabase.from('crm_deals').delete().eq('id', id);
     setDeals(prev => prev.filter(d => d.id !== id));
     setActiveDeal(null);
+    if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId');
     showToast('Deal deleted.');
   }
 
@@ -1555,6 +1570,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setShowDealAgentPicker(false);
     loadDealEmails(deal.id);
     loadDealDocs(deal.id);
+    if (typeof window !== 'undefined') sessionStorage.setItem('activeDealId', deal.id);
   }
 
   // ── Filtered deals ────────────────────────────────────────────────────────────
@@ -1695,7 +1711,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 9, color: '#4ade80', fontWeight: 600, letterSpacing: .5 }}>Connected</div>
                   <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acct.email}</div>
                 </div>
-                <button onClick={() => disconnectGmailAccount(acct.id)} title="Disconnect" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)', cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>✕</button>
+                <button onClick={() => disconnectGmailAccount(acct.id)} title="Disconnect" aria-label="Disconnect" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)', cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             ))}
             <a href={`/api/gmail/auth?userId=${session!.user.id}`}
@@ -1945,7 +1961,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <input autoFocus placeholder="List name…" value={newListName} onChange={e => setNewListName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveSmartList(); if (e.key === 'Escape') setShowSaveList(false); }}
                           style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #c9922c', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140 }} />
                         <button onClick={saveSmartList} style={{ padding: '4px 10px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Save</button>
-                        <button onClick={() => setShowSaveList(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                        <button onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>✕</button>
                       </div>
                     )}
                   </div>
@@ -3144,20 +3160,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               { label: 'I', cmd: 'italic', title: 'Italic', style: { fontStyle: 'italic' } },
                               { label: 'U', cmd: 'underline', title: 'Underline', style: { textDecoration: 'underline' } },
                             ].map(btn => (
-                              <button key={btn.cmd} type="button" title={btn.title}
+                              <button key={btn.cmd} type="button" title={btn.title} aria-label={btn.title}
                                 onMouseDown={e => { e.preventDefault(); document.execCommand(btn.cmd, false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
                                 style={{ ...btn.style, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 {btn.label}
                               </button>
                             ))}
                             <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
-                            <button type="button" title="Heading"
+                            <button type="button" title="Heading" aria-label="Heading"
                               onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'h3'); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
                               style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>H</button>
-                            <button type="button" title="Bullet List"
+                            <button type="button" title="Bullet List" aria-label="Bullet list"
                               onMouseDown={e => { e.preventDefault(); document.execCommand('insertUnorderedList', false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
                               style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>•</button>
-                            <button type="button" title="Insert Link"
+                            <button type="button" title="Insert Link" aria-label="Insert link"
                               onMouseDown={e => {
                                 e.preventDefault();
                                 const url = window.prompt('Enter URL (e.g. https://fairoaksrealtygroup.com):');
@@ -3187,6 +3203,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             ref={emailEditorRef}
                             contentEditable
                             suppressContentEditableWarning
+                            role="textbox"
+                            aria-multiline="true"
+                            aria-label="Campaign email body"
                             onInput={() => setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? '' }))}
                             style={{ minHeight: 240, border: '1px solid #d1d5db', borderTop: 'none', borderRadius: '0 0 6px 6px', padding: '14px 16px', fontSize: 14, lineHeight: 1.7, color: '#111', outline: 'none', fontFamily: "'DM Sans',sans-serif", background: '#fff', overflowY: 'auto' }}
                           />
@@ -3512,7 +3531,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <input type="number" min={0} value={step.delay_days} onChange={e => updatePlanStep(idx, { delay_days: +e.target.value })}
                                 style={{ width: 52, padding: '4px 6px', borderRadius: 6, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", textAlign: 'center' }} />
                             </div>
-                            <button onClick={() => removePlanStep(idx)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+                            <button onClick={() => removePlanStep(idx)} aria-label="Remove step" title="Remove step" style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
                           </div>
                           {step.type === 'email' && (
                             <input className="crm-input" placeholder="Subject line…" value={step.subject ?? ''} onChange={e => updatePlanStep(idx, { subject: e.target.value })} style={{ marginBottom: 8 }} />
@@ -3611,12 +3630,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Deal Modal ── */}
       {activeDeal && (
-        <div className="overlay" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); }}>
+        <div className="overlay" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>{activeDeal.client}</h3>
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
-              <button onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}>
               {/* Pipeline bar */}
@@ -3805,7 +3824,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                             ↻ Sync signature
                           </button>
-                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                         </div>
                       </div>
                       {replyToEmail && (
@@ -3835,27 +3854,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {/* Formatting toolbar */}
                           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: '#fafafa', borderBottom: '1px solid #e9ecef' }}>
                             {/* Font family */}
-                            <select className="rtb-select" defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
+                            <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmd('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
                               {['Arial','Georgia','Times New Roman','Courier New','Verdana','Trebuchet MS'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f === 'Trebuchet MS' ? 'Trebuchet' : f}</option>)}
                             </select>
                             {/* Font size */}
-                            <select className="rtb-select" defaultValue="3" onChange={e => richCmd('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
+                            <select className="rtb-select" aria-label="Font size" defaultValue="3" onChange={e => richCmd('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
                               {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24'],['7','36']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
 
                             <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
 
                             {/* Bold */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('bold'); }} title="Bold" style={{ fontWeight: 700, fontSize: 13 }}>B</button>
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('bold'); }} title="Bold" aria-label="Bold" style={{ fontWeight: 700, fontSize: 13 }}>B</button>
                             {/* Italic */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('italic'); }} title="Italic" style={{ fontStyle: 'italic', fontSize: 13 }}>I</button>
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('italic'); }} title="Italic" aria-label="Italic" style={{ fontStyle: 'italic', fontSize: 13 }}>I</button>
                             {/* Underline */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('underline'); }} title="Underline" style={{ textDecoration: 'underline', fontSize: 13 }}>U</button>
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('underline'); }} title="Underline" aria-label="Underline" style={{ textDecoration: 'underline', fontSize: 13 }}>U</button>
 
                             <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
 
                             {/* Text color — hidden input overlaid behind A */}
-                            <label className="rtb" title="Text color" style={{ position: 'relative', flexDirection: 'column', gap: 0 }}>
+                            <label className="rtb" title="Text color" aria-label="Text color" style={{ position: 'relative', flexDirection: 'column', gap: 0 }}>
                               <span style={{ fontWeight: 800, fontSize: 13, lineHeight: 1, display: 'block' }}>A</span>
                               <span style={{ display: 'block', height: 3, background: '#c9922c', borderRadius: 1, marginTop: 1 }} />
                               <input type="color" defaultValue="#000000" onChange={e => richCmd('foreColor', e.target.value)}
@@ -3865,34 +3884,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
 
                             {/* Align left */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyLeft'); }} title="Align left">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyLeft'); }} title="Align left" aria-label="Align left">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="0" y="4.5" width="9" height="2" rx="1"/><rect x="0" y="9" width="12" height="2" rx="1"/></svg>
                             </button>
                             {/* Align center */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyCenter'); }} title="Align center">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyCenter'); }} title="Align center" aria-label="Align center">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="2.5" y="4.5" width="9" height="2" rx="1"/><rect x="1" y="9" width="12" height="2" rx="1"/></svg>
                             </button>
                             {/* Align right */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyRight'); }} title="Align right">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('justifyRight'); }} title="Align right" aria-label="Align right">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="2" y="9" width="12" height="2" rx="1"/></svg>
                             </button>
 
                             <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 5px', flexShrink: 0 }} />
 
                             {/* Bullet list */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertUnorderedList'); }} title="Bullet list">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertUnorderedList'); }} title="Bullet list" aria-label="Bullet list">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><circle cx="1.5" cy="1.5" r="1.5"/><rect x="4" y="0.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="5.5" r="1.5"/><rect x="4" y="4.5" width="10" height="2" rx="1"/><circle cx="1.5" cy="9.5" r="1.5"/><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
                             </button>
                             {/* Numbered list */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertOrderedList'); }} title="Numbered list">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('insertOrderedList'); }} title="Numbered list" aria-label="Numbered list">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><text x="0" y="3" fontSize="3.5" fontFamily="Arial" fontWeight="bold">1.</text><rect x="4" y="0.5" width="10" height="2" rx="1"/><text x="0" y="7" fontSize="3.5" fontFamily="Arial" fontWeight="bold">2.</text><rect x="4" y="4.5" width="10" height="2" rx="1"/><text x="0" y="11" fontSize="3.5" fontFamily="Arial" fontWeight="bold">3.</text><rect x="4" y="8.5" width="10" height="2" rx="1"/></svg>
                             </button>
                             {/* Outdent */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('outdent'); }} title="Decrease indent">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('outdent'); }} title="Outdent" aria-label="Outdent">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><polygon points="0,4.5 3.5,7 0,9.5"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="5" y="8.5" width="9" height="2" rx="1"/></svg>
                             </button>
                             {/* Indent */}
-                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('indent'); }} title="Increase indent">
+                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmd('indent'); }} title="Indent" aria-label="Indent">
                               <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><rect x="0" y="0" width="14" height="2" rx="1"/><polygon points="0,4.5 3.5,7 0,9.5" transform="rotate(180 1.75 7)"/><rect x="5" y="4.5" width="9" height="2" rx="1"/><rect x="5" y="8.5" width="9" height="2" rx="1"/></svg>
                             </button>
                           </div>
@@ -3901,6 +3920,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             ref={composeBodyRef}
                             contentEditable
                             suppressContentEditableWarning
+                            role="textbox"
+                            aria-multiline="true"
+                            aria-label="Email body"
                             style={{ minHeight: 180, maxHeight: 340, overflowY: 'auto', padding: '12px 14px', fontSize: 13, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: '#111' }}
                             data-placeholder="Write your message…"
                           />
@@ -3926,7 +3948,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
                                   <span style={{ color: '#9ca3af', fontSize: 10 }}>({(file.size / 1024).toFixed(0)} KB)</span>
                                   <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 13, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
+                                    aria-label="Remove attachment" title="Remove attachment" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 13, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
                                 </div>
                               ))}
                             </div>
@@ -3936,7 +3958,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ fontSize: 11, color: '#9ca3af', borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
                             <span style={{ fontWeight: 600 }}>Signature preview:</span>
                             <div style={{ marginTop: 4, padding: '6px 10px', background: '#f9fafb', borderRadius: 5, fontSize: 12, color: '#374151' }}
-                              dangerouslySetInnerHTML={{ __html: profile.email_signature }} />
+                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(profile.email_signature) }} />
                           </div>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingTop: 2 }}>
@@ -4000,6 +4022,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const isExpanded = expandedThreads.has(threadKey);
                         const latest = threadEmails.reduce((mx, e) => e.email_date > mx.email_date ? e : mx, threadEmails[0]);
                         const snippet = latest.body.slice(0, 120).replace(/\s+/g, ' ');
+                        // Open status summary for collapsed header
+                        const sentEmails = threadEmails.filter(e => e.direction === 'sent');
+                        const openedEmails = sentEmails.filter(e => e.opened_at);
+                        const hasTracked = sentEmails.some(e => e.tracking_id);
                         return (
                           <div key={threadKey} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
                             {/* Thread header row */}
@@ -4019,6 +4045,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </span>
                               {threadEmails.length > 1 && (
                                 <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>({threadEmails.length})</span>
+                              )}
+                              {/* Open status badge — visible even when collapsed */}
+                              {openedEmails.length > 0 && (
+                                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46', flexShrink: 0 }}>
+                                  👁 {openedEmails.length > 1 ? `${openedEmails.length} opened` : `Opened ${new Date(openedEmails[0].opened_at!).toLocaleDateString()}`}
+                                </span>
+                              )}
+                              {openedEmails.length === 0 && hasTracked && (
+                                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#9ca3af', flexShrink: 0 }}>Not opened</span>
                               )}
                               <span style={{ fontSize: 13, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', maxWidth: 180 }}>
                                 {latest.subject}
@@ -4169,7 +4204,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>New Deal</h3>
-              <button onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ padding: '22px 26px' }}>
 
@@ -4261,7 +4296,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Header */}
             <div style={{ padding: '20px 28px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0', flexShrink: 0 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>Add Contact</h3>
-              <button onClick={() => setShowAddClient(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button onClick={() => setShowAddClient(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Scrollable body */}
@@ -4458,7 +4493,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       onClick={() => document.getElementById('nc-tag-input')?.focus()}>
                       {nc.tags.map(tag => (
                         <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                          {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
+                          {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
                         </span>
                       ))}
                       <input id="nc-tag-input" placeholder={nc.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
@@ -4494,7 +4529,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>Invite Agent</h3>
-              <button onClick={() => setShowInvite(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button onClick={() => setShowInvite(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
             <div style={{ padding: '22px 26px' }}>
               <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#92400e', marginBottom: 16 }}>
@@ -4554,7 +4589,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {c.type === 'Buyer' ? '🏡' : c.type === 'Seller' ? '🪧' : c.type === 'Tenant' ? '🔑' : c.type === 'Landlord/Investor' ? '🏢' : c.type === 'Agent' ? '🤝' : '🏛'} {c.type}
                   </span>
                 </div>
-                <button onClick={() => setActiveClient(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                <button onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
 
               <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
@@ -4854,7 +4889,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600 }}>Edit Contact</h3>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{editClient.first_name} {editClient.last_name}</div>
               </div>
-              <button onClick={() => setEditClient(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button onClick={() => setEditClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Scrollable body */}
@@ -4971,6 +5006,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             setEc({ ...ec, extra_emails: updated });
                           }}
                           title="Remove this email"
+                          aria-label="Remove this email"
                           style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 6, color: '#ef4444', fontSize: 14, cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                         >✕</button>
                       </div>
@@ -5106,7 +5142,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     onClick={() => document.getElementById('ec-tag-input')?.focus()}>
                     {ec.tags.map(tag => (
                       <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                        {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
+                        {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 10, padding: 0, lineHeight: 1 }}>✕</button>
                       </span>
                     ))}
                     <input id="ec-tag-input" placeholder={ec.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
@@ -5154,7 +5190,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     .replace('{{agent_name}}', `${profile?.first_name} ${profile?.last_name}`) || '(no subject)'}
                 </div>
               </div>
-              <button onClick={() => setShowEmailPreview(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button onClick={() => setShowEmailPreview(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             {/* Email meta bar */}
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#6b7280', display: 'flex', gap: 16 }}>
@@ -5167,7 +5203,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Rendered body */}
             <div style={{ flex: 1, overflowY: 'auto', background: '#fff', padding: 24 }}
               dangerouslySetInnerHTML={{
-                __html: newCampaign.email_body
+                __html: sanitizeHtml(newCampaign.email_body
                   .replace(/\{\{first_name\}\}/g, 'Jane').replace(/\{\{last_name\}\}/g, 'Smith')
                   .replace(/\{\{full_name\}\}/g, 'Jane Smith').replace(/\{\{email\}\}/g, 'jane@example.com')
                   .replace(/\{\{client_type\}\}/g, 'Buyer')
@@ -5175,7 +5211,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
                   .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
                   .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
-                  .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview')
+                  .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview'))
               }}
             />
           </div>

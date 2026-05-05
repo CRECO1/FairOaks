@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { SUPABASE_URL } from '@/lib/supabase-admin';
 
-const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
+type GmailConn = { id: string; access_token: string; refresh_token: string; expires_at: string; gmail_email: string };
 
-async function getValidAccessToken(conn: any): Promise<string | null> {
+async function getValidAccessToken(conn: GmailConn): Promise<string | null> {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -51,7 +53,7 @@ async function fetchCalendarEvents(accessToken: string, accountEmail: string, da
   if (!calRes.ok) return { events: [], scopeError: calRes.status === 403 };
 
   const calData = await calRes.json();
-  const events = (calData.items ?? []).map((e: any) => ({
+  const events = (calData.items ?? []).map((e: { summary?: string; description?: string; location?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }; attendees?: { email: string; displayName?: string; self?: boolean }[]; htmlLink?: string; status?: string; id: string }) => ({
     id: `${accountEmail}::${e.id}`,
     title: e.summary ?? '(No title)',
     description: e.description ?? null,
@@ -59,7 +61,7 @@ async function fetchCalendarEvents(accessToken: string, accountEmail: string, da
     start: e.start?.dateTime ?? e.start?.date ?? null,
     end: e.end?.dateTime ?? e.end?.date ?? null,
     allDay: !e.start?.dateTime,
-    attendees: (e.attendees ?? []).map((a: any) => ({ email: a.email, name: a.displayName ?? null, self: a.self ?? false })),
+    attendees: (e.attendees ?? []).map((a) => ({ email: a.email, name: a.displayName ?? null, self: a.self ?? false })),
     htmlLink: e.htmlLink ?? null,
     status: e.status ?? 'confirmed',
     account: accountEmail, // which calendar this came from
@@ -74,6 +76,10 @@ export async function GET(req: NextRequest) {
     const days = parseInt(req.nextUrl.searchParams.get('days') ?? '90');
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
+    const caller = await getCrmUser();
+    if (!caller) return unauthorized();
+    if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
+
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -81,12 +87,12 @@ export async function GET(req: NextRequest) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
       headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
     });
-    const connections = await res.json();
+    const connections: GmailConn[] = await res.json();
     if (!connections || connections.length === 0) return NextResponse.json({ error: 'Not connected' }, { status: 401 });
 
     // Fetch calendar events from all accounts in parallel
     const results = await Promise.all(
-      connections.map(async (conn: any) => {
+      connections.map(async (conn: GmailConn) => {
         const token = await getValidAccessToken(conn);
         if (!token) return { events: [], scopeError: false };
         return fetchCalendarEvents(token, conn.gmail_email, days);

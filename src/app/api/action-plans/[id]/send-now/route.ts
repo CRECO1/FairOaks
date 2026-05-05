@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
 function fromAddress(businessUnit?: string) {
   return businessUnit === 'commercial'
@@ -49,6 +46,9 @@ function computeNextStepAt(delayDays: number): string {
 // Called right after enrollment so the first email fires instantly rather
 // than waiting up to 15 minutes for the cron job.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id: planId } = await params;
   const { client_id, agent_id } = await req.json();
 
@@ -159,9 +159,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         notes: `[Action Plan: ${plan.name}] ${activityBody}`,
       }]);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     status = 'failed';
-    errorMsg = err?.message ?? String(err);
+    errorMsg = err instanceof Error ? err.message : String(err);
   }
 
   // Log execution

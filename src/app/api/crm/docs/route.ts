@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET = 'deal-docs';
-
-function adminClient() {
-  return createClient(SUPABASE_URL, SERVICE_KEY);
-}
 
 // ── GET: list docs for a deal (with signed download URLs) ─────────────────────
 export async function GET(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const dealId = req.nextUrl.searchParams.get('dealId');
   if (!dealId) return NextResponse.json({ error: 'dealId required' }, { status: 400 });
 
@@ -38,6 +36,9 @@ export async function GET(req: NextRequest) {
 
 // ── POST: upload a doc ────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
   const dealId = formData.get('dealId') as string | null;
@@ -90,6 +91,9 @@ export async function POST(req: NextRequest) {
 
 // ── DELETE: remove a doc ──────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { docId } = await req.json();
   if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
 

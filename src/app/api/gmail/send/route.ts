@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 
 const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
 
@@ -130,6 +131,11 @@ export async function POST(req: NextRequest) {
     if (!userId || !dealId || !to || !subject || !body) {
       return NextResponse.json({ error: 'userId, dealId, to, subject, body are required' }, { status: 400 });
     }
+
+    const caller = await getCrmUser();
+    if (!caller) return unauthorized();
+    if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
+
     const attList: Attachment[] = Array.isArray(attachments) ? attachments : [];
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;

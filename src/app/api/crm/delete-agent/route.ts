@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
+import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
+import { SUPABASE_URL } from '@/lib/supabase-admin';
 
 export async function POST(req: NextRequest) {
+  const caller = await getCrmAdmin();
+  if (!caller) return forbidden();
+
   try {
     const { userId } = await req.json();
 

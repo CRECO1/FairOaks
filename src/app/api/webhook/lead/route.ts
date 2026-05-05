@@ -35,6 +35,10 @@ const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaks
 
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
+function esc(s: string | null | undefined): string {
+  return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export async function POST(req: NextRequest) {
   // ── Auth: require apiKey query param ──────────────────────────────────────
   const { searchParams } = new URL(req.url);
@@ -43,27 +47,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: any;
+  let body: Record<string, unknown>;
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const {
-    first_name: rawFirst,
-    last_name: rawLast,
-    name: rawName,
-    email,
-    phone,
-    source = 'Unknown',
-    type: rawType,
-    message,
-    tags: extraTags = [],
-    asset_types,
-    budget,
-    size_range,
-    city,
-    state,
-  } = body;
+  const rawFirst = body.first_name as string | undefined;
+  const rawLast = body.last_name as string | undefined;
+  const rawName = body.name as string | undefined;
+  const email = body.email as string | undefined;
+  const phone = body.phone as string | undefined;
+  const source = (body.source as string | undefined) ?? 'Unknown';
+  const rawType = body.type as string | undefined;
+  const message = body.message as string | undefined;
+  const extraTags = (body.tags as string[] | undefined) ?? [];
+  const asset_types = body.asset_types as string[] | undefined;
+  const budget = body.budget as string | undefined;
+  const size_range = body.size_range as string | undefined;
+  const city = body.city as string | undefined;
+  const state = body.state as string | undefined;
 
   // Parse name
   let first_name = rawFirst ?? '';
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
 
   // Validate type
   const VALID_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'];
-  const clientType = VALID_TYPES.includes(rawType) ? rawType : 'Buyer';
+  const clientType = VALID_TYPES.includes(rawType ?? '') ? rawType! : 'Buyer';
 
   const supabase = adminClient();
 
@@ -138,18 +140,18 @@ export async function POST(req: NextRequest) {
     await resend.emails.send({
       from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
       to: NOTIFICATION_EMAIL,
-      subject: `📬 New Lead from ${source}: ${first_name} ${last_name}`,
+      subject: `📬 New Lead from ${esc(source)}: ${esc(first_name)} ${esc(last_name)}`,
       html: `
         <div style="font-family:sans-serif;max-width:600px">
-          <h2 style="color:#1a1a2e">New Lead — ${source}</h2>
+          <h2 style="color:#1a1a2e">New Lead — ${esc(source)}</h2>
           <p style="color:#666">${isNew ? '✅ Added as new CRM contact' : '⚠️ Contact already existed — tags updated'}</p>
           <table style="border-collapse:collapse;width:100%">
-            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Name</td><td style="padding:8px 12px;border:1px solid #eee">${first_name} ${last_name}</td></tr>
-            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Email</td><td style="padding:8px 12px;border:1px solid #eee"><a href="mailto:${email}">${email}</a></td></tr>
-            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Phone</td><td style="padding:8px 12px;border:1px solid #eee">${phone ?? '—'}</td></tr>
-            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Source</td><td style="padding:8px 12px;border:1px solid #eee">${source}</td></tr>
-            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Type</td><td style="padding:8px 12px;border:1px solid #eee">${clientType}</td></tr>
-            ${message ? `<tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Message</td><td style="padding:8px 12px;border:1px solid #eee">${message}</td></tr>` : ''}
+            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Name</td><td style="padding:8px 12px;border:1px solid #eee">${esc(first_name)} ${esc(last_name)}</td></tr>
+            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Email</td><td style="padding:8px 12px;border:1px solid #eee"><a href="mailto:${esc(email)}">${esc(email)}</a></td></tr>
+            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Phone</td><td style="padding:8px 12px;border:1px solid #eee">${esc(phone) || '—'}</td></tr>
+            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Source</td><td style="padding:8px 12px;border:1px solid #eee">${esc(source)}</td></tr>
+            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Type</td><td style="padding:8px 12px;border:1px solid #eee">${esc(clientType)}</td></tr>
+            ${message ? `<tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Message</td><td style="padding:8px 12px;border:1px solid #eee">${esc(message)}</td></tr>` : ''}
           </table>
           <p style="margin-top:16px"><a href="https://www.fairoaksrealtygroup.com/crm" style="background:#c9922c;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">View in CRM →</a></p>
         </div>

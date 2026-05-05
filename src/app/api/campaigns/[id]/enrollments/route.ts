@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 // CT = UTC-5 (CDT summer) / UTC-6 (CST winter). Using -05:00 as default (CDT).
 // The Date constructor with an explicit offset handles the UTC conversion correctly.
@@ -24,6 +21,9 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const supabase = adminClient();
   const { data, error } = await supabase
@@ -36,6 +36,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const { client_ids, enrolled_by } = await req.json();
   if (!client_ids?.length) return NextResponse.json({ error: 'client_ids required' }, { status: 400 });
@@ -49,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? computeNextSend(campaign.frequency, campaign.send_date, campaign.send_time)
     : null;
 
-  const rows = client_ids.map((client_id: string) => ({
+  const rows = (client_ids as string[]).map((client_id) => ({
     campaign_id: id,
     client_id,
     enrolled_by: enrolled_by ?? null,
@@ -67,6 +70,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const { client_id } = await req.json();
   const supabase = adminClient();

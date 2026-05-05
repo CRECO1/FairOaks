@@ -44,6 +44,17 @@ function computeNextStepAt(delayDays: number): string {
   return d.toISOString();
 }
 
+interface EnrollmentRecord {
+  id: string;
+  plan_id: string;
+  client_id: string;
+  agent_id?: string;
+  current_step: number | null;
+  next_step_at: string | null;
+  plan: { id: string; name: string; status: string; business_unit?: string; completion_campaign_id?: string };
+  client: { id: string; first_name: string; last_name: string; email: string; phone?: string; cell_phone?: string; type: string; agent_id?: string; unsubscribe_token?: string; unsubscribed_at?: string | null };
+}
+
 export async function GET(req: NextRequest) {
   // Secure the cron endpoint
   const authHeader = req.headers.get('authorization');
@@ -76,21 +87,28 @@ export async function GET(req: NextRequest) {
   if (!enrollments?.length) return NextResponse.json({ processed: 0, executed: 0, completed: 0 });
 
   // Get agent profiles
-  const agentIds = [...new Set((enrollments as any[]).map((e: any) => e.client?.agent_id || e.agent_id).filter(Boolean))];
+  // Supabase join type
+  const agentIds = [...new Set((enrollments as unknown[]).map((e: unknown) => {
+    const row = e as EnrollmentRecord;
+    return row.client?.agent_id || row.agent_id;
+  }).filter(Boolean))];
   const { data: agents } = await supabase.from('crm_profiles').select('id, first_name, last_name, email, phone').in('id', agentIds);
-  const agentMap = Object.fromEntries((agents ?? []).map((a: any) => [a.id, a]));
+  const agentMap = Object.fromEntries(
+    (agents ?? []).map((a: { id: string; first_name: string; last_name: string; email: string; phone?: string }) => [a.id, a])
+  );
 
   let executed = 0;
   let completed = 0;
 
-  for (const enrollment of (enrollments as any[])) {
+  for (const rawEnrollment of (enrollments as unknown[])) {
+    const enrollment = rawEnrollment as EnrollmentRecord;
     const plan = enrollment.plan;
     const client = enrollment.client;
     if (!plan || !client) continue;
     if (client.unsubscribed_at) continue; // skip unsubscribed
 
     const agentId = client.agent_id || enrollment.agent_id;
-    const agent = agentMap[agentId] ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
+    const agent = agentMap[agentId ?? ''] ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
 
     // Fetch the current step to execute
     const stepOrder = (enrollment.current_step ?? 0) + 1;
@@ -156,9 +174,9 @@ export async function GET(req: NextRequest) {
           notes: `[Action Plan: ${plan.name}] ${activityBody}`,
         }]);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       stepStatus = 'failed';
-      errorMessage = err?.message ?? String(err);
+      errorMessage = err instanceof Error ? err.message : String(err);
     }
 
     // Log the step execution
@@ -200,7 +218,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ processed: enrollments.length, executed, completed });
 }
 
-async function completePlan(supabase: ReturnType<typeof adminClient>, enrollment: any, plan: any) {
+async function completePlan(
+  supabase: ReturnType<typeof adminClient>,
+  enrollment: { id: string; client_id: string; agent_id?: string },
+  plan: { id: string; name: string; completion_campaign_id?: string }
+) {
   const completedAt = new Date().toISOString();
 
   // Mark enrollment complete

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
+import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const supabase = adminClient();
   const { data, error } = await supabase
@@ -19,6 +19,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const { client_ids, agent_id } = body;
@@ -52,6 +55,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+
   const { id } = await params;
   const body = await req.json();
   const { client_id } = body;

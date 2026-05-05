@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 
 const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ connected: false, accounts: [] });
+
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+  if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -29,6 +34,10 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const { connectionId, userId } = await req.json();
   if (!connectionId || !userId) return NextResponse.json({ error: 'connectionId and userId required' }, { status: 400 });
+
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+  if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;

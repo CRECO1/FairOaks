@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 
 const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
 
@@ -48,6 +49,10 @@ async function getValidToken(userId: string, anonKey: string, serviceKey: string
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+
+  const caller = await getCrmUser();
+  if (!caller) return unauthorized();
+  if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
