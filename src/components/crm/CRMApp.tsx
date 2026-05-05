@@ -752,6 +752,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteClient(id: string, name: string) {
+    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
     if (!confirm(`Remove ${name}? This cannot be undone.`)) return;
     await supabase.from('crm_clients').delete().eq('id', id);
     setClients(prev => prev.filter(c => c.id !== id));
@@ -759,6 +760,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function massDeleteClients() {
+    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
     const count = selectedClientIds.size;
     if (count === 0) return;
     if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
@@ -914,6 +916,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const toExport = selectedClientIds.size > 0
       ? clients.filter(c => selectedClientIds.has(c.id))
       : clients;
+
+    // Notify admin whenever any agent (non-admin) exports
+    if (!isAdmin && profile) {
+      fetch('/api/crm/export-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent_name: `${profile.first_name} ${profile.last_name}`,
+          agent_email: profile.email ?? '',
+          count: toExport.length,
+          business_unit: businessUnit,
+          selected: selectedClientIds.size > 0,
+        }),
+      }).catch(() => {});
+    }
+
     const headers = ['First Name', 'Last Name', 'Business Name', 'Type', 'Email', 'Phone', 'Cell Phone', 'Budget', 'Size Range', 'Asset Types', 'Address', 'City', 'State', 'ZIP', 'Brokerage', 'License', 'Notes', 'Date Added'];
     const rows = toExport.map(c => [
       c.first_name, c.last_name, c.business_name ?? '', c.type, c.email ?? '', c.phone ?? '', c.cell_phone ?? '', c.budget ?? '', c.size_range ?? '', (c.asset_types ?? []).join(', '), c.address ?? '', c.city ?? '', c.state ?? '', c.zip ?? '', c.brokerage ?? '', c.license ?? '', c.notes ?? '', c.created_at?.slice(0, 10) ?? '',
@@ -2063,8 +2081,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
             ) : (
                 <>
-                {/* Bulk action bar */}
-                {selectedClientIds.size > 0 && (
+                {/* Bulk action bar — admin only */}
+                {isAdmin && selectedClientIds.size > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, padding: '10px 14px', background: '#fef9f0', border: '1px solid #f0d9a8', borderRadius: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>
                       {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''} selected
