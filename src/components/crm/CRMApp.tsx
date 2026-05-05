@@ -980,7 +980,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const lead_source = (row['lead_source'] ?? row['Lead Source'] ?? row['source'] ?? row['Source'] ?? '').toString().trim();
         // Asset Types: accept comma-separated string and validate against known types
         const VALID_ASSET_TYPES = ['Home','Condo','Multi-Family','Land','Industrial','Flex/Warehouse','Retail','Office','Storage'];
-        const rawAssetTypes = (row['asset_types'] ?? row['Asset Types'] ?? row['Specializes In'] ?? row['specializes_in'] ?? '').toString();
+        const rawAssetTypes = (row['asset_types'] ?? row['Asset Types'] ?? row['Asset Type'] ?? row['specializes_in'] ?? '').toString();
         const asset_types = rawAssetTypes.split(',').map(s => s.trim()).filter(s => VALID_ASSET_TYPES.includes(s));
         // Tags: accept comma-separated string
         const rawTags = (row['tags'] ?? row['Tags'] ?? '').toString();
@@ -2100,7 +2100,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </th>
                         <th>Name</th>
                         <th>Type</th>
-                        <th>Specializes In</th>
+                        <th>Asset Type</th>
                         <th>Source</th>
                         <th>Tags</th>
                         <th>Email</th>
@@ -2180,7 +2180,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </select>
                             </td>
 
-                            {/* Specializes In / Property Interest */}
+                            {/* Asset Type / Property Interest */}
                             <td>
                               {(c.asset_types ?? []).length > 0 ? (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
@@ -4526,9 +4526,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="TX-0000000" value={nc.license} onChange={e => setNc({ ...nc, license: e.target.value })} />
                     </div>
                   </div>
-                  {/* Specializes In — asset type checkboxes */}
+                  {/* Asset Type — asset type checkboxes */}
                   <div style={{ position: 'relative' }}>
-                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>Specializes In</label>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>Asset Type</label>
                     <button type="button"
                       onClick={e => { e.stopPropagation(); setAssetDropdownOpen(assetDropdownOpen === 'nc' ? null : 'nc'); }}
                       style={{ width: '100%', padding: '8px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: '#fff', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: nc.asset_types.length ? '#111' : '#9ca3af' }}>
@@ -4778,11 +4778,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 </div>
 
-                {/* Asset Types / Specializes In */}
+                {/* Asset Types / Asset Type */}
                 {(c.asset_types ?? []).length > 0 && (
                   <div>
                     <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>
-                      {(c.type === 'Agent' || c.type === 'Broker') ? 'Specializes In' : 'Property Interest'}
+                      Asset Type
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                       {(c.asset_types ?? []).map(at => (
@@ -5215,9 +5215,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="TX-0000000" value={ec.license} onChange={e => setEc({ ...ec, license: e.target.value })} />
                     </div>
                   </div>
-                  {/* Specializes In — supports multiple */}
+                  {/* Asset Type — supports multiple */}
                   <div style={{ position: 'relative' }}>
-                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>Specializes In</label>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500, display: 'block', marginBottom: 4 }}>Asset Type</label>
                     <button type="button"
                       onClick={e => { e.stopPropagation(); setAssetDropdownOpen(assetDropdownOpen === 'ec' ? null : 'ec'); }}
                       style={{ width: '100%', padding: '8px 12px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13, fontFamily: "'DM Sans',sans-serif", background: '#fff', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: ec.asset_types.length ? '#111' : '#9ca3af' }}>
