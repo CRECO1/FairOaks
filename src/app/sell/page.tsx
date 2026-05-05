@@ -40,6 +40,7 @@ export default function SellPage() {
         phone: data.get('phone'),
         message: `Address: ${data.get('address')}\nTimeline: ${data.get('timeline')}\nAdditional info: ${data.get('notes')}`,
         source: 'valuation',
+        business_unit: 'residential',
       }),
     }).catch(() => {});
     setLoading(false);

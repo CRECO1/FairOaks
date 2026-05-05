@@ -12,7 +12,8 @@ function esc(s: string | null | undefined): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, email, phone, answers } = body;
+    const { name, email, phone, answers, business_unit } = body;
+    const unit: 'residential' | 'commercial' = business_unit === 'commercial' ? 'commercial' : 'residential';
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
@@ -66,7 +67,8 @@ export async function POST(req: NextRequest) {
               agent_id: adminId,
               assigned_agent_ids: [],
               lead_source: 'Website Quiz',
-              tags: ['New Lead'],
+              business_unit: unit,
+              tags: unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
             }]);
           }

@@ -33,6 +33,7 @@ export default function ContactPage() {
         phone: data.get('phone'),
         message: `Reason: ${data.get('reason')}\n\n${data.get('message')}`,
         source: 'contact',
+        business_unit: 'residential',
       }),
     }).catch(() => {});
     setLoading(false);

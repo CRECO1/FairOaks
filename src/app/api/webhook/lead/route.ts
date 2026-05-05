@@ -61,6 +61,8 @@ export async function POST(req: NextRequest) {
   const rawType = body.type as string | undefined;
   const message = body.message as string | undefined;
   const extraTags = (body.tags as string[] | undefined) ?? [];
+  // Webhook leads are commercial by default (Crexi, LoopNet, CoStar); override with business_unit param
+  const unit: 'residential' | 'commercial' = (body.business_unit as string | undefined) === 'residential' ? 'residential' : 'commercial';
   const asset_types = body.asset_types as string[] | undefined;
   const budget = body.budget as string | undefined;
   const size_range = body.size_range as string | undefined;
@@ -123,7 +125,10 @@ export async function POST(req: NextRequest) {
       agent_id: adminId,
       assigned_agent_ids: [],
       lead_source: source,
-      tags: ['New Lead', ...extraTags],
+      business_unit: unit,
+      tags: unit === 'commercial'
+        ? ['New Lead', 'CRECO', ...extraTags]
+        : ['New Lead', ...extraTags],
       unsubscribe_token,
       ...(asset_types ? { asset_types } : {}),
       ...(budget ? { budget } : {}),

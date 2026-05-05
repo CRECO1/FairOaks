@@ -12,11 +12,13 @@ function esc(s: string | null | undefined): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, email, phone, message, property_interest, source } = body;
+    const { name, email, phone, message, property_interest, source, business_unit } = body;
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
     }
+
+    const unit: 'residential' | 'commercial' = business_unit === 'commercial' ? 'commercial' : 'residential';
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
             const clientType = source === 'valuation' ? 'Seller'
               : source === 'landlord' ? 'Landlord/Investor'
               : source === 'tenant' ? 'Tenant'
+              : unit === 'commercial' ? 'Tenant'
               : 'Buyer';
 
             const noteLines = [
@@ -96,7 +99,8 @@ export async function POST(req: NextRequest) {
               agent_id: adminId,
               assigned_agent_ids: [],
               lead_source: 'Website',
-              tags: ['New Lead'],
+              business_unit: unit,
+              tags: unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
             }]);
           }

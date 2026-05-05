@@ -17,6 +17,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         message: data.get('message') || `I'm interested in ${listingTitle}`,
         property_interest: listingTitle,
         source: 'listing',
+        business_unit: 'residential',
       }),
     });
     form.reset();
