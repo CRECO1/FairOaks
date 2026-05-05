@@ -407,6 +407,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [contactTagFilter, setContactTagFilter] = useState('');
   const [contactSourceFilter, setContactSourceFilter] = useState('');
   const [contactSpecFilter, setContactSpecFilter] = useState('');
+  const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'added'>('recent');
   const [showSaveList, setShowSaveList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
@@ -1991,6 +1992,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <option value="">All Asset Types</option>
                       {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
                     </select>
+                    {/* Sort order */}
+                    <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#111', background: '#fff', cursor: 'pointer' }}>
+                      <option value="recent">Sort: Most Recent</option>
+                      <option value="never">Sort: Never Contacted</option>
+                      <option value="az">Sort: A → Z</option>
+                      <option value="added">Sort: Newest Added</option>
+                    </select>
                     {/* Clear */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter) && (
                       <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
@@ -2024,6 +2032,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   if (contactTagFilter && !(c.tags ?? []).some(t => t.toLowerCase().includes(contactTagFilter.toLowerCase()))) return false;
                   if (contactSpecFilter && !(c.asset_types ?? []).includes(contactSpecFilter)) return false;
                   return true;
+                }).sort((a, b) => {
+                  if (contactSort === 'recent') {
+                    if (!a.last_touched_at && !b.last_touched_at) return 0;
+                    if (!a.last_touched_at) return 1;
+                    if (!b.last_touched_at) return -1;
+                    return new Date(b.last_touched_at).getTime() - new Date(a.last_touched_at).getTime();
+                  }
+                  if (contactSort === 'never') {
+                    if (!a.last_touched_at && !b.last_touched_at) return 0;
+                    if (!a.last_touched_at) return -1;
+                    if (!b.last_touched_at) return 1;
+                    return new Date(a.last_touched_at).getTime() - new Date(b.last_touched_at).getTime();
+                  }
+                  if (contactSort === 'az') {
+                    const nameA = `${a.last_name}${a.first_name}`.toLowerCase();
+                    const nameB = `${b.last_name}${b.first_name}`.toLowerCase();
+                    return nameA.localeCompare(nameB);
+                  }
+                  // 'added' — newest added first
+                  return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                 });
                 return isMobile ? (
               /* ── Mobile Contact Cards ── */
