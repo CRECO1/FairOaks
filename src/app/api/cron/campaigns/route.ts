@@ -10,6 +10,8 @@ function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
+  brokerage: string;
+  defaultPhone: string;
 }): string {
   const BASE_URL = 'https://www.fairoaksrealtygroup.com';
   const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
@@ -21,8 +23,8 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || '(210) 390-9997')
-    .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
+    .replaceAll('{{agent_phone}}', ctx.agent.phone || ctx.defaultPhone)
+    .replaceAll('{{brokerage}}', ctx.brokerage)
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -92,7 +94,11 @@ export async function GET(req: NextRequest) {
     const senderAgent = campaign.sender_agent_id
       ? agentMap[campaign.sender_agent_id]
       : agentMap[client.agent_id];
-    const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
+    const isCommercialCampaign = campaign.business_unit === 'commercial';
+    const fallbackAgentEmail = isCommercialCampaign ? 'info@crecotx.com' : 'info@fairoaksrealtygroup.com';
+    const fallbackAgentPhone = isCommercialCampaign ? '(210) 817-3443' : '(210) 390-9997';
+    const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
+    const brokerageName = isCommercialCampaign ? 'CRECO' : 'Fair Oaks Realty Group';
 
     const ctx = {
       client: {
@@ -108,6 +114,8 @@ export async function GET(req: NextRequest) {
         email: agent.email,
         phone: agent.phone,
       },
+      brokerage: brokerageName,
+      defaultPhone: fallbackAgentPhone,
     };
 
     let status: 'sent' | 'failed' | 'skipped' = 'sent';
@@ -126,13 +134,19 @@ export async function GET(req: NextRequest) {
           const renderedBody = applyMergeFields(campaign.email_body || '', ctx);
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
 
+          // Brand based on business unit
+          const isCommercial = campaign.business_unit === 'commercial';
+          const brandName = isCommercial ? 'CRECO' : 'Fair Oaks Realty Group';
+          const brandDomain = isCommercial ? 'crecotx.com' : 'fairoaksrealtygroup.com';
+          const fallbackEmail = isCommercial ? `info@crecotx.com` : `info@fairoaksrealtygroup.com`;
+
           // Use sender agent's email as reply-to if they have one
-          const replyTo = agent.email && agent.email !== 'info@fairoaksrealtygroup.com'
+          const replyTo = agent.email && agent.email !== fallbackEmail
             ? `${agent.first_name} ${agent.last_name} <${agent.email}>`
             : undefined;
 
           const emailResult = await resend.emails.send({
-            from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
+            from: `${brandName} <noreply@${brandDomain}>`,
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,
