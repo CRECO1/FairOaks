@@ -23,7 +23,7 @@ export function sanitizeHtml(dirty: string | null | undefined): string {
   const dp = getPurify();
   if (!dp) return ''; // SSR fallback — never render untrusted HTML server-side
   return dp.sanitize(dirty, {
-    ALLOWED_TAGS: ['p','br','b','i','u','strong','em','a','ul','ol','li','h1','h2','h3','h4','h5','h6','span','div','center','table','thead','tbody','tfoot','tr','td','th','img','hr','blockquote','pre','code','font','small','big','sub','sup','s','strike','del','ins','caption','col','colgroup'],
+    ALLOWED_TAGS: ['p','br','b','i','u','strong','em','a','ul','ol','li','h1','h2','h3','h4','h5','h6','span','div','center','table','thead','tbody','tfoot','tr','td','th','img','hr','blockquote','pre','code','font','small','big','sub','sup','s','strike','del','ins','caption','col','colgroup','style','head','html','body','meta','title'],
     ALLOWED_ATTR: ['href','target','rel','src','alt','width','height','style','class','align','valign','bgcolor','color','border','cellpadding','cellspacing','colspan','rowspan','face','size','background','id','name','title','data-*'],
     FORCE_BODY: false,
   });
