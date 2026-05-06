@@ -1975,31 +1975,38 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
                   {/* Filter row */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {/* Type filter */}
-                    <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#fff', background: contactTypeFilter ? '#c9922c' : '#1a1a2e', cursor: 'pointer', fontWeight: 500 }}>
-                      <option value="">All Types</option>
-                      {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                    {/* Lead source filter */}
-                    <select value={contactSourceFilter} onChange={e => setContactSourceFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#fff', background: contactSourceFilter ? '#c9922c' : '#1a1a2e', cursor: 'pointer', fontWeight: 500 }}>
-                      <option value="">All Sources</option>
-                      {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {/* Specialization filter (most useful for Agent/Broker) */}
-                    <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#fff', background: contactSpecFilter ? '#c9922c' : '#1a1a2e', cursor: 'pointer', fontWeight: 500 }}>
-                      <option value="">All Asset Types</option>
-                      {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
-                    </select>
-                    {/* Sort order */}
-                    <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#fff', background: '#1a1a2e', cursor: 'pointer', fontWeight: 500 }}>
-                      <option value="recent">Sort: Most Recent</option>
-                      <option value="never">Sort: Never Contacted</option>
-                      <option value="az">Sort: A → Z</option>
-                      <option value="added">Sort: Newest Added</option>
-                    </select>
-                    {/* Tag filter */}
-                    <input placeholder="🏷 Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
-                      style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140, background: contactTagFilter ? '#c9922c' : '#1a1a2e', color: '#fff', outline: 'none' }} />
+                    {/* shared style for all filter controls */}
+                    {(() => {
+                      const fs: React.CSSProperties = { padding: '5px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#111', background: '#fff', cursor: 'pointer', fontWeight: 600 };
+                      const fsActive: React.CSSProperties = { ...fs, background: '#fef3e2', border: '1px solid #c9922c', color: '#92400e' };
+                      return (<>
+                        {/* Type filter */}
+                        <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} style={contactTypeFilter ? fsActive : fs}>
+                          <option value="">All Types</option>
+                          {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                        {/* Lead source filter */}
+                        <select value={contactSourceFilter} onChange={e => setContactSourceFilter(e.target.value)} style={contactSourceFilter ? fsActive : fs}>
+                          <option value="">All Sources</option>
+                          {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        {/* Specialization filter */}
+                        <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} style={contactSpecFilter ? fsActive : fs}>
+                          <option value="">All Asset Types</option>
+                          {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
+                        </select>
+                        {/* Sort order */}
+                        <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} style={fs}>
+                          <option value="recent">Sort: Most Recent</option>
+                          <option value="never">Sort: Never Contacted</option>
+                          <option value="az">Sort: A → Z</option>
+                          <option value="added">Sort: Newest Added</option>
+                        </select>
+                        {/* Tag filter */}
+                        <input placeholder="🏷 Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
+                          style={{ ...( contactTagFilter ? fsActive : fs ), width: 140, outline: 'none' }} />
+                      </>);
+                    })()}
                     {/* Clear */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter) && (
                       <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
