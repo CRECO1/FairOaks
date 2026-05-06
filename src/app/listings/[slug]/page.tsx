@@ -97,7 +97,7 @@ export default async function ListingDetailPage({ params }: Props) {
                 </div>
                 <div className="sm:text-right">
                   <p className="font-heading text-display-sm font-bold text-primary">
-                    {formatPrice(listing!.price)}
+                    {listing!.price ? formatPrice(listing!.price) : 'Contact for Price'}
                   </p>
                   <span className="inline-block mt-1 rounded-full bg-gold/20 px-3 py-0.5 text-caption font-semibold text-gold-dark uppercase">
                     {listing!.status}
@@ -106,25 +106,32 @@ export default async function ListingDetailPage({ params }: Props) {
               </div>
 
               {/* Key Stats */}
-              <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {[
+              {(() => {
+                const stats = [
                   { icon: Bed, label: 'Bedrooms', value: listing!.bedrooms },
                   { icon: Bath, label: 'Bathrooms', value: listing!.bathrooms },
-                  { icon: Square, label: 'Sq Ft', value: listing!.sqft.toLocaleString() },
-                  { icon: Calendar, label: 'Year Built', value: listing!.year_built ?? '—' },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="rounded-xl border border-border p-4 text-center">
-                    <Icon className="mx-auto mb-2 h-5 w-5 text-gold" />
-                    <div className="font-heading text-heading font-bold text-primary">{value}</div>
-                    <div className="text-caption text-foreground-muted">{label}</div>
+                  { icon: Square, label: 'Sq Ft', value: listing!.sqft },
+                  { icon: Calendar, label: 'Year Built', value: listing!.year_built ?? null },
+                ].filter(s => s.value);
+                return stats.length > 0 ? (
+                  <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    {stats.map(({ icon: Icon, label, value }) => (
+                      <div key={label} className="rounded-xl border border-border p-4 text-center">
+                        <Icon className="mx-auto mb-2 h-5 w-5 text-gold" />
+                        <div className="font-heading text-heading font-bold text-primary">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+                        <div className="text-caption text-foreground-muted">{label}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                ) : null;
+              })()}
 
               {/* Description */}
               {listing!.description && (
                 <div className="mb-8">
-                  <h2 className="mb-4 font-heading text-heading-lg font-semibold text-primary">About This Home</h2>
+                  <h2 className="mb-4 font-heading text-heading-lg font-semibold text-primary">
+                    {listing!.property_type === 'Commercial' ? 'About This Property' : 'About This Home'}
+                  </h2>
                   <p className="text-body text-foreground-muted leading-relaxed">{listing!.description as string}</p>
                 </div>
               )}
@@ -173,6 +180,19 @@ export default async function ListingDetailPage({ params }: Props) {
                   Contact us to schedule a private showing or ask any questions.
                 </p>
                 <ListingContactForm listingTitle={listing!.title} />
+                {(listing as any).flyer_url && (
+                  <div className="mt-4">
+                    <a
+                      href={(listing as any).flyer_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      className="flex items-center justify-center gap-2 w-full rounded-lg border-2 border-gold px-4 py-3 text-body-sm font-semibold text-gold hover:bg-gold hover:text-white transition-colors"
+                    >
+                      ↓ Download Property Flyer
+                    </a>
+                  </div>
+                )}
                 <div className="mt-6 pt-6 border-t border-border text-center">
                   <p className="text-caption text-foreground-muted mb-2">Or call us directly</p>
                   <a href="tel:+12103909997" className="inline-flex items-center gap-2 font-semibold text-primary hover:text-gold transition-colors">
