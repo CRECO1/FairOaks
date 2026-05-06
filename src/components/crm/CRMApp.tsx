@@ -746,6 +746,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function createClient() {
     if (!nc.first_name.trim()) { showToast('First name required.'); return; }
     setSaving(true);
+    // Duplicate email check — only when an email is provided
+    if (nc.email.trim()) {
+      const { data: existing } = await supabase
+        .from('crm_clients')
+        .select('id, first_name, last_name')
+        .eq('business_unit', businessUnit)
+        .ilike('email', nc.email.trim())
+        .maybeSingle();
+      if (existing) {
+        showToast(`A contact with that email already exists: ${existing.first_name} ${existing.last_name}`);
+        setSaving(false);
+        return;
+      }
+    }
     const { error } = await supabase.from('crm_clients').insert([{
       ...nc, agent_id: profile!.id, business_unit: businessUnit,
     }]);
@@ -984,7 +998,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const wb = XLSX.read(buf, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, string>>(ws);
-      let added = 0, errors = 0;
+      let added = 0, errors = 0, dupes = 0;
+
+      // Pre-fetch all existing emails in this business unit for fast dupe checking
+      const { data: existingContacts } = await supabase
+        .from('crm_clients').select('email').eq('business_unit', businessUnit);
+      const existingEmails = new Set(
+        (existingContacts ?? []).map(c => (c.email ?? '').toLowerCase().trim()).filter(Boolean)
+      );
+
       for (const row of rows) {
         const first_name = (row['first_name'] ?? row['First Name'] ?? row['firstname'] ?? '').toString().trim();
         const last_name = (row['last_name'] ?? row['Last Name'] ?? row['lastname'] ?? '').toString().trim();
@@ -1003,21 +1025,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const license = (row['license'] ?? row['License'] ?? row['License #'] ?? '').toString().trim();
         const notes = (row['notes'] ?? row['Notes'] ?? '').toString().trim();
         const lead_source = (row['lead_source'] ?? row['Lead Source'] ?? row['source'] ?? row['Source'] ?? '').toString().trim();
-        // Asset Types: accept comma-separated string and validate against known types
         const VALID_ASSET_TYPES = ['Home','Condo','Multi-Family','Land','Industrial','Flex/Warehouse','Retail','Office','Storage'];
         const rawAssetTypes = (row['asset_types'] ?? row['Asset Types'] ?? row['Asset Type'] ?? row['specializes_in'] ?? '').toString();
         const asset_types = rawAssetTypes.split(',').map(s => s.trim()).filter(s => VALID_ASSET_TYPES.includes(s));
-        // Tags: accept comma-separated string
         const rawTags = (row['tags'] ?? row['Tags'] ?? '').toString();
         const tags = rawTags ? rawTags.split(',').map(s => s.trim()).filter(Boolean) : [];
         if (!first_name) { errors++; continue; }
+        // Skip duplicates — match by email (case-insensitive)
+        if (email && existingEmails.has(email.toLowerCase())) { dupes++; continue; }
         const { error } = await supabase.from('crm_clients').insert([{
           first_name, last_name, business_name, email, phone, cell_phone, address, city, state, zip, type, brokerage, license, notes, lead_source, asset_types, tags, agent_id: profile!.id, business_unit: businessUnit,
         }]);
-        if (error) errors++; else added++;
+        if (error) { errors++; } else { added++; if (email) existingEmails.add(email.toLowerCase()); }
       }
       await loadClients(profile!);
-      showToast(`Imported ${added} client${added !== 1 ? 's' : ''}${errors > 0 ? ` · ${errors} skipped` : ''}`);
+      showToast(`Imported ${added} contact${added !== 1 ? 's' : ''}${dupes > 0 ? ` · ${dupes} duplicate${dupes !== 1 ? 's' : ''} skipped` : ''}${errors > 0 ? ` · ${errors} error${errors !== 1 ? 's' : ''}` : ''}`);
     } catch (err) {
       showToast('Import failed — check file format');
       console.error(err);
