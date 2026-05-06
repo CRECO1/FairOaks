@@ -13,7 +13,7 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
@@ -27,7 +27,7 @@ interface Campaign { id: string; created_by: string; name: string; description: 
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
-const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
+const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
 const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
@@ -344,7 +344,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showAddClient, setShowAddClient] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
-  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '' });
+  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '' });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState<'nc' | 'ec' | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -493,7 +493,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
   // New client form
-  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '' });
+  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '' });
   // Invite form
   const [inv, setInv] = useState({ email: '', first_name: '', last_name: '', phone: '', license: '' });
   // New email form
@@ -792,7 +792,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
-      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '' });
+      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '' });
       setShowAddClient(false);
       loadClients(profile!);
     }
@@ -841,6 +841,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       tags: c.tags ?? [],
       lead_source: c.lead_source ?? '',
       notes: c.notes ?? '',
+      lease_expiration_date: c.lease_expiration_date ?? '',
     });
     setEditClient(c);
     setActiveClient(null); // close profile modal when opening edit
@@ -871,6 +872,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       tags: ec.tags,
       lead_source: ec.lead_source,
       notes: ec.notes,
+      lease_expiration_date: ec.lease_expiration_date || null,
     }).eq('id', editClient.id);
     if (error) {
       showToast('Error: ' + error.message);
@@ -2032,57 +2034,56 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
               })()}
 
-              {/* Needs Attention widget */}
+              {/* Needs Attention widget — Tenants never touched */}
               {(() => {
-                const withDays = clients.map(c => {
-                  const days = c.last_touched_at
-                    ? Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / (1000 * 60 * 60 * 24))
-                    : 9999;
-                  return { ...c, daysSince: days };
-                });
-                const overdue30  = withDays.filter(c => c.daysSince >= 30 && c.daysSince < 60).length;
-                const overdue60  = withDays.filter(c => c.daysSince >= 60 && c.daysSince < 90).length;
-                const overdue90  = withDays.filter(c => c.daysSince >= 90).length;
-                const totalOverdue = overdue30 + overdue60 + overdue90;
-                const top5 = withDays
-                  .filter(c => c.daysSince >= 30)
-                  .sort((a, b) => b.daysSince - a.daysSince)
-                  .slice(0, 5);
-                if (totalOverdue === 0) return null;
+                // Only surface Tenants who have never been contacted at all.
+                // Outside-broker deals can go untouched for months by design,
+                // so we skip the time-based tiers and focus purely on "never touched" Tenants.
+                const neverTouchedTenants = clients
+                  .filter(c => c.type === 'Tenant' && !c.last_touched_at)
+                  .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()); // oldest first
+                if (neverTouchedTenants.length === 0) return null;
+                const show = neverTouchedTenants.slice(0, 5);
                 return (
                   <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fee2e2', padding: '16px 20px', marginBottom: 26 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>⚠️ Needs Attention — {totalOverdue} Contact{totalOverdue !== 1 ? 's' : ''}</div>
-                      <button onClick={() => { setPage('contacts'); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View Follow-Up Report →</button>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>
+                        🔑 Tenants Never Contacted — {neverTouchedTenants.length}
+                      </div>
+                      <button
+                        onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); setContactSort('never'); }}
+                        style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                        View All →
+                      </button>
                     </div>
-                    {/* Tier summary pills */}
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                      {overdue30 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>⏱ 30–60d: {overdue30}</span>}
-                      {overdue60 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fed7aa', color: '#c2410c' }}>⚡ 60–90d: {overdue60}</span>}
-                      {overdue90 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>🔥 90d+: {overdue90}</span>}
+                    <div style={{ marginBottom: 10, fontSize: 11, color: '#6b7280' }}>
+                      These tenants have been added but never had a call, email, or note logged.
                     </div>
-                    {/* Top 5 most overdue */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {top5.map(c => {
-                        const ta = timeAgo(c.last_touched_at);
-                        return (
-                          <button key={c.id}
-                            onClick={() => { setPage('contacts'); setActiveClient(c); }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                              {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
+                      {show.map(c => (
+                        <button key={c.id}
+                          onClick={() => { setPage('contacts'); setActiveClient(c); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                          <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                            {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
+                            <div style={{ fontSize: 10, color: '#6b7280' }}>
+                              {c.business_name ? `${c.business_name} · ` : ''}Added {new Date(c.created_at).toLocaleDateString()}
                             </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
-                              <div style={{ fontSize: 10, color: '#6b7280' }}>{c.type}{c.last_touched_at ? ` · Last touch ${new Date(c.last_touched_at).toLocaleDateString()}` : ' · Never contacted'}</div>
-                            </div>
-                            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: ta.bg, color: ta.color, fontWeight: 700, flexShrink: 0 }}>
-                              {ta.label}
-                            </span>
-                          </button>
-                        );
-                      })}
+                          </div>
+                          <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>
+                            Never
+                          </span>
+                        </button>
+                      ))}
                     </div>
+                    {neverTouchedTenants.length > 5 && (
+                      <div style={{ marginTop: 10, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+                        +{neverTouchedTenants.length - 5} more — <button onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); setContactSort('never'); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>view all</button>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -4844,6 +4845,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="1,500 – 2,500 sqft" value={nc.size_range} onChange={e => setNc({ ...nc, size_range: e.target.value })} />
                     </div>
                   </div>
+                  {/* LXP — Tenant only */}
+                  {nc.type === 'Tenant' && (
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date</label>
+                      <input type="date" className="crm-input" style={{ marginTop: 4 }} value={nc.lease_expiration_date} onChange={e => setNc({ ...nc, lease_expiration_date: e.target.value })} />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -5113,6 +5121,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{c.size_range}</div>
                       </div>
                     )}
+                    {c.type === 'Tenant' && (c.lease_expiration_date ? (() => {
+                      const lxpDate = new Date(c.lease_expiration_date);
+                      const daysLeft = Math.ceil((lxpDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                      const lxpBg = daysLeft < 0 ? '#fee2e2' : daysLeft < 90 ? '#fed7aa' : daysLeft < 180 ? '#fef9c3' : '#dcfce7';
+                      const lxpColor = daysLeft < 0 ? '#dc2626' : daysLeft < 90 ? '#c2410c' : daysLeft < 180 ? '#a16207' : '#16a34a';
+                      const lxpLabel = daysLeft < 0 ? `Expired ${Math.abs(daysLeft)}d ago` : daysLeft === 0 ? 'Expires today' : `${daysLeft}d left`;
+                      return (
+                        <div style={{ background: lxpBg, borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1', border: `1px solid ${lxpColor}22` }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>🗓 LXP — Lease Expiration</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{lxpDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: lxpColor, background: `${lxpColor}22`, padding: '2px 8px', borderRadius: 10 }}>{lxpLabel}</span>
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1', border: '1px dashed #e5e7eb' }}>
+                        <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>🗓 LXP — Lease Expiration</div>
+                        <span style={{ fontSize: 12, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -5809,6 +5838,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="1,500 – 2,500 sqft" value={ec.size_range} onChange={e => setEc({ ...ec, size_range: e.target.value })} />
                     </div>
                   </div>
+                  {/* LXP — Tenant only */}
+                  {ec.type === 'Tenant' && (
+                    <div style={{ marginTop: 12 }}>
+                      <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date</label>
+                      <input type="date" className="crm-input" style={{ marginTop: 4 }} value={ec.lease_expiration_date} onChange={e => setEc({ ...ec, lease_expiration_date: e.target.value })} />
+                    </div>
+                  )}
                 </div>
               )}
 
