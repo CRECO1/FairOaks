@@ -408,6 +408,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [contactSourceFilter, setContactSourceFilter] = useState('');
   const [contactSpecFilter, setContactSpecFilter] = useState('');
   const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'added'>('recent');
+  const [emailEditorMode, setEmailEditorMode] = useState<'rich' | 'html'>('rich');
   const [showSaveList, setShowSaveList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
@@ -3273,69 +3274,111 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                             <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email Body *</label>
-                            {newCampaign.email_body.replace(/<[^>]*>/g, '').trim() && (
-                              <button type="button" onClick={() => setShowEmailPreview(true)}
-                                style={{ fontSize: 11, color: '#c9922c', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                👁 Preview
-                              </button>
-                            )}
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                              {/* HTML / Visual toggle */}
+                              <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+                                <button type="button" onClick={() => {
+                                    if (emailEditorMode === 'html') {
+                                      // switching TO rich: sync textarea → editor
+                                      setEmailEditorMode('rich');
+                                      setTimeout(() => {
+                                        if (emailEditorRef.current) emailEditorRef.current.innerHTML = sanitizeHtml(newCampaign.email_body);
+                                      }, 0);
+                                    }
+                                  }}
+                                  style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', background: emailEditorMode === 'rich' ? '#111' : '#fff', color: emailEditorMode === 'rich' ? '#fff' : '#6b7280', border: 'none', fontFamily: "'DM Sans',sans-serif" }}>
+                                  Visual
+                                </button>
+                                <button type="button" onClick={() => {
+                                    if (emailEditorMode === 'rich') {
+                                      // switching TO html: sync editor → textarea
+                                      const html = emailEditorRef.current?.innerHTML ?? newCampaign.email_body;
+                                      setNewCampaign(prev => ({ ...prev, email_body: html }));
+                                      setEmailEditorMode('html');
+                                    }
+                                  }}
+                                  style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', background: emailEditorMode === 'html' ? '#111' : '#fff', color: emailEditorMode === 'html' ? '#fff' : '#6b7280', border: 'none', fontFamily: "'DM Sans',sans-serif" }}>
+                                  {'<HTML>'}
+                                </button>
+                              </div>
+                              {newCampaign.email_body.replace(/<[^>]*>/g, '').trim() && (
+                                <button type="button" onClick={() => setShowEmailPreview(true)}
+                                  style={{ fontSize: 11, color: '#c9922c', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  👁 Preview
+                                </button>
+                              )}
+                            </div>
                           </div>
-                          {/* Rich text toolbar */}
-                          <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: '6px 6px 0 0', background: '#f9fafb', padding: '6px 10px', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                            {[
-                              { label: 'B', cmd: 'bold', title: 'Bold', style: { fontWeight: 700 } },
-                              { label: 'I', cmd: 'italic', title: 'Italic', style: { fontStyle: 'italic' } },
-                              { label: 'U', cmd: 'underline', title: 'Underline', style: { textDecoration: 'underline' } },
-                            ].map(btn => (
-                              <button key={btn.cmd} type="button" title={btn.title} aria-label={btn.title}
-                                onMouseDown={e => { e.preventDefault(); document.execCommand(btn.cmd, false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
-                                style={{ ...btn.style, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {btn.label}
-                              </button>
-                            ))}
-                            <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
-                            <button type="button" title="Heading" aria-label="Heading"
-                              onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'h3'); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
-                              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>H</button>
-                            <button type="button" title="Bullet List" aria-label="Bullet list"
-                              onMouseDown={e => { e.preventDefault(); document.execCommand('insertUnorderedList', false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
-                              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>•</button>
-                            <button type="button" title="Insert Link" aria-label="Insert link"
-                              onMouseDown={e => {
-                                e.preventDefault();
-                                const url = window.prompt('Enter URL (e.g. https://fairoaksrealtygroup.com):');
-                                if (url) { document.execCommand('createLink', false, url); const links = emailEditorRef.current?.querySelectorAll('a'); links?.forEach(a => { a.target = '_blank'; a.rel = 'noopener'; }); }
-                                emailEditorRef.current?.focus();
-                                setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
-                              }}
-                              style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 4 }}>🔗 Link</button>
-                            <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
-                            {/* Merge field chips */}
-                            {['{{first_name}}','{{full_name}}','{{agent_name}}','{{agent_phone}}','{{unsubscribe_url}}'].map(f => (
-                              <button key={f} type="button" title={`Insert ${f}`}
-                                onMouseDown={e => {
-                                  e.preventDefault();
-                                  document.execCommand('insertText', false, f);
-                                  emailEditorRef.current?.focus();
-                                  setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
-                                }}
-                                style={{ background: '#fef3e2', border: '1px solid #fde68a', borderRadius: 4, padding: '2px 7px', fontSize: 10, color: '#92400e', cursor: 'pointer', fontFamily: 'monospace', height: 26, display: 'flex', alignItems: 'center' }}>
-                                {f.replace(/[{}]/g, '')}
-                              </button>
-                            ))}
-                          </div>
-                          {/* Editable body */}
-                          <div
-                            key={`editor-${activeCampaign?.id ?? 'new'}`}
-                            ref={emailEditorRef}
-                            contentEditable
-                            suppressContentEditableWarning
-                            role="textbox"
-                            aria-multiline="true"
-                            aria-label="Campaign email body"
-                            onInput={() => setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? '' }))}
-                            style={{ minHeight: 240, border: '1px solid #d1d5db', borderTop: 'none', borderRadius: '0 0 6px 6px', padding: '14px 16px', fontSize: 14, lineHeight: 1.7, color: '#111', outline: 'none', fontFamily: "'DM Sans',sans-serif", background: '#fff', overflowY: 'auto' }}
-                          />
+
+                          {emailEditorMode === 'html' ? (
+                            /* ── Raw HTML editor ── */
+                            <textarea
+                              value={newCampaign.email_body}
+                              onChange={e => setNewCampaign(prev => ({ ...prev, email_body: e.target.value }))}
+                              spellCheck={false}
+                              placeholder="Paste or write your HTML here…"
+                              style={{ width: '100%', minHeight: 340, border: '1px solid #d1d5db', borderRadius: 6, padding: '12px 14px', fontSize: 12, lineHeight: 1.6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', background: '#1e1e2e', color: '#cdd6f4', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+                            />
+                          ) : (
+                            <>
+                              {/* Rich text toolbar */}
+                              <div style={{ marginTop: 4, border: '1px solid #d1d5db', borderRadius: '6px 6px 0 0', background: '#f9fafb', padding: '6px 10px', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                                {[
+                                  { label: 'B', cmd: 'bold', title: 'Bold', style: { fontWeight: 700 } },
+                                  { label: 'I', cmd: 'italic', title: 'Italic', style: { fontStyle: 'italic' } },
+                                  { label: 'U', cmd: 'underline', title: 'Underline', style: { textDecoration: 'underline' } },
+                                ].map(btn => (
+                                  <button key={btn.cmd} type="button" title={btn.title} aria-label={btn.title}
+                                    onMouseDown={e => { e.preventDefault(); document.execCommand(btn.cmd, false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
+                                    style={{ ...btn.style, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    {btn.label}
+                                  </button>
+                                ))}
+                                <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
+                                <button type="button" title="Heading" aria-label="Heading"
+                                  onMouseDown={e => { e.preventDefault(); document.execCommand('formatBlock', false, 'h3'); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
+                                  style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>H</button>
+                                <button type="button" title="Bullet List" aria-label="Bullet list"
+                                  onMouseDown={e => { e.preventDefault(); document.execCommand('insertUnorderedList', false); emailEditorRef.current?.focus(); setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body })); }}
+                                  style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, width: 28, height: 26, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>•</button>
+                                <button type="button" title="Insert Link" aria-label="Insert link"
+                                  onMouseDown={e => {
+                                    e.preventDefault();
+                                    const url = window.prompt('Enter URL (e.g. https://fairoaksrealtygroup.com):');
+                                    if (url) { document.execCommand('createLink', false, url); const links = emailEditorRef.current?.querySelectorAll('a'); links?.forEach(a => { a.target = '_blank'; a.rel = 'noopener'; }); }
+                                    emailEditorRef.current?.focus();
+                                    setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
+                                  }}
+                                  style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, height: 26, padding: '0 8px', cursor: 'pointer', fontSize: 12, fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 4 }}>🔗 Link</button>
+                                <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 2px' }} />
+                                {/* Merge field chips */}
+                                {['{{first_name}}','{{full_name}}','{{agent_name}}','{{agent_phone}}','{{unsubscribe_url}}'].map(f => (
+                                  <button key={f} type="button" title={`Insert ${f}`}
+                                    onMouseDown={e => {
+                                      e.preventDefault();
+                                      document.execCommand('insertText', false, f);
+                                      emailEditorRef.current?.focus();
+                                      setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
+                                    }}
+                                    style={{ background: '#fef3e2', border: '1px solid #fde68a', borderRadius: 4, padding: '2px 7px', fontSize: 10, color: '#92400e', cursor: 'pointer', fontFamily: 'monospace', height: 26, display: 'flex', alignItems: 'center' }}>
+                                    {f.replace(/[{}]/g, '')}
+                                  </button>
+                                ))}
+                              </div>
+                              {/* Editable body */}
+                              <div
+                                key={`editor-${activeCampaign?.id ?? 'new'}`}
+                                ref={emailEditorRef}
+                                contentEditable
+                                suppressContentEditableWarning
+                                role="textbox"
+                                aria-multiline="true"
+                                aria-label="Campaign email body"
+                                onInput={() => setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? '' }))}
+                                style={{ minHeight: 240, border: '1px solid #d1d5db', borderTop: 'none', borderRadius: '0 0 6px 6px', padding: '14px 16px', fontSize: 14, lineHeight: 1.7, color: '#111', outline: 'none', fontFamily: "'DM Sans',sans-serif", background: '#fff', overflowY: 'auto' }}
+                              />
+                            </>
+                          )}
                           {!newCampaign.email_body.includes('{{unsubscribe_url}}') && newCampaign.email_body.replace(/<[^>]*>/g, '').length > 0 && (
                             <div style={{ marginTop: 6, fontSize: 11, color: '#d97706', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '5px 10px' }}>
                               ⚠️ Include the <strong>unsubscribe_url</strong> merge field for CAN-SPAM compliance (click it above to insert)
