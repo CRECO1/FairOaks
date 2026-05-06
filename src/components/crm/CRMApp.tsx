@@ -330,7 +330,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
   const [docUploading, setDocUploading] = useState(false);
-  const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs'>('overview');
+  const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'intel'>('overview');
+  const [propIntel, setPropIntel] = useState<{ detail: any; comps: any[]; error?: string } | null>(null);
+  const [propIntelLoading, setPropIntelLoading] = useState(false);
   const emailEditorRef = useRef<HTMLDivElement>(null);
   const docFileRef = useRef<HTMLInputElement>(null);
   const [clients, setClients] = useState<Client[]>([]);
@@ -4140,10 +4142,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
-                {(['overview', 'client', 'emails', 'docs'] as const).map(t => (
+                {(['overview', 'client', 'emails', 'docs', 'intel'] as const).map(t => (
                   <button key={t} onClick={() => setDealTab(t)}
                     style={{ padding: '8px 18px', fontSize: 13, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
-                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
+                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'intel' ? '🏢 Property Intel' : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
@@ -4681,6 +4683,130 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── Property Intel tab ── */}
+              {dealTab === 'intel' && (
+                <div>
+                  {/* Address input + lookup button */}
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                    <input
+                      id="intel-address-input"
+                      className="crm-input"
+                      style={{ flex: 1 }}
+                      placeholder="Enter property address to look up…"
+                      defaultValue={activeDeal.property ?? ''}
+                    />
+                    <button
+                      onClick={async () => {
+                        const addr = (document.getElementById('intel-address-input') as HTMLInputElement)?.value?.trim();
+                        if (!addr) return;
+                        setPropIntelLoading(true);
+                        setPropIntel(null);
+                        try {
+                          const res = await fetch('/api/attom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addr }) });
+                          const data = await res.json();
+                          setPropIntel(data);
+                        } catch (e: any) {
+                          setPropIntel({ detail: null, comps: [], error: e.message });
+                        } finally {
+                          setPropIntelLoading(false);
+                        }
+                      }}
+                      style={{ padding: '8px 18px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {propIntelLoading ? '⏳ Looking up…' : '🔍 Look Up'}
+                    </button>
+                  </div>
+
+                  {/* Error state */}
+                  {propIntel?.error && (
+                    <div style={{ background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#991b1b', marginBottom: 16 }}>
+                      ⚠️ {propIntel.error.includes('ATTOM_API_KEY') ? (
+                        <>ATTOM API key not configured. Add <code style={{ background: '#fecaca', padding: '1px 4px', borderRadius: 3 }}>ATTOM_API_KEY</code> to your environment variables. <a href="https://www.attomdata.com/solutions/property-data-api/" target="_blank" rel="noreferrer" style={{ color: '#c2410c', fontWeight: 600 }}>Get a free trial key →</a></>
+                      ) : propIntel.error}
+                    </div>
+                  )}
+
+                  {/* Property detail card */}
+                  {propIntel?.detail && (() => {
+                    const d = propIntel.detail;
+                    const assessed = d.assessment?.assessed?.assdttlvalue;
+                    const market   = d.assessment?.market?.mktttlvalue;
+                    const taxAmt   = d.assessment?.tax?.taxamt;
+                    const lastSale = d.sale?.amount?.saleamt;
+                    const lastSaleDate = d.sale?.salesearchdate;
+                    const sqft     = d.building?.size?.universalsize ?? d.building?.size?.livingsize;
+                    const ppsf     = d.sale?.calculation?.pricepersizeunit;
+                    return (
+                      <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Property Details</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 12 }}>{d.address?.oneLine}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                          {[
+                            { label: 'Type', val: d.summary?.proptype ?? d.summary?.propLandUse ?? '—' },
+                            { label: 'Year Built', val: d.summary?.yearbuilt ?? '—' },
+                            { label: 'Sq Ft', val: sqft ? sqft.toLocaleString() : '—' },
+                            { label: 'Beds / Baths', val: (d.building?.rooms?.beds != null && d.building?.rooms?.bathstotal != null) ? `${d.building.rooms.beds} / ${d.building.rooms.bathstotal}` : '—' },
+                            { label: 'Assessed Value', val: assessed ? `$${assessed.toLocaleString()}` : '—' },
+                            { label: 'Market Value', val: market ? `$${market.toLocaleString()}` : '—' },
+                            { label: 'Annual Taxes', val: taxAmt ? `$${taxAmt.toLocaleString()}` : '—' },
+                            { label: 'Last Sale', val: lastSale ? `$${lastSale.toLocaleString()}` : '—' },
+                            { label: 'Last Sale Date', val: lastSaleDate ? lastSaleDate.slice(0, 10) : '—' },
+                            ...(ppsf ? [{ label: '$/Sq Ft', val: `$${ppsf.toFixed(0)}` }] : []),
+                            ...(d.lot?.lotsize1 ? [{ label: 'Lot Size (SF)', val: d.lot.lotsize1.toLocaleString() }] : []),
+                            ...(d.identifier?.apn ? [{ label: 'APN', val: d.identifier.apn }] : []),
+                          ].map(({ label, val }) => (
+                            <div key={label} style={{ background: '#fff', border: '1px solid #f0f0f0', borderRadius: 7, padding: '10px 12px' }}>
+                              <div style={{ fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 4 }}>{label}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{String(val)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Comps */}
+                  {(propIntel?.comps?.length ?? 0) > 0 && (
+                    <div>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>
+                        Nearby Sales Comps ({propIntel!.comps.length})
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {propIntel!.comps.map((comp: any, i: number) => {
+                          const saleAmt = comp.sale?.amount?.saleamt;
+                          const sqft    = comp.building?.size?.universalsize;
+                          const ppsf    = comp.sale?.calculation?.pricepersizeunit;
+                          const date    = comp.sale?.salesearchdate;
+                          return (
+                            <div key={comp.identifier?.attomId ?? i} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '11px 14px' }}>
+                              <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{i + 1}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.address?.oneLine ?? comp.address?.line1}</div>
+                                <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>
+                                  {comp.summary?.proptype ?? ''}{sqft ? ` · ${sqft.toLocaleString()} SF` : ''}{date ? ` · Sold ${date.slice(0, 10)}` : ''}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>{saleAmt ? `$${saleAmt.toLocaleString()}` : '—'}</div>
+                                {ppsf ? <div style={{ fontSize: 10, color: '#9ca3af' }}>${ppsf.toFixed(0)}/SF</div> : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {!propIntelLoading && !propIntel && (
+                    <div style={{ textAlign: 'center', padding: '32px 20px', color: '#9ca3af' }}>
+                      <div style={{ fontSize: 32, marginBottom: 10 }}>🏢</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Property Intelligence</div>
+                      <div style={{ fontSize: 12 }}>Enter an address above to pull property details, assessed value, tax data, and nearby sale comps from ATTOM.</div>
                     </div>
                   )}
                 </div>
