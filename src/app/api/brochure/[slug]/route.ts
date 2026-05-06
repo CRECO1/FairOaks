@@ -87,7 +87,7 @@ export async function GET(
     doc.setFontSize(8);
     doc.setTextColor(150);
     doc.text(
-      'Fair Oaks Realty Group · 7510 FM 1560 N, Ste 101, Fair Oaks Ranch TX 78015 · TREC License #12345678',
+      'Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015 · TREC License #12345678',
       105,
       265,
       { align: 'center' }

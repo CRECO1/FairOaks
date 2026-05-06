@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
 
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
             <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-              © ${new Date().getFullYear()} Fair Oaks Realty Group · 7510 FM 1560 N, Suite 101, Fair Oaks Ranch, TX 78015
+              © ${new Date().getFullYear()} Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015
             </p>
           </div>
         `,
