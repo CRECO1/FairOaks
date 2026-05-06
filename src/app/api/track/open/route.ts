@@ -1,46 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
+import { createClient } from '@supabase/supabase-js';
 
 // 1×1 transparent GIF
 const TRANSPARENT_GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 export async function GET(req: NextRequest) {
   const trackingId = req.nextUrl.searchParams.get('id');
+  const type = req.nextUrl.searchParams.get('type') ?? 'deal'; // 'deal' | 'campaign'
 
   if (trackingId) {
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
     try {
-      // Look up the email by tracking_id
-      const lookupRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/crm_deal_emails?tracking_id=eq.${trackingId}&select=id,opened_at,open_count`,
-        { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } }
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
       );
-      const rows = await lookupRes.json();
+      const now = new Date().toISOString();
 
-      if (Array.isArray(rows) && rows.length > 0) {
-        const row = rows[0];
-        const patch: Record<string, unknown> = {
-          open_count: (row.open_count ?? 0) + 1,
-        };
-        if (!row.opened_at) {
-          patch.opened_at = new Date().toISOString();
-        }
+      if (type === 'campaign') {
+        // Look up the campaign send
+        const { data: send } = await supabase
+          .from('crm_campaign_sends')
+          .select('id, client_id, campaign_id, opened_at, open_count')
+          .eq('tracking_id', trackingId)
+          .maybeSingle();
 
-        await fetch(
-          `${SUPABASE_URL}/rest/v1/crm_deal_emails?id=eq.${row.id}`,
-          {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              apikey: anonKey,
-              Authorization: `Bearer ${serviceRoleKey}`,
-            },
-            body: JSON.stringify(patch),
+        if (send) {
+          // Update open stats on the send record
+          await supabase.from('crm_campaign_sends').update({
+            open_count: (send.open_count ?? 0) + 1,
+            ...(send.opened_at ? {} : { opened_at: now }),
+          }).eq('id', send.id);
+
+          // First open only: add "Opened Email" tag to the contact
+          if (!send.opened_at && send.client_id) {
+            const { data: client } = await supabase
+              .from('crm_clients')
+              .select('id, tags')
+              .eq('id', send.client_id)
+              .maybeSingle();
+
+            if (client) {
+              const existingTags: string[] = client.tags ?? [];
+              if (!existingTags.includes('Opened Email')) {
+                await supabase.from('crm_clients').update({
+                  tags: [...existingTags, 'Opened Email'],
+                }).eq('id', send.client_id);
+              }
+            }
           }
-        );
+        }
+      } else {
+        // Original deal email tracking
+        const { data: rows } = await supabase
+          .from('crm_deal_emails')
+          .select('id, opened_at, open_count')
+          .eq('tracking_id', trackingId)
+          .limit(1);
+
+        const row = rows?.[0];
+        if (row) {
+          await supabase.from('crm_deal_emails').update({
+            open_count: (row.open_count ?? 0) + 1,
+            ...(row.opened_at ? {} : { opened_at: now }),
+          }).eq('id', row.id);
+        }
       }
     } catch {
       // Non-fatal — always return the pixel
@@ -52,7 +76,7 @@ export async function GET(req: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'image/gif',
-      'Cache-Control': 'no-store',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
     },
   });
 }

@@ -118,6 +118,10 @@ export async function GET(req: NextRequest) {
       defaultPhone: fallbackAgentPhone,
     };
 
+    // Generate a unique tracking ID for this send
+    const trackingId = crypto.randomUUID();
+    const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+
     let status: 'sent' | 'failed' | 'skipped' = 'sent';
     let providerId: string | null = null;
     let errorMessage: string | null = null;
@@ -131,8 +135,15 @@ export async function GET(req: NextRequest) {
           errorMessage = 'No email address';
         } else {
           subjectRendered = applyMergeFields(campaign.email_subject || '', ctx);
-          const renderedBody = applyMergeFields(campaign.email_body || '', ctx);
+          let renderedBody = applyMergeFields(campaign.email_body || '', ctx);
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
+
+          // Inject 1×1 tracking pixel just before </body> (or at end if no body tag)
+          const pixelUrl = `${BASE_URL}/api/track/open?type=campaign&id=${trackingId}`;
+          const pixel = `<img src="${pixelUrl}" width="1" height="1" style="display:none;border:0;" alt="" />`;
+          renderedBody = renderedBody.includes('</body>')
+            ? renderedBody.replace('</body>', `${pixel}</body>`)
+            : renderedBody + pixel;
 
           // Brand based on business unit
           const isCommercial = campaign.business_unit === 'commercial';
@@ -173,7 +184,7 @@ export async function GET(req: NextRequest) {
       errorMessage = err?.message ?? String(err);
     }
 
-    // Log the send
+    // Log the send (include tracking_id so the pixel can match back to this record)
     await supabase.from('crm_campaign_sends').insert([{
       campaign_id: campaign.id,
       client_id: client.id,
@@ -184,6 +195,7 @@ export async function GET(req: NextRequest) {
       error_message: errorMessage,
       subject: subjectRendered || null,
       body_preview: bodyPreview || null,
+      tracking_id: trackingId,
     }]);
 
     // Stamp last_touched_at on the client so the contact shows as recently touched
