@@ -506,15 +506,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }, [activeClient?.id]); // eslint-disable-line
 
-  // Sync email editor content when switching to builder view
-  useLayoutEffect(() => {
-    if (campaignView === 'builder') {
-      setEmailEditorMode('rich');
-      if (emailEditorRef.current) {
-        emailEditorRef.current.innerHTML = newCampaign.email_body ?? '';
-      }
-    }
+  // Reset to rich mode whenever builder opens
+  useEffect(() => {
+    if (campaignView === 'builder') setEmailEditorMode('rich');
   }, [campaignView]); // eslint-disable-line
+
+  // Sync editor innerHTML once rich mode + builder are both active
+  useLayoutEffect(() => {
+    if (campaignView === 'builder' && emailEditorMode === 'rich' && emailEditorRef.current) {
+      emailEditorRef.current.innerHTML = newCampaign.email_body ?? '';
+    }
+  }, [campaignView, emailEditorMode]); // eslint-disable-line
 
   // Global search keyboard shortcut (⌘K / Ctrl+K)
   useEffect(() => {
@@ -1277,21 +1279,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Campaigns ─────────────────────────────────────────────────────────────────
   async function loadCampaigns() {
     setCampaignLoading(true);
-    const res = await fetch(`/api/campaigns?unit=${businessUnit}`);
-    if (res.ok) { const j = await res.json(); setCampaigns(j.campaigns ?? []); }
-    setCampaignLoading(false);
+    try {
+      const res = await fetch(`/api/campaigns?unit=${businessUnit}`);
+      const j = await res.json();
+      if (res.ok) { setCampaigns(j.campaigns ?? []); }
+      else { showToast(`Could not load campaigns: ${j.error ?? res.status}`); }
+    } catch (err) {
+      showToast('Network error loading campaigns');
+    } finally {
+      setCampaignLoading(false);
+    }
   }
 
   async function saveCampaign() {
-    // In rich mode, capture the latest editor HTML before saving
-    if (emailEditorMode === 'rich' && emailEditorRef.current) {
-      setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
-    }
+    // Always grab the freshest content — editor ref if mounted, otherwise state
+    const latestEmailBody = (emailEditorMode === 'rich' && emailEditorRef.current?.innerHTML)
+      || newCampaign.email_body;
     setSaving(true);
     try {
-      const body = emailEditorMode === 'rich' && emailEditorRef.current
-        ? { ...newCampaign, email_body: emailEditorRef.current.innerHTML, created_by: session!.user.id, business_unit: businessUnit }
-        : { ...newCampaign, created_by: session!.user.id, business_unit: businessUnit };
+      const body = { ...newCampaign, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
