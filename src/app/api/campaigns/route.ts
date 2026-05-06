@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   if (!caller) return unauthorized();
 
   const body = await req.json();
-  const { name, description, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, created_by, sender_agent_id, business_unit } = body;
+  const { name, description, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, created_by, sender_agent_id, business_unit } = body;
 
   if (!name || !type || !frequency) {
     return NextResponse.json({ error: 'name, type, and frequency are required' }, { status: 400 });
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
     name, description, type, frequency,
     send_date: send_date || null,
     send_time: send_time || null,
+    send_day_of_month: send_day_of_month ? parseInt(send_day_of_month, 10) : null,
     status: status ?? 'draft',
     email_subject: email_subject ?? null,
     email_body: email_body ?? null,

@@ -42,9 +42,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Fetch current campaign to detect activation
   const { data: existing } = await supabase.from('crm_campaigns').select('status, frequency, send_date, send_time').eq('id', id).single();
 
+  // Coerce send_day_of_month to integer if provided as a string
+  const patchPayload = { ...body, updated_at: new Date().toISOString() };
+  if ('send_day_of_month' in patchPayload) {
+    patchPayload.send_day_of_month = patchPayload.send_day_of_month
+      ? parseInt(patchPayload.send_day_of_month, 10)
+      : null;
+  }
+
   const { data, error } = await supabase
     .from('crm_campaigns')
-    .update({ ...body, updated_at: new Date().toISOString() })
+    .update(patchPayload)
     .eq('id', id)
     .select()
     .single();

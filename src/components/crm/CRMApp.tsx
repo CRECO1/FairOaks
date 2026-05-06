@@ -24,7 +24,7 @@ interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
 
@@ -394,7 +394,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
-  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
   const [enrollTypeFilter, setEnrollTypeFilter] = useState('');
@@ -1308,7 +1308,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setEmailEditorMode('rich');
         setCampaignView('list');
         setActiveCampaign(null);
-        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
         loadCampaigns();
       }
     } catch (err) {
@@ -1806,7 +1806,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 16, padding: '6px 10px', flexShrink: 0, lineHeight: 1 }}>🔍</button>
             {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ Add</button>}
             {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ Deal</button>}
-            {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ New</button>}
+            {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 13 }}>+ New</button>}
           </div>
         )}
 
@@ -2904,7 +2904,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
                       <p style={{ fontSize: 13, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
                     </div>
-                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>
+                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>
                       + New Campaign
                     </button>
                   </div>
@@ -2928,7 +2928,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
                       <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
                       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
@@ -2954,7 +2954,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
+                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
                           </div>
                         </div>
@@ -2975,7 +2975,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
                         {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated ✓'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
@@ -3187,6 +3187,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           ['Scheduled Date', new Date(activeCampaign.send_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' })],
                           ['Scheduled Time (CT)', (() => { const [h, m] = (activeCampaign.send_time || '08:00').split(':'); const hr = parseInt(h); return `${hr % 12 || 12}:${m} ${hr < 12 ? 'AM' : 'PM'}`; })()],
                         ] : []),
+                        ...(activeCampaign.frequency !== 'one-time' && activeCampaign.send_day_of_month ? [
+                          ['Send Day of Month', (() => { const d = activeCampaign.send_day_of_month!; return `${d}${d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'} of each ${activeCampaign.frequency === 'monthly' ? 'month' : 'period'}`; })()],
+                          ['Send Time (CT)', (() => { const [h, m] = (activeCampaign.send_time || '08:00').split(':'); const hr = parseInt(h); return `${hr % 12 || 12}:${m} ${hr < 12 ? 'AM' : 'PM'}`; })()],
+                        ] : []),
                         ['Created', new Date(activeCampaign.created_at).toLocaleDateString()],
                       ] as [string, string][]).map(([label, val]) => (
                         <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
@@ -3268,6 +3272,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                           <div style={{ gridColumn: '1/-1' }}>
                             <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>⏰ Sends once on the selected date & time (Central Time), then deactivates automatically.</div>
+                          </div>
+                        </>)}
+                        {newCampaign.frequency !== 'one-time' && (<>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Day of Month to Send</label>
+                            <select className="crm-input" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_day_of_month} onChange={e => setNewCampaign({ ...newCampaign, send_day_of_month: e.target.value })}>
+                              <option value="">— Pick a day —</option>
+                              {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                                <option key={d} value={String(d)}>{d}{d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Time (CT)</label>
+                            <select className="crm-input" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
+                              {Array.from({ length: 24 * 4 }, (_, i) => {
+                                const h = Math.floor(i / 4);
+                                const m = (i % 4) * 15;
+                                const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                                const label = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+                                return <option key={val} value={val}>{label}</option>;
+                              })}
+                            </select>
+                          </div>
+                          <div style={{ gridColumn: '1/-1' }}>
+                            <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>📅 Sends on the selected day of the month at the chosen time (Central Time). Days capped at 28 to work every month.</div>
                           </div>
                         </>)}
                         <div>
