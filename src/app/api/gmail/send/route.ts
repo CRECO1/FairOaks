@@ -127,9 +127,9 @@ function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attach
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
-    if (!userId || !dealId || !to || !subject || !body) {
-      return NextResponse.json({ error: 'userId, dealId, to, subject, body are required' }, { status: 400 });
+    const { userId, dealId, clientId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
+    if (!userId || (!dealId && !clientId) || !to || !subject || !body) {
+      return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
     }
 
     const caller = await getCrmUser();
@@ -248,7 +248,8 @@ export async function POST(req: NextRequest) {
         Prefer: 'return=representation',
       },
       body: JSON.stringify({
-        deal_id: dealId,
+        ...(dealId ? { deal_id: dealId } : {}),
+        ...(clientId ? { client_id: clientId } : {}),
         direction: 'sent',
         from_email: gmailEmail,
         to_email: to,

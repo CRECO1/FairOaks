@@ -108,9 +108,9 @@ function extractBody(payload: any): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, clientEmail } = await req.json();
-    if (!userId || !dealId || !clientEmail) {
-      return NextResponse.json({ error: 'userId, dealId, clientEmail required' }, { status: 400 });
+    const { userId, dealId, clientId, clientEmail } = await req.json();
+    if (!userId || (!dealId && !clientId) || !clientEmail) {
+      return NextResponse.json({ error: 'userId, (dealId or clientId), clientEmail required' }, { status: 400 });
     }
 
     const caller = await getCrmUser();
@@ -140,9 +140,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ synced: 0 });
     }
 
-    // Fetch already-synced Gmail message IDs for this deal to avoid duplicates
+    // Fetch already-synced Gmail message IDs for this deal/contact to avoid duplicates
+    const scopeFilter = dealId ? `deal_id=eq.${dealId}` : `client_id=eq.${clientId}`;
     const existingRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/crm_deal_emails?deal_id=eq.${dealId}&select=gmail_message_id`,
+      `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scopeFilter}&select=gmail_message_id`,
       { headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` } }
     );
     const existing = await existingRes.json();
@@ -201,7 +202,8 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           gmail_message_id: msg.id,
-          deal_id: dealId,
+          ...(dealId ? { deal_id: dealId } : {}),
+          ...(clientId ? { client_id: clientId } : {}),
           direction,
           from_email: from,
           to_email: to,
