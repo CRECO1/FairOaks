@@ -1977,8 +1977,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {/* shared style for all filter controls */}
                     {(() => {
-                      const fs: React.CSSProperties = { padding: '5px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#111', background: '#fff', cursor: 'pointer', fontWeight: 600 };
-                      const fsActive: React.CSSProperties = { ...fs, background: '#fef3e2', border: '1px solid #c9922c', color: '#92400e' };
+                      const arrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23ffffff'/%3E%3C/svg%3E")`;
+                      const fs: React.CSSProperties = { padding: '5px 28px 5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#fff', background: `#1a1a2e ${arrow} no-repeat right 8px center`, cursor: 'pointer', fontWeight: 500, appearance: 'none' as const, WebkitAppearance: 'none' as const };
+                      const fsActive: React.CSSProperties = { ...fs, background: `#c9922c ${arrow} no-repeat right 8px center`, border: '1px solid #c9922c' };
                       return (<>
                         {/* Type filter */}
                         <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} style={contactTypeFilter ? fsActive : fs}>
@@ -2004,7 +2005,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </select>
                         {/* Tag filter */}
                         <input placeholder="🏷 Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
-                          style={{ ...( contactTagFilter ? fsActive : fs ), width: 140, outline: 'none' }} />
+                          style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${contactTagFilter ? '#c9922c' : '#1a1a2e'}`, fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140, background: contactTagFilter ? '#c9922c' : '#1a1a2e', color: '#fff', outline: 'none', fontWeight: 500 }} />
                       </>);
                     })()}
                     {/* Clear */}
