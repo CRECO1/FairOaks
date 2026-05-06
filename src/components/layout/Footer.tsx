@@ -128,14 +128,17 @@ export function Footer() {
                   </a>
                 </li>
                 <li>
-                  <div className="flex items-start gap-3 text-body-sm text-white/60">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address.replace(/\n/g, ', '))}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-start gap-3 text-body-sm text-white/60 transition-colors hover:text-gold">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
                     <span>
                       {addressLines.map((line, i) => (
                         <span key={i}>{line}{i < addressLines.length - 1 && <br />}</span>
                       ))}
                     </span>
-                  </div>
+                  </a>
                 </li>
               </ul>
               <div className="mt-6 flex flex-col gap-3">
