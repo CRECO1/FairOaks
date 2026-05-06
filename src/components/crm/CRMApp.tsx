@@ -2,14 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient, Session } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
+import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 
-// Invite flow is now handled by /crm/setup — this page is login only.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-);
+// Use the SSR browser client so the session is stored in cookies,
+// which allows server-side API routes to read it via getCrmUser().
+const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
@@ -3274,32 +3273,46 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>⏰ Sends once on the selected date & time (Central Time), then deactivates automatically.</div>
                           </div>
                         </>)}
-                        {newCampaign.frequency !== 'one-time' && (<>
-                          <div>
-                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Day of Month to Send</label>
-                            <select className="crm-input" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_day_of_month} onChange={e => setNewCampaign({ ...newCampaign, send_day_of_month: e.target.value })}>
-                              <option value="">— Pick a day —</option>
-                              {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
-                                <option key={d} value={String(d)}>{d}{d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Time (CT)</label>
-                            <select className="crm-input" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
-                              {Array.from({ length: 24 * 4 }, (_, i) => {
-                                const h = Math.floor(i / 4);
-                                const m = (i % 4) * 15;
-                                const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                                const label = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-                                return <option key={val} value={val}>{label}</option>;
-                              })}
-                            </select>
-                          </div>
+                        {newCampaign.frequency !== 'one-time' && (
                           <div style={{ gridColumn: '1/-1' }}>
-                            <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>📅 Sends on the selected day of the month at the chosen time (Central Time). Days capped at 28 to work every month.</div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Schedule</label>
+                            <div style={{ marginTop: 8, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16 }}>
+                              {/* Day-of-month grid */}
+                              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, marginBottom: 8 }}>Pick a day of the month</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
+                                {Array.from({ length: 28 }, (_, i) => i + 1).map(d => {
+                                  const selected = newCampaign.send_day_of_month === String(d);
+                                  return (
+                                    <button key={d} type="button"
+                                      onClick={() => setNewCampaign({ ...newCampaign, send_day_of_month: selected ? '' : String(d) })}
+                                      style={{ padding: '7px 0', borderRadius: 6, border: selected ? '2px solid #c9922c' : '1px solid #e5e7eb', background: selected ? '#c9922c' : '#fff', color: selected ? '#fff' : '#374151', fontSize: 13, fontWeight: selected ? 700 : 400, cursor: 'pointer', transition: 'all 0.1s' }}>
+                                      {d}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {newCampaign.send_day_of_month && (
+                                <div style={{ marginTop: 10, fontSize: 12, color: '#374151' }}>
+                                  Sending on the <strong>{newCampaign.send_day_of_month}{Number(newCampaign.send_day_of_month) === 1 ? 'st' : Number(newCampaign.send_day_of_month) === 2 ? 'nd' : Number(newCampaign.send_day_of_month) === 3 ? 'rd' : 'th'}</strong> of each {newCampaign.frequency === 'monthly' ? 'month' : 'period'}
+                                </div>
+                              )}
+                              {/* Time picker */}
+                              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>Send time (CT)</div>
+                                <select className="crm-input" style={{ flex: 1 }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
+                                  {Array.from({ length: 24 * 4 }, (_, i) => {
+                                    const h = Math.floor(i / 4);
+                                    const m = (i % 4) * 15;
+                                    const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                                    const label = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+                                    return <option key={val} value={val}>{label}</option>;
+                                  })}
+                                </select>
+                              </div>
+                              <div style={{ marginTop: 8, fontSize: 11, color: '#9ca3af' }}>Days 1–28 only — ensures every month has that date, including February.</div>
+                            </div>
                           </div>
-                        </>)}
+                        )}
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.status} onChange={e => setNewCampaign({ ...newCampaign, status: e.target.value })}>
