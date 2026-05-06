@@ -40,6 +40,28 @@ export interface Listing {
   listing_date: string | null;
   created_at: string;
   updated_at: string;
+  // MLS / RESO fields (populated when source = 'mls')
+  listing_key?: string | null;
+  standard_status?: string | null;
+  mls_status?: string | null;
+  close_price?: number | null;
+  close_date?: string | null;
+  subdivision_name?: string | null;
+  lot_size_acres?: number | null;
+  garage_spaces?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  hoa_fee?: number | null;
+  hoa_frequency?: string | null;
+  tax_annual_amount?: number | null;
+  days_on_market?: number | null;
+  list_agent_name?: string | null;
+  list_agent_email?: string | null;
+  list_agent_phone?: string | null;
+  list_office_name?: string | null;
+  modification_timestamp?: string | null;
+  source?: string | null;
+  synced_at?: string | null;
 }
 
 export interface Agent {

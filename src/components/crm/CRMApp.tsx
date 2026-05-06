@@ -357,6 +357,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [gmailEmail, setGmailEmail] = useState('');
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
+  const [mlsSyncing, setMlsSyncing] = useState(false);
 
   // Compose state
   const [showCompose, setShowCompose] = useState(false);
@@ -421,6 +422,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [contactTagFilter, setContactTagFilter] = useState('');
   const [contactSourceFilter, setContactSourceFilter] = useState('');
   const [contactSpecFilter, setContactSpecFilter] = useState('');
+  const [contactOwnerFilter, setContactOwnerFilter] = useState('');
   const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'added'>('recent');
   const [emailEditorMode, setEmailEditorMode] = useState<'rich' | 'html'>('rich');
   const [showSaveList, setShowSaveList] = useState(false);
@@ -1868,6 +1870,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); }}>📣 &nbsp;Campaigns</button>
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); }}>⚡ &nbsp;Action Plans</button>
         </div>
+        {isAdmin && (
+          <div style={{ padding: '10px 12px 4px' }}>
+            <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>MLS</div>
+            <button
+              onClick={async () => {
+                setMlsSyncing(true);
+                try {
+                  const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                  const data = await res.json();
+                  if (!res.ok) showToast('MLS sync failed: ' + (data.error ?? res.status));
+                  else showToast(`✅ MLS sync done — ${data.synced} listings updated`);
+                } catch (err) {
+                  showToast('MLS sync error — check console');
+                } finally {
+                  setMlsSyncing(false);
+                }
+              }}
+              disabled={mlsSyncing}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, cursor: mlsSyncing ? 'default' : 'pointer', border: '1px solid rgba(201,146,44,.3)', background: 'rgba(201,146,44,.08)', color: 'rgba(255,255,255,.65)', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: '100%', opacity: mlsSyncing ? 0.7 : 1, transition: 'all .15s' }}>
+              <span>{mlsSyncing ? '⏳' : '🏠'}</span>
+              <span>{mlsSyncing ? 'Syncing MLS…' : '↻ Sync MLS Listings'}</span>
+            </button>
+          </div>
+        )}
         <div style={{ marginTop: 'auto', padding: '14px 12px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
           {/* Gmail / Calendar accounts */}
           <div style={{ marginBottom: 10 }}>
@@ -2123,6 +2149,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <option value="">All Asset Types</option>
                           {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
                         </select>
+                        {/* Owner / agent filter — admin only */}
+                        {isAdmin && profiles.length > 0 && (
+                          <select value={contactOwnerFilter} onChange={e => setContactOwnerFilter(e.target.value)} style={contactOwnerFilter ? fsActive : fs}>
+                            <option value="">All Owners</option>
+                            {profiles.map(p => (
+                              <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                            ))}
+                          </select>
+                        )}
                         {/* Sort order */}
                         <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} style={fs}>
                           <option value="recent">Sort: Most Recent</option>
@@ -2136,11 +2171,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </>);
                     })()}
                     {/* Clear */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && (
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
                     )}
                     {/* Save as Smart List */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter) && !showSaveList && (
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && !showSaveList && (
                       <button onClick={() => setShowSaveList(true)} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #c9922c', fontSize: 12, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>💾 Save List</button>
                     )}
                     {showSaveList && (
@@ -2167,6 +2202,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   if (contactSourceFilter && c.lead_source !== contactSourceFilter) return false;
                   if (contactTagFilter && !(c.tags ?? []).some(t => t.toLowerCase().includes(contactTagFilter.toLowerCase()))) return false;
                   if (contactSpecFilter && !(c.asset_types ?? []).includes(contactSpecFilter)) return false;
+                  if (contactOwnerFilter && c.agent_id !== contactOwnerFilter) return false;
                   return true;
                 }).sort((a, b) => {
                   if (contactSort === 'recent') {

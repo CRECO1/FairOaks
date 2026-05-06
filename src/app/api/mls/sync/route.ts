@@ -1,0 +1,142 @@
+/**
+ * POST /api/mls/sync
+ *
+ * Pulls active & pending listings from SABOR's RESO Web API and upserts
+ * them into the `listings` Supabase table.
+ *
+ * Filterable via env vars:
+ *   SABOR_MLS_FILTER   - raw OData $filter string (overrides all below)
+ *   SABOR_AGENT_EMAIL  - sync only listings for this agent's email
+ *   SABOR_OFFICE_KEY   - sync only listings for this office key
+ *
+ * If none of the above are set, syncs all Active + Pending listings
+ * (use with caution — SABOR has thousands of listings).
+ *
+ * Body (optional JSON):
+ *   { filter?: string }  — override filter for this call only
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import {
+  searchPropertiesAll,
+  getMediaBatch,
+  resoPropertyToListing,
+} from '@/lib/sabor-reso';
+
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
+
+function buildFilter(overrideFilter?: string): string {
+  if (overrideFilter) return overrideFilter;
+  if (process.env.SABOR_MLS_FILTER) return process.env.SABOR_MLS_FILTER;
+
+  const parts: string[] = ["StandardStatus in ('Active','Pending')"];
+
+  if (process.env.SABOR_AGENT_EMAIL) {
+    parts.push(`ListAgentEmail eq '${process.env.SABOR_AGENT_EMAIL}'`);
+  } else if (process.env.SABOR_OFFICE_KEY) {
+    parts.push(`ListOfficeKey eq '${process.env.SABOR_OFFICE_KEY}'`);
+  }
+
+  return parts.join(' and ');
+}
+
+export async function POST(req: NextRequest) {
+  // Allow manual trigger from CRM or admin; also called by cron route
+  try {
+    let overrideFilter: string | undefined;
+    try {
+      const body = await req.json();
+      overrideFilter = body?.filter;
+    } catch {
+      // no body / not JSON — fine
+    }
+
+    const filter = buildFilter(overrideFilter);
+    console.log('[MLS sync] filter:', filter);
+
+    // ── Fetch all matching properties from SABOR ──────────────────────────────
+    const properties = await searchPropertiesAll(
+      { filter, orderby: 'ModificationTimestamp desc', top: 200 },
+      50 // max 50 pages = up to 10,000 records per sync
+    );
+
+    console.log(`[MLS sync] fetched ${properties.length} properties`);
+    if (properties.length === 0) {
+      return NextResponse.json({ synced: 0, updated: 0, skipped: 0 });
+    }
+
+    // ── Fetch media for all listings in batches ───────────────────────────────
+    const listingKeys = properties.map(p => p.ListingKey);
+    const mediaMap = await getMediaBatch(listingKeys);
+    console.log(`[MLS sync] media map has ${mediaMap.size} entries`);
+
+    // ── Upsert into Supabase ──────────────────────────────────────────────────
+    const supabase = adminClient();
+    let synced = 0;
+    let failed = 0;
+
+    // Process in chunks of 50 to stay within Supabase payload limits
+    const CHUNK = 50;
+    for (let i = 0; i < properties.length; i += CHUNK) {
+      const chunk = properties.slice(i, i + CHUNK);
+      const rows = chunk.map(p => {
+        const images = mediaMap.get(p.ListingKey) ?? [];
+        return resoPropertyToListing(p, images);
+      });
+
+      const { error } = await supabase
+        .from('listings')
+        .upsert(rows, {
+          onConflict: 'listing_key',
+          ignoreDuplicates: false,
+        });
+
+      if (error) {
+        console.error('[MLS sync] upsert error:', error);
+        failed += chunk.length;
+      } else {
+        synced += chunk.length;
+      }
+    }
+
+    // ── Mark listings no longer in SABOR feed as off-market ──────────────────
+    // Only for MLS-sourced listings — never touch manually entered ones
+    if (listingKeys.length > 0 && !overrideFilter) {
+      // Find MLS listings we have that are NOT in the current feed
+      const { data: stale } = await supabase
+        .from('listings')
+        .select('id, listing_key, title')
+        .eq('source', 'mls')
+        .in('status', ['active', 'pending'])
+        .not('listing_key', 'in', `(${listingKeys.map(k => `'${k}'`).join(',')})`)
+        .limit(500);
+
+      if (stale && stale.length > 0) {
+        console.log(`[MLS sync] marking ${stale.length} stale listings as off-market`);
+        const staleIds = stale.map((r: any) => r.id);
+        await supabase
+          .from('listings')
+          .update({ status: 'off-market', synced_at: new Date().toISOString() })
+          .in('id', staleIds);
+      }
+    }
+
+    console.log(`[MLS sync] done — synced: ${synced}, failed: ${failed}`);
+    return NextResponse.json({
+      synced,
+      failed,
+      total: properties.length,
+      filter,
+    });
+  } catch (err: any) {
+    console.error('[MLS sync] error:', err);
+    return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });
+  }
+}
