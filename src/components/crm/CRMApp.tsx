@@ -393,6 +393,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState<{ year: number; month: number }>(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
   const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
@@ -3252,67 +3253,88 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <option value="annual">Annual</option>
                           </select>
                         </div>
-                        {newCampaign.frequency === 'one-time' && (<>
-                          <div>
-                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Date *</label>
-                            <input className="crm-input" type="date" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_date} min={new Date().toISOString().slice(0, 10)} onChange={e => setNewCampaign({ ...newCampaign, send_date: e.target.value })} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Time (CT) *</label>
-                            <select className="crm-input" style={{ marginTop: 4, width: '100%', boxSizing: 'border-box' }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
-                              {Array.from({ length: 24 * 4 }, (_, i) => {
-                                const h = Math.floor(i / 4);
-                                const m = (i % 4) * 15;
-                                const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                                const label = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-                                return <option key={val} value={val}>{label}</option>;
-                              })}
-                            </select>
-                          </div>
-                          <div style={{ gridColumn: '1/-1' }}>
-                            <div style={{ fontSize: 11, color: '#6b7280', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>⏰ Sends once on the selected date & time (Central Time), then deactivates automatically.</div>
-                          </div>
-                        </>)}
-                        {newCampaign.frequency !== 'one-time' && (
-                          <div style={{ gridColumn: '1/-1' }}>
-                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send Schedule</label>
-                            <div style={{ marginTop: 8, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16 }}>
-                              {/* Day-of-month grid */}
-                              <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, marginBottom: 8 }}>Pick a day of the month</div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-                                {Array.from({ length: 28 }, (_, i) => i + 1).map(d => {
-                                  const selected = newCampaign.send_day_of_month === String(d);
-                                  return (
-                                    <button key={d} type="button"
-                                      onClick={() => setNewCampaign({ ...newCampaign, send_day_of_month: selected ? '' : String(d) })}
-                                      style={{ padding: '7px 0', borderRadius: 6, border: selected ? '2px solid #c9922c' : '1px solid #e5e7eb', background: selected ? '#c9922c' : '#fff', color: selected ? '#fff' : '#374151', fontSize: 13, fontWeight: selected ? 700 : 400, cursor: 'pointer', transition: 'all 0.1s' }}>
-                                      {d}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              {newCampaign.send_day_of_month && (
-                                <div style={{ marginTop: 10, fontSize: 12, color: '#374151' }}>
-                                  Sending on the <strong>{newCampaign.send_day_of_month}{Number(newCampaign.send_day_of_month) === 1 ? 'st' : Number(newCampaign.send_day_of_month) === 2 ? 'nd' : Number(newCampaign.send_day_of_month) === 3 ? 'rd' : 'th'}</strong> of each {newCampaign.frequency === 'monthly' ? 'month' : 'period'}
+                        {/* ── Shared inline calendar for both one-time and recurring ── */}
+                        {(() => {
+                          const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                          const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                          const today = new Date(); today.setHours(0,0,0,0);
+                          const { year, month } = calendarMonth;
+                          const firstDay = new Date(year, month, 1).getDay();
+                          const daysInMonth = new Date(year, month + 1, 0).getDate();
+                          const selectedDate = newCampaign.send_date ? new Date(newCampaign.send_date + 'T12:00:00') : null;
+                          const isOneTime = newCampaign.frequency === 'one-time';
+                          const suffix = (d: number) => d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th';
+                          const prevMonth = () => setCalendarMonth(({ year: y, month: m }) => m === 0 ? { year: y - 1, month: 11 } : { year: y, month: m - 1 });
+                          const nextMonth = () => setCalendarMonth(({ year: y, month: m }) => m === 11 ? { year: y + 1, month: 0 } : { year: y, month: m + 1 });
+                          const canGoPrev = new Date(year, month, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
+                          const selectDay = (d: number) => {
+                            const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                            setNewCampaign({ ...newCampaign, send_date: dateStr, send_day_of_month: isOneTime ? '' : String(d) });
+                          };
+                          return (
+                            <div style={{ gridColumn: '1/-1' }}>
+                              <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>
+                                {isOneTime ? 'Send Date *' : 'First Send Date & Recurring Day *'}
+                              </label>
+                              <div style={{ marginTop: 8, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, maxWidth: 340 }}>
+                                {/* Month nav */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                                  <button type="button" onClick={prevMonth} disabled={!canGoPrev}
+                                    style={{ background: 'none', border: 'none', cursor: canGoPrev ? 'pointer' : 'default', fontSize: 16, color: canGoPrev ? '#374151' : '#d1d5db', padding: '2px 8px', borderRadius: 4 }}>‹</button>
+                                  <span style={{ fontWeight: 700, fontSize: 14, color: '#111' }}>{MONTHS[month]} {year}</span>
+                                  <button type="button" onClick={nextMonth}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#374151', padding: '2px 8px', borderRadius: 4 }}>›</button>
                                 </div>
-                              )}
-                              {/* Time picker */}
-                              <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>Send time (CT)</div>
-                                <select className="crm-input" style={{ flex: 1 }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
-                                  {Array.from({ length: 24 * 4 }, (_, i) => {
-                                    const h = Math.floor(i / 4);
-                                    const m = (i % 4) * 15;
-                                    const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-                                    const label = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
-                                    return <option key={val} value={val}>{label}</option>;
+                                {/* Weekday headers */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 4 }}>
+                                  {DAYS.map(d => <div key={d} style={{ textAlign: 'center', fontSize: 10, color: '#9ca3af', fontWeight: 600, padding: '2px 0' }}>{d}</div>)}
+                                </div>
+                                {/* Day cells */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+                                  {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
+                                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
+                                    const cellDate = new Date(year, month, d);
+                                    const isPast = cellDate < today;
+                                    const isSelected = selectedDate && selectedDate.getFullYear() === year && selectedDate.getMonth() === month && selectedDate.getDate() === d;
+                                    const isToday = cellDate.getTime() === today.getTime();
+                                    const isDisabled = isPast || (!isOneTime && d > 28);
+                                    return (
+                                      <button key={d} type="button" disabled={isDisabled} onClick={() => !isDisabled && selectDay(d)}
+                                        title={!isOneTime && d > 28 ? 'Day 29–31 skipped in short months' : undefined}
+                                        style={{ padding: '6px 0', borderRadius: 6, border: isSelected ? '2px solid #c9922c' : isToday ? '1px solid #c9922c' : '1px solid transparent', background: isSelected ? '#c9922c' : '#fff', color: isDisabled ? '#d1d5db' : isSelected ? '#fff' : '#111', fontSize: 13, fontWeight: isSelected ? 700 : 400, cursor: isDisabled ? 'default' : 'pointer', textAlign: 'center', opacity: isDisabled ? 0.4 : 1 }}>
+                                        {d}
+                                      </button>
+                                    );
                                   })}
-                                </select>
+                                </div>
+                                {/* Summary */}
+                                {newCampaign.send_date ? (
+                                  <div style={{ marginTop: 12, padding: '8px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
+                                    {isOneTime
+                                      ? <>📅 Sends once on <strong>{MONTHS[month]} {selectedDate!.getDate()}, {year}</strong></>
+                                      : <>📅 First send: <strong>{MONTHS[selectedDate!.getMonth()]} {selectedDate!.getDate()}{suffix(selectedDate!.getDate())}, {selectedDate!.getFullYear()}</strong> — then repeats on the <strong>{selectedDate!.getDate()}{suffix(selectedDate!.getDate())}</strong> of each {newCampaign.frequency === 'monthly' ? 'month' : newCampaign.frequency === 'quarterly' ? 'quarter' : newCampaign.frequency === 'semi-annual' ? 'half-year' : 'year'}</>
+                                    }
+                                  </div>
+                                ) : (
+                                  <div style={{ marginTop: 10, fontSize: 11, color: '#9ca3af' }}>Select a date above to set your {isOneTime ? 'send date' : 'first send & recurring day'}.</div>
+                                )}
+                                {/* Time picker */}
+                                <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>Send time (CT)</span>
+                                  <select className="crm-input" style={{ flex: 1 }} value={newCampaign.send_time} onChange={e => setNewCampaign({ ...newCampaign, send_time: e.target.value })}>
+                                    {Array.from({ length: 24 * 4 }, (_, i) => {
+                                      const h = Math.floor(i / 4); const m2 = (i % 4) * 15;
+                                      const val = `${String(h).padStart(2,'0')}:${String(m2).padStart(2,'0')}`;
+                                      const lbl = `${h % 12 || 12}:${String(m2).padStart(2,'0')} ${h < 12 ? 'AM' : 'PM'}`;
+                                      return <option key={val} value={val}>{lbl}</option>;
+                                    })}
+                                  </select>
+                                </div>
+                                {!isOneTime && <div style={{ marginTop: 6, fontSize: 11, color: '#9ca3af' }}>Days 29–31 are disabled for recurring campaigns to ensure every month has that date.</div>}
                               </div>
-                              <div style={{ marginTop: 8, fontSize: 11, color: '#9ca3af' }}>Days 1–28 only — ensures every month has that date, including February.</div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                         <div>
                           <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.status} onChange={e => setNewCampaign({ ...newCampaign, status: e.target.value })}>
