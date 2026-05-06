@@ -508,8 +508,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Sync email editor content when switching to builder view
   useLayoutEffect(() => {
-    if (campaignView === 'builder' && emailEditorRef.current) {
-      emailEditorRef.current.innerHTML = sanitizeHtml(newCampaign.email_body);
+    if (campaignView === 'builder') {
+      setEmailEditorMode('rich');
+      if (emailEditorRef.current) {
+        emailEditorRef.current.innerHTML = newCampaign.email_body ?? '';
+      }
     }
   }, [campaignView]); // eslint-disable-line
 
@@ -1280,21 +1283,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function saveCampaign() {
-    setSaving(true);
-    const payload = { ...newCampaign, created_by: session!.user.id, business_unit: businessUnit };
-    const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
-    const method = activeCampaign ? 'PATCH' : 'POST';
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const j = await res.json();
-    if (!res.ok) { showToast('Error: ' + j.error); }
-    else {
-      showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
-      setCampaignView('list');
-      setActiveCampaign(null);
-      setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
-      loadCampaigns();
+    // In rich mode, capture the latest editor HTML before saving
+    if (emailEditorMode === 'rich' && emailEditorRef.current) {
+      setNewCampaign(prev => ({ ...prev, email_body: emailEditorRef.current?.innerHTML ?? prev.email_body }));
     }
-    setSaving(false);
+    setSaving(true);
+    try {
+      const body = emailEditorMode === 'rich' && emailEditorRef.current
+        ? { ...newCampaign, email_body: emailEditorRef.current.innerHTML, created_by: session!.user.id, business_unit: businessUnit }
+        : { ...newCampaign, created_by: session!.user.id, business_unit: businessUnit };
+      const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
+      const method = activeCampaign ? 'PATCH' : 'POST';
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await res.json();
+      if (!res.ok) { showToast('Error: ' + (j.error ?? 'Save failed')); }
+      else {
+        showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
+        setEmailEditorMode('rich');
+        setCampaignView('list');
+        setActiveCampaign(null);
+        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+        loadCampaigns();
+      }
+    } catch (err) {
+      showToast('Network error — please try again');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteCampaign(id: string) {
