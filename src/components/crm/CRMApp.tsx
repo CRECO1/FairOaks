@@ -2034,6 +2034,78 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
               })()}
 
+              {/* LXP Expiration Alert widget */}
+              {(() => {
+                const now = Date.now();
+                const lxpTenants = clients
+                  .filter(c => c.type === 'Tenant' && c.lease_expiration_date)
+                  .map(c => {
+                    const daysLeft = Math.ceil((new Date(c.lease_expiration_date!).getTime() - now) / (1000 * 60 * 60 * 24));
+                    return { ...c, daysLeft };
+                  })
+                  .filter(c => c.daysLeft <= 180) // only show expiring within 6 months or already expired
+                  .sort((a, b) => a.daysLeft - b.daysLeft); // soonest first
+
+                if (lxpTenants.length === 0) return null;
+
+                const expired   = lxpTenants.filter(c => c.daysLeft < 0).length;
+                const within90  = lxpTenants.filter(c => c.daysLeft >= 0 && c.daysLeft < 90).length;
+                const within180 = lxpTenants.filter(c => c.daysLeft >= 90 && c.daysLeft <= 180).length;
+                const show = lxpTenants.slice(0, 5);
+
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fed7aa', padding: '16px 20px', marginBottom: 26 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#c2410c', fontWeight: 600 }}>
+                        🗓 Lease Expirations — {lxpTenants.length} Tenant{lxpTenants.length !== 1 ? 's' : ''}
+                      </div>
+                      <button
+                        onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); }}
+                        style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                        View All Tenants →
+                      </button>
+                    </div>
+                    {/* Tier pills */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                      {expired   > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>🔴 Expired: {expired}</span>}
+                      {within90  > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fed7aa', color: '#c2410c' }}>🟠 &lt;90 days: {within90}</span>}
+                      {within180 > 0 && <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: '#fef9c3', color: '#a16207' }}>🟡 90–180 days: {within180}</span>}
+                    </div>
+                    {/* Top 5 soonest */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {show.map(c => {
+                        const bg    = c.daysLeft < 0 ? '#fee2e2' : c.daysLeft < 90 ? '#fff7ed' : '#fefce8';
+                        const color = c.daysLeft < 0 ? '#dc2626' : c.daysLeft < 90 ? '#c2410c' : '#a16207';
+                        const label = c.daysLeft < 0 ? `Expired ${Math.abs(c.daysLeft)}d ago` : c.daysLeft === 0 ? 'Expires today' : `${c.daysLeft}d left`;
+                        return (
+                          <button key={c.id}
+                            onClick={() => { setPage('contacts'); setActiveClient(c); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                              {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.first_name} {c.last_name}</div>
+                              <div style={{ fontSize: 10, color: '#6b7280' }}>
+                                {c.business_name ? `${c.business_name} · ` : ''}LXP {new Date(c.lease_expiration_date!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: bg, color, fontWeight: 700, flexShrink: 0 }}>
+                              {label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {lxpTenants.length > 5 && (
+                      <div style={{ marginTop: 10, fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+                        +{lxpTenants.length - 5} more — <button onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>view all</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Needs Attention widget — Tenants never touched */}
               {(() => {
                 // Only surface Tenants who have never been contacted at all.
