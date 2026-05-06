@@ -3120,14 +3120,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                       </div>
 
-                      {/* Currently enrolled list */}
+                      {/* Enrolled list — show all for completed/one-time, active-only for recurring */}
                       {(() => {
+                        const isCompleted = activeCampaign.status === 'completed' || activeCampaign.frequency === 'one-time';
+                        const visibleEnrollments = isCompleted ? campaignEnrollments : campaignEnrollments.filter(e => e.active);
                         const activeEnrollments = campaignEnrollments.filter(e => e.active);
                         const allUnenrollChecked = activeEnrollments.length > 0 && selectedUnenrollIds.length === activeEnrollments.length;
                         return (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                              <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Currently Enrolled ({activeEnrollments.length})</div>
+                              <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>
+                                {isCompleted ? `All Recipients (${visibleEnrollments.length})` : `Currently Enrolled (${activeEnrollments.length})`}
+                              </div>
                               {selectedUnenrollIds.length > 0 && (
                                 <button onClick={() => bulkUnenrollClients(activeCampaign.id)}
                                   style={{ fontSize: 12, fontWeight: 700, color: '#991b1b', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -3137,31 +3141,40 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                             {campaignEnrollmentsLoading ? (
                               <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>Loading…</div>
-                            ) : activeEnrollments.length === 0 ? (
+                            ) : visibleEnrollments.length === 0 ? (
                               <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13 }}>No clients enrolled yet</div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {/* Select all row */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px', background: '#f9fafb', borderRadius: 6, border: '1px dashed #e5e7eb' }}>
-                                  <input type="checkbox" checked={allUnenrollChecked} style={{ accentColor: '#c9922c', cursor: 'pointer' }}
-                                    onChange={e => setSelectedUnenrollIds(e.target.checked ? activeEnrollments.map(en => en.client_id) : [])} />
-                                  <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>Select all to remove</span>
-                                </div>
-                                {activeEnrollments.map(en => (
+                                {/* Select all row — only show for active recurring campaigns */}
+                                {!isCompleted && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px', background: '#f9fafb', borderRadius: 6, border: '1px dashed #e5e7eb' }}>
+                                    <input type="checkbox" checked={allUnenrollChecked} style={{ accentColor: '#c9922c', cursor: 'pointer' }}
+                                      onChange={e => setSelectedUnenrollIds(e.target.checked ? activeEnrollments.map(en => en.client_id) : [])} />
+                                    <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>Select all to remove</span>
+                                  </div>
+                                )}
+                                {visibleEnrollments.map(en => (
                                   <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: selectedUnenrollIds.includes(en.client_id) ? '#fff5f5' : '#fff', border: `1px solid ${selectedUnenrollIds.includes(en.client_id) ? '#fecaca' : '#e5e7eb'}`, borderRadius: 8, transition: 'all .1s' }}>
-                                    <input type="checkbox" checked={selectedUnenrollIds.includes(en.client_id)} style={{ accentColor: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
-                                      onChange={e => setSelectedUnenrollIds(prev => e.target.checked ? [...prev, en.client_id] : prev.filter(id => id !== en.client_id))} />
-                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#111', flexShrink: 0 }}>
+                                    {!isCompleted && (
+                                      <input type="checkbox" checked={selectedUnenrollIds.includes(en.client_id)} style={{ accentColor: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
+                                        onChange={e => setSelectedUnenrollIds(prev => e.target.checked ? [...prev, en.client_id] : prev.filter(id => id !== en.client_id))} />
+                                    )}
+                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: en.active ? '#c9922c' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
                                       {(en.client?.first_name?.[0] ?? '') + (en.client?.last_name?.[0] ?? '')}
                                     </div>
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={{ fontSize: 13, fontWeight: 500 }}>{en.client?.first_name} {en.client?.last_name}</div>
                                       <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                                        Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}
+                                        {isCompleted
+                                          ? <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Sent</span>
+                                          : <>Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}</>
+                                        }
                                         {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
                                       </div>
                                     </div>
-                                    <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 11, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
+                                    {!isCompleted && (
+                                      <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 11, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
