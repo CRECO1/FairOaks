@@ -96,9 +96,11 @@ async function fetchOneListing(filter: string) {
 
 export default async function HomePage() {
   const [dominion, fairOaks, cordillera, boerne, testimonialsResult, neighborhoodsResult, settingsResult] = await Promise.allSettled([
-    fetchOneListing(`contains(tolower(SubdivisionName),'dominion') and City eq ODataService.City_Lkp_1'SANANTONIO'`),
+    // 'ominion' matches both 'Dominion' and 'THE DOMINION' (mixed case in SABOR)
+    fetchOneListing(`(contains(SubdivisionName,'ominion') or contains(SubdivisionName,'OMINION')) and City eq ODataService.City_Lkp_1'SANANTONIO'`),
     fetchOneListing(`City eq ODataService.City_Lkp_1'FAIROAKSRA'`),
-    fetchOneListing(`contains(tolower(SubdivisionName),'cordillera ranch')`),
+    // CORDILLERA RANCH is stored all-caps in SABOR
+    fetchOneListing(`contains(SubdivisionName,'CORDILLERA')`),
     fetchOneListing(`City eq ODataService.City_Lkp_1'BOERNE'`),
     getTestimonials(true),
     getNeighborhoods(),
