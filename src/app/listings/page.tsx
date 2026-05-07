@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Search, SlidersHorizontal, Bed, Bath, Square, MapPin, Home, X, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -56,6 +57,8 @@ function SkeletonCard() {
 }
 
 export default function ListingsPage() {
+  const searchParams = useSearchParams();
+
   const [listings, setListings]     = useState<Listing[]>([]);
   const [total, setTotal]           = useState<number | null>(null);
   const [totalPages, setTotalPages] = useState(1);
@@ -63,7 +66,12 @@ export default function ListingsPage() {
   const [loading, setLoading]       = useState(true);
 
   const [search,     setSearch]     = useState('');
-  const [city,       setCity]       = useState('All Areas');
+  // Pre-populate city from ?city= URL param (e.g. from "View all" on listing detail)
+  const [city,       setCity]       = useState(() => {
+    const all = ['All Areas', ...FEATURED_AREAS, ...MORE_AREAS];
+    const param = searchParams.get('city') ?? 'All Areas';
+    return all.includes(param) ? param : 'All Areas';
+  });
   const [priceRange, setPriceRange] = useState(0);
   const [minBeds,    setMinBeds]    = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
