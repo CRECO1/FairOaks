@@ -325,8 +325,9 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
   const agentPhone = p.ListAgentCellPhone ?? p.ListAgentOfficePhone ?? null;
 
   const title = fullAddress || p.ListingId;
+  // Full ListingId appended so detail page can reliably extract it from the slug
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-    + '-' + p.ListingId.slice(-6);
+    + '-' + p.ListingId;
 
   const bathrooms = (p.BathroomsFull ?? 0) + (p.BathroomsHalf ? 0.5 : 0);
 
