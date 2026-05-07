@@ -37,11 +37,11 @@ export async function GET(req: NextRequest) {
     const filters: string[] = [STATUS_FILTER];
 
     if (city && city !== 'All Areas') {
-      // SABOR stores City as an all-caps enum; SubdivisionName is a plain string.
-      // Some "areas" (Dominion, Cordillera Ranch) are subdivisions, not cities.
-      // Matching both fields ensures all area types work.
-      const c = city.toUpperCase().replace(/'/g, "''");
-      filters.push(`(contains(City,'${c}') or contains(SubdivisionName,'${c}'))`);
+      // SABOR stores City enum values WITHOUT spaces (e.g. "FAIROAKSRANCH", "SANANTONIO").
+      // Strip spaces for the City filter; keep spaces for SubdivisionName (plain string).
+      const c         = city.toUpperCase().replace(/'/g, "''");
+      const cNoSpaces = c.replace(/\s+/g, '');
+      filters.push(`(contains(City,'${cNoSpaces}') or contains(SubdivisionName,'${c}'))`);
     }
     if (minPrice !== null && Number.isFinite(minPrice)) filters.push(`ListPrice ge ${minPrice}`);
     if (maxPrice !== null && Number.isFinite(maxPrice)) filters.push(`ListPrice le ${maxPrice}`);

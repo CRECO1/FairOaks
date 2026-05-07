@@ -302,8 +302,32 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     .filter(Boolean).join(' ');
   const unit = p.UnitNumber ? ` #${p.UnitNumber}` : '';
   const fullAddress = `${streetParts}${unit}`.trim();
-  // SABOR cities come back all-caps — convert to title case
-  const city = (p.City ?? '').replace(/\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  // SABOR city enum values are all-caps with NO spaces (e.g. "SANANTONIO", "FAIROAKSRANCH").
+  // Map known compound city names back to proper display form.
+  const CITY_MAP: Record<string, string> = {
+    SANANTONIO:          'San Antonio',
+    FAIROAKSRANCH:       'Fair Oaks Ranch',
+    NEWBRAUNFELS:        'New Braunfels',
+    STONEOAK:            'Stone Oak',
+    CONVERSE:            'Converse',
+    UNIVERSALCITY:       'Universal City',
+    LIVEOAK:             'Live Oak',
+    CASTROVILLE:         'Castroville',
+    LAVERNIA:            'La Vernia',
+    LAREDOVILLE:         'Laredo',
+    LOSANGELES:          'Los Angeles',
+    CIBOLO:              'Cibolo',
+    LAKEMEDINA:          'Lake Medina',
+    NORTONSTANTON:       'Norton',
+    POTHILLS:            'Pot Hills',
+    RANDHILLS:           'Rand Hills',
+    SATTLER:             'Sattler',
+    SPRINGBRANCH:        'Spring Branch',
+    TARPLEY:             'Tarpley',
+  };
+  const rawCity = (p.City ?? '').toUpperCase().replace(/\s+/g, '');
+  const city = CITY_MAP[rawCity]
+    ?? (p.City ?? '').replace(/\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
   const state = p.StateOrProvince ?? 'TX';
   const zip = p.PostalCode ?? '';
 
