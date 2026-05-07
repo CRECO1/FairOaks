@@ -404,7 +404,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
   const [campaignView, setCampaignView] = useState<'list' | 'builder' | 'detail'>('list');
-  const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'settings'>('enrolled');
+  const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'preview' | 'settings'>('enrolled');
   const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
   const [campaignEnrollmentsLoading, setCampaignEnrollmentsLoading] = useState(false);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
@@ -3231,9 +3231,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Tabs */}
                   <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 20 }}>
-                    {(['enrolled', 'history', 'settings'] as const).map(t => (
+                    {(['enrolled', 'history', 'preview', 'settings'] as const).map(t => (
                       <button key={t} onClick={() => setCampaignTab(t)} style={{ padding: '10px 18px', fontSize: 13, fontWeight: campaignTab === t ? 700 : 400, color: campaignTab === t ? '#c9922c' : '#6b7280', background: 'none', border: 'none', borderBottom: campaignTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textTransform: 'capitalize' }}>
-                        {t === 'enrolled' ? `Enrolled (${campaignEnrollments.filter(e => e.active).length})` : t.charAt(0).toUpperCase() + t.slice(1)}
+                        {t === 'enrolled' ? `Enrolled (${campaignEnrollments.filter(e => e.active).length})` : t === 'preview' ? '👁 Preview' : t.charAt(0).toUpperCase() + t.slice(1)}
                       </button>
                     ))}
                   </div>
@@ -3418,6 +3418,94 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Preview tab */}
+                  {campaignTab === 'preview' && (
+                    <div>
+                      {activeCampaign.type === 'sms' ? (
+                        /* ── SMS preview ── */
+                        <div style={{ maxWidth: 400, margin: '0 auto' }}>
+                          <div style={{ background: '#f3f4f6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+                            <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 1 }}>SMS Preview</div>
+                            <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', fontSize: 14, lineHeight: 1.6, color: '#111', boxShadow: '0 1px 4px rgba(0,0,0,.08)', whiteSpace: 'pre-wrap' }}>
+                              {(activeCampaign.sms_body ?? '')
+                                .replace(/\{\{first_name\}\}/g, 'Jane')
+                                .replace(/\{\{last_name\}\}/g, 'Smith')
+                                .replace(/\{\{full_name\}\}/g, 'Jane Smith')
+                                .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                                || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No SMS body set.</span>}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>Sample data — real sends use each contact&apos;s actual info.</div>
+                        </div>
+                      ) : (
+                        /* ── Email preview ── */
+                        <div>
+                          {/* Subject line */}
+                          <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'baseline' }}>
+                            <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
+                              {(activeCampaign.email_subject ?? '(no subject)')
+                                .replace(/\{\{first_name\}\}/g, 'Jane')
+                                .replace(/\{\{last_name\}\}/g, 'Smith')
+                                .replace(/\{\{full_name\}\}/g, 'Jane Smith')
+                                .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')}
+                            </span>
+                          </div>
+
+                          {/* Rendered email body */}
+                          {activeCampaign.email_body ? (
+                            <div style={{ border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+                              {/* Fake email client chrome */}
+                              <div style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444' }} />
+                                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
+                                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e' }} />
+                                <div style={{ flex: 1, marginLeft: 12, background: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 11, color: '#9ca3af' }}>
+                                  From: Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;
+                                </div>
+                              </div>
+                              <iframe
+                                sandbox="allow-same-origin"
+                                srcDoc={(() => {
+                                  const body = (activeCampaign.email_body ?? '')
+                                    .replace(/\{\{first_name\}\}/g, 'Jane')
+                                    .replace(/\{\{last_name\}\}/g, 'Smith')
+                                    .replace(/\{\{full_name\}\}/g, 'Jane Smith')
+                                    .replace(/\{\{email\}\}/g, 'jane@example.com')
+                                    .replace(/\{\{client_type\}\}/g, 'Buyer')
+                                    .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                                    .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
+                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                                    .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                                    .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
+                                  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${body}</body></html>`;
+                                })()}
+                                style={{ width: '100%', border: 'none', minHeight: 500, display: 'block', background: '#fff' }}
+                                onLoad={(e) => {
+                                  const iframe = e.currentTarget;
+                                  try { iframe.style.height = (iframe.contentDocument?.body?.scrollHeight ?? 500) + 'px'; } catch {}
+                                }}
+                                title="Email Preview"
+                              />
+                            </div>
+                          ) : (
+                            <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', background: '#f9fafb', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
+                              <div style={{ fontSize: 32, marginBottom: 8 }}>📧</div>
+                              <div style={{ fontWeight: 600, marginBottom: 4 }}>No email body yet</div>
+                              <div style={{ fontSize: 12 }}>Edit this campaign to add an email template.</div>
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 12 }}>
+                            Sample data shown — real sends replace merge fields with each contact&apos;s actual info.
+                          </div>
                         </div>
                       )}
                     </div>
