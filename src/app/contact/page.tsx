@@ -99,10 +99,14 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-primary">Office</p>
-                      <p className="text-body-sm text-foreground-muted">
+                      <a
+                        href="https://www.google.com/maps/search/?api=1&query=8000+Fair+Oaks+Pkwy+Suite+102+Fair+Oaks+Ranch+TX+78015"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-body-sm text-foreground-muted hover:text-gold transition-colors">
                         8000 Fair Oaks Pkwy Suite 102<br />
                         Fair Oaks Ranch, TX 78015
-                      </p>
+                      </a>
                     </div>
                   </div>
 
