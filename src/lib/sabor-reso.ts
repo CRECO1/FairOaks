@@ -165,7 +165,11 @@ async function authenticate(): Promise<string> {
 async function resoFetch<T>(path: string, params: Record<string, string> = {}): Promise<ResoResponse<T>> {
   const token = await authenticate();
 
-  const qs = new URLSearchParams(params).toString();
+  // SABOR requires literal $ in OData param names ($select, $filter, etc.)
+  // URLSearchParams encodes $ → %24 which SABOR rejects as "URI is malformed"
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
   const url = `${API_BASE}/${path}${qs ? '?' + qs : ''}`;
 
   const res = await fetch(url, {
