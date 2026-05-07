@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
+import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
 
+async function verifyAdmin(req: NextRequest): Promise<boolean> {
+  const authHeader = req.headers.get('authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (token) {
+    const admin = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
+    const { data: { user } } = await admin.auth.getUser(token);
+    if (user) {
+      const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
+      return data?.role === 'admin';
+    }
+    return false;
+  }
+  return !!(await getCrmAdmin());
+}
+
 export async function POST(req: NextRequest) {
-  const caller = await getCrmAdmin();
-  if (!caller) return forbidden();
+  if (!(await verifyAdmin(req))) return forbidden();
 
   try {
     const { email, firstName } = await req.json();

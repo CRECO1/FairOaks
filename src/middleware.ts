@@ -21,6 +21,7 @@ const apiSessionRoutes = [
 // API routes that need session refresh but have their own auth — skip CSRF
 const apiSessionNoCsrfRoutes = [
   '/api/mls/sync',
+  '/api/crm',   // CRM routes verify Supabase session + admin role — own auth gate
 ];
 
 export async function middleware(request: NextRequest) {

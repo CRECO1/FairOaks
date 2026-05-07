@@ -1177,7 +1177,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function resetAgentPassword(email: string, firstName: string) {
     const res = await fetch('/api/crm/reset-password', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
       body: JSON.stringify({ email, firstName }),
     });
     const json = await res.json();
