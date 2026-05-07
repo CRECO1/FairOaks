@@ -216,7 +216,8 @@
       "Bash(grep -nB1 -A3 \"MapPin\\\\|San Antonio, TX\\\\|address\" src/app/about/page.tsx)",
       "Bash(grep -nB1 -A2 \"MapPin\" src/app/listings/page.tsx src/app/sold/page.tsx src/app/8000-fair-oaks-pkwy/page.tsx)",
       "Bash(/usr/bin/curl -sS -o /dev/null -w \"%{http_code}\" \"https://crecotx.com/contact\")",
-      "Bash(/usr/bin/curl -sS \"https://crecotx.com/contact\")"
+      "Bash(/usr/bin/curl -sS \"https://crecotx.com/contact\")",
+      "Bash(/usr/bin/curl -sS \"https://crecotx.com/\")"
     ]
   }
 }

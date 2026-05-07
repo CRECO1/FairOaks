@@ -27,6 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { rateLimit } from '@/lib/ratelimit';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -40,6 +41,10 @@ function esc(s: string | null | undefined): string {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Rate limit ────────────────────────────────────────────────────────────
+  const rl = await rateLimit(req, 'webhook');
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   // ── Auth: require Bearer token in Authorization header ─────────────────────
   // Use: Authorization: Bearer <WEBHOOK_SECRET>
   // Do NOT pass secrets as URL query params — they appear in server logs.

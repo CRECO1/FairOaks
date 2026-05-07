@@ -1,10 +1,16 @@
 import { NextRequest } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/ratelimit';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET(req: NextRequest) {
+  const rl = await rateLimit(req, 'unsubscribe');
+  if (!rl.success) {
+    return new Response('<h2>Too many requests</h2><p>Please wait a moment and try again.</p>', { headers: { 'Content-Type': 'text/html' }, status: 429 });
+  }
+
   const token = req.nextUrl.searchParams.get('token');
   if (!token) return new Response('<h2>Invalid link</h2>', { headers: { 'Content-Type': 'text/html' }, status: 400 });
 

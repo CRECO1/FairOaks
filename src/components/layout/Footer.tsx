@@ -194,7 +194,7 @@ export function Footer() {
               <Link href="/terms" className="text-caption text-white/40 transition-colors hover:text-white/70">
                 Terms of Service
               </Link>
-              <span className="text-caption text-white/40">TREC License #9014367</span>
+              <span className="text-caption text-white/40">TREC License #9014367-BB</span>
             </div>
           </div>
         </Container>

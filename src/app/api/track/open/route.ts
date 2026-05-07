@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/ratelimit';
 
 // 1×1 transparent GIF
 const TRANSPARENT_GIF = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 export async function GET(req: NextRequest) {
+  // Rate-limit to prevent pixel flooding — fail silently (still return the GIF)
+  const rl = await rateLimit(req, 'track');
+  if (!rl.success) {
+    return new NextResponse(Buffer.from(TRANSPARENT_GIF, 'base64'), {
+      headers: { 'Content-Type': 'image/gif', 'Cache-Control': 'no-store' },
+    });
+  }
   const trackingId = req.nextUrl.searchParams.get('id');
   const type = req.nextUrl.searchParams.get('type') ?? 'deal'; // 'deal' | 'campaign'
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { rateLimit } from '@/lib/ratelimit';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = 'onboarding@resend.dev'; // works on free Resend plan; swap to noreply@fairoaksrealtygroup.com after domain verification
@@ -11,6 +12,11 @@ function esc(s: string | null | undefined): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const rl = await rateLimit(req, 'leads');
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests — please wait a few minutes and try again.' }, { status: 429 });
+    }
+
     const body = await req.json();
     const { name, email, phone, message, property_interest, source, business_unit } = body;
 
