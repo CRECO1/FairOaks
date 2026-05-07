@@ -62,7 +62,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
               style={textShadowStyle}
             >
               <span className="text-xl sm:text-2xl">Fair Oaks</span>
-              <span className="text-base sm:text-lg text-gold">Realty Group</span>
+              <span className="text-xl sm:text-2xl text-gold">Realty Group</span>
             </div>
           </Link>
 
