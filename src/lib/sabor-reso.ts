@@ -37,7 +37,6 @@ export interface ResoProperty {
   // Price
   ListPrice: number;
   OriginalListPrice?: number;
-  ClosePrice?: number;
   CloseDate?: string;
   // Dates
   ListingContractDate?: string;
@@ -199,11 +198,12 @@ export interface PropertySearchOptions {
   expand?: string;
 }
 
+// Note: ClosePrice and StreetSuffix are not valid SABOR fields — omit to avoid 400
 const DEFAULT_SELECT = [
   'ListingId', 'StandardStatus', 'MlsStatus',
-  'ListPrice', 'OriginalListPrice', 'ClosePrice', 'CloseDate',
+  'ListPrice', 'OriginalListPrice', 'CloseDate',
   'ListingContractDate', 'OnMarketDate', 'ModificationTimestamp',
-  'StreetNumber', 'StreetDirPrefix', 'StreetName', 'StreetSuffix',
+  'StreetNumber', 'StreetDirPrefix', 'StreetName',
   'UnitNumber', 'City', 'StateOrProvince', 'PostalCode',
   'CountyOrParish', 'SubdivisionName',
   'PropertyType', 'PropertySubType_RR',
@@ -339,7 +339,6 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     status,
     standard_status:        p.StandardStatus ?? null,
     mls_status:             p.MlsStatus ?? null,
-    close_price:            p.ClosePrice ?? null,
     close_date:             p.CloseDate ?? null,
     bedrooms:               p.BedroomsTotal ?? 0,
     bathrooms,

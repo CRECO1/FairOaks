@@ -12,8 +12,8 @@ import { formatPrice } from '@/lib/utils';
 import type { Listing } from '@/lib/supabase';
 import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
 
-const FEATURED_AREAS = ['Fair Oaks Ranch', 'Boerne', 'Helotes', 'Leon Springs'];
-const MORE_AREAS = ['San Antonio', 'Bulverde', 'New Braunfels', 'Kerrville', 'Fredericksburg'];
+const FEATURED_AREAS = ['Fair Oaks Ranch', 'Boerne', 'Dominion', 'Cordillera Ranch'];
+const MORE_AREAS = ['San Antonio', 'Helotes', 'Bulverde', 'New Braunfels', 'Kerrville', 'Fredericksburg'];
 
 const PRICE_RANGES = [
   { label: 'Any Price',     min: 0,       max: Infinity },
