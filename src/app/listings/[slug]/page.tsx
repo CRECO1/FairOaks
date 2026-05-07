@@ -22,24 +22,25 @@ function listingIdFromSlug(slug: string): string | null {
 }
 
 /** Detect which featured area a listing belongs to, and return the SABOR filter + display label */
-function detectArea(listing: { city: string; subdivision_name: string | null }): { label: string; filter: string } | null {
+function detectArea(listing: { city: string; subdivision_name: string | null }): { label: string; display: string; filter: string } | null {
   const sub = (listing.subdivision_name ?? '').toLowerCase();
   const city = listing.city.toLowerCase().replace(/\s+/g, '');
 
+  // Labels must match the dropdown option values in /listings page exactly
   if (sub.includes('ominion') && city.includes('sanantonio')) {
-    return { label: 'The Dominion', filter: `City eq ODataService.City_Lkp_1'SANANTONIO' and contains(SubdivisionName,'ominion')` };
+    return { label: 'Dominion', display: 'The Dominion', filter: `City eq ODataService.City_Lkp_1'SANANTONIO' and contains(SubdivisionName,'ominion')` };
   }
   if (sub.includes('cordillera')) {
-    return { label: 'Cordillera Ranch', filter: `contains(SubdivisionName,'CORDILLERA')` };
+    return { label: 'Cordillera Ranch', display: 'Cordillera Ranch', filter: `contains(SubdivisionName,'CORDILLERA')` };
   }
   if (city === 'fairoaksra' || listing.city.toLowerCase().replace(/\s/g, '') === 'fairoaksranch') {
-    return { label: 'Fair Oaks Ranch', filter: `City eq ODataService.City_Lkp_1'FAIROAKSRA'` };
+    return { label: 'Fair Oaks Ranch', display: 'Fair Oaks Ranch', filter: `City eq ODataService.City_Lkp_1'FAIROAKSRA'` };
   }
   if (city === 'boerne') {
-    return { label: 'Boerne', filter: `City eq ODataService.City_Lkp_1'BOERNE'` };
+    return { label: 'Boerne', display: 'Boerne', filter: `City eq ODataService.City_Lkp_1'BOERNE'` };
   }
   if (city === 'helotes') {
-    return { label: 'Helotes', filter: `City eq ODataService.City_Lkp_1'HELOTES'` };
+    return { label: 'Helotes', display: 'Helotes', filter: `City eq ODataService.City_Lkp_1'HELOTES'` };
   }
   return null;
 }
@@ -360,7 +361,7 @@ export default async function ListingDetailPage({ params }: Props) {
               <div>
                 <p className="text-caption uppercase tracking-widest text-foreground-muted mb-1">More Homes</p>
                 <h2 className="font-heading text-heading-lg font-bold text-primary">
-                  More in {area.label}
+                  More in {area.display}
                 </h2>
               </div>
               <Link
@@ -410,7 +411,7 @@ export default async function ListingDetailPage({ params }: Props) {
                 href={`/listings?city=${encodeURIComponent(area.label)}`}
                 className="inline-flex items-center gap-1.5 text-body-sm font-semibold text-gold hover:underline"
               >
-                View all homes in {area.label} <ArrowRight className="h-4 w-4" />
+                View all homes in {area.display} <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           </Container>

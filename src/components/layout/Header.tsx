@@ -10,7 +10,6 @@ import { Container } from '@/components/ui/Container';
 
 const navLinks = [
   { href: '/listings', label: 'Listings' },
-  { href: '/sold', label: 'Sold' },
   { href: '/neighborhoods', label: 'Neighborhoods' },
   { href: '/team', label: 'Team' },
   { href: '/sell', label: 'Sell' },
