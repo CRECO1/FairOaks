@@ -142,7 +142,7 @@ export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }
         <div className="absolute inset-0 flex items-center justify-center bg-background-cream rounded-xl">
           <div className="text-center">
             <div className="h-8 w-8 border-2 border-gold border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-body-sm text-foreground-muted">Loading map…</p>
+            <p className="text-body-sm text-foreground-muted">Loading map&hellip;</p>
           </div>
         </div>
       )}
