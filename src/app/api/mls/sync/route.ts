@@ -54,13 +54,36 @@ function buildFilter(overrideFilter?: string): string {
 export async function POST(req: NextRequest) {
   // Accept either:
   //  (a) Internal cron call — x-internal-key must equal the service role key
-  //  (b) Admin CRM session
+  //  (b) Admin JWT Bearer token (from CRM browser session)
+  //  (c) Admin cookie session (fallback)
   const internalKey = req.headers.get('x-internal-key');
   const isInternalCron = internalKey && internalKey === process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!isInternalCron) {
-    const admin = await getCrmAdmin();
-    if (!admin) {
+    let isAdmin = false;
+
+    // Prefer explicit Bearer JWT over cookie-based auth
+    const authHeader = req.headers.get('authorization');
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (bearerToken && bearerToken !== process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      // Verify the JWT and check admin role directly
+      const verifier = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+      const { data: { user } } = await verifier.auth.getUser(bearerToken);
+      if (user) {
+        const { data } = await verifier.from('crm_profiles').select('role').eq('id', user.id).single();
+        isAdmin = data?.role === 'admin';
+      }
+    } else {
+      // Fallback: cookie-based session
+      isAdmin = !!(await getCrmAdmin());
+    }
+
+    if (!isAdmin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
   }
