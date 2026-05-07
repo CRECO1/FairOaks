@@ -118,10 +118,15 @@ async function authenticate(): Promise<string> {
     throw new Error('SABOR_RESO_USERNAME and SABOR_RESO_PASSWORD env vars are required');
   }
 
+  const basic = Buffer.from(`${username}:${password}`).toString('base64');
+
   const res = await fetch(AUTH_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ Username: username, Password: password }),
+    headers: {
+      Authorization: `Basic ${basic}`,
+      Accept: 'application/json',
+    },
+    // Body must be empty per SABOR vendor instructions
   });
 
   if (!res.ok) {
