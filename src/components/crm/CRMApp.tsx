@@ -462,6 +462,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Email preview
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+
+  async function sendCampaignTestEmail() {
+    if (!session?.access_token) return;
+    setSendingTestEmail(true);
+    try {
+      const res = await fetch('/api/campaigns/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ subject: newCampaign.email_subject, body: newCampaign.email_body, campaignName: newCampaign.name }),
+      });
+      const data = await res.json();
+      if (res.ok) showToast(`✅ Test email sent to ${data.sentTo}`);
+      else showToast('Error: ' + (data.error ?? 'Failed to send'));
+    } catch { showToast('Failed to send test email'); }
+    finally { setSendingTestEmail(false); }
+  }
 
   // Closed deal enrollment prompt
   const [closedDealPrompt, setClosedDealPrompt] = useState<Deal | null>(null);
@@ -6220,12 +6237,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     .replace('{{agent_name}}', `${profile?.first_name} ${profile?.last_name}`) || '(no subject)'}
                 </div>
               </div>
+              <button
+                onClick={sendCampaignTestEmail}
+                disabled={sendingTestEmail}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, background: sendingTestEmail ? 'rgba(201,146,44,.4)' : 'rgba(201,146,44,.15)', border: '1px solid rgba(201,146,44,.5)', color: '#c9a84c', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: sendingTestEmail ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", marginRight: 8, whiteSpace: 'nowrap' }}>
+                {sendingTestEmail ? '⏳ Sending…' : '📧 Send Test to Me'}
+              </button>
               <button onClick={() => setShowEmailPreview(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             {/* Email meta bar */}
-            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#6b7280', display: 'flex', gap: 16 }}>
+            <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <span><strong>To:</strong> Jane Smith &lt;jane@example.com&gt;</span>
               <span><strong>From:</strong> Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;</span>
+              <span style={{ marginLeft: 'auto', color: '#9ca3af', fontStyle: 'italic' }}>Test sends to: {profile?.email ?? session?.user?.email}</span>
             </div>
             <div style={{ fontSize: 10, background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '6px 20px', color: '#92400e', fontWeight: 500 }}>
               ✦ Merge fields replaced with sample data for preview — actual emails use each contact&apos;s real info
