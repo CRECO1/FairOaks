@@ -5,6 +5,13 @@
  * Accepts the same query params as before so /listings page needs no changes.
  *
  * Params: city, minPrice, maxPrice, minBeds, search, page, limit
+ *
+ * SABOR City field notes (confirmed via debug):
+ *  - Type: ODataService.City_Lkp_1 — an enum lookup, NOT a string.
+ *  - contains() on City throws 400 "types not compatible". Must use eq with enum syntax.
+ *  - Enum member names strip spaces AND truncate at ~10 chars:
+ *      "Fair Oaks Ranch" → "FAIROAKSRA", "San Antonio" → "SANANTONIO"
+ *  - Dominion / Cordillera Ranch are SubdivisionName values, not City values.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -17,8 +24,42 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-// Active + pending, same as before
 const STATUS_FILTER = statusFilter(['ACTIVE', 'ACTIVE_UNDER_CONTRACT']);
+
+// Confirmed City enum values from SABOR (ODataService.City_Lkp_1 member names)
+// Spaces stripped + truncated to ~10 chars by SABOR's MLS system
+const CITY_ENUM: Record<string, string> = {
+  'FAIR OAKS RANCH': 'FAIROAKSRA',
+  'BOERNE':          'BOERNE',
+  'SAN ANTONIO':     'SANANTONIO',
+  'HELOTES':         'HELOTES',
+  'GREY FOREST':     'GREYFOREST',
+  'BULVERDE':        'BULVERDE',
+  'KERRVILLE':       'KERRVILLE',
+  'NEW BRAUNFELS':   'NEWBRAUNFE',  // 10-char truncation
+  'FREDERICKSBURG':  'FREDERICKS',  // 10-char truncation
+};
+
+// Areas that are SubdivisionName values, not cities — use contains(SubdivisionName,...)
+const SUBDIVISION_SEARCH: Record<string, string> = {
+  'DOMINION':        'dominion',
+  'CORDILLERA RANCH': 'cordillera ranch',
+};
+
+function buildCityFilter(city: string): string | null {
+  const c = city.toUpperCase();
+  const enumVal = CITY_ENUM[c];
+  if (enumVal) {
+    return `City eq ODataService.City_Lkp_1'${enumVal}'`;
+  }
+  const subdivLower = SUBDIVISION_SEARCH[c];
+  if (subdivLower) {
+    return `contains(tolower(SubdivisionName),'${subdivLower}')`;
+  }
+  // Fallback: try SubdivisionName for unknown areas
+  const safe = c.replace(/'/g, "''");
+  return `contains(tolower(SubdivisionName),'${safe.toLowerCase()}')`;
+}
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -33,27 +74,23 @@ export async function GET(req: NextRequest) {
   const skip     = (page - 1) * limit;
 
   try {
-    // ── Build OData $filter ────────────────────────────────────────────────
     const filters: string[] = [STATUS_FILTER];
 
     if (city && city !== 'All Areas') {
-      // SABOR stores City enum values WITHOUT spaces (e.g. "FAIROAKSRANCH", "SANANTONIO").
-      // Strip spaces for the City filter; keep spaces for SubdivisionName (plain string).
-      const c         = city.toUpperCase().replace(/'/g, "''");
-      const cNoSpaces = c.replace(/\s+/g, '');
-      filters.push(`(contains(City,'${cNoSpaces}') or contains(SubdivisionName,'${c}'))`);
+      const cityFilter = buildCityFilter(city);
+      if (cityFilter) filters.push(cityFilter);
     }
+
     if (minPrice !== null && Number.isFinite(minPrice)) filters.push(`ListPrice ge ${minPrice}`);
     if (maxPrice !== null && Number.isFinite(maxPrice)) filters.push(`ListPrice le ${maxPrice}`);
-    if (minBeds  !== null && Number.isFinite(minBeds) && minBeds > 0)  filters.push(`BedroomsTotal ge ${minBeds}`);
+    if (minBeds  !== null && Number.isFinite(minBeds) && minBeds > 0) filters.push(`BedroomsTotal ge ${minBeds}`);
     if (search) {
       const q = search.replace(/'/g, "''");
-      filters.push(`(contains(SubdivisionName,'${q}') or contains(StreetName,'${q}') or contains(City,'${q}') or contains(ListingId,'${q}'))`);
+      filters.push(`(contains(SubdivisionName,'${q}') or contains(StreetName,'${q}') or contains(ListingId,'${q}'))`);
     }
 
     const filter = filters.join(' and ');
 
-    // ── Fetch one page from SABOR ──────────────────────────────────────────
     const result = await searchProperties({
       filter,
       top:     limit,
@@ -70,11 +107,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ listings: [], total, page, totalPages });
     }
 
-    // ── Batch-fetch media for this page only ───────────────────────────────
     const listingIds = properties.map(p => p.ListingId);
     const mediaMap   = await getMediaBatch(listingIds);
 
-    // ── Convert to our listing format ──────────────────────────────────────
     const listings = properties.map(p => {
       const images = mediaMap.get(p.ListingId) ?? [];
       return resoPropertyToListing(p, images);

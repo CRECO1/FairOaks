@@ -304,26 +304,28 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
   const fullAddress = `${streetParts}${unit}`.trim();
   // SABOR city enum values are all-caps with NO spaces (e.g. "SANANTONIO", "FAIROAKSRANCH").
   // Map known compound city names back to proper display form.
+  // SABOR City enum values strip spaces and truncate to ~10 chars.
+  // Map confirmed enum member names → proper display strings.
   const CITY_MAP: Record<string, string> = {
-    SANANTONIO:          'San Antonio',
-    FAIROAKSRANCH:       'Fair Oaks Ranch',
-    NEWBRAUNFELS:        'New Braunfels',
-    STONEOAK:            'Stone Oak',
-    CONVERSE:            'Converse',
-    UNIVERSALCITY:       'Universal City',
-    LIVEOAK:             'Live Oak',
-    CASTROVILLE:         'Castroville',
-    LAVERNIA:            'La Vernia',
-    LAREDOVILLE:         'Laredo',
-    LOSANGELES:          'Los Angeles',
-    CIBOLO:              'Cibolo',
-    LAKEMEDINA:          'Lake Medina',
-    NORTONSTANTON:       'Norton',
-    POTHILLS:            'Pot Hills',
-    RANDHILLS:           'Rand Hills',
-    SATTLER:             'Sattler',
-    SPRINGBRANCH:        'Spring Branch',
-    TARPLEY:             'Tarpley',
+    FAIROAKSRA:   'Fair Oaks Ranch',
+    SANANTONIO:   'San Antonio',
+    GREYFOREST:   'Grey Forest',
+    NEWBRAUNFE:   'New Braunfels',
+    FREDERICKS:   'Fredericksburg',
+    UNIVERSALC:   'Universal City',
+    SPRINGBRAN:   'Spring Branch',
+    CASTROVILL:   'Castroville',
+    LIVEOAK:      'Live Oak',
+    STONEOAK:     'Stone Oak',
+    BULVERDE:     'Bulverde',
+    HELOTES:      'Helotes',
+    BOERNE:       'Boerne',
+    CONVERSE:     'Converse',
+    KERRVILLE:    'Kerrville',
+    CIBOLO:       'Cibolo',
+    LAVERNIA:     'La Vernia',
+    SATTLER:      'Sattler',
+    TARPLEY:      'Tarpley',
   };
   const rawCity = (p.City ?? '').toUpperCase().replace(/\s+/g, '');
   const city = CITY_MAP[rawCity]
