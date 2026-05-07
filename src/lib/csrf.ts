@@ -10,14 +10,30 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 function getAllowedOrigins(): Set<string> {
   const origins = new Set<string>();
 
-  // Production / staging URL (e.g. https://www.fairoaksrealtygroup.com)
-  if (process.env.NEXT_PUBLIC_SERVER_URL) {
-    origins.add(process.env.NEXT_PUBLIC_SERVER_URL.replace(/\/$/, ''));
+  // Helper: add both www and non-www variants of a URL
+  function addWithVariants(url: string) {
+    const base = url.replace(/\/$/, '');
+    origins.add(base);
+    // Add www variant if missing, and non-www if present
+    if (base.includes('://www.')) {
+      origins.add(base.replace('://www.', '://'));
+    } else {
+      const [scheme, rest] = base.split('://');
+      origins.add(`${scheme}://www.${rest}`);
+    }
   }
 
-  // Vercel preview / deployment URL
+  // Production / staging URL (e.g. https://fairoaksrealtygroup.com)
+  if (process.env.NEXT_PUBLIC_SERVER_URL) {
+    addWithVariants(process.env.NEXT_PUBLIC_SERVER_URL);
+  }
+
+  // Vercel preview / deployment URLs
   if (process.env.VERCEL_URL) {
     origins.add(`https://${process.env.VERCEL_URL}`);
+  }
+  if (process.env.VERCEL_BRANCH_URL) {
+    origins.add(`https://${process.env.VERCEL_BRANCH_URL}`);
   }
 
   // Local development
