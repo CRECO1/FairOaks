@@ -14,7 +14,8 @@ import { Resend } from 'resend';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const resend       = new Resend(process.env.RESEND_API_KEY);
+// Lazy init so build doesn't fail when RESEND_API_KEY isn't set at compile time
+const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
 function applyMergeFields(template: string, agentFirstName: string, agentLastName: string, agentEmail: string, agentPhone: string): string {
   return template
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from:     'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
       to:       toEmail,
       subject:  `[TEST] ${renderedSubject}`,
