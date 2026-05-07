@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
       to:       toEmail,
       subject:  `[TEST] ${renderedSubject}`,
       html:     renderedBody,
-      reply_to: agentEmail || undefined,
+      replyTo: agentEmail || undefined,
     });
 
     return NextResponse.json({ success: true, sentTo: toEmail });
