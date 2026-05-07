@@ -208,7 +208,6 @@ export interface PropertySearchOptions {
 // Note: ClosePrice and StreetSuffix are not valid SABOR fields — omit to avoid 400
 const DEFAULT_SELECT = [
   'ListingId', 'StandardStatus', 'MlsStatus',
-  'Latitude', 'Longitude',
   'ListPrice', 'OriginalListPrice', 'CloseDate',
   'ListingContractDate', 'OnMarketDate', 'ModificationTimestamp',
   'StreetNumber', 'StreetDirPrefix', 'StreetName',
