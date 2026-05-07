@@ -372,21 +372,6 @@ export default async function HomePage() {
         </Container>
       </section>
 
-      {/* ── Quiz CTA ─────────────────────────────────────────────────── */}
-      <section className="section-compact bg-gold">
-        <Container>
-          <div className="flex flex-col items-center justify-between gap-8 text-center lg:flex-row lg:text-left">
-            <div>
-              <h2 className="font-heading text-display-sm font-bold text-primary">{s.cta_headline}</h2>
-              <p className="mt-2 text-body text-primary/70">{s.cta_subheadline}</p>
-            </div>
-            <Button size="xl" className="shrink-0 bg-white text-primary hover:bg-white/90 shadow-lg font-bold" asChild>
-              <Link href="/quiz"><Sparkles className="mr-2 h-5 w-5 text-gold" />Find My Perfect Home</Link>
-            </Button>
-          </div>
-        </Container>
-      </section>
-
       <Footer />
     </>
   );
