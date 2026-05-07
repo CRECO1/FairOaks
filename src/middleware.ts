@@ -10,7 +10,6 @@ const publicRoutes = ['/manage/login'];
 // API routes that need session refresh + CSRF protection
 const apiSessionRoutes = [
   '/api/campaigns',
-  '/api/crm',
   '/api/action-plans',
   '/api/smart-lists',
   '/api/gmail',
@@ -19,9 +18,10 @@ const apiSessionRoutes = [
 ];
 
 // API routes that need session refresh but have their own auth — skip CSRF
+// (CRM routes use Bearer JWT + Supabase role check; MLS sync uses internal key)
 const apiSessionNoCsrfRoutes = [
   '/api/mls/sync',
-  '/api/crm',   // CRM routes verify Supabase session + admin role — own auth gate
+  '/api/crm',
 ];
 
 export async function middleware(request: NextRequest) {
