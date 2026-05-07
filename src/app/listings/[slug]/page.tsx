@@ -183,8 +183,37 @@ export default async function ListingDetailPage({ params }: Props) {
     ],
   };
 
+  const realEstateListingLd = {
+    '@context': 'https://schema.org',
+    '@type': 'RealEstateListing',
+    name: listing.title,
+    description: listing.description ?? listing.address,
+    url: `${BASE_URL}/listings/${slug}`,
+    ...(listing.listing_date ? { datePosted: listing.listing_date } : {}),
+    price: listing.price ?? undefined,
+    priceCurrency: 'USD',
+    ...(images[0] ? { image: images[0] } : {}),
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: listing.address,
+      addressLocality: listing.city,
+      addressRegion: 'TX',
+      postalCode: listing.zip ?? undefined,
+      addressCountry: 'US',
+    },
+    ...(listing.bedrooms ? { numberOfRooms: listing.bedrooms } : {}),
+    ...(listing.sqft ? {
+      floorSize: {
+        '@type': 'QuantitativeValue',
+        value: listing.sqft,
+        unitCode: 'FTK',
+      },
+    } : {}),
+  };
+
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(realEstateListingLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header variant="minimal" />
       <main className="min-h-screen pt-20">

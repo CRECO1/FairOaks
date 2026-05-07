@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Meet Our Fair Oaks Ranch Real Estate Agents | Our Team',
+  title: 'Meet Our Real Estate Team | Fair Oaks Realty Group',
   description:
-    'Meet the experienced real estate professionals at Fair Oaks Realty Group. Local experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country for over a decade.',
+    'Meet the experienced real estate agents at Fair Oaks Realty Group. Local experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country since 2004.',
   keywords: [
     'Fair Oaks Ranch real estate agents',
     'Fair Oaks Ranch realtor team',

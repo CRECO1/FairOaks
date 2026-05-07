@@ -1,5 +1,6 @@
 import { MetadataRoute } from 'next';
 import { supabase } from '@/lib/supabase';
+import { searchPropertiesAll, ACTIVE_FILTER } from '@/lib/sabor-reso';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -78,26 +79,38 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.65,
     },
+    {
+      url: `${BASE_URL}/services`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.85,
+    },
   ];
 
-  // Dynamic listing pages
+  // Dynamic listing pages — pulled live from SABOR MLS
   let listingPages: MetadataRoute.Sitemap = [];
   try {
-    const { data } = await supabase
-      .from('listings')
-      .select('slug, updated_at')
-      .in('status', ['active', 'pending']);
-
-    if (data) {
-      listingPages = data.map((listing) => ({
-        url: `${BASE_URL}/listings/${listing.slug}`,
-        lastModified: new Date(listing.updated_at),
+    const properties = await searchPropertiesAll(
+      { filter: ACTIVE_FILTER, top: 200, select: 'ListingId,StreetNumber,StreetName,ModificationTimestamp' },
+      3 // up to 3 pages × 200 = 600, effectively 500+
+    );
+    const limited = properties.slice(0, 500);
+    listingPages = limited.map((p) => {
+      const addressStr = [p.StreetNumber, p.StreetName].filter(Boolean).join(' ') || p.ListingId;
+      const titleSlug = addressStr
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+      const slug = `${titleSlug}-${p.ListingId}`;
+      return {
+        url: `${BASE_URL}/listings/${slug}`,
+        lastModified: p.ModificationTimestamp ? new Date(p.ModificationTimestamp) : new Date(),
         changeFrequency: 'daily' as const,
         priority: 0.8,
-      }));
-    }
+      };
+    });
   } catch {
-    // Supabase not available, skip dynamic pages
+    // SABOR API not available, skip dynamic listing pages
   }
 
   // Dynamic neighborhood pages
