@@ -67,7 +67,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
 
           {/* Desktop Navigation */}
           {variant !== 'minimal' && (
-            <div className="hidden items-center gap-6 lg:flex">
+            <div className="hidden items-center gap-6 lg:flex ml-12">
               {navLinks.map((link) => (
                 'isHighlight' in link && link.isHighlight ? (
                   <Link
