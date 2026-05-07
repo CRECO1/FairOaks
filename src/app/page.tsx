@@ -148,7 +148,7 @@ export default async function HomePage() {
               <Link href="/listings">Browse Homes <ArrowRight className="ml-2 h-5 w-5" /></Link>
             </Button>
             <Button size="lg" variant="outline" className="w-full sm:w-auto border-white text-white hover:bg-white hover:text-primary" asChild>
-              <Link href="/quiz"><Sparkles className="mr-2 h-5 w-5" />Find My Home</Link>
+              <Link href="#valuation">Free Home Valuation</Link>
             </Button>
           </div>
 
@@ -334,7 +334,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── Home Valuation CTA ───────────────────────────────────────── */}
-      <section className="section-luxury bg-primary text-white">
+      <section id="valuation" className="section-luxury bg-primary text-white">
         <Container>
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
             <RevealOnScroll direction="left">
