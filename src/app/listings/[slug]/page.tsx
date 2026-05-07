@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Bed, Bath, Square, MapPin, Calendar, Phone, ArrowLeft, Home, CheckCircle } from 'lucide-react';
+import { Bed, Bath, Square, MapPin, Calendar, Phone, ArrowLeft, Home, CheckCircle, ArrowRight } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -19,6 +19,41 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 function listingIdFromSlug(slug: string): string | null {
   const match = slug.match(/-(\d{5,})$/);
   return match?.[1] ?? null;
+}
+
+/** Detect which featured area a listing belongs to, and return the SABOR filter + display label */
+function detectArea(listing: { city: string; subdivision_name: string | null }): { label: string; filter: string } | null {
+  const sub = (listing.subdivision_name ?? '').toLowerCase();
+  const city = listing.city.toLowerCase().replace(/\s+/g, '');
+
+  if (sub.includes('ominion') && city.includes('sanantonio')) {
+    return { label: 'The Dominion', filter: `City eq ODataService.City_Lkp_1'SANANTONIO' and contains(SubdivisionName,'ominion')` };
+  }
+  if (sub.includes('cordillera')) {
+    return { label: 'Cordillera Ranch', filter: `contains(SubdivisionName,'CORDILLERA')` };
+  }
+  if (city === 'fairoaksra' || listing.city.toLowerCase().replace(/\s/g, '') === 'fairoaksranch') {
+    return { label: 'Fair Oaks Ranch', filter: `City eq ODataService.City_Lkp_1'FAIROAKSRA'` };
+  }
+  if (city === 'boerne') {
+    return { label: 'Boerne', filter: `City eq ODataService.City_Lkp_1'BOERNE'` };
+  }
+  if (city === 'helotes') {
+    return { label: 'Helotes', filter: `City eq ODataService.City_Lkp_1'HELOTES'` };
+  }
+  return null;
+}
+
+/** Fetch nearby listings in the same area, excluding the current listing */
+async function fetchNearbyListings(area: { label: string; filter: string }, excludeId: string) {
+  try {
+    const filter = `StandardStatus eq ODataService.StandardStatus'ACTIVE' and ${area.filter}`;
+    const result = await searchProperties({ filter, top: 12, orderby: 'ListPrice desc' });
+    const props = result.value.filter(p => p.ListingId !== excludeId).slice(0, 8);
+    if (props.length === 0) return [];
+    const mediaMap = await getMediaBatch(props.map(p => p.ListingId));
+    return props.map(p => resoPropertyToListing(p, mediaMap.get(p.ListingId) ?? []));
+  } catch { return []; }
 }
 
 async function fetchListing(slug: string) {
@@ -96,6 +131,10 @@ export default async function ListingDetailPage({ params }: Props) {
   if (!listing) notFound();
 
   const images = (listing.images as string[] | null) ?? [];
+
+  // Detect area + fetch nearby listings in parallel
+  const area = detectArea({ city: listing.city, subdivision_name: listing.subdivision_name });
+  const nearbyListings = area ? await fetchNearbyListings(area, listing.listing_key) : [];
 
   const citySlug = listing.city
     .toLowerCase()
@@ -313,6 +352,71 @@ export default async function ListingDetailPage({ params }: Props) {
           </div>
         </Container>
       </main>
+      {/* ── More Homes in [Area] ───────────────────────────────────────── */}
+      {area && nearbyListings.length > 0 && (
+        <section className="bg-background-cream border-t border-border py-12">
+          <Container>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-caption uppercase tracking-widest text-foreground-muted mb-1">More Homes</p>
+                <h2 className="font-heading text-heading-lg font-bold text-primary">
+                  More in {area.label}
+                </h2>
+              </div>
+              <Link
+                href={`/listings?city=${encodeURIComponent(area.label)}`}
+                className="hidden sm:inline-flex items-center gap-1.5 text-body-sm font-semibold text-gold hover:underline"
+              >
+                View all <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            {/* Horizontal scroll strip */}
+            <div className="flex gap-5 overflow-x-auto pb-4 -mx-4 px-4 snap-x snap-mandatory scroll-smooth"
+                 style={{ scrollbarWidth: 'none' }}>
+              {nearbyListings.map(nearby => {
+                const nearbyImages = (nearby.images as string[] | null) ?? [];
+                return (
+                  <Link
+                    key={nearby.listing_key}
+                    href={`/listings/${nearby.slug}`}
+                    className="card-luxury group block flex-none w-64 snap-start"
+                  >
+                    <div className="relative h-44 w-full overflow-hidden rounded-t-xl bg-background-warm">
+                      {nearbyImages[0] ? (
+                        <Image src={nearbyImages[0]} alt={nearby.title} fill className="object-cover group-hover:scale-105 transition-transform duration-300" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-foreground-subtle">
+                          <Home className="h-10 w-10" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <p className="font-heading text-body font-semibold text-primary group-hover:text-gold transition-colors line-clamp-1">{nearby.title}</p>
+                      <p className="mt-1 text-body-sm font-bold text-gold">{formatPrice(nearby.price)}</p>
+                      <div className="mt-2 flex items-center gap-3 text-caption text-foreground-muted">
+                        {nearby.bedrooms > 0 && <span className="flex items-center gap-1"><Bed className="h-3 w-3" />{nearby.bedrooms}</span>}
+                        {nearby.bathrooms > 0 && <span className="flex items-center gap-1"><Bath className="h-3 w-3" />{nearby.bathrooms}</span>}
+                        {nearby.sqft > 0 && <span className="flex items-center gap-1"><Square className="h-3 w-3" />{nearby.sqft.toLocaleString()} sf</span>}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 sm:hidden text-center">
+              <Link
+                href={`/listings?city=${encodeURIComponent(area.label)}`}
+                className="inline-flex items-center gap-1.5 text-body-sm font-semibold text-gold hover:underline"
+              >
+                View all homes in {area.label} <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </Container>
+        </section>
+      )}
+
       <Footer />
     </>
   );
