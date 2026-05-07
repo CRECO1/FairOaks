@@ -14,8 +14,8 @@ export function HomeValuationForm() {
     e.preventDefault();
     setError('');
 
-    if (!form.name.trim() || !form.email.trim() || !form.address.trim()) {
-      setError('Please fill in your name, email, and property address.');
+    if (!form.name.trim() || !form.email.trim() || !form.address.trim() || !form.phone.trim()) {
+      setError('Please fill in your name, email, phone, and property address.');
       return;
     }
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email);
@@ -87,9 +87,10 @@ export function HomeValuationForm() {
         />
         <input
           type="tel"
-          placeholder="Phone (optional)"
+          placeholder="Phone number"
           value={form.phone}
           onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+          required
           className="flex-1 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
         />
       </div>
@@ -101,7 +102,7 @@ export function HomeValuationForm() {
       >
         {loading ? 'Sending…' : <><Home className="h-4 w-4" /> Get My Free Valuation <ArrowRight className="h-4 w-4" /></>}
       </button>
-      <p className="text-center text-xs text-white/40">No obligation · Response within 1 business day</p>
+      <p className="text-center text-xs text-white/40">No obligation · Response within 1 business day · We never share your info</p>
     </form>
   );
 }
