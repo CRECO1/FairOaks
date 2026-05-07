@@ -103,12 +103,12 @@ export interface ResoResponse<T> {
 
 // ─── Status filter helpers ────────────────────────────────────────────────────
 
-/** Build an OData enum filter expression for StandardStatus */
+/** Build an OData enum filter expression for StandardStatus.
+ *  SABOR does not support `in` for enum types — use `or` conditions instead.
+ */
 export function statusFilter(statuses: string[]): string {
-  if (statuses.length === 1) {
-    return `StandardStatus eq ${ENUM}'${statuses[0]}'`;
-  }
-  return `StandardStatus in (${statuses.map(s => `${ENUM}'${s}'`).join(',')})`;
+  const parts = statuses.map(s => `StandardStatus eq ${ENUM}'${s}'`);
+  return parts.length === 1 ? parts[0] : `(${parts.join(' or ')})`;
 }
 
 /** Active + Pending (under contract) listings */
@@ -261,14 +261,18 @@ export async function searchPropertiesAll(
  */
 export async function getMediaBatch(listingIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
-  const BATCH = 20;
+  // SABOR ResourceRecordID doesn't support `in` filter — use `or` conditions
+  // Keep batches small to avoid URL length limits
+  const BATCH = 10;
 
   for (let i = 0; i < listingIds.length; i += BATCH) {
     const chunk = listingIds.slice(i, i + BATCH);
-    const filterIds = chunk.map(k => `'${k}'`).join(',');
+    // Build filter as: (ResourceRecordID eq 'X' or ResourceRecordID eq 'Y' ...)
+    const filterExpr = chunk.map(k => `ResourceRecordID eq '${k}'`).join(' or ');
+    const filter = chunk.length === 1 ? filterExpr : `(${filterExpr})`;
     try {
       const res = await resoFetch<ResoMedia>('Media', {
-        $filter: `ResourceRecordID in (${filterIds})`,
+        $filter: filter,
         $orderby: 'Order asc',
         $select: 'ResourceRecordID,MediaURL,Order,ImageHeight,ImageWidth',
         $top: '500',
