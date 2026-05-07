@@ -40,10 +40,11 @@ const CITY_ENUM: Record<string, string> = {
   'FREDERICKSBURG':  'FREDERICKS',  // 10-char truncation
 };
 
-// Areas that are SubdivisionName values, not cities — use contains(SubdivisionName,...)
+// Areas that are SubdivisionName values, not cities.
+// Values use partial matches that work across mixed-case SABOR data.
 const SUBDIVISION_SEARCH: Record<string, string> = {
-  'DOMINION':        'dominion',
-  'CORDILLERA RANCH': 'cordillera ranch',
+  'DOMINION':        'ominion',     // matches 'Dominion', 'THE DOMINION', 'DOMINION HEIGHTS'
+  'CORDILLERA RANCH': 'CORDILLERA', // stored all-caps in SABOR
 };
 
 function buildCityFilter(city: string): string | null {
@@ -52,13 +53,13 @@ function buildCityFilter(city: string): string | null {
   if (enumVal) {
     return `City eq ODataService.City_Lkp_1'${enumVal}'`;
   }
-  const subdivLower = SUBDIVISION_SEARCH[c];
-  if (subdivLower) {
-    return `contains(tolower(SubdivisionName),'${subdivLower}')`;
+  const subdivMatch = SUBDIVISION_SEARCH[c];
+  if (subdivMatch) {
+    return `contains(SubdivisionName,'${subdivMatch}')`;
   }
-  // Fallback: try SubdivisionName for unknown areas
+  // Fallback: try SubdivisionName uppercase for unknown areas
   const safe = c.replace(/'/g, "''");
-  return `contains(tolower(SubdivisionName),'${safe.toLowerCase()}')`;
+  return `contains(SubdivisionName,'${safe}')`;
 }
 
 export async function GET(req: NextRequest) {
