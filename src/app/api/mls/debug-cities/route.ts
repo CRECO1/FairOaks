@@ -9,7 +9,13 @@ import { searchProperties } from '@/lib/sabor-reso';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  if (url.searchParams.get('coords') === '1') {
+    // Test whether SABOR returns Latitude/Longitude fields
+    const r = await searchProperties({ select: 'ListingId,Latitude,Longitude,StreetNumber,StreetName,City', top: 3 });
+    return Response.json(r.value);
+  }
   // Query by zip codes for each target area so we see the exact City values SABOR uses
   const areas = [
     { label: 'Fair Oaks Ranch (78015)', zip: '78015' },
