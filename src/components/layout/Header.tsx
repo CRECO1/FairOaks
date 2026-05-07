@@ -11,6 +11,7 @@ import { Container } from '@/components/ui/Container';
 const navLinks = [
   { href: '/listings', label: 'Listings' },
   { href: '/neighborhoods', label: 'Neighborhoods' },
+  { href: '/services', label: 'Services' },
   { href: '/team', label: 'Team' },
   { href: '/sell', label: 'Sell' },
   { href: '/quiz', label: 'Find My Home', isHighlight: true },
