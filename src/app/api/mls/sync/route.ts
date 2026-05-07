@@ -59,7 +59,6 @@ export async function POST(req: NextRequest) {
     }
 
     const filter = buildFilter(overrideFilter);
-    console.log('[MLS sync] filter:', filter);
 
     // ── Fetch all matching properties from SABOR ──────────────────────────────
     const properties = await searchPropertiesAll(
@@ -67,7 +66,6 @@ export async function POST(req: NextRequest) {
       50 // max 50 pages = up to 10,000 records per sync
     );
 
-    console.log(`[MLS sync] fetched ${properties.length} properties`);
     if (properties.length === 0) {
       return NextResponse.json({ synced: 0, updated: 0, skipped: 0 });
     }
@@ -75,7 +73,6 @@ export async function POST(req: NextRequest) {
     // ── Fetch media for all listings in batches ───────────────────────────────
     const listingKeys = properties.map(p => p.ListingKey);
     const mediaMap = await getMediaBatch(listingKeys);
-    console.log(`[MLS sync] media map has ${mediaMap.size} entries`);
 
     // ── Upsert into Supabase ──────────────────────────────────────────────────
     const supabase = adminClient();
@@ -119,7 +116,6 @@ export async function POST(req: NextRequest) {
         .limit(500);
 
       if (stale && stale.length > 0) {
-        console.log(`[MLS sync] marking ${stale.length} stale listings as off-market`);
         const staleIds = stale.map((r: any) => r.id);
         await supabase
           .from('listings')
@@ -128,7 +124,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log(`[MLS sync] done — synced: ${synced}, failed: ${failed}`);
     return NextResponse.json({
       synced,
       failed,

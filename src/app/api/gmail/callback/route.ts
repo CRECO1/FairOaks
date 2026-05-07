@@ -1,16 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getCrmUser } from '@/lib/crm-auth';
 
-const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
-const REDIRECT_URI = 'https://www.fairoaksrealtygroup.com/api/gmail/callback';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const REDIRECT_URI = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'https://www.fairoaksrealtygroup.com'}/api/gmail/callback`;
+const CRM_URL = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'https://www.fairoaksrealtygroup.com'}/crm`;
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const userId = req.nextUrl.searchParams.get('state'); // user_id passed via state param
+  const stateUserId = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
-  if (error || !code || !userId) {
-    return NextResponse.redirect('https://www.fairoaksrealtygroup.com/crm?gmail=error');
+  if (error || !code || !stateUserId) {
+    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
   }
+
+  // Validate: the authenticated session must match the userId in state
+  // This prevents CSRF/account-hijacking via a tampered state param
+  const caller = await getCrmUser();
+  if (!caller || caller.id !== stateUserId) {
+    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
+  }
+
+  const userId = stateUserId;
 
   const clientId = process.env.GOOGLE_CLIENT_ID!;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET!;
@@ -33,7 +44,7 @@ export async function GET(req: NextRequest) {
   const tokens = await tokenRes.json();
   if (!tokenRes.ok || !tokens.refresh_token) {
     console.error('Token exchange error:', tokens);
-    return NextResponse.redirect('https://www.fairoaksrealtygroup.com/crm?gmail=error');
+    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
   }
 
   // Get the Gmail address
@@ -64,5 +75,5 @@ export async function GET(req: NextRequest) {
     }),
   });
 
-  return NextResponse.redirect('https://www.fairoaksrealtygroup.com/crm?gmail=connected');
+  return NextResponse.redirect(`${CRM_URL}?gmail=connected`);
 }

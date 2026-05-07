@@ -40,9 +40,11 @@ function esc(s: string | null | undefined): string {
 }
 
 export async function POST(req: NextRequest) {
-  // ── Auth: require apiKey query param ──────────────────────────────────────
-  const { searchParams } = new URL(req.url);
-  const apiKey = searchParams.get('apiKey');
+  // ── Auth: require Bearer token in Authorization header ─────────────────────
+  // Use: Authorization: Bearer <WEBHOOK_SECRET>
+  // Do NOT pass secrets as URL query params — they appear in server logs.
+  const authHeader = req.headers.get('authorization');
+  const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!WEBHOOK_SECRET || apiKey !== WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -161,7 +163,7 @@ export async function POST(req: NextRequest) {
           <p style="margin-top:16px"><a href="https://www.fairoaksrealtygroup.com/crm" style="background:#c9922c;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">View in CRM →</a></p>
         </div>
       `,
-    }).catch(() => {}); // non-fatal
+    }).catch((err) => { console.error('[webhook] lead notification email failed:', err?.message ?? err); }); // non-fatal
   }
 
   return NextResponse.json({ success: true, clientId, isNew });

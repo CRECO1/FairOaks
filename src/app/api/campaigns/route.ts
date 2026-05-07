@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
   if (type === 'sms' && !sms_body) {
     return NextResponse.json({ error: 'sms_body required for sms campaigns' }, { status: 400 });
   }
+  if (email_body && email_body.length > 100000) {
+    return NextResponse.json({ error: 'Email body must be under 100,000 characters' }, { status: 400 });
+  }
+  if (email_subject && email_subject.length > 500) {
+    return NextResponse.json({ error: 'Subject must be under 500 characters' }, { status: 400 });
+  }
+  if (send_day_of_month != null) {
+    const dom = parseInt(String(send_day_of_month), 10);
+    if (isNaN(dom) || dom < 1 || dom > 31) {
+      return NextResponse.json({ error: 'send_day_of_month must be between 1 and 31' }, { status: 400 });
+    }
+  }
 
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_campaigns').insert([{
