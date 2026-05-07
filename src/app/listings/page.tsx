@@ -12,18 +12,8 @@ import { formatPrice } from '@/lib/utils';
 import type { Listing } from '@/lib/supabase';
 import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
 
-const CITIES = [
-  'All Areas',
-  'Fair Oaks Ranch',
-  'Boerne',
-  'Helotes',
-  'Leon Springs',
-  'San Antonio',
-  'New Braunfels',
-  'Kerrville',
-  'Fredericksburg',
-  'Bulverde',
-];
+const FEATURED_AREAS = ['Fair Oaks Ranch', 'Boerne', 'Helotes', 'Leon Springs'];
+const MORE_AREAS = ['San Antonio', 'Bulverde', 'New Braunfels', 'Kerrville', 'Fredericksburg'];
 
 const PRICE_RANGES = [
   { label: 'Any Price',     min: 0,       max: Infinity },
@@ -178,7 +168,13 @@ export default function ListingsPage() {
                 onChange={e => setCity(e.target.value)}
                 className="h-11 w-full sm:w-auto rounded-lg border border-border px-3 text-body-sm text-primary"
               >
-                {CITIES.map(c => <option key={c}>{c}</option>)}
+                <option value="All Areas">All Areas</option>
+                <optgroup label="Our Featured Areas">
+                  {FEATURED_AREAS.map(c => <option key={c}>{c}</option>)}
+                </optgroup>
+                <optgroup label="More Areas">
+                  {MORE_AREAS.map(c => <option key={c}>{c}</option>)}
+                </optgroup>
               </select>
 
               <button
