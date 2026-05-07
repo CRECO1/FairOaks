@@ -356,6 +356,24 @@ export default async function HomePage() {
               </RevealOnScroll>
             ))}
           </div>
+
+          {/* Leave a review CTA */}
+          <RevealOnScroll>
+            <div className="mt-12 text-center">
+              <p className="text-body-sm text-foreground-muted mb-4">
+                Worked with us? We&apos;d love to hear about your experience.
+              </p>
+              <a
+                href="https://g.page/r/CYNmCRxGR86LEAE/review"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-white border-2 border-gold px-6 py-3 text-body-sm font-bold text-primary hover:bg-gold hover:text-primary transition-colors shadow-sm"
+              >
+                <Star className="h-4 w-4 fill-gold text-gold" />
+                Leave Us a Google Review
+              </a>
+            </div>
+          </RevealOnScroll>
         </Container>
       </section>
 
