@@ -31,6 +31,9 @@ let _tokenExpiry = 0;
 export interface ResoProperty {
   // Primary identifier — SABOR uses ListingId as the unique key
   ListingId: string;
+  // Coordinates (returned by SABOR if available)
+  Latitude?: number;
+  Longitude?: number;
   // Status
   StandardStatus: string;  // enum: 'ACTIVE' | 'ACTIVE_UNDER_CONTRACT' | 'CLOSED' | 'EXPIRED' | 'HOLD' | etc.
   MlsStatus?: string;      // 'ACT' | 'PND' | 'SLD' etc.
@@ -205,6 +208,7 @@ export interface PropertySearchOptions {
 // Note: ClosePrice and StreetSuffix are not valid SABOR fields — omit to avoid 400
 const DEFAULT_SELECT = [
   'ListingId', 'StandardStatus', 'MlsStatus',
+  'Latitude', 'Longitude',
   'ListPrice', 'OriginalListPrice', 'CloseDate',
   'ListingContractDate', 'OnMarketDate', 'ModificationTimestamp',
   'StreetNumber', 'StreetDirPrefix', 'StreetName',
@@ -390,6 +394,8 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     images:                 images.length > 0 ? images : null,
     modification_timestamp: p.ModificationTimestamp ?? null,
     listing_date:           p.OnMarketDate ?? p.ListingContractDate ?? null,
+    latitude:               p.Latitude ?? null,
+    longitude:              p.Longitude ?? null,
     source:                 'mls',
     synced_at:              new Date().toISOString(),
   };
