@@ -42,7 +42,8 @@ import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
-import { getListings, getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
+import { getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
+import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';
 import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 
@@ -81,16 +82,35 @@ const DEFAULT_SETTINGS = {
   address: '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015',
 };
 
+/** Fetch one active listing with photos from a given OData filter */
+async function fetchOneListing(filter: string) {
+  try {
+    const activeFilter = `(StandardStatus eq ODataService.StandardStatus'ACTIVE') and PhotosCount gt 0 and ${filter}`;
+    const result = await searchProperties({ filter: activeFilter, top: 1, orderby: 'ListPrice desc' });
+    const p = result.value[0];
+    if (!p) return null;
+    const mediaMap = await getMediaBatch([p.ListingId]);
+    return resoPropertyToListing(p, mediaMap.get(p.ListingId) ?? []);
+  } catch { return null; }
+}
+
 export default async function HomePage() {
-  const [listingsResult, testimonialsResult, neighborhoodsResult, settingsResult] = await Promise.allSettled([
-    getListings('active'),
+  const [dominion, fairOaks, cordillera, boerne, testimonialsResult, neighborhoodsResult, settingsResult] = await Promise.allSettled([
+    fetchOneListing(`contains(tolower(SubdivisionName),'dominion') and City eq ODataService.City_Lkp_1'SANANTONIO'`),
+    fetchOneListing(`City eq ODataService.City_Lkp_1'FAIROAKSRA'`),
+    fetchOneListing(`contains(tolower(SubdivisionName),'cordillera ranch')`),
+    fetchOneListing(`City eq ODataService.City_Lkp_1'BOERNE'`),
     getTestimonials(true),
     getNeighborhoods(),
     supabase.from('site_settings').select('*').eq('id', 1).single(),
   ]);
 
-  const featuredListings = listingsResult.status === 'fulfilled' && listingsResult.value.length > 0
-    ? listingsResult.value.slice(0, 3) : DEMO_LISTINGS;
+  const featuredListings = [
+    { area: 'The Dominion',     listing: dominion.status    === 'fulfilled' ? dominion.value    : null },
+    { area: 'Fair Oaks Ranch',  listing: fairOaks.status    === 'fulfilled' ? fairOaks.value    : null },
+    { area: 'Cordillera Ranch', listing: cordillera.status  === 'fulfilled' ? cordillera.value  : null },
+    { area: 'Boerne',           listing: boerne.status      === 'fulfilled' ? boerne.value      : null },
+  ].filter(f => f.listing !== null) as { area: string; listing: ReturnType<typeof resoPropertyToListing> }[];
 
   const featuredTestimonials = testimonialsResult.status === 'fulfilled' && testimonialsResult.value.length > 0
     ? testimonialsResult.value.slice(0, 3) : DEMO_TESTIMONIALS;
@@ -181,9 +201,9 @@ export default async function HomePage() {
               </p>
             </div>
           </RevealOnScroll>
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {featuredListings.map((listing, i) => (
-              <RevealOnScroll key={listing.id} delay={i * 100}>
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            {featuredListings.map(({ area, listing }, i) => (
+              <RevealOnScroll key={area} delay={i * 100}>
                 <Link href={`/listings/${listing.slug}`} className="card-luxury group block">
                   <div className="image-luxury aspect-property bg-background-warm">
                     {listing.images && (listing.images as string[])[0] ? (
@@ -191,17 +211,23 @@ export default async function HomePage() {
                     ) : (
                       <div className="flex h-full items-center justify-center text-foreground-subtle"><Home className="h-12 w-12" /></div>
                     )}
+                    {/* Area badge */}
+                    <div className="absolute top-3 left-3">
+                      <span className="rounded-full bg-primary/80 backdrop-blur-sm px-3 py-1 text-[11px] font-semibold text-white uppercase tracking-wide">
+                        {area}
+                      </span>
+                    </div>
                   </div>
-                  <div className="p-6">
+                  <div className="p-5">
                     <p className="mb-1 text-caption uppercase tracking-wider text-foreground-muted">
                       <MapPin className="mr-1 inline h-3 w-3" />{listing.city}, TX
                     </p>
-                    <h3 className="mb-2 font-heading text-heading font-semibold text-primary group-hover:text-gold transition-colors">{listing.title}</h3>
+                    <h3 className="mb-2 font-heading text-heading font-semibold text-primary group-hover:text-gold transition-colors line-clamp-1">{listing.title}</h3>
                     <p className="mb-4 price-tag">{formatPrice(listing.price)}</p>
-                    <div className="flex items-center gap-4 text-caption text-foreground-muted border-t border-border pt-4">
-                      <span className="flex items-center gap-1.5"><Bed className="h-4 w-4" />{listing.bedrooms} bd</span>
-                      <span className="flex items-center gap-1.5"><Bath className="h-4 w-4" />{listing.bathrooms} ba</span>
-                      <span className="flex items-center gap-1.5"><Square className="h-4 w-4" />{(listing.sqft ?? 0).toLocaleString()} sqft</span>
+                    <div className="flex items-center gap-3 text-caption text-foreground-muted border-t border-border pt-4">
+                      {listing.bedrooms > 0 && <span className="flex items-center gap-1"><Bed className="h-3.5 w-3.5" />{listing.bedrooms} bd</span>}
+                      {listing.bathrooms > 0 && <span className="flex items-center gap-1"><Bath className="h-3.5 w-3.5" />{listing.bathrooms} ba</span>}
+                      {listing.sqft > 0 && <span className="flex items-center gap-1"><Square className="h-3.5 w-3.5" />{(listing.sqft).toLocaleString()} sf</span>}
                     </div>
                   </div>
                 </Link>
