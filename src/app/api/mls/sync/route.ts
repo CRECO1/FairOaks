@@ -23,6 +23,7 @@ import {
   searchPropertiesAll,
   getMediaBatch,
   resoPropertyToListing,
+  ACTIVE_FILTER,
 } from '@/lib/sabor-reso';
 
 function adminClient() {
@@ -37,12 +38,14 @@ function buildFilter(overrideFilter?: string): string {
   if (overrideFilter) return overrideFilter;
   if (process.env.SABOR_MLS_FILTER) return process.env.SABOR_MLS_FILTER;
 
-  const parts: string[] = ["StandardStatus in ('Active','Pending')"];
+  // Use OData enum syntax — SABOR StandardStatus values are uppercase
+  const parts: string[] = [ACTIVE_FILTER];
 
-  if (process.env.SABOR_AGENT_EMAIL) {
-    parts.push(`ListAgentEmail eq '${process.env.SABOR_AGENT_EMAIL}'`);
-  } else if (process.env.SABOR_OFFICE_KEY) {
-    parts.push(`ListOfficeKey eq '${process.env.SABOR_OFFICE_KEY}'`);
+  if (process.env.SABOR_AGENT_MLS_ID) {
+    // Filter to this agent's listings only
+    parts.push(`ListAgentMlsId eq '${process.env.SABOR_AGENT_MLS_ID}'`);
+  } else if (process.env.SABOR_OFFICE_NAME) {
+    parts.push(`ListOfficeName eq '${process.env.SABOR_OFFICE_NAME}'`);
   }
 
   return parts.join(' and ');
@@ -84,8 +87,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Fetch media for all listings in batches ───────────────────────────────
-    const listingKeys = properties.map(p => p.ListingKey);
-    const mediaMap = await getMediaBatch(listingKeys);
+    const listingIds = properties.map(p => p.ListingId);
+    const mediaMap = await getMediaBatch(listingIds);
 
     // ── Upsert into Supabase ──────────────────────────────────────────────────
     const supabase = adminClient();
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
     for (let i = 0; i < properties.length; i += CHUNK) {
       const chunk = properties.slice(i, i + CHUNK);
       const rows = chunk.map(p => {
-        const images = mediaMap.get(p.ListingKey) ?? [];
+        const images = mediaMap.get(p.ListingId) ?? [];
         return resoPropertyToListing(p, images);
       });
 
@@ -118,14 +121,14 @@ export async function POST(req: NextRequest) {
 
     // ── Mark listings no longer in SABOR feed as off-market ──────────────────
     // Only for MLS-sourced listings — never touch manually entered ones
-    if (listingKeys.length > 0 && !overrideFilter) {
+    if (listingIds.length > 0 && !overrideFilter) {
       // Find MLS listings we have that are NOT in the current feed
       const { data: stale } = await supabase
         .from('listings')
         .select('id, listing_key, title')
         .eq('source', 'mls')
         .in('status', ['active', 'pending'])
-        .not('listing_key', 'in', `(${listingKeys.map(k => `'${k}'`).join(',')})`)
+        .not('listing_key', 'in', `(${listingIds.map(k => `'${k}'`).join(',')})`)
         .limit(500);
 
       if (stale && stale.length > 0) {

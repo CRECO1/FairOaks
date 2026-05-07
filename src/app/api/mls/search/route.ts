@@ -18,7 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { searchProperties } from '@/lib/sabor-reso';
+import { searchProperties, statusFilter } from '@/lib/sabor-reso';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,8 +38,8 @@ export async function GET(req: NextRequest) {
 
     // Validate orderby against an allowlist to prevent OData injection
     const ALLOWED_ORDER_COLS = new Set([
-      'ListPrice', 'ModificationTimestamp', 'OnMarketDate', 'BedsTotal',
-      'BathroomsTotalInteger', 'LivingArea', 'YearBuilt',
+      'ListPrice', 'ModificationTimestamp', 'OnMarketDate', 'BedroomsTotal',
+      'BathroomsFull', 'LivingArea', 'YearBuilt',
     ]);
     const orderbyRaw = sp.get('orderby')?.replace('+', ' ') ?? 'ModificationTimestamp desc';
     const orderbyCol = orderbyRaw.split(' ')[0];
@@ -65,20 +65,24 @@ export async function GET(req: NextRequest) {
     // Build OData $filter
     const filters: string[] = [];
 
-    // Status — validate against known enum before using in OData
+    // Status — use OData enum syntax (SABOR StandardStatus is an enum type)
     const statusMap: Record<string, string> = {
-      active: 'Active', pending: 'Pending', sold: 'Closed', closed: 'Closed',
+      active: 'ACTIVE', pending: 'ACTIVE_UNDER_CONTRACT', sold: 'CLOSED', closed: 'CLOSED',
     };
     const resoStatus = statusMap[status.toLowerCase()];
     if (!resoStatus) {
       return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
     }
-    filters.push(`StandardStatus eq '${resoStatus}'`);
+    filters.push(statusFilter([resoStatus]));
 
-    if (city)            filters.push(`City eq '${city.replace(/'/g, "''")}'`);
+    // City is an enum in SABOR — use contains() on StreetName or SubdivisionName instead
+    if (city && city !== 'All Areas') {
+      // Store city names in title case but SABOR returns them upper-case
+      filters.push(`contains(SubdivisionName,'${city.replace(/'/g, "''")}') or contains(PostalCode,'${city.replace(/'/g, "''")}')`);
+    }
     if (minPrice !== null) filters.push(`ListPrice ge ${minPrice}`);
     if (maxPrice !== null) filters.push(`ListPrice le ${maxPrice}`);
-    if (minBeds !== null)  filters.push(`BedsTotal ge ${minBeds}`);
+    if (minBeds !== null)  filters.push(`BedroomsTotal ge ${minBeds}`);
     if (propertyType) filters.push(`PropertyType eq '${propertyType.replace(/'/g, "''")}'`);
     if (search) {
       const q = search.replace(/'/g, "''");

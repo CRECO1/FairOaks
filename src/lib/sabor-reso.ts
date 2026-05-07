@@ -5,34 +5,46 @@
  *
  * Docs:  https://api-sabor.connectmls.com/reso/webapi/
  * Auth:  https://sabor-auth.connectmls.com/authenticate/signin
+ *
+ * Field notes (confirmed against live API):
+ *  - Primary key is ListingId (numeric string), NOT ListingKey
+ *  - Bedrooms field is BedroomsTotal, not BedsTotal
+ *  - StandardStatus is an OData enum — filter with ODataService.StandardStatus'ACTIVE'
+ *  - City, MlsStatus are also enum types — filter via contains() or avoid filtering them
+ *  - ListAgentFullName is absent — build from ListAgentFirstName + ListAgentLastName
+ *  - ListAgentEmail is absent — use ListAgentCellPhone / ListAgentOfficePhone
+ *  - Media ResourceRecordID matches ListingId (not ResourceRecordKey)
  */
 
-const AUTH_URL  = 'https://sabor-auth.connectmls.com/authenticate/signin';
-const API_BASE  = 'https://api-sabor.connectmls.com/reso/webapi';
+const AUTH_URL = 'https://sabor-auth.connectmls.com/authenticate/signin';
+const API_BASE = 'https://api-sabor.connectmls.com/reso/webapi';
+
+// OData enum namespace prefix used for filter expressions
+const ENUM = 'ODataService.StandardStatus';
 
 // ─── In-memory token cache ────────────────────────────────────────────────────
-// Vercel serverless functions are stateless, but token caching within the same
-// warm instance avoids hammering the auth endpoint on every request.
 let _cachedToken: string | null = null;
 let _tokenExpiry = 0;
 
 // ─── RESO Data Types ──────────────────────────────────────────────────────────
 
 export interface ResoProperty {
-  ListingKey: string;
-  ListingId?: string;
-  StandardStatus: 'Active' | 'Pending' | 'Closed' | 'Expired' | 'Withdrawn' | 'CancelledByMutualAgreement' | string;
-  MlsStatus?: string;
+  // Primary identifier — SABOR uses ListingId as the unique key
+  ListingId: string;
+  // Status
+  StandardStatus: string;  // enum: 'ACTIVE' | 'ACTIVE_UNDER_CONTRACT' | 'CLOSED' | 'EXPIRED' | 'HOLD' | etc.
+  MlsStatus?: string;      // 'ACT' | 'PND' | 'SLD' etc.
+  // Price
   ListPrice: number;
   OriginalListPrice?: number;
   ClosePrice?: number;
   CloseDate?: string;
+  // Dates
   ListingContractDate?: string;
   OnMarketDate?: string;
   ModificationTimestamp?: string;
   StatusChangeTimestamp?: string;
   // Location
-  UnparsedAddress?: string;
   StreetNumber?: string;
   StreetDirPrefix?: string;
   StreetName?: string;
@@ -43,56 +55,42 @@ export interface ResoProperty {
   PostalCode?: string;
   CountyOrParish?: string;
   SubdivisionName?: string;
-  Latitude?: number;
-  Longitude?: number;
-  // Property details
-  PropertyType?: string;
-  PropertySubType?: string;
-  BedsTotal?: number;
-  BathroomsTotalInteger?: number;
+  // Property details — SABOR-specific field names
+  PropertyType?: string;           // 'RR' = Residential, 'CO' = Condo, 'CM' = Commercial, etc.
+  PropertySubType_RR?: string;     // 'SFDET' = Single Family Detached, etc.
+  BedroomsTotal?: number;          // NOTE: not BedsTotal
   BathroomsFull?: number;
   BathroomsHalf?: number;
   LivingArea?: number;
-  BuildingAreaTotal?: number;
   LotSizeAcres?: number;
-  LotSizeSquareFeet?: number;
   YearBuilt?: number;
   StoriesTotal?: number;
   GarageSpaces?: number;
-  Cooling?: string;
-  Heating?: string;
   // Financial
   TaxAnnualAmount?: number;
-  TaxYear?: number;
   AssociationFee?: number;
-  AssociationFeeFrequency?: string;
-  // Agent / office
-  ListAgentKey?: string;
+  // Agent / office — SABOR splits name into First+Last, no email field
+  ListAgentFirstName?: string;
+  ListAgentLastName?: string;
   ListAgentMlsId?: string;
-  ListAgentFullName?: string;
-  ListAgentEmail?: string;
-  ListAgentDirectPhone?: string;
-  ListOfficeKey?: string;
-  ListOfficeMlsId?: string;
+  ListAgentCellPhone?: string;
+  ListAgentOfficePhone?: string;
   ListOfficeName?: string;
   // Content
   PublicRemarks?: string;
-  // Media
-  MediaCount?: number;
+  PhotosCount?: number;
+  // Media (populated separately)
   Media?: ResoMedia[];
 }
 
 export interface ResoMedia {
   MediaKey?: string;
-  ResourceRecordKey?: string;
+  ResourceRecordID?: string;   // matches ListingId
+  ResourceRecordKey?: string;  // internal hex key
   MediaURL?: string;
-  MediaType?: string;
-  MediaCategory?: string;
   Order?: number;
-  PreferredPhotoYN?: boolean;
   ImageHeight?: number;
   ImageWidth?: number;
-  ImageSizeDescription?: string;
   ModificationTimestamp?: string;
 }
 
@@ -102,6 +100,19 @@ export interface ResoResponse<T> {
   '@odata.nextLink'?: string;
   value: T[];
 }
+
+// ─── Status filter helpers ────────────────────────────────────────────────────
+
+/** Build an OData enum filter expression for StandardStatus */
+export function statusFilter(statuses: string[]): string {
+  if (statuses.length === 1) {
+    return `StandardStatus eq ${ENUM}'${statuses[0]}'`;
+  }
+  return `StandardStatus in (${statuses.map(s => `${ENUM}'${s}'`).join(',')})`;
+}
+
+/** Active + Pending (under contract) listings */
+export const ACTIVE_FILTER = statusFilter(['ACTIVE', 'ACTIVE_UNDER_CONTRACT']);
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -135,14 +146,14 @@ async function authenticate(): Promise<string> {
 
   const data = await res.json();
 
-  // The JWT token field name may vary — handle common variants
   const token: string =
     data.access_token ?? data.accessToken ?? data.token ?? data.jwt ?? data.id_token;
   if (!token) {
     throw new Error('SABOR auth succeeded but no token found in response: ' + JSON.stringify(data));
   }
 
-  const expiresIn: number = data.expires_in ?? data.expiresIn ?? 3600;
+  // Token expires_in is seconds; SABOR JWTs are ~24h
+  const expiresIn: number = data.expires_in ?? data.expiresIn ?? 86400;
 
   _cachedToken = token;
   _tokenExpiry = Date.now() + expiresIn * 1000;
@@ -165,7 +176,6 @@ async function resoFetch<T>(path: string, params: Record<string, string> = {}): 
       'OData-MaxVersion': '4.0',
       'OData-Version': '4.0',
     },
-    // Prevent Next.js from caching MLS data at the fetch level
     cache: 'no-store',
   });
 
@@ -180,37 +190,30 @@ async function resoFetch<T>(path: string, params: Record<string, string> = {}): 
 // ─── Property queries ─────────────────────────────────────────────────────────
 
 export interface PropertySearchOptions {
-  /** OData $filter expression, e.g. "City eq 'San Antonio' and StandardStatus eq 'Active'" */
   filter?: string;
-  /** Fields to select — defaults to a comprehensive set */
   select?: string;
-  /** Max records per page (default 200, max varies by MLS) */
   top?: number;
-  /** Skip N records (for pagination) */
   skip?: number;
-  /** Order by field, e.g. "ModificationTimestamp desc" */
   orderby?: string;
-  /** Include @odata.count in response */
   count?: boolean;
-  /** Expand related resources inline, e.g. "Media" */
   expand?: string;
 }
 
 const DEFAULT_SELECT = [
-  'ListingKey', 'ListingId', 'StandardStatus', 'MlsStatus',
+  'ListingId', 'StandardStatus', 'MlsStatus',
   'ListPrice', 'OriginalListPrice', 'ClosePrice', 'CloseDate',
   'ListingContractDate', 'OnMarketDate', 'ModificationTimestamp',
-  'UnparsedAddress', 'StreetNumber', 'StreetDirPrefix', 'StreetName',
-  'StreetSuffix', 'UnitNumber', 'City', 'StateOrProvince', 'PostalCode',
-  'CountyOrParish', 'SubdivisionName', 'Latitude', 'Longitude',
-  'PropertyType', 'PropertySubType',
-  'BedsTotal', 'BathroomsTotalInteger', 'BathroomsFull', 'BathroomsHalf',
-  'LivingArea', 'LotSizeAcres', 'LotSizeSquareFeet', 'YearBuilt',
+  'StreetNumber', 'StreetDirPrefix', 'StreetName', 'StreetSuffix',
+  'UnitNumber', 'City', 'StateOrProvince', 'PostalCode',
+  'CountyOrParish', 'SubdivisionName',
+  'PropertyType', 'PropertySubType_RR',
+  'BedroomsTotal', 'BathroomsFull', 'BathroomsHalf',
+  'LivingArea', 'LotSizeAcres', 'YearBuilt',
   'StoriesTotal', 'GarageSpaces',
-  'TaxAnnualAmount', 'AssociationFee', 'AssociationFeeFrequency',
-  'ListAgentFullName', 'ListAgentEmail', 'ListAgentDirectPhone',
-  'ListOfficeName', 'MediaCount',
-  'PublicRemarks',
+  'TaxAnnualAmount', 'AssociationFee',
+  'ListAgentFirstName', 'ListAgentLastName', 'ListAgentMlsId',
+  'ListAgentCellPhone', 'ListAgentOfficePhone', 'ListOfficeName',
+  'PhotosCount', 'PublicRemarks',
 ].join(',');
 
 export async function searchProperties(opts: PropertySearchOptions = {}): Promise<ResoResponse<ResoProperty>> {
@@ -228,8 +231,7 @@ export async function searchProperties(opts: PropertySearchOptions = {}): Promis
 }
 
 /**
- * Fetch all pages of a property search, auto-following @odata.nextLink
- * until all results are collected (or maxPages is reached).
+ * Fetch all pages of a property search, auto-following @odata.nextLink.
  */
 export async function searchPropertiesAll(
   opts: PropertySearchOptions = {},
@@ -243,8 +245,6 @@ export async function searchPropertiesAll(
     const res = await searchProperties({ ...opts, skip, top: opts.top ?? 200 });
     all.push(...res.value);
     page++;
-
-    // No more pages
     if (!res['@odata.nextLink'] || res.value.length < (opts.top ?? 200)) break;
     skip += (opts.top ?? 200);
   }
@@ -254,40 +254,30 @@ export async function searchPropertiesAll(
 
 // ─── Media queries ────────────────────────────────────────────────────────────
 
-export async function getMediaForListing(listingKey: string): Promise<ResoMedia[]> {
-  const res = await resoFetch<ResoMedia>('Media', {
-    $filter: `ResourceRecordKey eq '${listingKey}' and ResourceName eq 'Property'`,
-    $orderby: 'Order asc',
-    $select: 'MediaKey,ResourceRecordKey,MediaURL,MediaType,MediaCategory,Order,PreferredPhotoYN,ImageHeight,ImageWidth,ImageSizeDescription',
-    $top: '50',
-  });
-  return res.value;
-}
-
 /**
- * Fetch media for multiple listings in batches of 20 to avoid overly long URLs.
- * Returns a map of ListingKey → MediaURL[]
+ * Fetch media for multiple listings in batches of 20.
+ * SABOR: use ResourceRecordID (= ListingId) not ResourceRecordKey.
+ * Returns a map of ListingId → MediaURL[]
  */
-export async function getMediaBatch(listingKeys: string[]): Promise<Map<string, string[]>> {
+export async function getMediaBatch(listingIds: string[]): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
   const BATCH = 20;
 
-  for (let i = 0; i < listingKeys.length; i += BATCH) {
-    const chunk = listingKeys.slice(i, i + BATCH);
-    const filterKeys = chunk.map(k => `'${k}'`).join(',');
+  for (let i = 0; i < listingIds.length; i += BATCH) {
+    const chunk = listingIds.slice(i, i + BATCH);
+    const filterIds = chunk.map(k => `'${k}'`).join(',');
     try {
       const res = await resoFetch<ResoMedia>('Media', {
-        $filter: `ResourceRecordKey in (${filterKeys}) and ResourceName eq 'Property'`,
+        $filter: `ResourceRecordID in (${filterIds})`,
         $orderby: 'Order asc',
-        $select: 'ResourceRecordKey,MediaURL,Order,PreferredPhotoYN,MediaCategory',
+        $select: 'ResourceRecordID,MediaURL,Order,ImageHeight,ImageWidth',
         $top: '500',
       });
       for (const m of res.value) {
-        if (!m.ResourceRecordKey || !m.MediaURL) continue;
-        if (m.MediaCategory && m.MediaCategory !== 'Photo') continue;
-        const arr = map.get(m.ResourceRecordKey) ?? [];
+        if (!m.ResourceRecordID || !m.MediaURL) continue;
+        const arr = map.get(m.ResourceRecordID) ?? [];
         arr.push(m.MediaURL);
-        map.set(m.ResourceRecordKey, arr);
+        map.set(m.ResourceRecordID, arr);
       }
     } catch (err) {
       console.error('Media batch fetch error:', err);
@@ -299,37 +289,42 @@ export async function getMediaBatch(listingKeys: string[]): Promise<Map<string, 
 
 // ─── Property → Listing mapper ────────────────────────────────────────────────
 
-/**
- * Convert a RESO Property record into the shape expected by the `listings` table.
- * `images` is populated separately after media fetch.
- */
 export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
   const streetParts = [p.StreetNumber, p.StreetDirPrefix, p.StreetName, p.StreetSuffix]
     .filter(Boolean).join(' ');
-  const address = p.UnparsedAddress ?? streetParts;
   const unit = p.UnitNumber ? ` #${p.UnitNumber}` : '';
-  const fullAddress = `${address}${unit}`;
-  const city   = p.City ?? '';
-  const state  = p.StateOrProvince ?? 'TX';
-  const zip    = p.PostalCode ?? '';
+  const fullAddress = `${streetParts}${unit}`.trim();
+  // SABOR cities come back all-caps — convert to title case
+  const city = (p.City ?? '').replace(/\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  const state = p.StateOrProvince ?? 'TX';
+  const zip = p.PostalCode ?? '';
 
+  // Map SABOR StandardStatus enum values → our internal status strings
   const statusMap: Record<string, string> = {
-    Active: 'active',
-    Pending: 'pending',
-    Closed: 'sold',
-    Expired: 'off-market',
-    Withdrawn: 'off-market',
-    CancelledByMutualAgreement: 'off-market',
+    ACTIVE: 'active',
+    ACTIVE_UNDER_CONTRACT: 'pending',
+    COMING_SOON: 'active',
+    HOLD: 'pending',
+    CLOSED: 'sold',
+    EXPIRED: 'off-market',
+    CANCELED: 'off-market',
+    WITHDRAWN: 'off-market',
+    DELETE: 'off-market',
   };
   const status = statusMap[p.StandardStatus] ?? 'off-market';
 
-  const title = fullAddress || p.ListingId || p.ListingKey;
-  const slug  = (title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''))
-    + '-' + p.ListingKey.slice(-6);
+  const agentName = [p.ListAgentFirstName, p.ListAgentLastName].filter(Boolean).join(' ') || null;
+  const agentPhone = p.ListAgentCellPhone ?? p.ListAgentOfficePhone ?? null;
+
+  const title = fullAddress || p.ListingId;
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    + '-' + p.ListingId.slice(-6);
+
+  const bathrooms = (p.BathroomsFull ?? 0) + (p.BathroomsHalf ? 0.5 : 0);
 
   return {
-    listing_key:            p.ListingKey,
-    mls_number:             p.ListingId ?? null,
+    listing_key:            p.ListingId,
+    mls_number:             p.ListingId,
     title,
     slug,
     price:                  p.ListPrice ?? 0,
@@ -342,23 +337,20 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     mls_status:             p.MlsStatus ?? null,
     close_price:            p.ClosePrice ?? null,
     close_date:             p.CloseDate ?? null,
-    bedrooms:               p.BedsTotal ?? 0,
-    bathrooms:              p.BathroomsTotalInteger ?? (p.BathroomsFull ?? 0) + (p.BathroomsHalf ? 0.5 : 0),
+    bedrooms:               p.BedroomsTotal ?? 0,
+    bathrooms,
     sqft:                   p.LivingArea ?? 0,
-    lot_size:               p.LotSizeAcres ? `${p.LotSizeAcres} ac` : (p.LotSizeSquareFeet ? `${p.LotSizeSquareFeet} sqft` : null),
+    lot_size:               p.LotSizeAcres ? `${p.LotSizeAcres} ac` : null,
     lot_size_acres:         p.LotSizeAcres ?? null,
     year_built:             p.YearBuilt ?? null,
-    property_type:          (p.PropertySubType ?? p.PropertyType ?? 'Residential').toLowerCase().replace(/\s+/g, '-'),
+    property_type:          (p.PropertySubType_RR ?? p.PropertyType ?? 'RR').toLowerCase(),
     subdivision_name:       p.SubdivisionName ?? null,
     garage_spaces:          p.GarageSpaces ?? null,
-    latitude:               p.Latitude ?? null,
-    longitude:              p.Longitude ?? null,
     hoa_fee:                p.AssociationFee ?? null,
-    hoa_frequency:          p.AssociationFeeFrequency ?? null,
     tax_annual_amount:      p.TaxAnnualAmount ?? null,
-    list_agent_name:        p.ListAgentFullName ?? null,
-    list_agent_email:       p.ListAgentEmail ?? null,
-    list_agent_phone:       p.ListAgentDirectPhone ?? null,
+    list_agent_name:        agentName,
+    list_agent_email:       null,
+    list_agent_phone:       agentPhone,
     list_office_name:       p.ListOfficeName ?? null,
     description:            p.PublicRemarks ?? null,
     images:                 images.length > 0 ? images : null,
