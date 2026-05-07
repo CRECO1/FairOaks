@@ -10,6 +10,7 @@ import { Container } from '@/components/ui/Container';
 import { Input } from '@/components/ui/Input';
 import { formatPrice } from '@/lib/utils';
 import type { Listing } from '@/lib/supabase';
+import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
 
 const DEMO_LISTINGS: Listing[] = [
   { id: '1', title: '124 Saddlebrook Drive', slug: '124-saddlebrook-drive', price: 725000, address: '124 Saddlebrook Drive', city: 'Fair Oaks Ranch', state: 'TX', zip: '78015', bedrooms: 4, bathrooms: 3, sqft: 2850, lot_size: '0.42 ac', year_built: 2019, property_type: 'single-family', status: 'active', description: null, features: ['Pool', 'Hill Country Views', '3-Car Garage'], images: null, virtual_tour_url: null, mls_number: '1234567', listing_date: '2026-03-15', created_at: '', updated_at: '' },
@@ -109,6 +110,15 @@ export default function ListingsPage() {
                   <X className="h-3 w-3" /> Clear
                 </button>
               )}
+
+              <div className="ml-auto">
+                <SaveSearchButton
+                  cities={city === 'All Areas' ? ['All Areas'] : [city]}
+                  minPrice={PRICE_RANGES[priceRange].min > 0 ? PRICE_RANGES[priceRange].min : undefined}
+                  maxPrice={PRICE_RANGES[priceRange].max < Infinity ? PRICE_RANGES[priceRange].max : undefined}
+                  minBeds={minBeds > 0 ? minBeds : undefined}
+                />
+              </div>
             </div>
 
             {filtersOpen && (

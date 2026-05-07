@@ -44,6 +44,7 @@ import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getListings, getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
+import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 
 const DEMO_LISTINGS = [
   { id: '1', title: '124 Saddlebrook Drive', slug: '124-saddlebrook-drive', price: 725000, city: 'Fair Oaks Ranch', bedrooms: 4, bathrooms: 3, sqft: 2850, images: null, status: 'active' },
@@ -328,6 +329,45 @@ export default async function HomePage() {
                 </div>
               </RevealOnScroll>
             ))}
+          </div>
+        </Container>
+      </section>
+
+      {/* ── Home Valuation CTA ───────────────────────────────────────── */}
+      <section className="section-luxury bg-primary text-white">
+        <Container>
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
+            <RevealOnScroll direction="left">
+              <p className="overline mb-4 text-gold">Free & No Obligation</p>
+              <h2 className="mb-4 font-heading text-display-sm font-bold text-white">
+                What&rsquo;s Your Home Worth?
+              </h2>
+              <p className="mb-6 text-body-lg text-white/70">
+                Get a personalized home valuation from our local experts. We&rsquo;ll analyze recent sales, current market trends, and your home&rsquo;s unique features — and get back to you within 1 business day.
+              </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  'Hyper-local market analysis',
+                  'No cost, no commitment',
+                  'Response within 1 business day',
+                  'Trusted by 500+ Texas Hill Country families',
+                ].map(item => (
+                  <li key={item} className="flex items-center gap-3 text-body text-white/80">
+                    <span className="h-5 w-5 rounded-full bg-gold flex items-center justify-center shrink-0">
+                      <svg className="h-3 w-3 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </RevealOnScroll>
+            <RevealOnScroll direction="right">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm">
+                <HomeValuationForm />
+              </div>
+            </RevealOnScroll>
           </div>
         </Container>
       </section>

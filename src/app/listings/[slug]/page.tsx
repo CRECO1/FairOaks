@@ -11,6 +11,7 @@ import { Container } from '@/components/ui/Container';
 import { getListingBySlug } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 import { ListingContactForm } from './ListingContactForm';
+import { MortgageCalculator } from '@/components/sections/MortgageCalculator';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -300,6 +301,7 @@ export default async function ListingDetailPage({ params }: Props) {
                   Contact us to schedule a private showing or ask any questions.
                 </p>
                 <ListingContactForm listingTitle={listing!.title} />
+                <MortgageCalculator listingPrice={listing!.price} />
                 {(listing as any).flyer_url && (
                   <div className="mt-4">
                     <a
