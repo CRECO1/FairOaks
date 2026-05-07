@@ -130,7 +130,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                   image: 'https://www.fairoaksrealtygroup.com/images/og-home.jpg',
                   description:
                     'Top-rated residential real estate agency serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country. 500+ homes sold with a 103% list-to-sale price ratio.',
-                  telephone: '+1-210-555-0100',
+                  telephone: '+1-2103909997',
                   email: 'info@fairoaksrealtygroup.com',
                   address: {
                     '@type': 'PostalAddress',
@@ -149,6 +149,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                     { '@type': 'City', name: 'Fair Oaks Ranch', sameAs: 'https://en.wikipedia.org/wiki/Fair_Oaks_Ranch,_Texas' },
                     { '@type': 'City', name: 'Boerne', sameAs: 'https://en.wikipedia.org/wiki/Boerne,_Texas' },
                     { '@type': 'City', name: 'Helotes', sameAs: 'https://en.wikipedia.org/wiki/Helotes,_Texas' },
+                    { '@type': 'City', name: 'Leon Springs' },
                     { '@type': 'City', name: 'San Antonio' },
                     { '@type': 'State', name: 'Texas' },
                   ],

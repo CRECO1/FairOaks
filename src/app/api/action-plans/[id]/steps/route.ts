@@ -75,6 +75,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!Array.isArray(steps)) {
     return NextResponse.json({ error: 'steps must be an array' }, { status: 400 });
   }
+  if (steps.length > 100) {
+    return NextResponse.json({ error: 'Action plans may not have more than 100 steps' }, { status: 400 });
+  }
 
   const supabase = adminClient();
 

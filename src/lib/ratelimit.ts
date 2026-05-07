@@ -27,6 +27,8 @@ const LIMITS = {
   quiz:        { requests: 10, window: '10 m' },
   // Webhook — 30 per IP per minute (Zapier/Make can burst)
   webhook:     { requests: 30, window: '1 m'  },
+  // ATTOM property intel — paid external API, limit aggressive lookups
+  attom:       { requests: 30, window: '1 m'  },
 } as const;
 
 type LimiterKey = keyof typeof LIMITS;

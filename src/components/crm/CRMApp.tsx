@@ -13,7 +13,7 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; review_requested_at?: string | null; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
@@ -5814,7 +5814,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  {/* Review Request — only show if client has email and hasn't unsubscribed */}
+                  {c.email && !c.unsubscribed_at && (
+                    <button
+                      onClick={async () => {
+                        const confirmed = confirm(`Send a Google review request email to ${c.first_name}?`);
+                        if (!confirmed) return;
+                        const res = await fetch('/api/crm/review-request', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ clientId: c.id }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          alert(data.error ?? 'Failed to send review request');
+                        } else {
+                          // Update local state so the timestamp shows immediately
+                          const now = new Date().toISOString();
+                          setClients(prev => prev.map(cl => cl.id === c.id ? { ...cl, review_requested_at: now, tags: cl.tags.includes('Review Requested') ? cl.tags : [...cl.tags, 'Review Requested'] } : cl));
+                          setActiveClient(prev => prev && prev.id === c.id ? { ...prev, review_requested_at: now, tags: prev.tags.includes('Review Requested') ? prev.tags : [...prev.tags, 'Review Requested'] } : prev);
+                          alert(`✅ Review request sent to ${c.first_name}!`);
+                        }
+                      }}
+                      title={c.review_requested_at ? `Last sent ${new Date(c.review_requested_at).toLocaleDateString()}` : 'Send Google review request email'}
+                      style={{ padding: '7px 14px', fontSize: 12, background: c.review_requested_at ? '#f0fdf4' : '#fffbeb', color: c.review_requested_at ? '#15803d' : '#92400e', border: `1px solid ${c.review_requested_at ? '#bbf7d0' : '#fde68a'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>
+                      {c.review_requested_at ? `⭐ Sent ${new Date(c.review_requested_at).toLocaleDateString()}` : '⭐ Request Review'}
+                    </button>
+                  )}
                   {isAdmin && (
                     <button onClick={() => { setActiveClient(null); deleteClient(c.id, `${c.first_name} ${c.last_name}`); }}
                       style={{ padding: '7px 16px', fontSize: 12, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>

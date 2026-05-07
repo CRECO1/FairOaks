@@ -55,7 +55,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.75,
     },
     {
-      url: `${BASE_URL}/neighborhoods/the-dominion`,
+      url: `${BASE_URL}/neighborhoods/leon-springs`,
       lastModified: new Date(),
       changeFrequency: 'weekly',
       priority: 0.75,

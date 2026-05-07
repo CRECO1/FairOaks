@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -9,6 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getNeighborhoodBySlug, getListingsByCity } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
+
+const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
 const DEMO_NEIGHBORHOODS: Record<string, object> = {
   'fair-oaks-ranch': {
@@ -25,9 +28,71 @@ const DEMO_NEIGHBORHOODS: Record<string, object> = {
     highlights: ['Historic Main Street', 'Cibolo Creek access', 'Vibrant arts & dining scene', 'Highly rated schools', '30 min to San Antonio', 'Annual events & festivals'],
     featured: true,
   },
+  'helotes': {
+    id: '3', name: 'Helotes', slug: 'helotes', city: 'Helotes',
+    avg_price: 490000, avg_sqft: 2200, image_url: null, school_district: 'Northside ISD',
+    description: 'Helotes is a welcoming Hill Country community on the northwest edge of San Antonio that has preserved its small-town character while offering easy access to the city. Tree-shaded streets, a beloved annual rodeo, and quick highway access to Loop 1604 and I-10 make Helotes a perennial favorite for families who want space without sacrificing convenience.',
+    highlights: ['Northside ISD schools', 'Quick access to Loop 1604 & I-10', 'Small-town Hill Country feel', 'Annual Cornyval Festival', '15 min to San Antonio', 'Large lots & acreage available'],
+    featured: true,
+  },
+  'leon-springs': {
+    id: '4', name: 'Leon Springs', slug: 'leon-springs', city: 'Leon Springs',
+    avg_price: 620000, avg_sqft: 2600, image_url: null, school_district: 'Northside ISD',
+    description: 'Leon Springs sits at the crossroads of classic Hill Country living and modern San Antonio convenience. Known for its iconic dance halls, scenic ranch land, and a growing corridor of restaurants and shops along I-10, this unincorporated community attracts buyers seeking acreage properties and custom homes with room to breathe — all within 25 minutes of downtown San Antonio.',
+    highlights: ['Scenic Hill Country acreage', 'Iconic Leon Springs dance halls', 'Quick access to I-10', 'Custom homes & ranch properties', 'Northside ISD schools', '25 min to downtown San Antonio'],
+    featured: false,
+  },
 };
 
 interface Props { params: Promise<{ slug: string }> }
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let neighborhood: any = await getNeighborhoodBySlug(slug).catch(() => null);
+  if (!neighborhood && DEMO_NEIGHBORHOODS[slug]) neighborhood = DEMO_NEIGHBORHOODS[slug];
+  if (!neighborhood) return {};
+
+  const name: string = neighborhood.name;
+  const city: string = neighborhood.city ?? name;
+  const avgPrice: number | null = neighborhood.avg_price ?? null;
+  const description: string = neighborhood.description
+    ? (neighborhood.description as string).slice(0, 155)
+    : `Explore homes for sale in ${name}, TX. Browse listings, schools, and local insights from Fair Oaks Realty Group.`;
+
+  const title = `${name} Homes for Sale | ${name}, TX Real Estate`;
+  const metaDescription = avgPrice
+    ? `Browse ${name} homes for sale. Avg. price ${formatPrice(avgPrice)}. ${description.slice(0, 100)}…`
+    : description;
+
+  return {
+    title,
+    description: metaDescription,
+    alternates: { canonical: `${BASE_URL}/neighborhoods/${slug}` },
+    openGraph: {
+      title,
+      description: metaDescription,
+      url: `${BASE_URL}/neighborhoods/${slug}`,
+      type: 'website',
+      images: neighborhood.image_url
+        ? [{ url: neighborhood.image_url, alt: `${name}, TX neighborhood` }]
+        : [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'Fair Oaks Realty Group — Texas Hill Country Real Estate' }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description: metaDescription,
+    },
+    keywords: [
+      `${name} homes for sale`,
+      `${name} TX real estate`,
+      `${city} real estate agent`,
+      `${name} neighborhood guide`,
+      'Texas Hill Country homes',
+      'Fair Oaks Realty Group',
+    ],
+  };
+}
 
 export default async function NeighborhoodDetailPage({ params }: Props) {
   const { slug } = await params;
@@ -39,8 +104,44 @@ export default async function NeighborhoodDetailPage({ params }: Props) {
 
   const listings = await getListingsByCity(neighborhood!.city).catch(() => []);
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: BASE_URL },
+          { '@type': 'ListItem', position: 2, name: 'Neighborhoods', item: `${BASE_URL}/neighborhoods` },
+          { '@type': 'ListItem', position: 3, name: neighborhood!.name, item: `${BASE_URL}/neighborhoods/${neighborhood!.slug}` },
+        ],
+      },
+      {
+        '@type': 'Place',
+        name: neighborhood!.name,
+        description: neighborhood!.description as string | undefined,
+        url: `${BASE_URL}/neighborhoods/${neighborhood!.slug}`,
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: neighborhood!.city as string,
+          addressRegion: 'TX',
+          addressCountry: 'US',
+        },
+        ...(neighborhood!.image_url ? { image: neighborhood!.image_url as string } : {}),
+      },
+      {
+        '@type': 'RealEstateAgent',
+        '@id': `${BASE_URL}/#business`,
+        name: 'Fair Oaks Realty Group',
+        url: BASE_URL,
+        telephone: '+1-2103909997',
+        areaServed: { '@type': 'Place', name: neighborhood!.name as string },
+      },
+    ],
+  };
+
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header variant="minimal" />
       <main className="min-h-screen pt-20">
         {/* Back */}

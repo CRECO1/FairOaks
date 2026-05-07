@@ -18,6 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getCrmAdmin } from '@/lib/crm-auth';
 import {
   searchPropertiesAll,
   getMediaBatch,
@@ -48,7 +49,19 @@ function buildFilter(overrideFilter?: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  // Allow manual trigger from CRM or admin; also called by cron route
+  // Accept either:
+  //  (a) Internal cron call — x-internal-key must equal the service role key
+  //  (b) Admin CRM session
+  const internalKey = req.headers.get('x-internal-key');
+  const isInternalCron = internalKey && internalKey === process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!isInternalCron) {
+    const admin = await getCrmAdmin();
+    if (!admin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
   try {
     let overrideFilter: string | undefined;
     try {
@@ -132,6 +145,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('[MLS sync] error:', err);
-    return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

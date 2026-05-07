@@ -1,13 +1,23 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
+import { validateCsrf } from '@/lib/csrf';
 
 // Protected routes that require authentication (redirect to login if no user)
 const protectedRoutes = ['/manage'];
 const publicRoutes = ['/manage/login'];
 
-// API routes that need session refresh but should NOT redirect (return 401 instead)
-const apiSessionRoutes = ['/api/campaigns', '/api/crm'];
+// API routes that need session refresh / CSRF protection (return 401 instead of redirect)
+const apiSessionRoutes = [
+  '/api/campaigns',
+  '/api/crm',
+  '/api/action-plans',
+  '/api/smart-lists',
+  '/api/gmail',
+  '/api/mls/sync',
+  '/api/attom',
+  '/api/calendar',
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -17,10 +27,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // For API routes that need auth, just refresh the session cookie and pass through.
+  // For API routes that need auth, validate CSRF then refresh the session cookie.
   // The route handler itself decides whether to return 401.
   const isApiSessionRoute = apiSessionRoutes.some(route => pathname.startsWith(route));
   if (isApiSessionRoute) {
+    // CSRF check — rejects cross-origin state-changing requests
+    const csrfError = validateCsrf(request);
+    if (csrfError) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     try {
       const { supabaseResponse } = await updateSession(request);
       return supabaseResponse;
@@ -67,9 +83,15 @@ export const config = {
   matcher: [
     // Match all admin page routes
     '/manage/:path*',
-    // Match CRM/campaign API routes so the session cookie is refreshed
+    // Match API routes that require session refresh + CSRF protection
     '/api/campaigns/:path*',
     '/api/campaigns',
     '/api/crm/:path*',
+    '/api/action-plans/:path*',
+    '/api/smart-lists',
+    '/api/gmail/:path*',
+    '/api/mls/sync',
+    '/api/attom',
+    '/api/calendar/:path*',
   ],
 };

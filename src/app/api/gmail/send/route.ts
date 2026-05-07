@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 
-const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 interface GmailConnection {
   access_token: string;
@@ -151,7 +151,10 @@ export async function POST(req: NextRequest) {
     // Look up CC agent emails (exclude the sender)
     let ccEmails: string[] = [];
     if (ccAgentIds?.length) {
-      const ids = (ccAgentIds as string[]).filter(id => id !== userId);
+      // Validate each ID is a well-formed UUID before interpolating into URL
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const ids = (ccAgentIds as string[])
+        .filter(id => id !== userId && UUID_RE.test(id));
       if (ids.length) {
         const profilesRes = await fetch(
           `${SUPABASE_URL}/rest/v1/crm_profiles?id=in.(${ids.join(',')})&select=email`,
@@ -275,6 +278,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, emailId });
   } catch (err) {
     console.error('Gmail send error:', err);
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

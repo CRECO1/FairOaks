@@ -30,6 +30,31 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=()',
   },
+  {
+    // Content-Security-Policy — baseline policy. Adjust as integrations are added.
+    key: 'Content-Security-Policy',
+    value: [
+      "default-src 'self'",
+      // Scripts: self + inline (Next.js requires) + GTM/GA
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com",
+      // Styles: self + inline (Tailwind/CSS-in-JS)
+      "style-src 'self' 'unsafe-inline'",
+      // Images: allow any https source + data URIs (listing photos, Supabase storage)
+      "img-src 'self' data: https:",
+      // Fonts: self only
+      "font-src 'self'",
+      // Connect: self + Supabase + Google APIs + Resend + ATTOM
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.attomdata.com https://resend.com",
+      // Frames: same origin only (CRM embeds)
+      "frame-src 'self'",
+      // Forms: self only
+      "form-action 'self'",
+      // Objects: none
+      "object-src 'none'",
+      // Base URI: self only
+      "base-uri 'self'",
+    ].join('; '),
+  },
 ];
 
 /** @type {import('next').NextConfig} */

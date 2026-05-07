@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 
-const SUPABASE_URL = 'https://bnqdzgypesoythpbeujk.supabase.co';
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 interface GmailConnection {
   access_token: string;

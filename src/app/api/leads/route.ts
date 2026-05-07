@@ -40,15 +40,21 @@ export async function POST(req: NextRequest) {
     if (typeof message === 'string' && message.length > 5000) {
       return NextResponse.json({ error: 'Message must be 5000 characters or fewer' }, { status: 400 });
     }
+    if (typeof property_interest === 'string' && property_interest.length > 500) {
+      return NextResponse.json({ error: 'Property interest must be 500 characters or fewer' }, { status: 400 });
+    }
+    if (typeof source === 'string' && source.length > 100) {
+      return NextResponse.json({ error: 'Source must be 100 characters or fewer' }, { status: 400 });
+    }
 
     // ── Save lead to Supabase ───────────────────────────────────────────────────
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    // Service role key bypasses RLS — required for server-side CRM inserts
+    // Service role key bypasses RLS — required for server-side inserts
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseKey;
 
-    if (supabaseUrl && supabaseKey) {
-      const supabase = createClient(supabaseUrl, supabaseKey);
+    if (supabaseUrl && serviceKey) {
+      const supabase = createClient(supabaseUrl, serviceKey);
       await supabase.from('leads').insert([{
         name,
         email,

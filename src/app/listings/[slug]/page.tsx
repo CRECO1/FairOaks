@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -10,6 +11,8 @@ import { Container } from '@/components/ui/Container';
 import { getListingBySlug } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 import { ListingContactForm } from './ListingContactForm';
+
+const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
 const DEMO: Record<string, object> = {
   '124-saddlebrook-drive': {
@@ -25,6 +28,54 @@ const DEMO: Record<string, object> = {
 
 interface Props { params: Promise<{ slug: string }> }
 
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let listing: any = await getListingBySlug(slug).catch(() => null);
+  if (!listing && DEMO[slug]) listing = DEMO[slug];
+  if (!listing) return {};
+
+  const title = listing.price
+    ? `${listing.title} | ${listing.city}, TX — ${formatPrice(listing.price)}`
+    : `${listing.title} | ${listing.city}, TX`;
+
+  const beds = listing.bedrooms ? `${listing.bedrooms}bd` : '';
+  const baths = listing.bathrooms ? `${listing.bathrooms}ba` : '';
+  const sqft = listing.sqft ? `${Number(listing.sqft).toLocaleString()} sqft` : '';
+  const stats = [beds, baths, sqft].filter(Boolean).join(' · ');
+  const description = `${listing.address}, ${listing.city}, TX ${listing.zip ?? ''}. ${stats}${listing.price ? ` Listed at ${formatPrice(listing.price)}.` : ''} Contact Fair Oaks Realty Group today.`.trim();
+
+  const ogImage = Array.isArray(listing.images) && listing.images[0]
+    ? listing.images[0]
+    : `${BASE_URL}/images/og-home.jpg`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `${BASE_URL}/listings/${slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `${BASE_URL}/listings/${slug}`,
+      type: 'website',
+      images: [{ url: ogImage, alt: listing.title }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
+    keywords: [
+      `${listing.address} ${listing.city} TX`,
+      `${listing.city} TX homes for sale`,
+      `${listing.city} TX real estate`,
+      listing.mls_number ? `MLS ${listing.mls_number}` : '',
+      'Texas Hill Country real estate',
+      'Fair Oaks Realty Group',
+    ].filter(Boolean),
+  };
+}
+
 export default async function ListingDetailPage({ params }: Props) {
   const { slug } = await params;
 
@@ -35,8 +86,56 @@ export default async function ListingDetailPage({ params }: Props) {
 
   const images = (listing!.images as string[] | null) ?? [];
 
+  // City slug for internal linking to neighborhood guide
+  const citySlug = (listing!.city as string)
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: BASE_URL },
+          { '@type': 'ListItem', position: 2, name: 'Listings', item: `${BASE_URL}/listings` },
+          { '@type': 'ListItem', position: 3, name: listing!.title, item: `${BASE_URL}/listings/${listing!.slug}` },
+        ],
+      },
+      {
+        '@type': 'SingleFamilyResidence',
+        name: listing!.title,
+        url: `${BASE_URL}/listings/${listing!.slug}`,
+        description: listing!.description as string | undefined,
+        numberOfRooms: listing!.bedrooms ?? undefined,
+        numberOfBathroomsTotal: listing!.bathrooms ?? undefined,
+        floorSize: listing!.sqft ? { '@type': 'QuantitativeValue', value: listing!.sqft, unitCode: 'FTK' } : undefined,
+        yearBuilt: listing!.year_built ?? undefined,
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: listing!.address as string,
+          addressLocality: listing!.city as string,
+          addressRegion: listing!.state as string ?? 'TX',
+          postalCode: listing!.zip as string | undefined,
+          addressCountry: 'US',
+        },
+        ...(listing!.price ? {
+          offers: {
+            '@type': 'Offer',
+            price: listing!.price,
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+          },
+        } : {}),
+        ...(Array.isArray(listing!.images) && listing!.images[0] ? { image: listing!.images[0] } : {}),
+      },
+    ],
+  };
+
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header variant="minimal" />
       <main className="min-h-screen pt-20">
 
@@ -66,7 +165,7 @@ export default async function ListingDetailPage({ params }: Props) {
                 {[1, 2].map(i => (
                   <div key={i} className="aspect-[4/3] relative rounded-xl overflow-hidden bg-background-cream">
                     {images[i] ? (
-                      <Image src={images[i]} alt={`Photo ${i + 1}`} fill className="object-cover" />
+                      <Image src={images[i]} alt={`${listing!.title} — photo ${i + 1}`} fill className="object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-foreground-subtle">
                         <Home className="h-10 w-10" />
@@ -167,6 +266,27 @@ export default async function ListingDetailPage({ params }: Props) {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* Neighborhood Guide CTA — internal link for SEO + UX */}
+              <div className="mt-8 rounded-xl border border-gold/30 bg-gold/5 p-5">
+                <p className="text-body-sm text-foreground-muted">
+                  <MapPin className="mr-1 inline h-3.5 w-3.5 text-gold" />
+                  This home is located in{' '}
+                  <Link
+                    href={`/neighborhoods/${citySlug}`}
+                    className="font-semibold text-primary hover:text-gold transition-colors"
+                  >
+                    {listing!.city as string}
+                  </Link>
+                  {' '}— explore schools, lifestyle, and more homes in the area.
+                </p>
+                <Link
+                  href={`/neighborhoods/${citySlug}`}
+                  className="mt-3 inline-flex items-center gap-1.5 text-body-sm font-semibold text-gold hover:underline"
+                >
+                  View the {listing!.city as string} neighborhood guide →
+                </Link>
               </div>
             </div>
 

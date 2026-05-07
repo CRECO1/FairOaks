@@ -95,11 +95,13 @@ export async function GET(
 
     const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
 
+    // Sanitize slug for use in Content-Disposition header to prevent header injection
+    const safeSlug = slug.replace(/[^a-zA-Z0-9-]/g, '_');
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${slug}-brochure.pdf"`,
+        'Content-Disposition': `attachment; filename="${safeSlug}-brochure.pdf"`,
       },
     });
   } catch (err) {

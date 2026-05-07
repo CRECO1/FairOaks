@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmAdmin } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function POST() {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  // Admin-only: calls auth.admin.listUsers which enumerates all auth accounts
+  const caller = await getCrmAdmin();
+  if (!caller) return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
 
   const supabase = adminClient();
 

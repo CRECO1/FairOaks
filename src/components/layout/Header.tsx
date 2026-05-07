@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Phone, Calendar, Sparkles } from 'lucide-react';
+import { Menu, X, Phone, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -123,16 +123,15 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
               <span className="hidden sm:inline">{phone}</span>
             </a>
 
-            {/* Schedule Button - Desktop */}
+            {/* Contact Button - Desktop */}
             <Button
               variant="primary"
               size="sm"
               className="hidden sm:inline-flex"
               asChild
             >
-              <Link href="/contact#schedule">
-                <Calendar className="mr-2 h-4 w-4" />
-                Schedule
+              <Link href="/contact">
+                Contact Us
               </Link>
             </Button>
 
@@ -204,9 +203,8 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
                   </a>
                 </Button>
                 <Button variant="outline" size="lg" fullWidth asChild>
-                  <Link href="/contact#schedule">
-                    <Calendar className="mr-2 h-5 w-5" />
-                    Schedule a Consultation
+                  <Link href="/contact">
+                    Contact Us
                   </Link>
                 </Button>
               </div>

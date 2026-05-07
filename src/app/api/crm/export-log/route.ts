@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 
@@ -12,7 +13,17 @@ export async function POST(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return unauthorized();
 
-  const { agent_name, agent_email, count, business_unit, selected } = await req.json();
+  const { count, business_unit, selected } = await req.json();
+
+  // Re-fetch agent identity from the DB — never trust client-supplied name/email
+  const supabase = adminClient();
+  const { data: profile } = await supabase
+    .from('crm_profiles')
+    .select('first_name, last_name, email')
+    .eq('id', user.id)
+    .single();
+  const agent_name  = profile ? `${profile.first_name} ${profile.last_name}`.trim() : user.email ?? 'Unknown';
+  const agent_email = profile?.email ?? user.email ?? '';
 
   if (!process.env.RESEND_API_KEY) {
     return NextResponse.json({ success: true, message: 'No Resend key configured' });

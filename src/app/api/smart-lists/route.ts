@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  // Scoped to admin or the list's creator — fetch first to check ownership
   const caller = await getCrmUser();
   if (!caller) return unauthorized();
 
@@ -60,6 +61,16 @@ export async function DELETE(req: NextRequest) {
   }
 
   const supabase = adminClient();
+
+  // Ownership check — allow if caller created it, otherwise require admin
+  const { data: list } = await supabase.from('crm_smart_lists').select('created_by').eq('id', id).single();
+  if (!list) return NextResponse.json({ error: 'Smart list not found' }, { status: 404 });
+
+  if (list.created_by !== caller.id) {
+    const admin = await getCrmAdmin();
+    if (!admin) return NextResponse.json({ error: 'Forbidden — you can only delete your own smart lists' }, { status: 403 });
+  }
+
   const { error } = await supabase.from('crm_smart_lists').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });

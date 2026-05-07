@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -53,8 +53,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  // Admin-only — action plan deletion affects all enrolled contacts
+  const admin = await getCrmAdmin();
+  if (!admin) return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
 
   const { id } = await params;
   const supabase = adminClient();
