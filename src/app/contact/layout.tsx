@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Contact a Fair Oaks Ranch Realtor | Schedule a Consultation',
+  title: 'Contact Fair Oaks Realty Group | Fair Oaks Ranch TX Realtors',
   description:
-    'Contact the top real estate agents in Fair Oaks Ranch, TX. Schedule a free consultation, get a home valuation, or ask about buying or selling in Texas Hill Country.',
+    'Reach our team of Texas Hill Country real estate experts. Call (210) 390-9997 or send a message. Serving Fair Oaks Ranch, Boerne, Helotes, San Antonio and surrounding areas.',
   keywords: [
     'Fair Oaks Ranch realtor contact',
     'contact real estate agent Fair Oaks Ranch TX',

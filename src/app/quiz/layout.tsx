@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "What's My Home Worth? | Free Home Value Quiz – Fair Oaks Ranch TX",
+  title: 'Find My Perfect Home | Fair Oaks Ranch TX Home Finder Quiz',
   description:
-    "Find out what your Fair Oaks Ranch home is worth in today's market. Take our free 2-minute home value quiz and get a personalized report from local real estate experts.",
+    'Take our quick home finder quiz and get matched with listings that fit your lifestyle, budget, and must-haves in Fair Oaks Ranch, Boerne, and the Texas Hill Country.',
   keywords: [
     "what is my home worth Fair Oaks Ranch",
     "free home valuation Fair Oaks Ranch TX",

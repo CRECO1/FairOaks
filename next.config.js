@@ -36,15 +36,15 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       // Scripts: self + inline (Next.js requires) + GTM/GA
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://maps.googleapis.com https://maps.gstatic.com",
       // Styles: self + inline (Tailwind/CSS-in-JS)
       "style-src 'self' 'unsafe-inline'",
       // Images: allow any https source + data URIs (listing photos, Supabase storage)
-      "img-src 'self' data: https:",
+      "img-src 'self' data: https: https://maps.googleapis.com https://maps.gstatic.com https://*.ggpht.com https://streetviewpixels-pa.googleapis.com",
       // Fonts: self only
       "font-src 'self'",
       // Connect: self + Supabase + Google APIs + Resend + ATTOM
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.attomdata.com https://resend.com",
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.attomdata.com https://resend.com https://maps.googleapis.com https://maps.gstatic.com",
       // Frames: same origin only (CRM embeds)
       "frame-src 'self'",
       // Forms: self only

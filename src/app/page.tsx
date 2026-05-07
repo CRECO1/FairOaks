@@ -398,6 +398,51 @@ export default async function HomePage() {
         </Container>
       </section>
 
+      {/* ── FAQ Schema ───────────────────────────────────────────────── */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'FAQPage',
+            mainEntity: [
+              {
+                '@type': 'Question',
+                name: 'How do I find homes for sale in Fair Oaks Ranch, TX?',
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: 'Browse our live MLS listings at fairoaksrealtygroup.com/listings. We update directly from SABOR MLS so you always see the latest active and pending properties in Fair Oaks Ranch, Boerne, Helotes, and surrounding Texas Hill Country communities.',
+                },
+              },
+              {
+                '@type': 'Question',
+                name: 'What is my home worth in Fair Oaks Ranch?',
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: 'Home values in Fair Oaks Ranch range widely based on subdivision, size, and condition. Our agents provide free, no-obligation home valuations based on recent comparable sales. Contact us or visit our Sell page to request yours.',
+                },
+              },
+              {
+                '@type': 'Question',
+                name: 'Do you work with VA loans and military buyers?',
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: 'Yes — we specialize in VA homebuying and PCS relocations. We serve active duty, veterans, and military families near Fort Sam Houston, Lackland AFB, and Randolph AFB. VA loans offer $0 down and no PMI, and our agents know how to maximize your benefit.',
+                },
+              },
+              {
+                '@type': 'Question',
+                name: 'How long does it take to sell a home in Fair Oaks Ranch?',
+                acceptedAnswer: {
+                  '@type': 'Answer',
+                  text: 'Our listings average 21 days on market with a 103% list-to-sale price ratio. Market conditions vary but our strategic pricing and marketing consistently outperform the local average.',
+                },
+              },
+            ],
+          }),
+        }}
+      />
+
       <Footer />
     </>
   );
