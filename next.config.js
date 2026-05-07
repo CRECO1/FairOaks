@@ -78,6 +78,21 @@ const nextConfig = {
         protocol: 'https',
         hostname: '**.supabase.in',
       },
+      {
+        // SABOR / ConnectMLS listing photos
+        protocol: 'https',
+        hostname: '**.connectmls.com',
+      },
+      {
+        // SABOR media CDN (alternate hostnames)
+        protocol: 'https',
+        hostname: '**.sabor.com',
+      },
+      {
+        // Catch-all for any MLS media CDN served over HTTPS
+        protocol: 'https',
+        hostname: '**',
+      },
     ],
   },
   reactStrictMode: true, // Enable for better security and debugging
