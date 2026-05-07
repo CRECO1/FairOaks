@@ -82,10 +82,10 @@ const DEFAULT_SETTINGS = {
   address: '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015',
 };
 
-/** Fetch one active listing with photos from a given OData filter */
+/** Fetch one active listing from a given OData filter, highest price first */
 async function fetchOneListing(filter: string) {
   try {
-    const activeFilter = `(StandardStatus eq ODataService.StandardStatus'ACTIVE') and PhotosCount gt 0 and ${filter}`;
+    const activeFilter = `StandardStatus eq ODataService.StandardStatus'ACTIVE' and ${filter}`;
     const result = await searchProperties({ filter: activeFilter, top: 1, orderby: 'ListPrice desc' });
     const p = result.value[0];
     if (!p) return null;
@@ -96,10 +96,8 @@ async function fetchOneListing(filter: string) {
 
 export default async function HomePage() {
   const [dominion, fairOaks, cordillera, boerne, testimonialsResult, neighborhoodsResult, settingsResult] = await Promise.allSettled([
-    // 'ominion' matches both 'Dominion' and 'THE DOMINION' (mixed case in SABOR)
-    fetchOneListing(`(contains(SubdivisionName,'ominion') or contains(SubdivisionName,'OMINION')) and City eq ODataService.City_Lkp_1'SANANTONIO'`),
+    fetchOneListing(`contains(SubdivisionName,'ominion')`),
     fetchOneListing(`City eq ODataService.City_Lkp_1'FAIROAKSRA'`),
-    // CORDILLERA RANCH is stored all-caps in SABOR
     fetchOneListing(`contains(SubdivisionName,'CORDILLERA')`),
     fetchOneListing(`City eq ODataService.City_Lkp_1'BOERNE'`),
     getTestimonials(true),
