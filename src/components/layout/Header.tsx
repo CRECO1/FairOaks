@@ -54,15 +54,16 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
         <nav className="flex h-20 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center">
-            <span
+            <div
               className={cn(
-                'font-heading text-lg sm:text-2xl font-bold tracking-tight',
+                'font-heading font-bold tracking-tight leading-tight flex flex-col',
                 isTransparent ? 'text-white' : 'text-primary'
               )}
               style={textShadowStyle}
             >
-              Fair Oaks <span className="text-gold">Realty Group</span>
-            </span>
+              <span className="text-xl sm:text-2xl">Fair Oaks</span>
+              <span className="text-base sm:text-lg text-gold">Realty Group</span>
+            </div>
           </Link>
 
           {/* Desktop Navigation */}
