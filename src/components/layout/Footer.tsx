@@ -142,9 +142,9 @@ export function Footer() {
                 </li>
               </ul>
               <div className="mt-6 flex flex-col gap-3">
-                <Link href="/contact#schedule"
+                <Link href="/contact"
                   className="inline-flex items-center gap-2 rounded-lg border border-gold/50 px-5 py-2.5 text-body-sm font-semibold text-gold transition-all hover:bg-gold hover:text-primary">
-                  Schedule a Consultation
+                  Contact Us
                 </Link>
                 <a href="/crm" target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-5 py-2.5 text-body-sm font-semibold text-white/50 transition-all hover:border-white/40 hover:text-white/80">
