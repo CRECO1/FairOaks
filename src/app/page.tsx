@@ -96,7 +96,7 @@ async function fetchOneListing(filter: string) {
 
 export default async function HomePage() {
   const [dominion, fairOaks, cordillera, boerne, testimonialsResult, neighborhoodsResult, settingsResult] = await Promise.allSettled([
-    fetchOneListing(`contains(SubdivisionName,'ominion')`),
+    fetchOneListing(`City eq ODataService.City_Lkp_1'SANANTONIO' and contains(SubdivisionName,'ominion')`),
     fetchOneListing(`City eq ODataService.City_Lkp_1'FAIROAKSRA'`),
     fetchOneListing(`contains(SubdivisionName,'CORDILLERA')`),
     fetchOneListing(`City eq ODataService.City_Lkp_1'BOERNE'`),
