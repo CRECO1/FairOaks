@@ -1881,7 +1881,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               onClick={async () => {
                 setMlsSyncing(true);
                 try {
-                  const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                  const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) } });
                   const data = await res.json();
                   if (!res.ok) showToast('MLS sync failed: ' + (data.error ?? res.status));
                   else showToast(`✅ MLS sync done — ${data.synced} listings updated`);
