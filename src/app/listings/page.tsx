@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Search, SlidersHorizontal, Bed, Bath, Square, MapPin, Home, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, SlidersHorizontal, Bed, Bath, Square, MapPin, Home, X, ChevronLeft, ChevronRight, List, Map } from 'lucide-react';
+import { ListingsMap } from '@/components/sections/ListingsMap';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -74,6 +75,7 @@ export default function ListingsPage() {
   });
   const [priceRange, setPriceRange] = useState(0);
   const [minBeds,    setMinBeds]    = useState(0);
+  const [viewMode,   setViewMode]   = useState<'list' | 'map'>('list');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -252,14 +254,32 @@ export default function ListingsPage() {
         <div className="py-10">
           <Container>
 
-            {/* Result count */}
-            {!loading && total !== null && (
-              <p className="mb-6 text-body-sm text-foreground-muted">
-                {total > 0
-                  ? `${total.toLocaleString()} ${total === 1 ? 'listing' : 'listings'} in Greater San Antonio`
-                  : 'No listings match your search'}
-              </p>
-            )}
+            {/* Result count + List/Map toggle */}
+            <div className="mb-6 flex items-center justify-between">
+              {!loading && total !== null ? (
+                <p className="text-body-sm text-foreground-muted">
+                  {total > 0
+                    ? `${total.toLocaleString()} ${total === 1 ? 'listing' : 'listings'} in Greater San Antonio`
+                    : 'No listings match your search'}
+                </p>
+              ) : <div />}
+
+              {/* List / Map toggle */}
+              <div className="flex items-center rounded-lg border border-border overflow-hidden">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-body-sm font-semibold transition-colors ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white text-foreground-muted hover:bg-background-cream'}`}
+                >
+                  <List className="h-4 w-4" /> List
+                </button>
+                <button
+                  onClick={() => setViewMode('map')}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-body-sm font-semibold transition-colors ${viewMode === 'map' ? 'bg-primary text-white' : 'bg-white text-foreground-muted hover:bg-background-cream'}`}
+                >
+                  <Map className="h-4 w-4" /> Map
+                </button>
+              </div>
+            </div>
 
             {/* Loading skeleton */}
             {loading && (
@@ -284,8 +304,30 @@ export default function ListingsPage() {
               </div>
             )}
 
+            {/* Map view */}
+            {!loading && listings.length > 0 && viewMode === 'map' && (
+              <div className="h-[70vh] w-full rounded-xl overflow-hidden border border-border shadow-card">
+                <ListingsMap
+                  listings={listings.map((l: any) => ({
+                    listing_key: l.listing_key ?? l.id,
+                    slug:        l.slug,
+                    title:       l.title,
+                    price:       l.price,
+                    city:        l.city,
+                    bedrooms:    l.bedrooms ?? 0,
+                    bathrooms:   l.bathrooms ?? 0,
+                    sqft:        l.sqft ?? 0,
+                    address:     l.address,
+                    images:      l.images as string[] | null,
+                    latitude:    l.latitude ?? null,
+                    longitude:   l.longitude ?? null,
+                  }))}
+                />
+              </div>
+            )}
+
             {/* Listing grid */}
-            {!loading && listings.length > 0 && (
+            {!loading && listings.length > 0 && viewMode === 'list' && (
               <>
                 <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
                   {listings.map(listing => {
