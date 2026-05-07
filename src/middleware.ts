@@ -7,16 +7,20 @@ import { validateCsrf } from '@/lib/csrf';
 const protectedRoutes = ['/manage'];
 const publicRoutes = ['/manage/login'];
 
-// API routes that need session refresh / CSRF protection (return 401 instead of redirect)
+// API routes that need session refresh + CSRF protection
 const apiSessionRoutes = [
   '/api/campaigns',
   '/api/crm',
   '/api/action-plans',
   '/api/smart-lists',
   '/api/gmail',
-  '/api/mls/sync',
   '/api/attom',
   '/api/calendar',
+];
+
+// API routes that need session refresh but have their own auth — skip CSRF
+const apiSessionNoCsrfRoutes = [
+  '/api/mls/sync',
 ];
 
 export async function middleware(request: NextRequest) {
@@ -27,16 +31,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // For API routes that need auth, validate CSRF then refresh the session cookie.
-  // The route handler itself decides whether to return 401.
+  // Routes with session refresh + CSRF
   const isApiSessionRoute = apiSessionRoutes.some(route => pathname.startsWith(route));
   if (isApiSessionRoute) {
-    // CSRF check — rejects cross-origin state-changing requests
     const csrfError = validateCsrf(request);
     if (csrfError) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    try {
+      const { supabaseResponse } = await updateSession(request);
+      return supabaseResponse;
+    } catch {
+      return NextResponse.next();
+    }
+  }
 
+  // Routes with session refresh only (own auth handles security — no CSRF needed)
+  const isNoCsrfRoute = apiSessionNoCsrfRoutes.some(route => pathname.startsWith(route));
+  if (isNoCsrfRoute) {
     try {
       const { supabaseResponse } = await updateSession(request);
       return supabaseResponse;
