@@ -5277,13 +5277,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="1,500 – 2,500 sqft" value={nc.size_range} onChange={e => setNc({ ...nc, size_range: e.target.value })} />
                     </div>
                   </div>
-                  {/* LXP — Tenant only */}
-                  {nc.type === 'Tenant' && (
-                    <div style={{ marginTop: 12 }}>
-                      <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date</label>
-                      <input type="date" className="crm-input" style={{ marginTop: 4 }} value={nc.lease_expiration_date} onChange={e => setNc({ ...nc, lease_expiration_date: e.target.value })} />
-                    </div>
-                  )}
+                  {/* LXP — all types */}
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
+                    <input type="date" className="crm-input" style={{ marginTop: 4 }} value={nc.lease_expiration_date} onChange={e => setNc({ ...nc, lease_expiration_date: e.target.value })} />
+                  </div>
                 </div>
               )}
 
@@ -5553,7 +5551,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{c.size_range}</div>
                       </div>
                     )}
-                    {c.type === 'Tenant' && (c.lease_expiration_date ? (() => {
+                    {(c.lease_expiration_date ? (() => {
                       const lxpDate = new Date(c.lease_expiration_date);
                       const daysLeft = Math.ceil((lxpDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                       const lxpBg = daysLeft < 0 ? '#fee2e2' : daysLeft < 90 ? '#fed7aa' : daysLeft < 180 ? '#fef9c3' : '#dcfce7';
@@ -6369,13 +6367,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="1,500 – 2,500 sqft" value={ec.size_range} onChange={e => setEc({ ...ec, size_range: e.target.value })} />
                     </div>
                   </div>
-                  {/* LXP — Tenant only */}
-                  {ec.type === 'Tenant' && (
-                    <div style={{ marginTop: 12 }}>
-                      <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date</label>
-                      <input type="date" className="crm-input" style={{ marginTop: 4 }} value={ec.lease_expiration_date} onChange={e => setEc({ ...ec, lease_expiration_date: e.target.value })} />
-                    </div>
-                  )}
+                  {/* LXP — all types */}
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
+                    <input type="date" className="crm-input" style={{ marginTop: 4 }} value={ec.lease_expiration_date} onChange={e => setEc({ ...ec, lease_expiration_date: e.target.value })} />
+                  </div>
                   {/* Birthday */}
                   <div style={{ marginTop: 12 }}>
                     <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🎂 Birthday <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
