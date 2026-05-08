@@ -88,8 +88,38 @@ export async function GET(req: NextRequest) {
     if (maxPrice !== null && Number.isFinite(maxPrice)) filters.push(`ListPrice le ${maxPrice}`);
     if (minBeds  !== null && Number.isFinite(minBeds) && minBeds > 0) filters.push(`BedroomsTotal ge ${minBeds}`);
     if (search) {
-      const q = search.replace(/'/g, "''");
-      filters.push(`(contains(SubdivisionName,'${q}') or contains(StreetName,'${q}') or contains(ListingId,'${q}'))`);
+      const safe = (s: string) => s.replace(/'/g, "''");
+      const tokens = search.trim().split(/\s+/);
+
+      // Street suffixes to strip when matching StreetName
+      const SUFFIXES = new Set(['dr','drive','st','street','ave','avenue','blvd','boulevard',
+        'ln','lane','ct','court','pl','place','rd','road','way','cir','circle',
+        'pkwy','parkway','hwy','highway','trl','trail','pass','run','loop','bend','cv','cove']);
+
+      const streetNum = tokens[0].match(/^\d+$/) ? tokens[0] : null;
+      const zip       = tokens.find(t => /^\d{5}$/.test(t)) ?? null;
+      const nameTokens = tokens.filter(t =>
+        t !== streetNum && t !== zip && !SUFFIXES.has(t.toLowerCase().replace(/\.$/, ''))
+      );
+      const streetName = nameTokens.join(' ');
+
+      if (streetNum) {
+        // Looks like an address query — match StreetNumber + StreetName + optional zip
+        const parts: string[] = [`StreetNumber eq '${safe(streetNum)}'`];
+        if (streetName) parts.push(`contains(StreetName,'${safe(streetName)}')`);
+        if (zip)        parts.push(`PostalCode eq '${safe(zip)}'`);
+        filters.push(`(${parts.join(' and ')})`);
+      } else if (zip && tokens.length === 1) {
+        // Zip-only search
+        filters.push(`PostalCode eq '${safe(zip)}'`);
+      } else {
+        // Generic: subdivision, street name, MLS#, or zip mixed in text
+        const orParts = [`contains(SubdivisionName,'${safe(search)}')`,
+                         `contains(StreetName,'${safe(search)}')`,
+                         `contains(ListingId,'${safe(search)}')`];
+        if (zip) orParts.push(`PostalCode eq '${safe(zip)}'`);
+        filters.push(`(${orParts.join(' or ')})`);
+      }
     }
 
     const filter = filters.join(' and ');
