@@ -114,7 +114,7 @@ export default function TeamPage() {
                 We&apos;re always looking for talented, client-focused agents to join our growing team.
               </p>
               <Button size="lg" asChild>
-                <Link href="/contact?subject=Joining the Team">Get in Touch</Link>
+                <Link href="/careers">Join Our Team</Link>
               </Button>
             </div>
           </Container>
@@ -211,10 +211,10 @@ export default function TeamPage() {
               We&apos;re always looking for talented, motivated agents who want to grow their career with one of the Texas Hill Country&apos;s most trusted brokerages.
             </p>
             <a
-              href="/join"
+              href="/careers"
               className="inline-flex items-center gap-2 rounded-lg bg-gold px-8 py-3.5 font-semibold text-primary transition-colors hover:bg-gold-dark"
             >
-              Apply to Join Our Team
+              Join Our Team
             </a>
           </div>
         </Container>
