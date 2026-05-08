@@ -20,7 +20,6 @@ import {
   getMediaBatch,
   resoPropertyToListing,
   statusFilter,
-  MAP_SELECT,
 } from '@/lib/sabor-reso';
 
 export const dynamic = 'force-dynamic';
@@ -72,22 +71,15 @@ export async function GET(req: NextRequest) {
   const minBeds  = sp.get('minBeds')  ? Number(sp.get('minBeds'))  : null;
   const search   = sp.get('search')   ?? '';
   const page     = Math.max(1, Number(sp.get('page')  ?? '1'));
-  const latMin   = sp.get('latMin')   ? Number(sp.get('latMin'))   : null;
-  const latMax   = sp.get('latMax')   ? Number(sp.get('latMax'))   : null;
-  const lngMin   = sp.get('lngMin')   ? Number(sp.get('lngMin'))   : null;
-  const lngMax   = sp.get('lngMax')   ? Number(sp.get('lngMax'))   : null;
-  const hasBounds = latMin !== null && latMax !== null && lngMin !== null && lngMax !== null;
-  // Use larger limit for map viewport queries so all visible pins load at once
-  const limit    = hasBounds ? 100 : Math.min(48, Math.max(1, Number(sp.get('limit') ?? '24')));
+  // mapMode=1 fetches a larger batch for the map view (no pagination needed)
+  const isMapMode = sp.get('mapMode') === '1';
+  const limit    = isMapMode ? 200 : Math.min(48, Math.max(1, Number(sp.get('limit') ?? '24')));
   const skip     = (page - 1) * limit;
 
   try {
     const filters: string[] = [STATUS_FILTER];
 
-    // In map/bounds mode the viewport replaces city filtering; otherwise use city filter
-    if (hasBounds) {
-      filters.push(`(Latitude ge ${latMin} and Latitude le ${latMax} and Longitude ge ${lngMin} and Longitude le ${lngMax})`);
-    } else if (city && city !== 'All Areas') {
+    if (city && city !== 'All Areas') {
       const cityFilter = buildCityFilter(city);
       if (cityFilter) filters.push(cityFilter);
     }
@@ -102,21 +94,13 @@ export async function GET(req: NextRequest) {
 
     const filter = filters.join(' and ');
 
-    // For map/bounds queries try to include lat/lng; fall back to default select if SABOR rejects those fields
-    let result = await searchProperties({
+    const result = await searchProperties({
       filter,
       top:     limit,
       skip,
       orderby: 'ModificationTimestamp desc',
       count:   true,
-      ...(hasBounds ? { select: MAP_SELECT } : {}),
-    }).catch(() => null);
-
-    // If MAP_SELECT caused a rejection, retry without the extended fields
-    if (!result && hasBounds) {
-      result = await searchProperties({ filter, top: limit, skip, orderby: 'ModificationTimestamp desc', count: true });
-    }
-    if (!result) throw new Error('SABOR API failed');
+    });
 
     const properties = result.value;
     const total      = result['@odata.count'] ?? properties.length;

@@ -78,14 +78,11 @@ function ListingsPageInner() {
   const [viewMode,   setViewMode]   = useState<'list' | 'map'>('list');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // Map-specific state: listings fetched by viewport bounds
-  const [mapListings,       setMapListings]       = useState<Listing[]>([]);
-  const [mapLoading,        setMapLoading]         = useState(false);
-  const [hasMapData,        setHasMapData]         = useState(false);
-  const mapBoundsRef = useRef<{ latMin: number; latMax: number; lngMin: number; lngMax: number } | null>(null);
+  // Map-specific state: large batch loaded once when entering map view
+  const [mapListings, setMapListings] = useState<Listing[]>([]);
+  const [mapLoading,  setMapLoading]  = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mapDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchListings = useCallback((
     searchVal: string,
@@ -122,39 +119,31 @@ function ListingsPageInner() {
   }, []);
 
   const fetchMapListings = useCallback((
-    bounds: { latMin: number; latMax: number; lngMin: number; lngMax: number },
+    cityVal: string,
     priceIdx: number,
     minBedsVal: number,
+    searchVal: string,
   ) => {
     setMapLoading(true);
     const params = new URLSearchParams();
-    params.set('latMin', String(bounds.latMin));
-    params.set('latMax', String(bounds.latMax));
-    params.set('lngMin', String(bounds.lngMin));
-    params.set('lngMax', String(bounds.lngMax));
+    params.set('mapMode', '1');
+    if (searchVal)                          params.set('search',   searchVal);
+    if (cityVal && cityVal !== 'All Areas') params.set('city',     cityVal);
     const range = PRICE_RANGES[priceIdx];
     if (range.min > 0)        params.set('minPrice', String(range.min));
     if (range.max < Infinity) params.set('maxPrice', String(range.max));
     if (minBedsVal > 0)       params.set('minBeds',  String(minBedsVal));
     fetch(`/api/listings?${params.toString()}`)
       .then(r => r.json())
-      .then(d => { setMapListings(d.listings ?? []); setMapLoading(false); setHasMapData(true); })
+      .then(d => { setMapListings(d.listings ?? []); setMapLoading(false); })
       .catch(() => { setMapLoading(false); });
   }, []);
 
-  const handleBoundsChange = useCallback((bounds: { latMin: number; latMax: number; lngMin: number; lngMax: number }) => {
-    mapBoundsRef.current = bounds;
-    if (mapDebounceRef.current) clearTimeout(mapDebounceRef.current);
-    mapDebounceRef.current = setTimeout(() => {
-      fetchMapListings(bounds, priceRange, minBeds);
-    }, 300);
-  }, [fetchMapListings, priceRange, minBeds]);
-
-  // Re-fetch map listings when price/bed filters change while in map mode
+  // Load map listings when entering map view or when filters change in map mode
   useEffect(() => {
-    if (viewMode !== 'map' || !mapBoundsRef.current) return;
-    fetchMapListings(mapBoundsRef.current, priceRange, minBeds);
-  }, [priceRange, minBeds, viewMode, fetchMapListings]);
+    if (viewMode !== 'map') return;
+    fetchMapListings(city, priceRange, minBeds, search);
+  }, [viewMode, city, priceRange, minBeds, search, fetchMapListings]);
 
   // Debounced fetch when filters change — reset to page 1
   useEffect(() => {
@@ -346,11 +335,11 @@ function ListingsPageInner() {
               </div>
             )}
 
-            {/* Map view — uses viewport-bounds listings once map fires idle */}
+            {/* Map view — loads 200 listings for current filters, Google Maps handles viewport */}
             {viewMode === 'map' && (
               <div className="h-[70vh] w-full rounded-xl overflow-hidden border border-border shadow-card">
                 <ListingsMap
-                  listings={(hasMapData ? mapListings : listings).map((l: any) => ({
+                  listings={mapListings.map((l: any) => ({
                     listing_key: l.listing_key ?? l.id,
                     slug:        l.slug,
                     title:       l.title,
@@ -364,7 +353,6 @@ function ListingsPageInner() {
                     latitude:    l.latitude ?? null,
                     longitude:   l.longitude ?? null,
                   }))}
-                  onBoundsChange={handleBoundsChange}
                   mapLoading={mapLoading}
                 />
               </div>
