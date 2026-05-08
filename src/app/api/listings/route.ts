@@ -20,6 +20,7 @@ import {
   getMediaBatch,
   resoPropertyToListing,
   statusFilter,
+  MAP_SELECT,
 } from '@/lib/sabor-reso';
 
 export const dynamic = 'force-dynamic';
@@ -101,13 +102,21 @@ export async function GET(req: NextRequest) {
 
     const filter = filters.join(' and ');
 
-    const result = await searchProperties({
+    // For map/bounds queries try to include lat/lng; fall back to default select if SABOR rejects those fields
+    let result = await searchProperties({
       filter,
       top:     limit,
       skip,
       orderby: 'ModificationTimestamp desc',
       count:   true,
-    });
+      ...(hasBounds ? { select: MAP_SELECT } : {}),
+    }).catch(() => null);
+
+    // If MAP_SELECT caused a rejection, retry without the extended fields
+    if (!result && hasBounds) {
+      result = await searchProperties({ filter, top: limit, skip, orderby: 'ModificationTimestamp desc', count: true });
+    }
+    if (!result) throw new Error('SABOR API failed');
 
     const properties = result.value;
     const total      = result['@odata.count'] ?? properties.length;
