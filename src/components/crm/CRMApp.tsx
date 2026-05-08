@@ -940,7 +940,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setAllTasks(prev => [...prev, data as CRMTask].sort((a, b) => a.due_date.localeCompare(b.due_date)));
     setShowTaskModal(false);
     setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' });
-    showToast('Task saved');
+
+    // Push to Google Calendar (fire-and-forget — task is already saved regardless)
+    const client = clients.find(c => c.id === taskClientId);
+    fetch('/api/calendar/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: profile!.id,
+        title: taskForm.title.trim(),
+        due_date: taskForm.due_date,
+        notes: taskForm.notes.trim(),
+        client_name: client ? `${client.first_name} ${client.last_name}` : '',
+        task_type: taskForm.type,
+      }),
+    }).then(r => r.json()).then(res => {
+      if (res.error === 'scope_missing') {
+        showToast('Task saved — reconnect Google in Settings to enable calendar sync');
+      } else if (res.success) {
+        showToast('Task saved + added to Google Calendar ✓');
+      } else {
+        showToast('Task saved (calendar sync unavailable)');
+      }
+    }).catch(() => showToast('Task saved'));
   }
 
   async function completeTask(taskId: string) {
