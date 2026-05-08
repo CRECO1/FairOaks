@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Bed, Bath, Square, MapPin, Calendar, Phone, ArrowLeft, Home, CheckCircle, ArrowRight } from 'lucide-react';
+import { Bed, Bath, Square, MapPin, Calendar, Phone, ArrowLeft, Home, ArrowRight } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -12,6 +12,7 @@ import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sa
 import { formatPrice } from '@/lib/utils';
 import { ListingContactForm } from './ListingContactForm';
 import { MortgageCalculator } from '@/components/sections/MortgageCalculator';
+import { ListingGallery } from '@/components/sections/ListingGallery';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -229,31 +230,8 @@ export default async function ListingDetailPage({ params }: Props) {
 
         {/* Image Gallery */}
         <div className="bg-background-warm">
-          <Container className="py-6">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-              <div className="md:col-span-2 aspect-[4/3] relative rounded-xl overflow-hidden bg-background-cream">
-                {images[0] ? (
-                  <Image src={images[0]} alt={listing.title} fill className="object-cover" priority />
-                ) : (
-                  <div className="flex h-full items-center justify-center text-foreground-subtle">
-                    <Home className="h-20 w-20" />
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-rows-2 gap-3">
-                {[1, 2].map(i => (
-                  <div key={i} className="aspect-[4/3] relative rounded-xl overflow-hidden bg-background-cream">
-                    {images[i] ? (
-                      <Image src={images[i]} alt={`${listing.title} — photo ${i + 1}`} fill className="object-cover" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-foreground-subtle">
-                        <Home className="h-10 w-10" />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+          <Container className="py-6 relative">
+            <ListingGallery images={images} title={listing.title} />
           </Container>
         </div>
 
