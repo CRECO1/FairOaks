@@ -26,7 +26,7 @@ interface CalendarEvent { id: string; title: string; description: string | null;
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
 interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
-interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; }
+interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
 const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
@@ -3535,24 +3535,96 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div>
                       {campaignSends.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No sends yet — activate the campaign to start sending.</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {campaignSends.map(s => {
-                            const client = clients.find(c => c.id === s.client_id);
-                            return (
-                              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-                                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: s.status === 'sent' ? '#dcfce7' : s.status === 'failed' ? '#fee2e2' : '#f3f4f6', color: s.status === 'sent' ? '#166534' : s.status === 'failed' ? '#991b1b' : '#6b7280' }}>{s.status.toUpperCase()}</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 500 }}>{client ? `${client.first_name} ${client.last_name}` : 'Unknown client'}</div>
-                                  {s.subject && <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.subject}</div>}
+                      ) : (() => {
+                        const sentEmails = campaignSends.filter(s => s.status === 'sent' && s.type === 'email');
+                        const openedCount = sentEmails.filter(s => s.opened_at).length;
+                        const trackedCount = sentEmails.filter(s => s.tracking_id).length;
+                        const openRate = trackedCount > 0 ? Math.round((openedCount / trackedCount) * 100) : null;
+                        return (
+                          <div>
+                            {/* Open rate summary bar */}
+                            {trackedCount > 0 && (
+                              <div style={{ display: 'flex', gap: 16, padding: '12px 16px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <div style={{ textAlign: 'center', minWidth: 60 }}>
+                                  <div style={{ fontSize: 22, fontWeight: 700, color: '#111', fontFamily: "'Cormorant Garamond',serif" }}>{openRate}%</div>
+                                  <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Open Rate</div>
                                 </div>
-                                <div style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{new Date(s.sent_at).toLocaleDateString()}</div>
-                                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 8, background: s.type === 'email' ? '#dbeafe' : '#d1fae5', color: s.type === 'email' ? '#1e40af' : '#065f46' }}>{s.type.toUpperCase()}</span>
+                                <div style={{ width: 1, background: '#e5e7eb', alignSelf: 'stretch' }} />
+                                <div style={{ textAlign: 'center', minWidth: 50 }}>
+                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#16a34a' }}>{openedCount}</div>
+                                  <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Opened</div>
+                                </div>
+                                <div style={{ textAlign: 'center', minWidth: 50 }}>
+                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#6b7280' }}>{trackedCount - openedCount}</div>
+                                  <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Unopened</div>
+                                </div>
+                                <div style={{ textAlign: 'center', minWidth: 50 }}>
+                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#374151' }}>{trackedCount}</div>
+                                  <div style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Tracked</div>
+                                </div>
+                                {/* Open rate bar */}
+                                <div style={{ flex: 1, minWidth: 120 }}>
+                                  <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${openRate}%`, background: openRate! >= 40 ? '#16a34a' : openRate! >= 20 ? '#c9922c' : '#ef4444', borderRadius: 4, transition: 'width .4s' }} />
+                                  </div>
+                                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>Industry avg: ~20–25%</div>
+                                </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                            )}
+
+                            {/* Send rows */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {campaignSends.map(s => {
+                                const client = clients.find(c => c.id === s.client_id);
+                                const isOpened = !!s.opened_at;
+                                const isTracked = !!s.tracking_id;
+                                return (
+                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isOpened ? '#f0fdf4' : '#fff', border: `1px solid ${isOpened ? '#bbf7d0' : '#e5e7eb'}`, borderRadius: 8 }}>
+                                    {/* Send status */}
+                                    <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, flexShrink: 0, background: s.status === 'sent' ? '#dcfce7' : s.status === 'failed' ? '#fee2e2' : '#f3f4f6', color: s.status === 'sent' ? '#166534' : s.status === 'failed' ? '#991b1b' : '#6b7280' }}>
+                                      {s.status.toUpperCase()}
+                                    </span>
+
+                                    {/* Client name + subject */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{client ? `${client.first_name} ${client.last_name}` : 'Unknown'}</div>
+                                      {s.subject && <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.subject}</div>}
+                                    </div>
+
+                                    {/* Open badge */}
+                                    {s.status === 'sent' && s.type === 'email' && (
+                                      isOpened ? (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>
+                                          👁 Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}
+                                        </span>
+                                      ) : isTracked ? (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: '#9ca3af', background: '#f3f4f6', border: '1px solid #e5e7eb', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>
+                                          ○ Unopened
+                                        </span>
+                                      ) : null
+                                    )}
+
+                                    {/* Date */}
+                                    <div style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>
+                                      {new Date(s.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      {isOpened && s.opened_at && (
+                                        <div style={{ fontSize: 10, color: '#16a34a' }}>
+                                          opened {new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Type pill */}
+                                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 8, flexShrink: 0, background: s.type === 'email' ? '#dbeafe' : '#d1fae5', color: s.type === 'email' ? '#1e40af' : '#065f46' }}>
+                                      {s.type.toUpperCase()}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
