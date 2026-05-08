@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     // In map/bounds mode the viewport replaces city filtering; otherwise use city filter
     if (hasBounds) {
-      filters.push(`Latitude ge ${latMin} and Latitude le ${latMax} and Longitude ge ${lngMin} and Longitude le ${lngMax}`);
+      filters.push(`(Latitude ge ${latMin} and Latitude le ${latMax} and Longitude ge ${lngMin} and Longitude le ${lngMax})`);
     } else if (city && city !== 'All Areas') {
       const cityFilter = buildCityFilter(city);
       if (cityFilter) filters.push(cityFilter);

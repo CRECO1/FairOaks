@@ -79,8 +79,9 @@ function ListingsPageInner() {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Map-specific state: listings fetched by viewport bounds
-  const [mapListings,  setMapListings]  = useState<Listing[]>([]);
-  const [mapLoading,   setMapLoading]   = useState(false);
+  const [mapListings,       setMapListings]       = useState<Listing[]>([]);
+  const [mapLoading,        setMapLoading]         = useState(false);
+  const [hasMapData,        setHasMapData]         = useState(false);
   const mapBoundsRef = useRef<{ latMin: number; latMax: number; lngMin: number; lngMax: number } | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -137,8 +138,8 @@ function ListingsPageInner() {
     if (minBedsVal > 0)       params.set('minBeds',  String(minBedsVal));
     fetch(`/api/listings?${params.toString()}`)
       .then(r => r.json())
-      .then(d => { setMapListings(d.listings ?? []); setMapLoading(false); })
-      .catch(() => { setMapListings([]); setMapLoading(false); });
+      .then(d => { setMapListings(d.listings ?? []); setMapLoading(false); setHasMapData(true); })
+      .catch(() => { setMapLoading(false); });
   }, []);
 
   const handleBoundsChange = useCallback((bounds: { latMin: number; latMax: number; lngMin: number; lngMax: number }) => {
@@ -349,7 +350,7 @@ function ListingsPageInner() {
             {viewMode === 'map' && (
               <div className="h-[70vh] w-full rounded-xl overflow-hidden border border-border shadow-card">
                 <ListingsMap
-                  listings={(mapBoundsRef.current ? mapListings : listings).map((l: any) => ({
+                  listings={(hasMapData ? mapListings : listings).map((l: any) => ({
                     listing_key: l.listing_key ?? l.id,
                     slug:        l.slug,
                     title:       l.title,
