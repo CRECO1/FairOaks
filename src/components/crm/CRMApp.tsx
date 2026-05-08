@@ -13,7 +13,8 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; review_requested_at?: string | null; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; review_requested_at?: string | null; birthday?: string | null; }
+interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
@@ -348,9 +349,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showAddClient, setShowAddClient] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
-  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '' });
+  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', birthday: '' });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState<'nc' | 'ec' | null>(null);
   const [saving, setSaving] = useState(false);
+  // Tasks
+  const [allTasks, setAllTasks] = useState<CRMTask[]>([]);
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskClientId, setTaskClientId] = useState<string | null>(null);
+  const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
 
   // Kanban drag state
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
@@ -514,7 +520,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
   // New client form
-  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '' });
+  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', birthday: '' });
   // Invite form
   const [inv, setInv] = useState({ email: '', first_name: '', last_name: '', phone: '', license: '' });
   // New email form
@@ -667,6 +673,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
+      setTimeout(() => loadAllTasks(), 500);
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -688,6 +695,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
+      setTimeout(() => loadAllTasks(), 500);
     }
     setLoading(false);
   }, [session]);
@@ -813,7 +821,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
-      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '' });
+      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', birthday: '' });
       setShowAddClient(false);
       loadClients(profile!);
     }
@@ -863,6 +871,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       lead_source: c.lead_source ?? '',
       notes: c.notes ?? '',
       lease_expiration_date: c.lease_expiration_date ?? '',
+      birthday: c.birthday ?? '',
     });
     setEditClient(c);
     setActiveClient(null); // close profile modal when opening edit
@@ -894,6 +903,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       lead_source: ec.lead_source,
       notes: ec.notes,
       lease_expiration_date: ec.lease_expiration_date || null,
+      birthday: ec.birthday || null,
     }).eq('id', editClient.id);
     if (error) {
       showToast('Error: ' + error.message);
@@ -903,6 +913,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setEditClient(null);
     }
     setSaving(false);
+  }
+
+  // ── Task Management ───────────────────────────────────────────────────────────
+  async function loadAllTasks() {
+    const { data } = await supabase
+      .from('crm_tasks')
+      .select('*')
+      .eq('agent_id', profile!.id)
+      .is('completed_at', null)
+      .order('due_date', { ascending: true });
+    setAllTasks((data ?? []) as CRMTask[]);
+  }
+
+  async function saveTask() {
+    if (!taskClientId || !taskForm.due_date || !taskForm.title.trim()) return;
+    const { data, error } = await supabase.from('crm_tasks').insert([{
+      client_id: taskClientId,
+      agent_id: profile!.id,
+      type: taskForm.type,
+      title: taskForm.title.trim(),
+      due_date: taskForm.due_date,
+      notes: taskForm.notes.trim(),
+    }]).select().single();
+    if (error) { showToast('Error saving task'); return; }
+    setAllTasks(prev => [...prev, data as CRMTask].sort((a, b) => a.due_date.localeCompare(b.due_date)));
+    setShowTaskModal(false);
+    setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' });
+    showToast('Task saved');
+  }
+
+  async function completeTask(taskId: string) {
+    const now = new Date().toISOString();
+    await supabase.from('crm_tasks').update({ completed_at: now }).eq('id', taskId);
+    setAllTasks(prev => prev.filter(t => t.id !== taskId));
+    showToast('Task completed ✓');
   }
 
   // ── Activity Tracking ─────────────────────────────────────────────────────────
@@ -2667,21 +2712,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               })()}
                             </td>
 
-                            {/* Edit / Delete actions */}
-                            {isAdmin && (
-                              <td>
-                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                                  <button onClick={() => openEditClient(c)}
-                                    style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 13, cursor: 'pointer', padding: '2px 4px' }} title="Edit contact">
-                                    ✏️
-                                  </button>
-                                  <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
-                                    style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 13, cursor: 'pointer', padding: '2px 4px' }} title="Remove client (admin only)">
-                                    🗑
-                                  </button>
-                                </div>
-                              </td>
-                            )}
+                            {/* Task + Edit / Delete actions */}
+                            <td onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                {/* Task button — always visible */}
+                                {(() => {
+                                  const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
+                                  return (
+                                    <button
+                                      onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
+                                      style={{ position: 'relative', background: pendingCount > 0 ? '#fef3e2' : 'none', border: pendingCount > 0 ? '1px solid #fde68a' : 'none', borderRadius: 6, color: pendingCount > 0 ? '#92400e' : '#9ca3af', fontSize: 13, cursor: 'pointer', padding: '2px 5px', display: 'flex', alignItems: 'center', gap: 3 }}
+                                      title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''}` : 'Add task'}>
+                                      ✅
+                                      {pendingCount > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e' }}>{pendingCount}</span>}
+                                    </button>
+                                  );
+                                })()}
+                                {isAdmin && (
+                                  <>
+                                    <button onClick={() => openEditClient(c)}
+                                      style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 13, cursor: 'pointer', padding: '2px 4px' }} title="Edit contact">
+                                      ✏️
+                                    </button>
+                                    <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
+                                      style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 13, cursor: 'pointer', padding: '2px 4px' }} title="Remove client (admin only)">
+                                      🗑
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -5492,6 +5552,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <span style={{ fontSize: 12, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
                       </div>
                     ))}
+                    {/* Birthday */}
+                    {c.birthday ? (() => {
+                      const bday = new Date(c.birthday + 'T00:00:00');
+                      const now = new Date();
+                      const thisYear = new Date(now.getFullYear(), bday.getMonth(), bday.getDate());
+                      const nextBday = thisYear < now ? new Date(now.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYear;
+                      const daysUntil = Math.ceil((nextBday.getTime() - now.setHours(0,0,0,0)) / (1000*60*60*24));
+                      const isSoon = daysUntil <= 30;
+                      return (
+                        <div style={{ background: isSoon ? '#fef3e2' : '#f9fafb', borderRadius: 8, padding: '12px 14px', border: isSoon ? '1px solid #fde68a' : undefined }}>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>🎂 Birthday</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{bday.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</span>
+                            {isSoon && <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fde68a', padding: '1px 7px', borderRadius: 10 }}>{daysUntil === 0 ? '🎉 Today!' : `in ${daysUntil}d`}</span>}
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', border: '1px dashed #e5e7eb' }}>
+                        <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>🎂 Birthday</div>
+                        <span style={{ fontSize: 12, color: '#d1d5db' }}>Not set — <button onClick={() => openEditClient(c)} style={{ background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: 0, fontFamily: "'DM Sans',sans-serif" }}>Add date</button></span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -5565,6 +5648,55 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* Tasks */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tasks</div>
+                    <button
+                      onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
+                      style={{ background: 'none', border: '1px dashed #c9922c', borderRadius: 6, color: '#c9922c', fontSize: 11, fontWeight: 600, cursor: 'pointer', padding: '3px 10px', fontFamily: "'DM Sans',sans-serif" }}>
+                      + Add Task
+                    </button>
+                  </div>
+                  {(() => {
+                    const clientTasks = allTasks.filter(t => t.client_id === c.id);
+                    if (clientTasks.length === 0) return (
+                      <div style={{ fontSize: 13, color: '#9ca3af', fontStyle: 'italic' }}>No pending tasks</div>
+                    );
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {clientTasks.map(t => {
+                          const due = new Date(t.due_date + 'T00:00:00');
+                          const today = new Date(); today.setHours(0,0,0,0);
+                          const isOverdue = due < today;
+                          const isToday = due.getTime() === today.getTime();
+                          const dueBg = isOverdue ? '#fee2e2' : isToday ? '#fef3c7' : '#f0fdf4';
+                          const dueColor = isOverdue ? '#dc2626' : isToday ? '#92400e' : '#15803d';
+                          const typeLabel = t.type === 'follow_up' ? '📋 Follow Up' : t.type === 'call' ? '📞 Call' : '✉️ Email';
+                          return (
+                            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
+                              <button onClick={() => completeTask(t.id)}
+                                style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #d1d5db', background: '#fff', cursor: 'pointer', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}
+                                title="Mark complete">
+                              </button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 2 }}>{t.title}</div>
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                  <span style={{ fontSize: 11, color: '#6b7280' }}>{typeLabel}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: dueColor, background: dueBg, padding: '1px 7px', borderRadius: 10 }}>
+                                    {isOverdue ? `Overdue · ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : isToday ? 'Due today' : due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}
+                                  </span>
+                                </div>
+                                {t.notes && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{t.notes}</div>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Activity Log */}
@@ -6222,6 +6354,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <input type="date" className="crm-input" style={{ marginTop: 4 }} value={ec.lease_expiration_date} onChange={e => setEc({ ...ec, lease_expiration_date: e.target.value })} />
                     </div>
                   )}
+                  {/* Birthday */}
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🎂 Birthday <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
+                    <input type="date" className="crm-input" style={{ marginTop: 4 }} value={ec.birthday} onChange={e => setEc({ ...ec, birthday: e.target.value })} />
+                  </div>
                 </div>
               )}
 
@@ -6661,6 +6798,79 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   style={{ padding: '8px 22px', borderRadius: 7, border: 'none', background: (lostReason && (lostReason !== 'Other' || lostReasonOther.trim())) ? '#dc2626' : '#d1d5db', color: '#fff', fontSize: 13, fontWeight: 600, cursor: (lostSaving || !lostReason || (lostReason === 'Other' && !lostReasonOther.trim())) ? 'not-allowed' : 'pointer' }}>
                   {lostSaving ? 'Saving…' : 'Save Reason'}
                 </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Task Modal */}
+      {showTaskModal && taskClientId && (() => {
+        const client = clients.find(c => c.id === taskClientId);
+        return (
+          <div className="overlay" onClick={() => setShowTaskModal(false)}>
+            <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+              <div style={{ padding: '20px 24px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0 }}>Add Task</h3>
+                  {client && <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', marginTop: 2 }}>{client.first_name} {client.last_name}</div>}
+                </div>
+                <button onClick={() => setShowTaskModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                {/* Task type */}
+                <div>
+                  <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, marginBottom: 8 }}>Task Type</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                    {(['follow_up', 'call', 'email'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setTaskForm(f => ({ ...f, type: t }))}
+                        style={{ padding: '10px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: '2px solid', textAlign: 'center', transition: 'all .12s', fontFamily: "'DM Sans',sans-serif", borderColor: taskForm.type === t ? '#c9922c' : '#e5e7eb', background: taskForm.type === t ? '#fef3e2' : '#f9fafb', color: taskForm.type === t ? '#92400e' : '#6b7280' }}>
+                        <div style={{ fontSize: 18, marginBottom: 4 }}>{t === 'follow_up' ? '📋' : t === 'call' ? '📞' : '✉️'}</div>
+                        {t === 'follow_up' ? 'Follow Up' : t === 'call' ? 'Call' : 'Email'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 6 }}>Title *</label>
+                  <input className="crm-input" style={{ marginTop: 0 }}
+                    placeholder={taskForm.type === 'follow_up' ? 'Check in on search criteria…' : taskForm.type === 'call' ? 'Call to discuss offer…' : 'Send listing options…'}
+                    value={taskForm.title}
+                    onChange={e => setTaskForm(f => ({ ...f, title: e.target.value }))}
+                    autoFocus
+                  />
+                </div>
+
+                {/* Due Date */}
+                <div>
+                  <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 6 }}>Due Date *</label>
+                  <input type="date" className="crm-input" style={{ marginTop: 0 }}
+                    value={taskForm.due_date}
+                    onChange={e => setTaskForm(f => ({ ...f, due_date: e.target.value }))}
+                  />
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 6 }}>Notes <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
+                  <textarea className="crm-input" style={{ marginTop: 0, minHeight: 64, resize: 'none', fontSize: 12 }}
+                    placeholder="Any additional context…"
+                    value={taskForm.notes}
+                    onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                  <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setShowTaskModal(false)}>Cancel</button>
+                  <button className="crm-btn crm-btn-gold" style={{ flex: 2 }}
+                    disabled={!taskForm.title.trim() || !taskForm.due_date}
+                    onClick={saveTask}>
+                    Save Task
+                  </button>
+                </div>
               </div>
             </div>
           </div>

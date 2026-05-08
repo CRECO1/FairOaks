@@ -29,6 +29,8 @@ const LIMITS = {
   webhook:     { requests: 30, window: '1 m'  },
   // ATTOM property intel — paid external API, limit aggressive lookups
   attom:       { requests: 30, window: '1 m'  },
+  // Agent application form — 3 per IP per hour
+  'agent-apply': { requests: 3, window: '1 h' },
 } as const;
 
 type LimiterKey = keyof typeof LIMITS;
