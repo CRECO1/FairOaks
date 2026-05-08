@@ -14,6 +14,7 @@ const CONTACT_REASONS = [
   'General Question',
   'Investment Inquiry',
   'Relocation Help',
+  'Apply to Join The Team',
 ];
 
 export default function ContactPage() {
