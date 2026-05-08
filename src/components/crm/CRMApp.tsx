@@ -338,6 +338,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [tagClientId, setTagClientId] = useState<string | null>(null);
+  const [editTagsClientId, setEditTagsClientId] = useState<string | null>(null);
+  const [inlineTagInput, setInlineTagInput] = useState('');
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -962,6 +964,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const agentP = profiles.find(p => p.id === agentId);
     const agentLabel = agentP ? `${agentP.first_name} ${agentP.last_name}` : 'Agent';
     showToast(updated.includes(agentId) ? `${agentLabel} tagged on client` : `${agentLabel} removed from client`);
+  }
+
+  async function saveClientTags(clientId: string, newTags: string[]) {
+    const { error } = await supabase.from('crm_clients').update({ tags: newTags }).eq('id', clientId);
+    if (error) { showToast('Error saving tags'); return; }
+    setClients(prev => prev.map(c => c.id === clientId ? { ...c, tags: newTags } : c));
   }
 
   async function toggleDealAgentTag(dealId: string, agentId: string) {
@@ -2507,13 +2515,52 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 500 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                             </td>
 
-                            {/* Tags */}
-                            <td>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                                {(c.tags ?? []).slice(0, 3).map(tag => (
-                                  <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>{tag}</span>
+                            {/* Tags — inline editable */}
+                            <td onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
+                                {(c.tags ?? []).map(tag => (
+                                  <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: '#fef3c7', color: '#92400e', padding: '1px 5px 1px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>
+                                    {tag}
+                                    <button
+                                      onClick={e => { e.stopPropagation(); saveClientTags(c.id, (c.tags ?? []).filter(t => t !== tag)); }}
+                                      style={{ background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: 10, lineHeight: 1, padding: 0, marginLeft: 1 }}
+                                      title="Remove tag"
+                                    >✕</button>
+                                  </span>
                                 ))}
-                                {(c.tags ?? []).length > 3 && <span style={{ fontSize: 10, color: '#9ca3af' }}>+{(c.tags ?? []).length - 3}</span>}
+                                {editTagsClientId === c.id ? (
+                                  <input
+                                    autoFocus
+                                    value={inlineTagInput}
+                                    onChange={e => setInlineTagInput(e.target.value)}
+                                    onKeyDown={e => {
+                                      if ((e.key === 'Enter' || e.key === ',') && inlineTagInput.trim()) {
+                                        e.preventDefault();
+                                        const tag = inlineTagInput.trim().replace(/,$/, '');
+                                        if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
+                                        setInlineTagInput('');
+                                        setEditTagsClientId(null);
+                                      }
+                                      if (e.key === 'Escape') { setEditTagsClientId(null); setInlineTagInput(''); }
+                                    }}
+                                    onBlur={() => {
+                                      if (inlineTagInput.trim()) {
+                                        const tag = inlineTagInput.trim();
+                                        if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
+                                      }
+                                      setInlineTagInput('');
+                                      setEditTagsClientId(null);
+                                    }}
+                                    placeholder="tag + Enter"
+                                    style={{ width: 90, fontSize: 10, border: '1px solid #f59e0b', borderRadius: 6, padding: '2px 6px', outline: 'none', background: '#fffbeb' }}
+                                  />
+                                ) : (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setEditTagsClientId(c.id); setInlineTagInput(''); }}
+                                    style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '1px 6px', fontSize: 10, color: '#9ca3af', cursor: 'pointer' }}
+                                    title="Add tag"
+                                  >＋</button>
+                                )}
                               </div>
                             </td>
 
