@@ -221,8 +221,10 @@ const DEFAULT_SELECT = [
   'ListAgentFirstName', 'ListAgentLastName', 'ListAgentMlsId',
   'ListAgentCellPhone', 'ListAgentOfficePhone', 'ListOfficeName',
   'PhotosCount', 'PublicRemarks',
-  'Latitude', 'Longitude',
 ].join(',');
+
+// Extended select used for map queries — includes coordinates for pin placement
+export const MAP_SELECT = DEFAULT_SELECT + ',Latitude,Longitude';
 
 export async function searchProperties(opts: PropertySearchOptions = {}): Promise<ResoResponse<ResoProperty>> {
   const params: Record<string, string> = {
