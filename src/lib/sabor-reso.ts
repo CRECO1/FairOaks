@@ -221,6 +221,7 @@ const DEFAULT_SELECT = [
   'ListAgentFirstName', 'ListAgentLastName', 'ListAgentMlsId',
   'ListAgentCellPhone', 'ListAgentOfficePhone', 'ListOfficeName',
   'PhotosCount', 'PublicRemarks',
+  'Latitude', 'Longitude',
 ].join(',');
 
 export async function searchProperties(opts: PropertySearchOptions = {}): Promise<ResoResponse<ResoProperty>> {
