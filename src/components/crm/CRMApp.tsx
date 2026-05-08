@@ -13,7 +13,7 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; review_requested_at?: string | null; birthday?: string | null; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
@@ -349,7 +349,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showAddClient, setShowAddClient] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
-  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', birthday: '' });
+  const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
   const [assetDropdownOpen, setAssetDropdownOpen] = useState<'nc' | 'ec' | null>(null);
   const [saving, setSaving] = useState(false);
   // Tasks
@@ -520,7 +520,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
   // New client form
-  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', birthday: '' });
+  const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
   // Invite form
   const [inv, setInv] = useState({ email: '', first_name: '', last_name: '', phone: '', license: '' });
   // New email form
@@ -801,6 +801,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Client CRUD ───────────────────────────────────────────────────────────────
   async function createClient() {
     if (!nc.first_name.trim()) { showToast('First name required.'); return; }
+    if (nc.lease_expiration_date && !nc.lxp_follow_up_days) { showToast('Please select a contact window (90/120/180/360d) for the LXP date.'); return; }
     setSaving(true);
     // Duplicate email check — only when an email is provided
     if (nc.email.trim()) {
@@ -821,7 +822,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
-      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', birthday: '' });
+      setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null, birthday: '' });
       setShowAddClient(false);
       loadClients(profile!);
     }
@@ -871,6 +872,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       lead_source: c.lead_source ?? '',
       notes: c.notes ?? '',
       lease_expiration_date: c.lease_expiration_date ?? '',
+      lxp_follow_up_days: c.lxp_follow_up_days ?? null,
       birthday: c.birthday ?? '',
     });
     setEditClient(c);
@@ -880,6 +882,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function saveEditClient() {
     if (!editClient) return;
     if (!ec.first_name.trim()) { showToast('First name required.'); return; }
+    if (ec.lease_expiration_date && !ec.lxp_follow_up_days) { showToast('Please select a contact window (90/120/180/360d) for the LXP date.'); return; }
     setSaving(true);
     const { error } = await supabase.from('crm_clients').update({
       first_name: ec.first_name,
@@ -903,6 +906,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       lead_source: ec.lead_source,
       notes: ec.notes,
       lease_expiration_date: ec.lease_expiration_date || null,
+      lxp_follow_up_days: ec.lxp_follow_up_days ?? null,
       birthday: ec.birthday || null,
     }).eq('id', editClient.id);
     if (error) {
@@ -5279,8 +5283,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   {/* LXP — all types */}
                   <div style={{ marginTop: 12 }}>
-                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date</label>
                     <input type="date" className="crm-input" style={{ marginTop: 4 }} value={nc.lease_expiration_date} onChange={e => setNc({ ...nc, lease_expiration_date: e.target.value })} />
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>Contact me:</span>
+                      {[90, 120, 180, 360].map(d => (
+                        <button key={d} type="button"
+                          onClick={() => setNc(f => ({ ...f, lxp_follow_up_days: f.lxp_follow_up_days === d ? null : d }))}
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: nc.lxp_follow_up_days === d ? '#c9922c' : '#e5e7eb', background: nc.lxp_follow_up_days === d ? '#fef3e2' : '#f9fafb', color: nc.lxp_follow_up_days === d ? '#92400e' : '#6b7280' }}>
+                          {d}d out
+                        </button>
+                      ))}
+                      {nc.lxp_follow_up_days && nc.lease_expiration_date && (
+                        <span style={{ fontSize: 11, color: '#c9922c', fontWeight: 600, marginLeft: 4 }}>
+                          → {new Date(new Date(nc.lease_expiration_date).getTime() - nc.lxp_follow_up_days * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -5560,9 +5579,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       return (
                         <div style={{ background: lxpBg, borderRadius: 8, padding: '12px 14px', gridColumn: '1/-1', border: `1px solid ${lxpColor}22` }}>
                           <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>🗓 LXP — Lease Expiration</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{lxpDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                             <span style={{ fontSize: 11, fontWeight: 700, color: lxpColor, background: `${lxpColor}22`, padding: '2px 8px', borderRadius: 10 }}>{lxpLabel}</span>
+                            {c.lxp_follow_up_days && (
+                              <span style={{ fontSize: 11, color: '#6b7280', background: '#f3f4f6', padding: '2px 8px', borderRadius: 10 }}>
+                                📞 Contact by {new Date(lxpDate.getTime() - c.lxp_follow_up_days * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ({c.lxp_follow_up_days}d out)
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -6369,8 +6393,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   {/* LXP — all types */}
                   <div style={{ marginTop: 12 }}>
-                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
+                    <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>🗓 LXP — Lease Expiration Date</label>
                     <input type="date" className="crm-input" style={{ marginTop: 4 }} value={ec.lease_expiration_date} onChange={e => setEc({ ...ec, lease_expiration_date: e.target.value })} />
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>Contact me:</span>
+                      {[90, 120, 180, 360].map(d => (
+                        <button key={d} type="button"
+                          onClick={() => setEc(f => ({ ...f, lxp_follow_up_days: f.lxp_follow_up_days === d ? null : d }))}
+                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, cursor: 'pointer', border: '1.5px solid', fontFamily: "'DM Sans',sans-serif", transition: 'all .12s', borderColor: ec.lxp_follow_up_days === d ? '#c9922c' : '#e5e7eb', background: ec.lxp_follow_up_days === d ? '#fef3e2' : '#f9fafb', color: ec.lxp_follow_up_days === d ? '#92400e' : '#6b7280' }}>
+                          {d}d out
+                        </button>
+                      ))}
+                      {ec.lxp_follow_up_days && ec.lease_expiration_date && (
+                        <span style={{ fontSize: 11, color: '#c9922c', fontWeight: 600, marginLeft: 4 }}>
+                          → {new Date(new Date(ec.lease_expiration_date).getTime() - ec.lxp_follow_up_days * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {/* Birthday */}
                   <div style={{ marginTop: 12 }}>
