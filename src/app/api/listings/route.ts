@@ -71,13 +71,22 @@ export async function GET(req: NextRequest) {
   const minBeds  = sp.get('minBeds')  ? Number(sp.get('minBeds'))  : null;
   const search   = sp.get('search')   ?? '';
   const page     = Math.max(1, Number(sp.get('page')  ?? '1'));
-  const limit    = Math.min(48, Math.max(1, Number(sp.get('limit') ?? '24')));
+  const latMin   = sp.get('latMin')   ? Number(sp.get('latMin'))   : null;
+  const latMax   = sp.get('latMax')   ? Number(sp.get('latMax'))   : null;
+  const lngMin   = sp.get('lngMin')   ? Number(sp.get('lngMin'))   : null;
+  const lngMax   = sp.get('lngMax')   ? Number(sp.get('lngMax'))   : null;
+  const hasBounds = latMin !== null && latMax !== null && lngMin !== null && lngMax !== null;
+  // Use larger limit for map viewport queries so all visible pins load at once
+  const limit    = hasBounds ? 100 : Math.min(48, Math.max(1, Number(sp.get('limit') ?? '24')));
   const skip     = (page - 1) * limit;
 
   try {
     const filters: string[] = [STATUS_FILTER];
 
-    if (city && city !== 'All Areas') {
+    // In map/bounds mode the viewport replaces city filtering; otherwise use city filter
+    if (hasBounds) {
+      filters.push(`Latitude ge ${latMin} and Latitude le ${latMax} and Longitude ge ${lngMin} and Longitude le ${lngMax}`);
+    } else if (city && city !== 'All Areas') {
       const cityFilter = buildCityFilter(city);
       if (cityFilter) filters.push(cityFilter);
     }

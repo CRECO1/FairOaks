@@ -20,9 +20,13 @@ interface MapListing {
   longitude: number | null;
 }
 
+interface Bounds { latMin: number; latMax: number; lngMin: number; lngMax: number; }
+
 interface Props {
   listings: MapListing[];
   center?: { lat: number; lng: number };
+  onBoundsChange?: (bounds: Bounds) => void;
+  mapLoading?: boolean;
 }
 
 const GEOCODE_CACHE = new Map<string, { lat: number; lng: number }>();
@@ -44,10 +48,13 @@ async function geocodeAddress(address: string, city: string): Promise<{ lat: num
   return null;
 }
 
-export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 } }: Props) {
+export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }, onBoundsChange, mapLoading }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const googleMapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const boundsListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const onBoundsChangeRef = useRef(onBoundsChange);
+  onBoundsChangeRef.current = onBoundsChange;
   const [selected, setSelected] = useState<MapListing | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -68,7 +75,7 @@ export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }
   useEffect(() => {
     if (!loaded || !mapRef.current) return;
     if (googleMapRef.current) return;
-    googleMapRef.current = new google.maps.Map(mapRef.current, {
+    const map = new google.maps.Map(mapRef.current, {
       center,
       zoom: 11,
       mapId: 'fair-oaks-listings',
@@ -82,6 +89,25 @@ export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }
         { featureType: 'transit', stylers: [{ visibility: 'off' }] },
       ],
     });
+    googleMapRef.current = map;
+
+    // Fire bounds callback once the map is idle (finished panning/zooming)
+    boundsListenerRef.current = map.addListener('idle', () => {
+      const b = map.getBounds();
+      if (!b || !onBoundsChangeRef.current) return;
+      const ne = b.getNorthEast();
+      const sw = b.getSouthWest();
+      onBoundsChangeRef.current({
+        latMin: sw.lat(),
+        latMax: ne.lat(),
+        lngMin: sw.lng(),
+        lngMax: ne.lng(),
+      });
+    });
+
+    return () => {
+      if (boundsListenerRef.current) google.maps.event.removeListener(boundsListenerRef.current);
+    };
   }, [loaded, center]);
 
   // Place markers
@@ -144,6 +170,14 @@ export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }
             <div className="h-8 w-8 border-2 border-gold border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             <p className="text-body-sm text-foreground-muted">Loading map&hellip;</p>
           </div>
+        </div>
+      )}
+
+      {/* Viewport re-fetch loading indicator */}
+      {mapLoading && loaded && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-white/90 backdrop-blur-sm px-4 py-2 shadow-lg border border-border">
+          <div className="h-3.5 w-3.5 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+          <span className="text-caption font-medium text-primary">Loading listings…</span>
         </div>
       )}
 
