@@ -50,7 +50,7 @@ async function fetchCalendarEvents(accessToken: string, accountEmail: string, da
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  if (!calRes.ok) return { events: [], scopeError: calRes.status === 403 };
+  if (!calRes.ok) return { events: [], scopeError: calRes.status === 403 || calRes.status === 401 };
 
   const calData = await calRes.json();
   const events = (calData.items ?? []).map((e: { summary?: string; description?: string; location?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }; attendees?: { email: string; displayName?: string; self?: boolean }[]; htmlLink?: string; status?: string; id: string }) => ({
