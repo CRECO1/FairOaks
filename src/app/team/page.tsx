@@ -198,6 +198,27 @@ export default function TeamPage() {
           </div>
         </div>
       )}
+
+      {/* Join CTA */}
+      <section className="section-luxury bg-primary text-white">
+        <Container>
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="overline mb-3 text-gold">We&apos;re Hiring</p>
+            <h2 className="font-heading text-display-xs font-bold mb-4">
+              Interested in Joining Our Team?
+            </h2>
+            <p className="text-body text-white/70 mb-8">
+              We&apos;re always looking for talented, motivated agents who want to grow their career with one of the Texas Hill Country&apos;s most trusted brokerages.
+            </p>
+            <a
+              href="/join"
+              className="inline-flex items-center gap-2 rounded-lg bg-gold px-8 py-3.5 font-semibold text-primary transition-colors hover:bg-gold-dark"
+            >
+              Apply to Join Our Team
+            </a>
+          </div>
+        </Container>
+      </section>
     </>
   );
 }

@@ -92,6 +92,15 @@ export function Footer() {
                   </li>
                 ))}
               </ul>
+              <div className="mt-8">
+                <h3 className="mb-5 text-body-sm font-semibold uppercase tracking-widest text-gold">Company</h3>
+                <ul className="space-y-3">
+                  <li><Link href="/team" className="text-body-sm text-white/60 transition-colors hover:text-gold">Our Team</Link></li>
+                  <li><Link href="/services" className="text-body-sm text-white/60 transition-colors hover:text-gold">Services</Link></li>
+                  <li><Link href="/contact" className="text-body-sm text-white/60 transition-colors hover:text-gold">Contact Us</Link></li>
+                  <li><Link href="/join" className="text-body-sm text-white/60 transition-colors hover:text-gold">Join Our Team</Link></li>
+                </ul>
+              </div>
             </div>
 
             {/* Areas Links */}
