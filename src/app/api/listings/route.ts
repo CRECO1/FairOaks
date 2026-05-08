@@ -24,7 +24,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-const STATUS_FILTER = statusFilter(['ACTIVE', 'ACTIVE_UNDER_CONTRACT']);
+const STATUS_FILTER = statusFilter(['ACTIVE', 'ACTIVE_UNDER_CONTRACT', 'PENDING']);
 
 // Confirmed City enum values from SABOR (ODataService.City_Lkp_1 member names)
 // Spaces stripped + truncated to ~10 chars by SABOR's MLS system
