@@ -325,10 +325,23 @@ function parseLeadEmail(subject: string, body: string, from = '') {
     /((?:\+1\s?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/,
   ]);
 
-  const property = extract(text, [
-    /(?:^|\n)\s*(?:property\s+of\s+interest|property\s+address|property|listing|inquiring\s+about|interested\s+in)[:\s]+([^\n]{5,120})/im,
-    /(?:subject)[:\s]*.*?(?:for|regarding|re:)\s+([^\n]{5,120})/i,
-  ]) || subject.replace(/^(new\s+lead|new\s+inquiry|contact\s+info\s+for|lead\s+from)[:\s\-]*/i, '').trim();
+  // Property: prefer subject-line extraction (reliable) over body (often garbled HTML/CSS)
+  const propertyFromSubject =
+    // "LoopNet Lead for [property]"
+    subject.replace(/^loopnet\s+lead\s+for\s*/i, '').trim() !== subject.trim()
+      ? subject.replace(/^loopnet\s+lead\s+for\s*/i, '').trim()
+    // "X favorited/opened brochure on/viewed [property]"
+    : /\b(favorited|opened\s+brochure\s+on|viewed|saved)\s+(.+)/i.test(subject)
+      ? (subject.match(/\b(?:favorited|opened\s+brochure\s+on|viewed|saved)\s+(.+)/i)?.[1] ?? '').trim()
+    // "New Lead: [property]" / "New Inquiry for [property]"
+    : subject.replace(/^(new\s+lead[:\-\s]+|new\s+inquiry\s+for\s+|lead\s+from[:\s]+)/i, '').trim();
+
+  const propertyFromBody = extract(text, [
+    // Only match very explicit labeled fields — avoid matching random "property" mentions in body prose
+    /(?:^|\n)\s*(?:property\s+of\s+interest|property\s+address)[:\s]+([^\n]{5,120})/im,
+  ]);
+
+  const property = propertyFromBody || propertyFromSubject;
 
   const message = extract(text, [
     /(?:^|\n)\s*(?:message|comments?|notes?|additional\s+info|questions?)[:\s]+([^\n]{5,500})/im,
