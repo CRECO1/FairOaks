@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot initiate OAuth for another user');
 
-  const clientId   = process.env.GOOGLE_CLIENT_ID;
+  const clientId    = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = 'https://www.fairoaksrealtygroup.com/api/gmail/callback';
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -28,9 +28,12 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', SCOPES);
   url.searchParams.set('access_type', 'offline');
-  url.searchParams.set('prompt', 'consent'); // always get refresh_token
+  // When a hint is provided (adding a second account), force account picker + full consent
+  // so Google always issues a fresh refresh_token for the new account.
+  // Without select_account, Google may silently pick the already-signed-in account.
+  url.searchParams.set('prompt', hint ? 'select_account consent' : 'consent');
   url.searchParams.set('state', userId);
-  // login_hint targets the exact Google account — avoids defaulting to the already-connected one
+  // login_hint pre-selects the target account in the picker
   if (hint) url.searchParams.set('login_hint', hint);
 
   return NextResponse.redirect(url.toString());

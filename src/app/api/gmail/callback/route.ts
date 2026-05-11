@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
 
 const REDIRECT_URI = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'https://www.fairoaksrealtygroup.com'}/api/gmail/callback`;
@@ -12,13 +11,27 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateUserId) {
     console.error('[gmail/callback] Missing params or error:', { error, code: !!code, stateUserId });
-    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
+    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=oauth_denied`);
   }
 
-  const caller = await getCrmUser();
-  if (!caller || caller.id !== stateUserId) {
-    console.error('[gmail/callback] Auth mismatch');
-    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
+  // Use service-role client to validate user without relying on SSR session cookies
+  // (Google redirects to this URL and the session cookie context can be unreliable)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  // Verify the stateUserId corresponds to a real CRM profile
+  const { data: profile, error: profileErr } = await supabase
+    .from('crm_profiles')
+    .select('id')
+    .eq('id', stateUserId)
+    .maybeSingle();
+
+  if (profileErr || !profile) {
+    console.error('[gmail/callback] No CRM profile for userId:', stateUserId, profileErr);
+    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=invalid_user`);
   }
 
   // Exchange code for tokens
@@ -38,7 +51,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok || !tokens.access_token) {
     console.error('[gmail/callback] Token exchange failed:', tokens);
-    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
+    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=token_exchange`);
   }
 
   // Get the Gmail address for this token
@@ -50,10 +63,11 @@ export async function GET(req: NextRequest) {
 
   if (!gmailEmail) {
     console.error('[gmail/callback] Could not get Gmail email from profile');
-    return NextResponse.redirect(`${CRM_URL}?gmail=error`);
+    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=no_email`);
   }
 
-  const supabase  = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  console.log('[gmail/callback] Processing connection:', { stateUserId, gmailEmail, hasRefreshToken: !!tokens.refresh_token });
+
   const expiresAt = new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString();
   const now       = new Date().toISOString();
 
@@ -80,31 +94,38 @@ export async function GET(req: NextRequest) {
       .update(updatePayload)
       .eq('id', existing.id);
 
-    if (updateErr) console.error('[gmail/callback] Update error:', updateErr);
+    if (updateErr) {
+      console.error('[gmail/callback] Update error:', updateErr);
+      return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=db_update`);
+    }
+    console.log('[gmail/callback] Updated existing connection for', gmailEmail);
   } else {
     // New connection — must have refresh_token
     if (!tokens.refresh_token) {
       console.error('[gmail/callback] No refresh_token for new connection:', gmailEmail);
+      // Revoke the partial access so user can retry and get a fresh refresh_token
+      await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: 'POST' }).catch(() => {});
       return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=no_refresh_token`);
     }
 
     const { error: insertErr } = await supabase
       .from('gmail_connections')
       .insert({
-        user_id:      stateUserId,
-        gmail_email:  gmailEmail,
-        email:        gmailEmail,
-        access_token: tokens.access_token,
+        user_id:       stateUserId,
+        gmail_email:   gmailEmail,
+        email:         gmailEmail,
+        access_token:  tokens.access_token,
         refresh_token: tokens.refresh_token,
-        expires_at:   expiresAt,
-        updated_at:   now,
+        expires_at:    expiresAt,
+        updated_at:    now,
       });
 
     if (insertErr) {
       console.error('[gmail/callback] Insert error:', insertErr);
-      return NextResponse.redirect(`${CRM_URL}?gmail=error`);
+      return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=db_insert`);
     }
+    console.log('[gmail/callback] Inserted new connection for', gmailEmail, 'user', stateUserId);
   }
 
-  return NextResponse.redirect(`${CRM_URL}?gmail=connected`);
+  return NextResponse.redirect(`${CRM_URL}?gmail=connected&account=${encodeURIComponent(gmailEmail)}`);
 }

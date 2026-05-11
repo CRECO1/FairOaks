@@ -645,6 +645,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // Handle OAuth redirect result — re-fetch accounts so new connection shows immediately
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmail') === 'connected') {
+      const connectedAccount = params.get('account');
       fetch(`/api/gmail/status?userId=${session.user.id}`)
         .then(r => r.json())
         .then(d => {
@@ -652,6 +653,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             setGmailConnected(true);
             setGmailEmail(d.email);
             setGmailAccounts(d.accounts ?? []);
+            const msg = connectedAccount
+              ? `✓ ${connectedAccount} connected`
+              : '✓ Gmail account connected';
+            setToast(msg);
+            setTimeout(() => setToast(''), 4000);
           }
         });
       // Fetch signature after fresh OAuth connect
@@ -659,6 +665,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .then(r => r.json())
         .then(s => { if (s.signature !== undefined) setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); })
         .catch(() => {});
+      window.history.replaceState({}, '', '/crm');
+    }
+    if (params.get('gmail') === 'error') {
+      const reason = params.get('reason') ?? 'unknown';
+      const reasonMessages: Record<string, string> = {
+        oauth_denied:     'Authorization was denied. Please try again.',
+        invalid_user:     'Session error. Please log out and back in.',
+        token_exchange:   'Google token exchange failed. Please try again.',
+        no_email:         'Could not read Gmail address. Please try again.',
+        no_refresh_token: 'Google did not return full access. Please try again — if this repeats, revoke app access in your Google Account settings first.',
+        db_update:        'Database error saving connection. Please try again.',
+        db_insert:        'Database error saving connection. Please try again.',
+      };
+      const msg = reasonMessages[reason] ?? 'Gmail connection failed. Please try again.';
+      setToast(`⚠ ${msg}`);
+      setTimeout(() => setToast(''), 8000);
       window.history.replaceState({}, '', '/crm');
     }
   }, [session]); // eslint-disable-line
