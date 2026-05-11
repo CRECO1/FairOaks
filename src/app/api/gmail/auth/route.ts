@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', SCOPES);
   url.searchParams.set('access_type', 'offline');
-  url.searchParams.set('prompt', 'consent');
+  url.searchParams.set('prompt', 'select_account consent'); // show account picker + consent so user can add a different account
   url.searchParams.set('state', userId); // pass userId through so callback knows who to store for
 
   return NextResponse.redirect(url.toString());
