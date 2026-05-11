@@ -15,7 +15,7 @@ function resendClient(businessUnit: string) {
 
 function fromAddress(businessUnit: string) {
   return businessUnit === 'commercial'
-    ? 'CRECO <info@crecotx.com>'
+    ? 'CRECO <zack@crecotx.com>'
     : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
 
