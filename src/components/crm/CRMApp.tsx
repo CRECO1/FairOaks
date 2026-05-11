@@ -4320,7 +4320,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Tabs */}
                   <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #e5e7eb' }}>
                     {(['enrolled', 'history', 'settings'] as const).map(tab => (
-                      <button key={tab} onClick={() => setActionPlanTab(tab)}
+                      <button key={tab} onClick={() => {
+                        setActionPlanTab(tab);
+                        // Fetch full steps (with body/subject) whenever Settings tab is opened
+                        if (tab === 'settings' && activeActionPlan) {
+                          setPreviewStepIdx(0);
+                          fetch(`/api/action-plans/${activeActionPlan.id}`)
+                            .then(r => r.json())
+                            .then(j => setDetailSteps(j.plan?.steps ?? []));
+                        }
+                      }}
                         style={{ padding: '8px 18px', background: 'none', border: 'none', borderBottom: actionPlanTab === tab ? '2px solid #c9922c' : '2px solid transparent', color: actionPlanTab === tab ? '#c9922c' : '#6b7280', fontWeight: actionPlanTab === tab ? 700 : 400, cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", marginBottom: -1, textTransform: 'capitalize' }}>
                         {tab}
                       </button>
@@ -4447,6 +4456,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       ))}
 
                       {/* ── Email Preview ── */}
+                      {detailSteps.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '28px 0', color: '#9ca3af', fontSize: 13 }}>
+                          <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
+                          Loading preview…
+                        </div>
+                      )}
                       {detailSteps.length > 0 && (() => {
                         const step = detailSteps[previewStepIdx];
                         const fromLine = businessUnit === 'commercial'
