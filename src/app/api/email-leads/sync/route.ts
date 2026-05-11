@@ -1,9 +1,180 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Resend } from 'resend';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const db = () => createClient(SUPABASE_URL, SERVICE_KEY);
+
+function resendClient(businessUnit: string) {
+  const key = businessUnit === 'commercial'
+    ? process.env.RESEND_API_KEY_COMMERCIAL!
+    : process.env.RESEND_API_KEY!;
+  return new Resend(key);
+}
+
+function fromAddress(businessUnit: string) {
+  return businessUnit === 'commercial'
+    ? 'CRECO <info@crecotx.com>'
+    : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
+}
+
+function applyMergeFields(template: string, ctx: {
+  client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
+  agent:  { first_name: string; last_name: string; email: string; phone?: string };
+}): string {
+  const BASE_URL      = 'https://www.fairoaksrealtygroup.com';
+  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+  return template
+    .replaceAll('{{first_name}}',    ctx.client.first_name   || '')
+    .replaceAll('{{last_name}}',     ctx.client.last_name    || '')
+    .replaceAll('{{full_name}}',     `${ctx.client.first_name} ${ctx.client.last_name}`.trim())
+    .replaceAll('{{email}}',         ctx.client.email        || '')
+    .replaceAll('{{client_type}}',   ctx.client.type         || '')
+    .replaceAll('{{agent_name}}',    `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
+    .replaceAll('{{agent_email}}',   ctx.agent.email         || '')
+    .replaceAll('{{agent_phone}}',   ctx.agent.phone         || '(210) 390-9997')
+    .replaceAll('{{brokerage}}',     'Fair Oaks Realty Group')
+    .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
+}
+
+// Auto-enroll a newly imported lead into any matching 'new_contact' action plans
+// and immediately fire Step 1 so the welcome email arrives without waiting for cron.
+async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
+  clientId:     string;
+  agentId:      string;
+  business_unit: string;
+  property:     string;
+}) {
+  const { clientId, agentId, business_unit, property } = opts;
+
+  // Fetch active plans with trigger_type = 'new_contact' for this business unit
+  const { data: plans } = await supabase
+    .from('crm_action_plans')
+    .select('id, name, trigger_value, business_unit')
+    .eq('trigger_type', 'new_contact')
+    .eq('status', 'active')
+    .eq('business_unit', business_unit);
+
+  if (!plans?.length) return;
+
+  // Fetch client info for merge fields
+  const { data: client } = await supabase
+    .from('crm_clients')
+    .select('id, first_name, last_name, email, type, unsubscribe_token, unsubscribed_at')
+    .eq('id', clientId)
+    .single();
+
+  if (!client || client.unsubscribed_at || !client.email) return;
+
+  // Fetch agent info for merge fields
+  const { data: agent } = await supabase
+    .from('crm_profiles')
+    .select('id, first_name, last_name, email, phone')
+    .eq('id', agentId)
+    .single();
+
+  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@crecotx.com', phone: '(210) 390-9997' };
+
+  const ctx = {
+    client: {
+      first_name:        client.first_name        ?? '',
+      last_name:         client.last_name          ?? '',
+      email:             client.email              ?? '',
+      type:              client.type               ?? '',
+      unsubscribe_token: client.unsubscribe_token  ?? '',
+    },
+    agent: {
+      first_name: agentCtx.first_name ?? '',
+      last_name:  agentCtx.last_name  ?? '',
+      email:      agentCtx.email      ?? '',
+      phone:      agentCtx.phone      ?? '',
+    },
+  };
+
+  const now = new Date().toISOString();
+
+  for (const plan of plans) {
+    // If the plan has a trigger_value (e.g. "Chipley"), only enroll when the
+    // property text contains that keyword (case-insensitive).
+    if (plan.trigger_value) {
+      const keyword = plan.trigger_value.toLowerCase();
+      if (!property.toLowerCase().includes(keyword)) continue;
+    }
+
+    // Enroll (upsert so re-syncing the same client doesn't re-fire)
+    const { data: enrollment, error: enrollErr } = await supabase
+      .from('crm_action_plan_enrollments')
+      .upsert({
+        plan_id:      plan.id,
+        client_id:    clientId,
+        agent_id:     agentId,
+        active:       true,
+        current_step: 0,
+        next_step_at: now,
+      }, { onConflict: 'plan_id,client_id', ignoreDuplicates: true })
+      .select('id, current_step')
+      .single();
+
+    if (enrollErr || !enrollment) continue; // already enrolled — skip
+
+    // Fetch Step 1
+    const { data: step } = await supabase
+      .from('crm_action_plan_steps')
+      .select('*')
+      .eq('plan_id', plan.id)
+      .eq('step_order', 1)
+      .single();
+
+    if (!step) continue;
+
+    try {
+      if (step.type === 'email') {
+        const subject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx);
+        const body    = applyMergeFields(step.body    || '', ctx);
+        await resendClient(business_unit).emails.send({
+          from:    fromAddress(business_unit),
+          to:      client.email,
+          subject,
+          html:    body,
+        });
+      }
+
+      // Log to activity
+      await supabase.from('crm_activity').insert([{
+        client_id: clientId,
+        agent_id:  agentId,
+        type:      'email',
+        notes:     `[Action Plan: ${plan.name} — Step 1] Sent automatically on lead import`,
+      }]);
+
+      await supabase.from('crm_clients')
+        .update({ last_touched_at: now })
+        .eq('id', clientId);
+
+      // Advance enrollment: check for Step 2
+      const { data: nextStep } = await supabase
+        .from('crm_action_plan_steps')
+        .select('step_order, delay_days')
+        .eq('plan_id', plan.id)
+        .eq('step_order', 2)
+        .single();
+
+      if (nextStep) {
+        const next_step_at = new Date(Date.now() + (nextStep.delay_days ?? 1) * 86_400_000).toISOString();
+        await supabase.from('crm_action_plan_enrollments')
+          .update({ current_step: 1, next_step_at })
+          .eq('id', enrollment.id);
+      } else {
+        await supabase.from('crm_action_plan_enrollments')
+          .update({ active: false, completed_at: now, next_step_at: null })
+          .eq('id', enrollment.id);
+      }
+    } catch (err) {
+      console.error(`[email-leads/sync] autoEnroll send failed for plan ${plan.id}:`, err);
+    }
+  }
+}
 
 // ── Lead source config ──────────────────────────────────────────────────────
 const LEAD_SOURCES: { domain: string; source: string; business_unit: string }[] = [
@@ -392,6 +563,14 @@ export async function POST() {
               business_unit,
             }]);
           }
+
+          // Auto-enroll into any matching 'new_contact' action plans and fire Step 1
+          await autoEnrollNewContact(supabase, {
+            clientId,
+            agentId,
+            business_unit,
+            property: parsed.property ?? subject,
+          });
         }
 
         // Record the import
