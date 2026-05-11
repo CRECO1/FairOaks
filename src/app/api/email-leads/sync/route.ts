@@ -21,6 +21,46 @@ function detectSource(from: string): typeof LEAD_SOURCES[0] | null {
   return LEAD_SOURCES.find(s => f.includes(s.domain)) ?? null;
 }
 
+// Reject billing/admin/platform emails — only keep actual lead notifications
+const NON_LEAD_PATTERNS = [
+  /payment\s+failed/i,
+  /past\s+due/i,
+  /invoice/i,
+  /order\s+form/i,
+  /support\s+request/i,
+  /exchange\s+api/i,
+  /now\s+live\s+on/i,
+  /request\s+has\s+been\s+received/i,
+  /let'?s\s+connect/i,
+  /voided/i,
+  /your\s+(pro\s+)?account\s+is/i,
+  /\bpayment\b.*\bconfirm/i,
+  /\breceipt\b/i,
+  /\bsubscription\b/i,
+  /\bunsubscribe\b/i,
+  /\bwelcome\s+to\b/i,
+];
+
+function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string): boolean {
+  // Reject known non-lead patterns in subject
+  if (NON_LEAD_PATTERNS.some(re => re.test(subject))) return false;
+  // Reject if the sender email is the platform's own support/noreply (not a prospect)
+  const senderDomain = (fromAddress.match(/@([\w.\-]+)/) ?? [])[1]?.toLowerCase() ?? '';
+  if (senderDomain === sourceDomain) return false;
+  return true;
+}
+
+// Extract prospect name from the email From header, e.g. "John Smith via LoopNet <noreply@loopnet.com>"
+function nameFromFromHeader(from: string): string {
+  const m = from.match(/^"?([^"<]+?)\s+via\s+\S+/i)
+         ?? from.match(/^"([^"]+)"/);
+  if (!m) return '';
+  const raw = m[1].trim();
+  // Reject if it's the platform name itself (e.g. "LoopNet", "Crexi")
+  if (/^(loopnet|crexi|costar|42floors|zillow|realtor\.com|move\.com)$/i.test(raw)) return '';
+  return raw;
+}
+
 // ── Universal email body parser ─────────────────────────────────────────────
 function extract(body: string, patterns: RegExp[]): string {
   for (const re of patterns) {
@@ -56,7 +96,7 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-function parseLeadEmail(subject: string, body: string) {
+function parseLeadEmail(subject: string, body: string, from = '') {
   const text = htmlToText(body);
 
   // First Name + Last Name (LoopNet style)
@@ -77,9 +117,13 @@ function parseLeadEmail(subject: string, body: string) {
     /(?:^|\n)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\n\s*[\w.+\-]+@/im,
   ]);
 
-  // Compose full name
+  // Priority: From header ("John Smith via LoopNet") > body labels > body phrase > subject
+  const nameFromHeader = nameFromFromHeader(from);
+
   let fullName = '';
-  if (firstName || lastName) {
+  if (nameFromHeader) {
+    fullName = nameFromHeader;
+  } else if (firstName || lastName) {
     fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   } else if (nameFromBody) {
     fullName = nameFromBody.trim();
@@ -88,8 +132,10 @@ function parseLeadEmail(subject: string, body: string) {
   // Fallback: try subject line
   if (!fullName) {
     fullName = extract(subject, [
+      // "New Lead: John Smith" or "Lead from John Smith for..."
       /(?:new\s+lead[:\s\-]+|lead\s+from[:\s]+|inquiry\s+from[:\s]+|contact\s+from[:\s]+)([A-Za-z][^\-–|]{3,40})(?:\s*[\-–|]|\s+(?:for|re:|regarding|is\s+interested)|$)/i,
-      /^([A-Za-z][A-Za-z\s'\-]{4,40})\s+(?:is\s+interested|inquired|sent|submitted)/i,
+      // "John Smith is interested / inquired / sent / submitted / favorited / viewed / saved"
+      /^([A-Za-z][A-Za-z\s'\-]{4,40})\s+(?:is\s+interested|inquired|sent|submitted|favorited|viewed|saved|wants\s+to|would\s+like)/i,
     ]);
   }
 
@@ -97,6 +143,11 @@ function parseLeadEmail(subject: string, body: string) {
     /(?:^|\n)\s*(?:email\s*address|e[-\s]?mail)[:\s]+([\w.+\-]+@[\w.\-]+\.[a-z]{2,})/im,
     /([\w.+\-]+@[\w.\-]+\.[a-z]{2,})/i,
   ]);
+
+  // Last resort: use email username as display name (better than blank)
+  if (!fullName && email) {
+    fullName = email.split('@')[0].replace(/[._\-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
 
   const phone = extract(text, [
     /(?:^|\n)\s*(?:phone|mobile|cell|telephone|tel)[:\s]+([\d\s().+\-]{7,20})/im,
@@ -240,6 +291,10 @@ export async function POST() {
         const source = detectSource(from);
         if (!source) continue;
 
+        // Skip billing/admin/platform emails — only process actual lead notifications
+        const fromAddress = (from.match(/<([^>]+)>/) ?? [, from])[1] ?? from;
+        if (!isLeadEmail(subject, fromAddress, source.domain)) continue;
+
         // Determine business_unit: source domain takes priority over agent profile
         const business_unit = source.business_unit;
 
@@ -251,7 +306,7 @@ export async function POST() {
           if (rightAgent) agentId = rightAgent.id;
         }
 
-        const parsed = parseLeadEmail(subject, body);
+        const parsed = parseLeadEmail(subject, body, from);
 
         // Skip if no usable contact info
         if (!parsed.email && !parsed.phone && !parsed.fullName) continue;
@@ -298,12 +353,15 @@ export async function POST() {
           clientId = newClient?.id ?? null;
         }
 
-        // Create a deal in the Prospect stage (dedup by client_id + property)
+        // Create a deal in the Prospect stage (dedup by client_id + business_unit)
         if (clientId) {
-          const dealType = business_unit === 'commercial' ? 'Tenant Lease' : 'Buyer Purchase';
-          const today    = new Date().toISOString().slice(0, 10);
-          const clientName = parsed.fullName ||
-            [parsed.email?.split('@')[0] ?? ''].filter(Boolean).join(' ');
+          const dealType   = business_unit === 'commercial' ? 'Tenant Lease' : 'Buyer Purchase';
+          const nowIso     = new Date().toISOString();
+          // client field is NOT NULL — fall back to email username or phone
+          const clientName = parsed.fullName
+            || parsed.email?.split('@')[0]?.replace(/[._\-]/g, ' ')?.replace(/\b\w/g, c => c.toUpperCase())
+            || parsed.phone
+            || 'Unknown';
 
           // Only insert if no existing Prospect-stage deal for this client+property
           const { data: existingDeal } = await supabase
@@ -330,7 +388,7 @@ export async function POST() {
               agent_id:            agentId,
               assigned_agent_ids:  [agentId],
               stage:               'Prospect',
-              last_touch:          today,
+              last_touch:          nowIso,
               business_unit,
             }]);
           }
