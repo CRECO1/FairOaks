@@ -5,13 +5,17 @@ const REDIRECT_URI = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'https://www.fairo
 const CRM_URL = `${process.env.NEXT_PUBLIC_SERVER_URL ?? 'https://www.fairoaksrealtygroup.com'}/crm`;
 
 export async function GET(req: NextRequest) {
-  const code        = req.nextUrl.searchParams.get('code');
-  const stateUserId = req.nextUrl.searchParams.get('state');
-  const error       = req.nextUrl.searchParams.get('error');
+  const code      = req.nextUrl.searchParams.get('code');
+  const stateRaw  = req.nextUrl.searchParams.get('state');
+  const error     = req.nextUrl.searchParams.get('error');
+
+  // State may be "userId" or "userId|businessUnit"
+  const [stateUserId, stateBu] = (stateRaw ?? '').split('|');
+  const returnBase = stateBu ? `${CRM_URL}/${stateBu}` : CRM_URL;
 
   if (error || !code || !stateUserId) {
     console.error('[gmail/callback] Missing params or error:', { error, code: !!code, stateUserId });
-    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=oauth_denied`);
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=oauth_denied`);
   }
 
   // Use service-role client to validate user without relying on SSR session cookies
@@ -31,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   if (profileErr || !profile) {
     console.error('[gmail/callback] No CRM profile for userId:', stateUserId, profileErr);
-    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=invalid_user`);
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=invalid_user`);
   }
 
   // Exchange code for tokens
@@ -51,7 +55,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenRes.ok || !tokens.access_token) {
     console.error('[gmail/callback] Token exchange failed:', tokens);
-    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=token_exchange`);
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=token_exchange`);
   }
 
   // Get the Gmail address for this token
@@ -63,7 +67,7 @@ export async function GET(req: NextRequest) {
 
   if (!gmailEmail) {
     console.error('[gmail/callback] Could not get Gmail email from profile');
-    return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=no_email`);
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_email`);
   }
 
   console.log('[gmail/callback] Processing connection:', { stateUserId, gmailEmail, hasRefreshToken: !!tokens.refresh_token });
@@ -96,7 +100,7 @@ export async function GET(req: NextRequest) {
 
     if (updateErr) {
       console.error('[gmail/callback] Update error:', updateErr);
-      return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=db_update`);
+      return NextResponse.redirect(`${returnBase}?gmail=error&reason=db_update`);
     }
     console.log('[gmail/callback] Updated existing connection for', gmailEmail);
   } else {
@@ -105,7 +109,7 @@ export async function GET(req: NextRequest) {
       console.error('[gmail/callback] No refresh_token for new connection:', gmailEmail);
       // Revoke the partial access so user can retry and get a fresh refresh_token
       await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: 'POST' }).catch(() => {});
-      return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=no_refresh_token`);
+      return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_refresh_token`);
     }
 
     const { error: insertErr } = await supabase
@@ -122,10 +126,10 @@ export async function GET(req: NextRequest) {
 
     if (insertErr) {
       console.error('[gmail/callback] Insert error:', insertErr);
-      return NextResponse.redirect(`${CRM_URL}?gmail=error&reason=db_insert`);
+      return NextResponse.redirect(`${returnBase}?gmail=error&reason=db_insert`);
     }
     console.log('[gmail/callback] Inserted new connection for', gmailEmail, 'user', stateUserId);
   }
 
-  return NextResponse.redirect(`${CRM_URL}?gmail=connected&account=${encodeURIComponent(gmailEmail)}`);
+  return NextResponse.redirect(`${returnBase}?gmail=connected&account=${encodeURIComponent(gmailEmail)}`);
 }

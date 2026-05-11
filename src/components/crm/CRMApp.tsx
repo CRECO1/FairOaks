@@ -2081,7 +2081,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   onChange={e => setGmailInputValue(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && gmailInputValue.trim()) {
-                      window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}`;
+                      window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}&bu=${businessUnit}`;
                     }
                     if (e.key === 'Escape') { setShowGmailInput(false); setGmailInputValue(''); }
                   }}
@@ -2090,7 +2090,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                   <button
                     disabled={!gmailInputValue.trim()}
-                    onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}`; }}
+                    onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}&bu=${businessUnit}`; }}
                     style={{ flex: 1, padding: '5px 0', borderRadius: 5, border: 'none', background: gmailInputValue.trim() ? '#c9922c' : 'rgba(255,255,255,.1)', color: gmailInputValue.trim() ? '#111' : 'rgba(255,255,255,.3)', fontSize: 11, fontWeight: 700, cursor: gmailInputValue.trim() ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
                     Connect →
                   </button>
@@ -3107,7 +3107,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 56 }}>📅</div>
                   <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, color: '#111' }}>Connect Google to See Your Calendar</h3>
                   <p style={{ fontSize: 14, color: '#6b7280', maxWidth: 380, textAlign: 'center' }}>Link your Google account to sync your calendar events and Gmail directly in the CRM.</p>
-                  <a href={`/api/gmail/auth?userId=${session!.user.id}`}
+                  <a href={`/api/gmail/auth?userId=${session!.user.id}&bu=${businessUnit}`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', background: '#111', color: '#fff', borderRadius: 7, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
                     📧 Connect Google Account
                   </a>
@@ -3117,7 +3117,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 56 }}>🔑</div>
                   <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, color: '#111' }}>Calendar Permission Needed</h3>
                   <p style={{ fontSize: 14, color: '#6b7280', maxWidth: 400, textAlign: 'center' }}>Your Google account is connected but calendar access wasn't granted. Reconnect to enable it.</p>
-                  <a href={`/api/gmail/auth?userId=${session!.user.id}`}
+                  <a href={`/api/gmail/auth?userId=${session!.user.id}&bu=${businessUnit}`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', background: '#c9922c', color: '#111', borderRadius: 7, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>
                     🔄 Reconnect Google Account
                   </a>

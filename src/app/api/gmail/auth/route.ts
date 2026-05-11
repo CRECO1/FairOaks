@@ -12,6 +12,7 @@ const SCOPES = [
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   const hint   = req.nextUrl.searchParams.get('hint') ?? ''; // specific Gmail address to connect
+  const bu     = req.nextUrl.searchParams.get('bu') ?? '';   // business unit to return to
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
   // Only the authenticated agent can initiate their own OAuth flow
@@ -32,7 +33,9 @@ export async function GET(req: NextRequest) {
   // so Google always issues a fresh refresh_token for the new account.
   // Without select_account, Google may silently pick the already-signed-in account.
   url.searchParams.set('prompt', hint ? 'select_account consent' : 'consent');
-  url.searchParams.set('state', userId);
+  // Encode userId and business unit into state so callback can redirect back to the right workspace
+  const state = bu ? `${userId}|${bu}` : userId;
+  url.searchParams.set('state', state);
   // login_hint pre-selects the target account in the picker
   if (hint) url.searchParams.set('login_hint', hint);
 
