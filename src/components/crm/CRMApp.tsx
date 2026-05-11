@@ -456,6 +456,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [actionPlanEnrollments, setActionPlanEnrollments] = useState<ActionPlanEnrollment[]>([]);
   const [actionPlanLoading, setActionPlanLoading] = useState(false);
   const [planSteps, setPlanSteps] = useState<ActionPlanStep[]>([]);
+  const [detailSteps, setDetailSteps] = useState<ActionPlanStep[]>([]);
+  const [previewStepIdx, setPreviewStepIdx] = useState(0);
   const [newPlan, setNewPlan] = useState({ name: '', description: '', trigger_type: 'manual' as ActionPlan['trigger_type'], trigger_value: '', status: 'active' as 'active' | 'paused', completion_campaign_id: '' });
   const [selectedPlanEnrollIds, setSelectedPlanEnrollIds] = useState<string[]>([]);
   const [planEnrollSearch, setPlanEnrollSearch] = useState('');
@@ -4292,7 +4294,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setSelectedPlanEnrollIds([]); setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); setActionPlanView('detail'); }}>Manage</button>
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setSelectedPlanEnrollIds([]); setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); setPreviewStepIdx(0); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setDetailSteps(j.plan?.steps ?? [])); setActionPlanView('detail'); }}>Manage</button>
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); setNewPlan({ name: plan.name, description: plan.description, trigger_type: plan.trigger_type, trigger_value: plan.trigger_value ?? '', status: plan.status, completion_campaign_id: (plan as any).completion_campaign_id ?? '' }); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setPlanSteps(j.plan?.steps ?? [])); setActionPlanView('builder'); }}>Edit</button>}
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteActionPlan(plan.id)}>🗑</button>}
                           </div>
@@ -4437,13 +4439,92 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Settings tab */}
                   {actionPlanTab === 'settings' && (
                     <div style={{ display: 'grid', gap: 10 }}>
-                      {[['Trigger', activeActionPlan.trigger_type.replace(/_/g, ' ')], ['Trigger Value', activeActionPlan.trigger_value || '—'], ['Status', activeActionPlan.status], ['Steps', String(activeActionPlan.steps?.length ?? activeActionPlan.step_count ?? 0)], ['Created', new Date(activeActionPlan.created_at).toLocaleDateString()]].map(([l, v]) => (
+                      {/* Plan metadata */}
+                      {[['Trigger', activeActionPlan.trigger_type.replace(/_/g, ' ')], ['Trigger Value', activeActionPlan.trigger_value || '—'], ['Status', activeActionPlan.status], ['Steps', String(detailSteps.length || (activeActionPlan.step_count ?? 0))], ['Created', new Date(activeActionPlan.created_at).toLocaleDateString()]].map(([l, v]) => (
                         <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
                           <span style={{ color: '#6b7280', fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 600, textTransform: l === 'Trigger' ? 'capitalize' : undefined }}>{v}</span>
                         </div>
                       ))}
+
+                      {/* ── Email Preview ── */}
+                      {detailSteps.length > 0 && (() => {
+                        const step = detailSteps[previewStepIdx];
+                        const fromLine = businessUnit === 'commercial'
+                          ? 'CRECO <info@crecotx.com>'
+                          : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
+                        const applyPreview = (t: string) => (t ?? '')
+                          .replace(/\{\{first_name\}\}/g, 'Jane')
+                          .replace(/\{\{last_name\}\}/g, 'Smith')
+                          .replace(/\{\{full_name\}\}/g, 'Jane Smith')
+                          .replace(/\{\{email\}\}/g, 'jane@example.com')
+                          .replace(/\{\{client_type\}\}/g, 'Tenant')
+                          .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                          .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
+                          .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                          .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                          .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
+                        return (
+                          <div style={{ marginTop: 8 }}>
+                            {/* Step selector */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                              <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Email Preview</div>
+                              {detailSteps.length > 1 && (
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                  {detailSteps.map((s, i) => (
+                                    <button key={i} onClick={() => setPreviewStepIdx(i)}
+                                      style={{ fontSize: 11, padding: '3px 10px', borderRadius: 6, border: '1px solid', cursor: 'pointer', fontWeight: 600,
+                                        borderColor: previewStepIdx === i ? '#1b2a4a' : '#e5e7eb',
+                                        background: previewStepIdx === i ? '#1b2a4a' : '#fff',
+                                        color: previewStepIdx === i ? '#fff' : '#6b7280' }}>
+                                      Step {s.step_order}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {step.type === 'email' ? (
+                              <>
+                                {/* Subject bar */}
+                                <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', marginBottom: 10, display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                                  <span style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{applyPreview(step.subject ?? '(no subject)')}</span>
+                                </div>
+                                {/* Email chrome + iframe */}
+                                <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,.05)' }}>
+                                  <div style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#ef4444' }} />
+                                    <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#f59e0b' }} />
+                                    <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#22c55e' }} />
+                                    <div style={{ flex: 1, marginLeft: 10, background: '#fff', borderRadius: 5, padding: '3px 10px', fontSize: 11, color: '#9ca3af' }}>
+                                      From: {fromLine}
+                                    </div>
+                                  </div>
+                                  {step.body ? (
+                                    <iframe
+                                      sandbox="allow-same-origin"
+                                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${applyPreview(step.body)}</body></html>`}
+                                      style={{ width: '100%', border: 'none', minHeight: 400, display: 'block', background: '#fff' }}
+                                      onLoad={e => { try { (e.currentTarget as HTMLIFrameElement).style.height = ((e.currentTarget as HTMLIFrameElement).contentDocument?.body?.scrollHeight ?? 400) + 'px'; } catch {} }}
+                                      title={`Step ${step.step_order} Preview`}
+                                    />
+                                  ) : (
+                                    <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No email body — edit this plan to add content.</div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '14px 16px', fontSize: 13, color: '#374151' }}>
+                                <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>{step.type} · Day {step.delay_days}</div>
+                                {applyPreview(step.body)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Test Send */}
-                      <div style={{ marginTop: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
+                      <div style={{ marginTop: 4, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>🧪 Send Test Email</div>
                         <div style={{ fontSize: 12, color: '#92400e', marginBottom: 12 }}>Sends Step 1 of this plan to your email with sample merge fields so you can see exactly how it looks before enrolling real contacts.</div>
                         <button className="crm-btn crm-btn-sm" disabled={testSending}
