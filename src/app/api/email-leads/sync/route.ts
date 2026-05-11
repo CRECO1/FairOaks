@@ -30,45 +30,91 @@ function extract(body: string, patterns: RegExp[]): string {
   return '';
 }
 
-function parseLeadEmail(subject: string, body: string) {
-  // Strip HTML tags for plain-text parsing
-  const text = body
+function htmlToText(html: string): string {
+  return html
+    // Block-level elements → newlines (before closing tags so label stays on its own line)
+    .replace(/<\/?(tr|div|section|article|header|footer|h[1-6]|ul|ol|blockquote)[^>]*>/gi, '\n')
+    .replace(/<\/?(p|li)[^>]*>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<p[^>]*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/\s{2,}/g, ' ');
+    // Table cells: close tags get a space so "Name:</td><td>John" → "Name: John"
+    .replace(/<\/t[dh]>/gi, ' ')
+    .replace(/<t[dh][^>]*>/gi, '')
+    // Strip remaining tags
+    .replace(/<[^>]+>/g, '')
+    // Decode common HTML entities
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&mdash;/g, '—')
+    // Collapse whitespace but preserve newlines
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
-  const name = extract(text, [
-    /(?:first name|contact name|name|full name|prospect)[:\s]+([A-Za-z][\w\s'\-]{1,50})/i,
-    /^([A-Za-z][\w\s'\-]{2,40})\s+(?:has submitted|is interested|sent you)/im,
+function parseLeadEmail(subject: string, body: string) {
+  const text = htmlToText(body);
+
+  // First Name + Last Name (LoopNet style)
+  const firstName = extract(text, [
+    /(?:^|\n)\s*first\s*name[:\s]+([A-Za-z][^\n]{1,30})/im,
+  ]);
+  const lastName = extract(text, [
+    /(?:^|\n)\s*last\s*name[:\s]+([A-Za-z][^\n]{1,30})/im,
   ]);
 
-  const lastName = extract(text, [/last name[:\s]+([A-Za-z][\w\s'\-]{1,30})/i]);
-  const fullName = lastName ? `${name} ${lastName}`.trim() : name;
+  // Full name from various label patterns or contextual phrases
+  const nameFromBody = extract(text, [
+    // Explicit full-name labels
+    /(?:^|\n)\s*(?:full\s*name|contact\s*name|name|buyer\s*name|tenant\s*name|prospect\s*name|sender\s*name)[:\s]+([A-Za-z][^\n]{2,50})/im,
+    // "John Smith has submitted/sent/is interested..."
+    /(?:^|\n)([A-Za-z][A-Za-z\s'\-]{4,40})\s+(?:has\s+submitted|is\s+interested|sent\s+you|would\s+like|wants\s+to|inquired)/im,
+    // Crexi often puts name as the first non-blank line before email/phone block
+    /(?:^|\n)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\n\s*[\w.+\-]+@/im,
+  ]);
+
+  // Compose full name
+  let fullName = '';
+  if (firstName || lastName) {
+    fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  } else if (nameFromBody) {
+    fullName = nameFromBody.trim();
+  }
+
+  // Fallback: try subject line
+  if (!fullName) {
+    fullName = extract(subject, [
+      /(?:new\s+lead[:\s\-]+|lead\s+from[:\s]+|inquiry\s+from[:\s]+|contact\s+from[:\s]+)([A-Za-z][^\-–|]{3,40})(?:\s*[\-–|]|\s+(?:for|re:|regarding|is\s+interested)|$)/i,
+      /^([A-Za-z][A-Za-z\s'\-]{4,40})\s+(?:is\s+interested|inquired|sent|submitted)/i,
+    ]);
+  }
 
   const email = extract(text, [
-    /(?:email address|email|e-mail)[:\s]+([\w.+\-]+@[\w.\-]+\.[a-z]{2,})/i,
+    /(?:^|\n)\s*(?:email\s*address|e[-\s]?mail)[:\s]+([\w.+\-]+@[\w.\-]+\.[a-z]{2,})/im,
     /([\w.+\-]+@[\w.\-]+\.[a-z]{2,})/i,
   ]);
 
   const phone = extract(text, [
-    /(?:phone|mobile|cell|telephone)[:\s]+([\d\s().+\-]{7,20})/i,
+    /(?:^|\n)\s*(?:phone|mobile|cell|telephone|tel)[:\s]+([\d\s().+\-]{7,20})/im,
     /((?:\+1\s?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4})/,
   ]);
 
   const property = extract(text, [
-    /(?:property of interest|property|listing|inquir(?:y|ing about)|interested in)[:\s]+([^\n]{5,120})/i,
+    /(?:^|\n)\s*(?:property\s+of\s+interest|property\s+address|property|listing|inquiring\s+about|interested\s+in)[:\s]+([^\n]{5,120})/im,
     /(?:subject)[:\s]*.*?(?:for|regarding|re:)\s+([^\n]{5,120})/i,
-  ]) || subject.replace(/^(new lead|new inquiry|contact info for|lead from)[:\s-]*/i, '').trim();
+  ]) || subject.replace(/^(new\s+lead|new\s+inquiry|contact\s+info\s+for|lead\s+from)[:\s\-]*/i, '').trim();
 
   const message = extract(text, [
-    /(?:message|comments?|notes?|additional info)[:\s]+([^\n]{5,500})/i,
-    /(?:i'm interested|i am interested|please contact|i would like)[^\n]{5,300}/i,
+    /(?:^|\n)\s*(?:message|comments?|notes?|additional\s+info|questions?)[:\s]+([^\n]{5,500})/im,
+    /(?:i['']m\s+interested|i\s+am\s+interested|please\s+contact|i\s+would\s+like)[^\n]{5,300}/i,
   ]);
 
   const company = extract(text, [
-    /(?:company|firm|organization|brokerage)[:\s]+([^\n]{2,80})/i,
+    /(?:^|\n)\s*(?:company|firm|organization|brokerage|business)[:\s]+([^\n]{2,80})/im,
   ]);
 
   return { fullName, email, phone, property, message, company };
@@ -117,21 +163,24 @@ async function gmailGetMessage(token: string, messageId: string) {
 }
 
 function decodeBody(msg: any): string {
-  // Try to get text/plain or text/html part
-  function getParts(payload: any): string {
-    if (!payload) return '';
+  // Collect all parts by mimeType, preferring text/html for richer structure
+  function collectParts(payload: any, htmlParts: string[], textParts: string[]) {
+    if (!payload) return;
+    const mime = (payload.mimeType ?? '').toLowerCase();
     if (payload.body?.data) {
-      return Buffer.from(payload.body.data, 'base64url').toString('utf-8');
+      const decoded = Buffer.from(payload.body.data, 'base64url').toString('utf-8');
+      if (mime.includes('html')) htmlParts.push(decoded);
+      else textParts.push(decoded);
     }
     if (payload.parts) {
-      for (const part of payload.parts) {
-        const text = getParts(part);
-        if (text) return text;
-      }
+      for (const part of payload.parts) collectParts(part, htmlParts, textParts);
     }
-    return '';
   }
-  return getParts(msg.payload);
+  const htmlParts: string[] = [];
+  const textParts: string[] = [];
+  collectParts(msg.payload, htmlParts, textParts);
+  // Prefer HTML — it has the structured table/label layout that leads come in
+  return htmlParts[0] ?? textParts[0] ?? '';
 }
 
 function getHeader(msg: any, name: string): string {
