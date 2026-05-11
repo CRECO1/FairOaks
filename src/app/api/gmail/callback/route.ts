@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
   // Upsert on (user_id, gmail_email) — allows multiple accounts per user
-  await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections`, {
+  await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?on_conflict=user_id,gmail_email`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
     body: JSON.stringify({
       user_id: userId,
       gmail_email: profile.email,
+      email: profile.email,
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token,
       expires_at: expiresAt,
