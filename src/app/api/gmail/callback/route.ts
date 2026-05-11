@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_email`);
   }
 
-  console.log('[gmail/callback] Processing connection:', { stateUserId, gmailEmail, hasRefreshToken: !!tokens.refresh_token });
+  console.log('[gmail/callback] Processing connection:', { stateUserId, gmailEmail, hasRefreshToken: !!tokens.refresh_token, stateBu });
 
   const expiresAt = new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString();
   const now       = new Date().toISOString();
@@ -106,10 +106,26 @@ export async function GET(req: NextRequest) {
   } else {
     // New connection — must have refresh_token
     if (!tokens.refresh_token) {
-      console.error('[gmail/callback] No refresh_token for new connection:', gmailEmail);
-      // Revoke the partial access so user can retry and get a fresh refresh_token
+      console.error('[gmail/callback] No refresh_token for new connection:', gmailEmail, '— revoking and auto-retrying');
+      // Revoke the stale access so Google issues a fresh grant on next auth
       await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: 'POST' }).catch(() => {});
-      return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_refresh_token`);
+
+      // Check if this is already a retry (prevent infinite loops)
+      const isRetry = stateRaw?.includes('|retry');
+      if (isRetry) {
+        console.error('[gmail/callback] Still no refresh_token after retry — giving up');
+        return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_refresh_token`);
+      }
+
+      // Auto-retry: bounce back to the auth route — after revocation Google will
+      // show fresh consent and return a proper refresh_token this time
+      const base = process.env.NEXT_PUBLIC_SERVER_URL ?? 'https://www.fairoaksrealtygroup.com';
+      const retryUrl = new URL(`${base}/api/gmail/auth`);
+      retryUrl.searchParams.set('userId', stateUserId);
+      retryUrl.searchParams.set('hint', gmailEmail);
+      retryUrl.searchParams.set('bu', stateBu ?? '');
+      retryUrl.searchParams.set('retry', '1');
+      return NextResponse.redirect(retryUrl.toString());
     }
 
     const { error: insertErr } = await supabase
