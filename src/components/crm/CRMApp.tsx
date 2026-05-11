@@ -314,7 +314,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -410,6 +410,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Campaigns
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [prospects, setProspects] = useState<any[]>([]);
+  const [prospectsLoading, setProspectsLoading] = useState(false);
+  const [prospectStatusFilter, setProspectStatusFilter] = useState<string>('new');
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
   const [campaignView, setCampaignView] = useState<'list' | 'builder' | 'detail'>('list');
   const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'preview' | 'settings'>('enrolled');
@@ -1485,6 +1488,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Campaigns ─────────────────────────────────────────────────────────────────
+  async function loadProspects() {
+    setProspectsLoading(true);
+    const { data } = await supabase
+      .from('email_lead_imports')
+      .select('*, client:crm_clients(id,first_name,last_name,email,phone,prospect_status,lead_source,notes,created_at)')
+      .eq('business_unit', businessUnit)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    setProspects(data ?? []);
+    setProspectsLoading(false);
+  }
+
+  async function updateProspectStatus(clientId: string, status: string) {
+    await supabase.from('crm_clients').update({ prospect_status: status }).eq('id', clientId);
+    setProspects(prev => prev.map(p => p.client?.id === clientId ? { ...p, client: { ...p.client, prospect_status: status } } : p));
+    showToast(`Prospect marked as ${status}`);
+  }
+
+  async function syncEmailLeads() {
+    showToast('Scanning inbox for new leads…');
+    const res = await fetch('/api/email-leads/sync', { method: 'POST' });
+    const data = await res.json();
+    if (data.imported > 0) { showToast(`✅ ${data.imported} new lead${data.imported > 1 ? 's' : ''} imported!`); loadProspects(); }
+    else showToast('No new leads found');
+  }
+
   async function loadCampaigns() {
     setCampaignLoading(true);
     try {
@@ -1873,6 +1902,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const mobileNavItems: { id: typeof page; icon: string; label: string }[] = [
     { id: 'dashboard', icon: '🏠', label: 'Home' },
+    { id: 'prospects' as typeof page, icon: '🎯', label: 'Prospects' },
     { id: 'deals', icon: '📋', label: 'Deals' },
     { id: 'contacts', icon: '👥', label: 'Contacts' },
     { id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' },
@@ -1881,7 +1911,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   ];
 
   const pageLabel: Record<typeof page, string> = {
-    dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
+    dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans',
   };
 
@@ -1962,6 +1992,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>People</div>
           <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>👥 &nbsp;Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
+          <button className={`crm-nav${page === 'prospects' ? ' active' : ''}`} onClick={() => { setPage('prospects'); loadProspects(); }}>🎯 &nbsp;Prospects {prospects.filter(p => p.client?.prospect_status === 'new').length > 0 && <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{prospects.filter(p => p.client?.prospect_status === 'new').length}</span>}</button>
           {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}>🤝 &nbsp;Broker / Agents</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
@@ -2277,6 +2308,113 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} />
             </div>
           )}
+
+          {/* ── Prospects ── */}
+          {page === 'prospects' && (() => {
+            const SOURCE_COLORS: Record<string, { bg: string; color: string; emoji: string }> = {
+              'LoopNet':     { bg: '#fff7ed', color: '#c2410c', emoji: '🔶' },
+              'Crexi':       { bg: '#f0fdf4', color: '#15803d', emoji: '🟢' },
+              'CoStar':      { bg: '#eff6ff', color: '#1d4ed8', emoji: '🔵' },
+              '42Floors':    { bg: '#faf5ff', color: '#7e22ce', emoji: '🟣' },
+              'Zillow':      { bg: '#fff1f2', color: '#be123c', emoji: '🏠' },
+              'Realtor.com': { bg: '#fff1f2', color: '#dc2626', emoji: '🔑' },
+              'Website':     { bg: '#f0fdf4', color: '#15803d', emoji: '🌐' },
+            };
+            const STATUS_OPTIONS = ['new', 'contacted', 'qualified', 'converted', 'lost'];
+            const filtered = prospects.filter(p => prospectStatusFilter === 'all' || p.client?.prospect_status === prospectStatusFilter);
+            return (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Prospects</h2>
+                    <p style={{ fontSize: 13, color: '#6b7280' }}>Auto-imported leads from {businessUnit === 'commercial' ? 'LoopNet, Crexi, CoStar & 42Floors' : 'Zillow, Realtor.com & Website'}</p>
+                  </div>
+                  <button className="crm-btn crm-btn-gold" onClick={syncEmailLeads} style={{ fontSize: 13 }}>🔄 Sync Now</button>
+                </div>
+
+                {/* Status filter pills */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+                  {['all', ...STATUS_OPTIONS].map(s => (
+                    <button key={s} onClick={() => setProspectStatusFilter(s)}
+                      style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor: prospectStatusFilter === s ? '#c9922c' : '#e5e7eb', background: prospectStatusFilter === s ? '#c9922c' : '#fff', color: prospectStatusFilter === s ? '#111' : '#6b7280', textTransform: 'capitalize' }}>
+                      {s === 'all' ? `All (${prospects.length})` : `${s} (${prospects.filter(p => p.client?.prospect_status === s).length})`}
+                    </button>
+                  ))}
+                </div>
+
+                {prospectsLoading ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>Loading prospects…</div>
+                ) : filtered.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+                    <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No prospects yet</div>
+                    <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>Connect Gmail in Settings and leads will auto-import every 15 minutes</div>
+                    <button className="crm-btn crm-btn-gold" onClick={syncEmailLeads}>🔄 Sync Now</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill,minmax(340px,1fr))' }}>
+                    {filtered.map(p => {
+                      const src = SOURCE_COLORS[p.source] ?? { bg: '#f9fafb', color: '#374151', emoji: '📧' };
+                      const c = p.client;
+                      const name = c ? `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() : p.parsed_name ?? 'Unknown';
+                      const importedAgo = p.created_at ? (() => {
+                        const diff = Date.now() - new Date(p.created_at).getTime();
+                        const mins = Math.floor(diff / 60000);
+                        const hrs = Math.floor(diff / 3600000);
+                        const days = Math.floor(diff / 86400000);
+                        return days > 0 ? `${days}d ago` : hrs > 0 ? `${hrs}h ago` : `${mins}m ago`;
+                      })() : '';
+                      return (
+                        <div key={p.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 18px', boxShadow: '0 1px 4px rgba(0,0,0,.04)', borderLeft: `4px solid ${src.color}` }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                            <div>
+                              <span style={{ background: src.bg, color: src.color, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+                                {src.emoji} {p.source}
+                              </span>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: '#111', lineHeight: 1.3 }}>{name || 'Unknown Contact'}</div>
+                              {c?.email && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{c.email}</div>}
+                              {c?.phone && <div style={{ fontSize: 12, color: '#6b7280' }}>{c.phone}</div>}
+                            </div>
+                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>{importedAgo}</div>
+                              <select value={c?.prospect_status ?? 'new'} onChange={e => c && updateProspectStatus(c.id, e.target.value)}
+                                style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#f9fafb', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer', color: '#374151', textTransform: 'capitalize' }}>
+                                {STATUS_OPTIONS.map(s => <option key={s} value={s} style={{ textTransform: 'capitalize' }}>{s}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          {p.parsed_property && (
+                            <div style={{ fontSize: 12, color: '#374151', background: '#f9fafb', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
+                              🏢 {p.parsed_property.length > 80 ? p.parsed_property.slice(0, 80) + '…' : p.parsed_property}
+                            </div>
+                          )}
+                          {p.parsed_message && (
+                            <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10, lineHeight: 1.5, fontStyle: 'italic' }}>
+                              "{p.parsed_message.length > 120 ? p.parsed_message.slice(0, 120) + '…' : p.parsed_message}"
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {c?.phone && (
+                              <a href={`tel:${c.phone}`} className="crm-btn crm-btn-sm" style={{ fontSize: 12, padding: '5px 12px', textDecoration: 'none' }}>📞 Call</a>
+                            )}
+                            {c?.email && (
+                              <a href={`mailto:${c.email}`} className="crm-btn crm-btn-sm" style={{ fontSize: 12, padding: '5px 12px', textDecoration: 'none' }}>✉️ Email</a>
+                            )}
+                            {c && (
+                              <button className="crm-btn crm-btn-sm" style={{ fontSize: 12, padding: '5px 12px' }}
+                                onClick={() => { loadClients(); setPage('contacts'); setTimeout(() => { setActiveClient(c as any); }, 500); }}>
+                                👤 View
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Clients ── */}
           {page === 'contacts' && (
