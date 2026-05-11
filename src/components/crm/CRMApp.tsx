@@ -364,6 +364,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Gmail connection state
   const [gmailConnected, setGmailConnected] = useState(false);
+  const [showGmailInput, setShowGmailInput] = useState(false);
+  const [gmailInputValue, setGmailInputValue] = useState('');
   const [gmailEmail, setGmailEmail] = useState('');
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
@@ -2046,11 +2048,43 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={() => disconnectGmailAccount(acct.id)} title="Disconnect" aria-label="Disconnect" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)', cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             ))}
-            <a href={`/api/gmail/auth?userId=${session!.user.id}`}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,.04)', border: '1px dashed rgba(255,255,255,.15)', borderRadius: 7, textDecoration: 'none', cursor: 'pointer' }}>
-              <span style={{ fontSize: 12 }}>＋</span>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', fontWeight: 500 }}>{gmailAccounts.length === 0 ? 'Connect Google Account' : 'Add Another Account'}</span>
-            </a>
+            {showGmailInput ? (
+              <div style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 7, padding: '8px 10px' }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,.45)', marginBottom: 6 }}>Enter the Gmail address to connect:</div>
+                <input
+                  type="email"
+                  autoFocus
+                  placeholder="you@gmail.com"
+                  value={gmailInputValue}
+                  onChange={e => setGmailInputValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && gmailInputValue.trim()) {
+                      window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}`;
+                    }
+                    if (e.key === 'Escape') { setShowGmailInput(false); setGmailInputValue(''); }
+                  }}
+                  style={{ width: '100%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 5, padding: '5px 8px', fontSize: 11, color: '#fff', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <button
+                    disabled={!gmailInputValue.trim()}
+                    onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}`; }}
+                    style={{ flex: 1, padding: '5px 0', borderRadius: 5, border: 'none', background: gmailInputValue.trim() ? '#c9922c' : 'rgba(255,255,255,.1)', color: gmailInputValue.trim() ? '#111' : 'rgba(255,255,255,.3)', fontSize: 11, fontWeight: 700, cursor: gmailInputValue.trim() ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+                    Connect →
+                  </button>
+                  <button onClick={() => { setShowGmailInput(false); setGmailInputValue(''); }}
+                    style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,.15)', background: 'none', color: 'rgba(255,255,255,.4)', fontSize: 11, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowGmailInput(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,.04)', border: '1px dashed rgba(255,255,255,.15)', borderRadius: 7, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                <span style={{ fontSize: 12 }}>＋</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', fontWeight: 500 }}>{gmailAccounts.length === 0 ? 'Connect Google Account' : 'Add Another Account'}</span>
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#111', flexShrink: 0 }}>{initials}</div>

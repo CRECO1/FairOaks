@@ -11,6 +11,7 @@ const SCOPES = [
 
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
+  const hint   = req.nextUrl.searchParams.get('hint') ?? ''; // specific Gmail address to connect
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
   // Only the authenticated agent can initiate their own OAuth flow
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot initiate OAuth for another user');
 
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientId   = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = 'https://www.fairoaksrealtygroup.com/api/gmail/callback';
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
@@ -27,8 +28,10 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', SCOPES);
   url.searchParams.set('access_type', 'offline');
-  url.searchParams.set('prompt', 'select_account consent'); // show account picker + consent so user can add a different account
-  url.searchParams.set('state', userId); // pass userId through so callback knows who to store for
+  url.searchParams.set('prompt', 'consent'); // always get refresh_token
+  url.searchParams.set('state', userId);
+  // login_hint targets the exact Google account — avoids defaulting to the already-connected one
+  if (hint) url.searchParams.set('login_hint', hint);
 
   return NextResponse.redirect(url.toString());
 }
