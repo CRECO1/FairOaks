@@ -298,6 +298,44 @@ export async function POST() {
           clientId = newClient?.id ?? null;
         }
 
+        // Create a deal in the Prospect stage (dedup by client_id + property)
+        if (clientId) {
+          const dealType = business_unit === 'commercial' ? 'Tenant Lease' : 'Buyer Purchase';
+          const today    = new Date().toISOString().slice(0, 10);
+          const clientName = parsed.fullName ||
+            [parsed.email?.split('@')[0] ?? ''].filter(Boolean).join(' ');
+
+          // Only insert if no existing Prospect-stage deal for this client+property
+          const { data: existingDeal } = await supabase
+            .from('crm_deals')
+            .select('id')
+            .eq('client_id', clientId)
+            .eq('stage', 'Prospect')
+            .eq('business_unit', business_unit)
+            .maybeSingle();
+
+          if (!existingDeal) {
+            await supabase.from('crm_deals').insert([{
+              client_id:           clientId,
+              client:              clientName,
+              client_email:        parsed.email  ?? '',
+              client_phone:        parsed.phone  ?? '',
+              type:                dealType,
+              property:            parsed.property ?? subject,
+              value:               0,
+              notes:               [
+                parsed.message  ? `Message: ${parsed.message}` : '',
+                `Source: ${source.source}`,
+              ].filter(Boolean).join('\n'),
+              agent_id:            agentId,
+              assigned_agent_ids:  [agentId],
+              stage:               'Prospect',
+              last_touch:          today,
+              business_unit,
+            }]);
+          }
+        }
+
         // Record the import
         await supabase.from('email_lead_imports').insert([{
           gmail_message_id:   messageId,
