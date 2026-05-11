@@ -640,10 +640,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             .catch(() => {});
         }
       });
-    // Handle OAuth redirect result
+    // Handle OAuth redirect result — re-fetch accounts so new connection shows immediately
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmail') === 'connected') {
-      setGmailConnected(true);
+      fetch(`/api/gmail/status?userId=${session.user.id}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.connected) {
+            setGmailConnected(true);
+            setGmailEmail(d.email);
+            setGmailAccounts(d.accounts ?? []);
+          }
+        });
       // Fetch signature after fresh OAuth connect
       fetch(`/api/gmail/signature?userId=${session.user.id}`)
         .then(r => r.json())
