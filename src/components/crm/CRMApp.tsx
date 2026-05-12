@@ -452,6 +452,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Agent filters for campaigns + action plans
   const [campaignAgentFilter, setCampaignAgentFilter] = useState<string | null>(null);
   const [actionPlanAgentFilter, setActionPlanAgentFilter] = useState<string | null>(null);
+  // Inline owner editing on list cards
+  const [inlineOwnerPlanId, setInlineOwnerPlanId] = useState<string | null>(null);
+  const [inlineOwnerCampaignId, setInlineOwnerCampaignId] = useState<string | null>(null);
 
   // Action Plans
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
@@ -3903,14 +3906,43 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                               <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', color: camp.type === 'email' ? '#1e40af' : '#065f46' }}>{camp.type.toUpperCase()}</span>
                             </div>
-                            <div style={{ fontSize: 12, color: '#6b7280' }}>
-                              {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)} · {camp.enrollment_count ?? 0} enrolled
+                            <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                              <span>{camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)} · {camp.enrollment_count ?? 0} enrolled</span>
                               {camp.last_sent_at
                                 ? <span style={{ color: '#16a34a', fontWeight: 500 }}> · Last sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                 : <span style={{ color: '#9ca3af' }}> · Never sent</span>
                               }
-                              {(() => { const owner = profiles.find(p => p.id === camp.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
-                              {camp.description && ` · ${camp.description}`}
+                              {isAdmin && (
+                                inlineOwnerCampaignId === camp.id ? (
+                                  <select
+                                    autoFocus
+                                    value={camp.created_by ?? ''}
+                                    onBlur={() => setInlineOwnerCampaignId(null)}
+                                    onChange={async e => {
+                                      const newOwner = e.target.value;
+                                      await fetch(`/api/campaigns/${camp.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ created_by: newOwner }) });
+                                      setCampaigns(prev => prev.map(c => c.id === camp.id ? { ...c, created_by: newOwner } : c));
+                                      if (activeCampaign?.id === camp.id) setActiveCampaign(ac => ac ? { ...ac, created_by: newOwner } : ac);
+                                      setInlineOwnerCampaignId(null);
+                                      showToast('Owner updated ✓');
+                                    }}
+                                    style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #c9922c', borderRadius: 6, padding: '2px 6px', color: '#c9922c', fontWeight: 600, background: '#fff', cursor: 'pointer' }}
+                                  >
+                                    {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                                  </select>
+                                ) : (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setInlineOwnerCampaignId(camp.id); }}
+                                    title="Click to change owner"
+                                    style={{ background: 'none', border: 'none', padding: '1px 0', cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12, fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                  >
+                                    · {(() => { const o = profiles.find(p => p.id === camp.created_by); return o ? `${o.first_name} ${o.last_name}` : '—'; })()}
+                                    <span style={{ fontSize: 9, color: '#d1a054', marginLeft: 1 }}>▾</span>
+                                  </button>
+                                )
+                              )}
+                              {!isAdmin && (() => { const owner = profiles.find(p => p.id === camp.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
+                              {camp.description && <span> · {camp.description}</span>}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
@@ -4721,10 +4753,39 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
                               <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#ede9fe', color: '#6d28d9' }}>{plan.trigger_type.replace('_', ' ')}</span>
                             </div>
-                            <div style={{ fontSize: 12, color: '#6b7280' }}>
-                              {plan.step_count ?? 0} steps · {plan.enrollment_count ?? 0} enrolled
-                              {(() => { const owner = profiles.find(p => p.id === plan.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
-                              {plan.description && ` · ${plan.description}`}
+                            <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                              <span>{plan.step_count ?? 0} steps · {plan.enrollment_count ?? 0} enrolled</span>
+                              {isAdmin && (
+                                inlineOwnerPlanId === plan.id ? (
+                                  <select
+                                    autoFocus
+                                    value={plan.created_by ?? ''}
+                                    onBlur={() => setInlineOwnerPlanId(null)}
+                                    onChange={async e => {
+                                      const newOwner = e.target.value;
+                                      await fetch(`/api/action-plans/${plan.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ created_by: newOwner }) });
+                                      setActionPlans(prev => prev.map(p => p.id === plan.id ? { ...p, created_by: newOwner } : p));
+                                      if (activeActionPlan?.id === plan.id) setActiveActionPlan(ap => ap ? { ...ap, created_by: newOwner } : ap);
+                                      setInlineOwnerPlanId(null);
+                                      showToast('Owner updated ✓');
+                                    }}
+                                    style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #c9922c', borderRadius: 6, padding: '2px 6px', color: '#c9922c', fontWeight: 600, background: '#fff', cursor: 'pointer' }}
+                                  >
+                                    {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                                  </select>
+                                ) : (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setInlineOwnerPlanId(plan.id); }}
+                                    title="Click to change owner"
+                                    style={{ background: 'none', border: 'none', padding: '1px 0', cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12, fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                                  >
+                                    · {(() => { const o = profiles.find(p => p.id === plan.created_by); return o ? `${o.first_name} ${o.last_name}` : '—'; })()}
+                                    <span style={{ fontSize: 9, color: '#d1a054', marginLeft: 1 }}>▾</span>
+                                  </button>
+                                )
+                              )}
+                              {!isAdmin && (() => { const owner = profiles.find(p => p.id === plan.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
+                              {plan.description && <span> · {plan.description}</span>}
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
