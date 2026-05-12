@@ -3984,6 +3984,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </span>
                         </div>
                       )}
+                      {/* Owner (created_by) — editable dropdown */}
+                      {isAdmin && profiles.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
+                          <span style={{ color: '#6b7280', fontWeight: 500 }}>Owner</span>
+                          <select
+                            value={activeCampaign.created_by ?? ''}
+                            onChange={async e => {
+                              const newOwner = e.target.value;
+                              await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ created_by: newOwner }) });
+                              setActiveCampaign({ ...activeCampaign, created_by: newOwner });
+                              setCampaigns(prev => prev.map(c => c.id === activeCampaign.id ? { ...c, created_by: newOwner } : c));
+                              showToast('Owner updated ✓');
+                            }}
+                            style={{ fontSize: 13, fontWeight: 600, color: '#111', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>
+                            {profiles.map(p => (
+                              <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {activeCampaign.type === 'email' && activeCampaign.email_subject && (
                         <div style={{ padding: '12px 14px', background: '#f9fafb', borderRadius: 8 }}>
                           <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 }}>Subject Line</div>
@@ -4593,6 +4613,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <span style={{ color: '#6b7280', fontWeight: 500 }}>{l}</span><span style={{ fontWeight: 600, textTransform: l === 'Trigger' ? 'capitalize' : undefined }}>{v}</span>
                         </div>
                       ))}
+                      {/* Owner (created_by) — editable dropdown */}
+                      {isAdmin && profiles.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f9fafb', borderRadius: 8, fontSize: 13 }}>
+                          <span style={{ color: '#6b7280', fontWeight: 500 }}>Owner</span>
+                          <select
+                            value={activeActionPlan.created_by ?? ''}
+                            onChange={async e => {
+                              const newOwner = e.target.value;
+                              await fetch(`/api/action-plans/${activeActionPlan.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ created_by: newOwner }) });
+                              setActiveActionPlan({ ...activeActionPlan, created_by: newOwner });
+                              setActionPlans(prev => prev.map(p => p.id === activeActionPlan.id ? { ...p, created_by: newOwner } : p));
+                              showToast('Owner updated ✓');
+                            }}
+                            style={{ fontSize: 13, fontWeight: 600, color: '#111', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>
+                            {profiles.map(p => (
+                              <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       {/* Test Send */}
                       <div style={{ marginTop: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '14px 16px' }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 4 }}>🧪 Send Test Email</div>
