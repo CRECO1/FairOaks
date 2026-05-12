@@ -448,6 +448,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [followUpDays, setFollowUpDays] = useState(30);
   const [followUpTypeFilter, setFollowUpTypeFilter] = useState('');
 
+  // Agent filters for campaigns + action plans
+  const [campaignAgentFilter, setCampaignAgentFilter] = useState<string | null>(null);
+  const [actionPlanAgentFilter, setActionPlanAgentFilter] = useState<string | null>(null);
+
   // Action Plans
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
   const [activeActionPlan, setActiveActionPlan] = useState<ActionPlan | null>(null);
@@ -2032,8 +2036,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
-          <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); }}>📣 &nbsp;Campaigns</button>
-          <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); }}>⚡ &nbsp;Action Plans</button>
+          <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
+          <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -3480,15 +3484,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </button>
                   </div>
 
+                  {/* Agent filter row — admin only */}
+                  {isAdmin && profiles.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginRight: 4 }}>Agent:</span>
+                      <button onClick={() => setCampaignAgentFilter(null)}
+                        style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignAgentFilter === null ? '#1a1a1a' : '#fff', color: campaignAgentFilter === null ? '#fff' : '#6b7280', borderColor: campaignAgentFilter === null ? '#1a1a1a' : '#e5e7eb' }}>
+                        All
+                      </button>
+                      {profiles.map(p => {
+                        const name = `${p.first_name} ${p.last_name}`.trim() || p.email;
+                        const count = campaigns.filter(c => c.created_by === p.id).length;
+                        if (count === 0) return null;
+                        const active = campaignAgentFilter === p.id;
+                        return (
+                          <button key={p.id} onClick={() => setCampaignAgentFilter(active ? null : p.id)}
+                            style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: active ? '#c9922c' : '#fff', color: active ? '#fff' : '#6b7280', borderColor: active ? '#c9922c' : '#e5e7eb' }}>
+                            {name} <span style={{ opacity: .7 }}>({count})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Status filter tabs */}
                   {campaigns.length > 0 && (
                     <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-                      {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
-                        <button key={f} onClick={() => setCampaignFilter(f)}
-                          style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
-                          {f === 'all' ? `All (${campaigns.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${campaigns.filter(c => c.status === f).length})`}
-                        </button>
-                      ))}
+                      {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => {
+                        const filtered = campaigns.filter(c => campaignAgentFilter ? c.created_by === campaignAgentFilter : true);
+                        return (
+                          <button key={f} onClick={() => setCampaignFilter(f)}
+                            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
+                            {f === 'all' ? `All (${filtered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${filtered.filter(c => c.status === f).length})`}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -3503,7 +3533,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
-                      {campaigns.filter(c => campaignFilter === 'all' || c.status === campaignFilter).map(camp => (
+                      {campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter)).map(camp => (
                         <div key={camp.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
                           <div style={{ width: 44, height: 44, borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
                             {camp.type === 'email' ? '✉️' : '💬'}
@@ -3520,6 +3550,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 ? <span style={{ color: '#16a34a', fontWeight: 500 }}> · Last sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                 : <span style={{ color: '#9ca3af' }}> · Never sent</span>
                               }
+                              {(() => { const owner = profiles.find(p => p.id === camp.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
                               {camp.description && ` · ${camp.description}`}
                             </div>
                           </div>
@@ -4268,6 +4299,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <button className="crm-btn crm-btn-gold" onClick={() => { setActiveActionPlan(null); setNewPlan({ name: '', description: '', trigger_type: 'manual', trigger_value: '', status: 'active', completion_campaign_id: '' }); setPlanSteps([]); setActionPlanView('builder'); }}>+ New Plan</button>
                   </div>
 
+                  {/* Agent filter row — admin only */}
+                  {isAdmin && profiles.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginRight: 4 }}>Agent:</span>
+                      <button onClick={() => setActionPlanAgentFilter(null)}
+                        style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: actionPlanAgentFilter === null ? '#1a1a1a' : '#fff', color: actionPlanAgentFilter === null ? '#fff' : '#6b7280', borderColor: actionPlanAgentFilter === null ? '#1a1a1a' : '#e5e7eb' }}>
+                        All
+                      </button>
+                      {profiles.map(p => {
+                        const name = `${p.first_name} ${p.last_name}`.trim() || p.email;
+                        const count = actionPlans.filter(pl => pl.created_by === p.id).length;
+                        if (count === 0) return null;
+                        const active = actionPlanAgentFilter === p.id;
+                        return (
+                          <button key={p.id} onClick={() => setActionPlanAgentFilter(active ? null : p.id)}
+                            style={{ padding: '4px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: active ? '#c9922c' : '#fff', color: active ? '#fff' : '#6b7280', borderColor: active ? '#c9922c' : '#e5e7eb' }}>
+                            {name} <span style={{ opacity: .7 }}>({count})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {actionPlanLoading ? (
                     <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading…</div>
                   ) : actionPlans.length === 0 ? (
@@ -4279,7 +4333,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
-                      {actionPlans.map(plan => (
+                      {actionPlans.filter(plan => !actionPlanAgentFilter || plan.created_by === actionPlanAgentFilter).map(plan => (
                         <div key={plan.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
                           <div style={{ width: 44, height: 44, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>⚡</div>
                           <div style={{ flex: 1, minWidth: 0 }}>
@@ -4290,6 +4344,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                             <div style={{ fontSize: 12, color: '#6b7280' }}>
                               {plan.step_count ?? 0} steps · {plan.enrollment_count ?? 0} enrolled
+                              {(() => { const owner = profiles.find(p => p.id === plan.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
                               {plan.description && ` · ${plan.description}`}
                             </div>
                           </div>
