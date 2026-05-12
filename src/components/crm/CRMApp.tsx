@@ -15,6 +15,7 @@ type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
+interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
@@ -314,7 +315,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -527,6 +528,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [editAgentForm, setEditAgentForm] = useState({ first_name: '', last_name: '', email: '', phone: '', license: '', business_unit: 'residential' });
   const [editAgentSaving, setEditAgentSaving] = useState(false);
+
+  // Task Manager (full Tasks page)
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'done'>('open');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState('');
+  const [taskAssigneeFilter, setTaskAssigneeFilter] = useState('');
+  const [taskSearchStr, setTaskSearchStr] = useState('');
+  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [newTaskForm, setNewTaskForm] = useState({ title: '', description: '', due_date: '', assigned_to: '', client_id: '', priority: 'normal' as Task['priority'], status: 'open' as Task['status'] });
+
+  // Bulk enroll in campaign
+  const [showBulkEnrollModal, setShowBulkEnrollModal] = useState(false);
+  const [bulkEnrollCampaignId, setBulkEnrollCampaignId] = useState('');
+  const [bulkEnrolling, setBulkEnrolling] = useState(false);
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
@@ -958,6 +975,73 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setEditClient(null);
     }
     setSaving(false);
+  }
+
+  // ── Task Manager (full page) ──────────────────────────────────────────────────
+  async function loadTasks() {
+    setTasksLoading(true);
+    try {
+      const res = await fetch(`/api/crm/tasks?unit=${businessUnit}&status=all`, {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      });
+      const data = await res.json();
+      setTasks((data.tasks ?? []) as Task[]);
+    } catch { /* ignore */ }
+    finally { setTasksLoading(false); }
+  }
+
+  async function createTask() {
+    if (!newTaskForm.title.trim()) return;
+    const res = await fetch('/api/crm/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ ...newTaskForm, business_unit: businessUnit }),
+    });
+    if (!res.ok) { showToast('Error creating task'); return; }
+    const { task } = await res.json();
+    setTasks(prev => [task, ...prev]);
+    setShowNewTaskModal(false);
+    setNewTaskForm({ title: '', description: '', due_date: '', assigned_to: '', client_id: '', priority: 'normal', status: 'open' });
+    showToast('Task created ✓');
+  }
+
+  async function updateTask(id: string, updates: Partial<Task>) {
+    const res = await fetch(`/api/crm/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) { showToast('Error updating task'); return; }
+    const { task } = await res.json();
+    setTasks(prev => prev.map(t => t.id === id ? task : t));
+    setEditingTask(null);
+    showToast('Task updated ✓');
+  }
+
+  async function deleteTask(id: string) {
+    await fetch(`/api/crm/tasks/${id}`, {
+      method: 'DELETE',
+      headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+    });
+    setTasks(prev => prev.filter(t => t.id !== id));
+    showToast('Task deleted');
+  }
+
+  async function bulkEnrollInCampaign() {
+    if (!bulkEnrollCampaignId || selectedClientIds.size === 0) return;
+    setBulkEnrolling(true);
+    const ids = Array.from(selectedClientIds);
+    const res = await fetch(`/api/campaigns/${bulkEnrollCampaignId}/enrollments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ client_ids: ids, enrolled_by: profile?.id }),
+    }).catch(() => null);
+    setBulkEnrolling(false);
+    setShowBulkEnrollModal(false);
+    setBulkEnrollCampaignId('');
+    setSelectedClientIds(new Set());
+    if (res?.ok) showToast(`✅ Enrolled ${ids.length} contact${ids.length !== 1 ? 's' : ''} in campaign`);
+    else showToast('Error enrolling contacts');
   }
 
   // ── Task Management ───────────────────────────────────────────────────────────
@@ -1887,6 +1971,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (deal) {
       if (newStage === 'Closed') triggerClosedPrompt({ ...deal, stage: newStage });
       if (newStage === 'Lost') triggerLostPrompt({ ...deal, stage: newStage });
+      // Fire stage-change action plans
+      if (deal.client_id) {
+        fetch('/api/action-plans/stage-trigger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage: newStage, clientId: deal.client_id, agentId: deal.agent_id, businessUnit }),
+        }).catch(() => {});
+      }
     }
   }
 
@@ -1943,6 +2035,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     { id: 'prospects' as typeof page, icon: '🎯', label: 'Prospects' },
     { id: 'deals', icon: '📋', label: 'Deals' },
     { id: 'contacts', icon: '👥', label: 'Contacts' },
+    { id: 'tasks' as typeof page, icon: '✅', label: 'Tasks' },
     { id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' },
     { id: 'action-plans' as typeof page, icon: '⚡', label: 'Plans' },
     ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
@@ -1950,7 +2043,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2036,6 +2129,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
+          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); }}>
+            ✅ &nbsp;Tasks
+            {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+              </span>
+            )}
+          </button>
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
         </div>
@@ -2359,6 +2460,39 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
               })()}
 
+              {/* Overdue Tasks widget */}
+              {(() => {
+                const overdue = allTasks.filter(t => t.due_date && t.due_date < today());
+                if (overdue.length === 0) return null;
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fecaca', padding: '16px 20px', marginBottom: 26 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>
+                        ⚠️ Overdue Tasks — {overdue.length}
+                      </div>
+                      <button onClick={() => { setPage('tasks'); loadTasks(); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View All Tasks →</button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {overdue.slice(0, 5).map(t => {
+                        const client = clients.find(c => c.id === t.client_id);
+                        const daysOverdue = Math.floor((Date.now() - new Date(t.due_date!).getTime()) / (1000 * 60 * 60 * 24));
+                        return (
+                          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                            <span style={{ fontSize: 14 }}>{t.type === 'call' ? '📞' : t.type === 'email' ? '✉️' : '📝'}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                              {client && <div style={{ fontSize: 10, color: '#6b7280' }}>{client.first_name} {client.last_name}</div>}
+                            </div>
+                            <span style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{daysOverdue}d overdue</span>
+                            <button onClick={() => completeTask(t.id)} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 10px', fontSize: 11, color: '#16a34a', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <KanbanBoard deals={deals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} />
             </div>
           )}
@@ -2662,10 +2796,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <>
                 {/* Bulk action bar — admin only */}
                 {isAdmin && selectedClientIds.size > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, padding: '10px 14px', background: '#fef9f0', border: '1px solid #f0d9a8', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '10px 14px', background: '#fef9f0', border: '1px solid #f0d9a8', borderRadius: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>
                       {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''} selected
                     </span>
+                    <button
+                      onClick={() => { loadCampaigns(); setShowBulkEnrollModal(true); }}
+                      style={{ background: '#c9922c', color: '#111', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      📣 Enroll in Campaign
+                    </button>
                     <button
                       onClick={massDeleteClients}
                       style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -3280,6 +3419,226 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               })()}
             </div>
           )}
+
+          {/* ── Tasks Page ── */}
+          {page === 'tasks' && (() => {
+            const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
+              urgent: { bg: '#fee2e2', color: '#dc2626' },
+              high:   { bg: '#fed7aa', color: '#c2410c' },
+              normal: { bg: '#dbeafe', color: '#1d4ed8' },
+              low:    { bg: '#f1f5f9', color: '#64748b' },
+            };
+            const STATUS_ICONS: Record<string, string> = { open: '⬜', in_progress: '🔄', done: '✅' };
+
+            const filteredTasks = tasks.filter(t => {
+              if (taskStatusFilter !== 'all' && t.status !== taskStatusFilter) return false;
+              if (taskPriorityFilter && t.priority !== taskPriorityFilter) return false;
+              if (taskAssigneeFilter && t.assigned_to !== taskAssigneeFilter) return false;
+              if (taskSearchStr && !t.title.toLowerCase().includes(taskSearchStr.toLowerCase())) return false;
+              return true;
+            });
+
+            const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length;
+            const openCt    = tasks.filter(t => t.status === 'open').length;
+            const inProgCt  = tasks.filter(t => t.status === 'in_progress').length;
+
+            return (
+              <div>
+                {/* Stats row */}
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+                  {[
+                    { label: 'Open',        val: openCt,   color: '#3b82f6' },
+                    { label: 'In Progress', val: inProgCt, color: '#f59e0b' },
+                    { label: 'Overdue',     val: overdueCt,color: '#ef4444' },
+                    { label: 'Total',       val: tasks.length, color: '#c9922c' },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: '#fff', borderRadius: 10, padding: '14px 18px', border: '1px solid #e0e0e0', borderLeft: `4px solid ${s.color}` }}>
+                      <div style={{ fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>{s.label}</div>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 30, fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Filters + New Task */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                  {(['all', 'open', 'in_progress', 'done'] as const).map(s => (
+                    <button key={s} onClick={() => setTaskStatusFilter(s)}
+                      style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif",
+                        background: taskStatusFilter === s ? '#111' : '#fff', color: taskStatusFilter === s ? '#fff' : '#6b7280', borderColor: taskStatusFilter === s ? '#111' : '#ddd' }}>
+                      {s === 'all' ? 'All' : s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
+                    </button>
+                  ))}
+                  <select value={taskPriorityFilter} onChange={e => setTaskPriorityFilter(e.target.value)}
+                    style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: taskPriorityFilter ? '#111' : '#9ca3af', background: '#fff', cursor: 'pointer' }}>
+                    <option value="">All Priorities</option>
+                    {['urgent','high','normal','low'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                  </select>
+                  {isAdmin && (
+                    <select value={taskAssigneeFilter} onChange={e => setTaskAssigneeFilter(e.target.value)}
+                      style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: taskAssigneeFilter ? '#111' : '#9ca3af', background: '#fff', cursor: 'pointer' }}>
+                      <option value="">All Assignees</option>
+                      {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                    </select>
+                  )}
+                  <input className="crm-input" placeholder="🔍 Search tasks…" value={taskSearchStr} onChange={e => setTaskSearchStr(e.target.value)} style={{ width: 200 }} />
+                  <button className="crm-btn crm-btn-gold" style={{ marginLeft: 'auto' }} onClick={() => setShowNewTaskModal(true)}>+ New Task</button>
+                </div>
+
+                {/* Task list */}
+                {tasksLoading ? (
+                  <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading tasks…</div>
+                ) : filteredTasks.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb' }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>No tasks found</div>
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Create a new task to get started</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {filteredTasks.map(t => {
+                      const isOverdue = t.status !== 'done' && t.due_date && t.due_date < today();
+                      const pc = PRIORITY_COLORS[t.priority] ?? PRIORITY_COLORS.normal;
+                      const linkedClient = t.client ?? (t.client_id ? clients.find(c => c.id === t.client_id) : null);
+                      const assigneeName = t.assignee ? `${t.assignee.first_name} ${t.assignee.last_name}` : t.assigned_to ? agentName(t.assigned_to) : '—';
+                      return (
+                        <div key={t.id} style={{ background: '#fff', borderRadius: 10, padding: '14px 16px', border: `1px solid ${isOverdue ? '#fecaca' : '#e5e7eb'}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                          {/* Status toggle */}
+                          <button title="Toggle status" onClick={() => {
+                            const next: Task['status'] = t.status === 'open' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'open';
+                            updateTask(t.id, { status: next });
+                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, flexShrink: 0, padding: 0, marginTop: 1 }}>
+                            {STATUS_ICONS[t.status]}
+                          </button>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>
+                                {t.title}
+                              </span>
+                              <span style={{ ...pc, padding: '1px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700 } as React.CSSProperties}>
+                                {t.priority}
+                              </span>
+                              {isOverdue && <span style={{ padding: '1px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>OVERDUE</span>}
+                            </div>
+                            {t.description && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{t.description}</div>}
+                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 11, color: '#9ca3af' }}>
+                              {t.due_date && <span>📅 {new Date(t.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
+                              {linkedClient && <span>👤 {typeof linkedClient === 'object' && 'first_name' in linkedClient ? `${linkedClient.first_name} ${linkedClient.last_name}` : ''}</span>}
+                              {isAdmin && t.assigned_to && <span>🤝 {assigneeName}</span>}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <button onClick={() => setEditingTask(t)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>Edit</button>
+                            <button onClick={() => { if (confirm('Delete this task?')) deleteTask(t.id); }} style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 11, cursor: 'pointer', color: '#dc2626', fontFamily: "'DM Sans',sans-serif" }}>✕</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* New Task Modal */}
+                {showNewTaskModal && (
+                  <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowNewTaskModal(false); }}>
+                    <div className="modal" style={{ padding: 28, maxWidth: 520 }}>
+                      <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20 }}>New Task</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Title *</label>
+                          <input className="crm-input" placeholder="Call to discuss offer…" value={newTaskForm.title} onChange={e => setNewTaskForm(f => ({ ...f, title: e.target.value }))} autoFocus />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Description</label>
+                          <textarea className="crm-input" style={{ minHeight: 60, resize: 'none' }} placeholder="Optional details…" value={newTaskForm.description} onChange={e => setNewTaskForm(f => ({ ...f, description: e.target.value }))} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Due Date</label>
+                            <input type="date" className="crm-input" value={newTaskForm.due_date} onChange={e => setNewTaskForm(f => ({ ...f, due_date: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Priority</label>
+                            <select className="crm-input" value={newTaskForm.priority} onChange={e => setNewTaskForm(f => ({ ...f, priority: e.target.value as Task['priority'] }))}>
+                              {['urgent','high','normal','low'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        {isAdmin && (
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Assign To</label>
+                            <select className="crm-input" value={newTaskForm.assigned_to} onChange={e => setNewTaskForm(f => ({ ...f, assigned_to: e.target.value }))}>
+                              <option value="">Unassigned</option>
+                              {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                            </select>
+                          </div>
+                        )}
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Linked Contact</label>
+                          <select className="crm-input" value={newTaskForm.client_id} onChange={e => setNewTaskForm(f => ({ ...f, client_id: e.target.value }))}>
+                            <option value="">None</option>
+                            {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}{c.business_name ? ` — ${c.business_name}` : ''}</option>)}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                          <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setShowNewTaskModal(false)}>Cancel</button>
+                          <button className="crm-btn crm-btn-gold" style={{ flex: 2 }} disabled={!newTaskForm.title.trim()} onClick={createTask}>Create Task</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Edit Task Modal */}
+                {editingTask && (
+                  <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setEditingTask(null); }}>
+                    <div className="modal" style={{ padding: 28, maxWidth: 520 }}>
+                      <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Edit Task</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Title *</label>
+                          <input className="crm-input" value={editingTask.title} onChange={e => setEditingTask(t => t ? { ...t, title: e.target.value } : t)} autoFocus />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Description</label>
+                          <textarea className="crm-input" style={{ minHeight: 60, resize: 'none' }} value={editingTask.description ?? ''} onChange={e => setEditingTask(t => t ? { ...t, description: e.target.value } : t)} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Due Date</label>
+                            <input type="date" className="crm-input" value={editingTask.due_date ?? ''} onChange={e => setEditingTask(t => t ? { ...t, due_date: e.target.value } : t)} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Status</label>
+                            <select className="crm-input" value={editingTask.status} onChange={e => setEditingTask(t => t ? { ...t, status: e.target.value as Task['status'] } : t)}>
+                              {['open','in_progress','done'].map(s => <option key={s} value={s}>{s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Priority</label>
+                          <select className="crm-input" value={editingTask.priority} onChange={e => setEditingTask(t => t ? { ...t, priority: e.target.value as Task['priority'] } : t)}>
+                            {['urgent','high','normal','low'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                          </select>
+                        </div>
+                        {isAdmin && (
+                          <div>
+                            <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Assign To</label>
+                            <select className="crm-input" value={editingTask.assigned_to ?? ''} onChange={e => setEditingTask(t => t ? { ...t, assigned_to: e.target.value } : t)}>
+                              <option value="">Unassigned</option>
+                              {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                            </select>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                          <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setEditingTask(null)}>Cancel</button>
+                          <button className="crm-btn crm-btn-gold" style={{ flex: 2 }} disabled={!editingTask.title.trim()} onClick={() => updateTask(editingTask.id, { title: editingTask.title, description: editingTask.description, due_date: editingTask.due_date, status: editingTask.status, priority: editingTask.priority, assigned_to: editingTask.assigned_to })}>Save Changes</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Agents (admin only) ── */}
           {page === 'agents' && isAdmin && (<>
@@ -7398,6 +7757,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           </div>
         );
       })()}
+
+      {/* Bulk Enroll in Campaign Modal */}
+      {showBulkEnrollModal && (
+        <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowBulkEnrollModal(false); }}>
+          <div className="modal" style={{ padding: 28, maxWidth: 480 }}>
+            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Enroll in Campaign</h3>
+            <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 20 }}>
+              Enroll <strong>{selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''}</strong> into a campaign.
+            </p>
+            <div>
+              <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 6 }}>Select Campaign</label>
+              <select className="crm-input" value={bulkEnrollCampaignId} onChange={e => setBulkEnrollCampaignId(e.target.value)}>
+                <option value="">— Choose a campaign —</option>
+                {campaigns.filter(c => c.status !== 'completed').map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.frequency})</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setShowBulkEnrollModal(false)}>Cancel</button>
+              <button className="crm-btn crm-btn-gold" style={{ flex: 2 }} disabled={!bulkEnrollCampaignId || bulkEnrolling} onClick={bulkEnrollInCampaign}>
+                {bulkEnrolling ? 'Enrolling…' : 'Enroll Contacts'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
