@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { id } = await params;
   const body = await req.json();
-  const { name, description, trigger_type, trigger_value, status, completion_campaign_id } = body;
+  const { name, description, trigger_type, trigger_value, status, completion_campaign_id, created_by } = body;
 
   const supabase = adminClient();
   const { data, error } = await supabase
@@ -42,6 +42,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(trigger_value !== undefined && { trigger_value }),
       ...(status !== undefined && { status }),
       ...(completion_campaign_id !== undefined && { completion_campaign_id: completion_campaign_id || null }),
+      ...(created_by !== undefined && { created_by }),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)

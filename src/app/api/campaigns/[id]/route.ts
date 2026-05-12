@@ -6,7 +6,7 @@ import { adminClient } from '@/lib/supabase-admin';
 const ALLOWED_PATCH_FIELDS = new Set([
   'name', 'description', 'type', 'frequency', 'send_date', 'send_time',
   'send_day_of_month', 'status', 'email_subject', 'email_body',
-  'sms_body', 'sender_agent_id',
+  'sms_body', 'sender_agent_id', 'created_by',
 ]);
 
 function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
