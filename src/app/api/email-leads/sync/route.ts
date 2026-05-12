@@ -210,14 +210,33 @@ const NON_LEAD_PATTERNS = [
   /\bsubscription\b/i,
   /\bunsubscribe\b/i,
   /\bwelcome\s+to\b/i,
+  // Digest / recommendation emails — not individual leads
+  /recommended\s+for\s+you/i,
+  /new\s+properties?\s+(recommended|for\s+you|matching)/i,
+  /portfolio\s+update/i,
+  /weekly\s+(digest|update|summary|report)/i,
+  /daily\s+(digest|update|summary|alert)/i,
+  /\bmarket\s+(report|update|snapshot)\b/i,
+  /\bnewsletter\b/i,
+  /\bproperties?\s+matching\s+your\s+search\b/i,
+  /\bsaved\s+search\s+(alert|results)\b/i,
+  /\bview\s+all\s+search\s+results\b/i,
 ];
 
-function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string): boolean {
+// Our own internal domains — parsed lead emails from these should be skipped
+const INTERNAL_DOMAINS = ['crecotx.com', 'fairoaksrealtygroup.com'];
+
+function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string, parsedEmail?: string): boolean {
   // Reject known non-lead patterns in subject
   if (NON_LEAD_PATTERNS.some(re => re.test(subject))) return false;
-  // Reject if the sender email is the platform's own support/noreply (not a prospect)
+  // Reject if the sender email is the platform's own domain (including subdomains like email.crexi.com)
   const senderDomain = (fromAddress.match(/@([\w.\-]+)/) ?? [])[1]?.toLowerCase() ?? '';
-  if (senderDomain === sourceDomain) return false;
+  if (senderDomain === sourceDomain || senderDomain.endsWith(`.${sourceDomain}`)) return false;
+  // Reject if the parsed prospect email is from one of our own internal domains
+  if (parsedEmail) {
+    const parsedDomain = (parsedEmail.match(/@([\w.\-]+)/) ?? [])[1]?.toLowerCase() ?? '';
+    if (INTERNAL_DOMAINS.includes(parsedDomain)) return false;
+  }
   return true;
 }
 
@@ -477,7 +496,9 @@ export async function POST() {
 
         // Skip billing/admin/platform emails — only process actual lead notifications
         const fromAddress = (from.match(/<([^>]+)>/) ?? [, from])[1] ?? from;
-        if (!isLeadEmail(subject, fromAddress, source.domain)) continue;
+        // Parse lead first so we can pass the extracted email to isLeadEmail
+        const parsed = parseLeadEmail(subject, decodeBody(msg), from);
+        if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email)) continue;
 
         // Determine business_unit: source domain takes priority over agent profile
         const business_unit = source.business_unit;
@@ -489,8 +510,6 @@ export async function POST() {
           const rightAgent = (profiles ?? []).find((p: any) => p.business_unit === business_unit);
           if (rightAgent) agentId = rightAgent.id;
         }
-
-        const parsed = parseLeadEmail(subject, body, from);
 
         // Skip if no usable contact info
         if (!parsed.email && !parsed.phone && !parsed.fullName) continue;
