@@ -34,17 +34,23 @@ export async function POST(req: NextRequest) {
 
   // Fill merge fields with the agent's own info as sample data
   const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+  const isCommercial = plan.business_unit === 'commercial';
+  const agentEmail = isCommercial ? 'info@crecotx.com' : (agent.email || 'info@fairoaksrealtygroup.com');
+  const agentPhone = isCommercial ? '(210) 817-3443' : (agent.phone || '(210) 390-9997');
+  const brokerage  = isCommercial ? 'CRECO Commercial Real Estate Company' : 'Fair Oaks Realty Group';
+  const fromAddr   = isCommercial ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
+
   function fill(template: string) {
     return template
       .replaceAll('{{first_name}}', agent.first_name || 'John')
       .replaceAll('{{last_name}}', agent.last_name || 'Doe')
       .replaceAll('{{full_name}}', `${agent.first_name} ${agent.last_name}`.trim() || 'John Doe')
       .replaceAll('{{email}}', agent.email)
-      .replaceAll('{{client_type}}', 'Buyer')
+      .replaceAll('{{client_type}}', isCommercial ? 'Tenant' : 'Buyer')
       .replaceAll('{{agent_name}}', `${agent.first_name} ${agent.last_name}`.trim())
-      .replaceAll('{{agent_email}}', agent.email)
-      .replaceAll('{{agent_phone}}', agent.phone || '(210) 390-9997')
-      .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
+      .replaceAll('{{agent_email}}', agentEmail)
+      .replaceAll('{{agent_phone}}', agentPhone)
+      .replaceAll('{{brokerage}}', brokerage)
       .replaceAll('{{unsubscribe_url}}', `${BASE_URL}/api/campaigns/unsubscribe?token=TEST_TOKEN`);
   }
 
@@ -52,7 +58,7 @@ export async function POST(req: NextRequest) {
   const body = fill(step.body || '');
 
   const result = await resend.emails.send({
-    from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
+    from: fromAddr,
     to: agent.email,
     subject: `[TEST PREVIEW] ${subject}`,
     html: `

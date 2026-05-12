@@ -33,7 +33,7 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{client_type}}',   ctx.client.type         || '')
     .replaceAll('{{agent_name}}',    `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}',   ctx.agent.email         || '')
-    .replaceAll('{{agent_phone}}',   ctx.agent.phone         || '(210) 390-9997')
+    .replaceAll('{{agent_phone}}',   ctx.agent.phone         || '(210) 817-3443')
     .replaceAll('{{brokerage}}',     'Fair Oaks Realty Group')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
@@ -74,7 +74,12 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
     .eq('id', agentId)
     .single();
 
-  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@crecotx.com', phone: '(210) 390-9997' };
+  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@crecotx.com', phone: '(210) 817-3443' };
+  // Always use CRECO contact info for commercial action plan emails
+  if (business_unit === 'commercial') {
+    agentCtx.email = 'info@crecotx.com';
+    agentCtx.phone = '(210) 817-3443';
+  }
 
   const ctx = {
     client: {

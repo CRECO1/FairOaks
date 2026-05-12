@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
 
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
-  const { subject, body, campaignName, recipientEmail } = await req.json();
+  const { subject, body, campaignName, recipientEmail, businessUnit } = await req.json();
+  const isCommercial = businessUnit === 'commercial';
 
   if (!subject && !body) {
     return NextResponse.json({ error: 'subject or body required' }, { status: 400 });
@@ -61,8 +62,8 @@ export async function POST(req: NextRequest) {
 
   const agentFirst = profile.first_name ?? 'Agent';
   const agentLast  = profile.last_name ?? '';
-  const agentEmail = profile.email ?? user.email ?? '';
-  const agentPhone = profile.phone ?? '(210) 390-9997';
+  const agentEmail = isCommercial ? 'info@crecotx.com' : (profile.email ?? user.email ?? '');
+  const agentPhone = isCommercial ? '(210) 817-3443' : (profile.phone ?? '(210) 390-9997');
 
   const renderedSubject = applyMergeFields(subject ?? '(no subject)', agentFirst, agentLast, agentEmail, agentPhone);
   let renderedBody      = applyMergeFields(body ?? '', agentFirst, agentLast, agentEmail, agentPhone);
