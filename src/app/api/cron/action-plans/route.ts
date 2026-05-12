@@ -20,7 +20,7 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || '(210) 390-9997')
+    .replaceAll('{{agent_phone}}', ctx.agent.phone || '(210) 817-3443')
     .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
@@ -109,6 +109,11 @@ export async function GET(req: NextRequest) {
 
     const agentId = client.agent_id || enrollment.agent_id;
     const agent = agentMap[agentId ?? ''] ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
+    // Override contact info for commercial plans
+    if (plan.business_unit === 'commercial') {
+      agent.email = 'info@crecotx.com';
+      agent.phone = '(210) 817-3443';
+    }
 
     // Fetch the current step to execute
     const stepOrder = (enrollment.current_step ?? 0) + 1;
