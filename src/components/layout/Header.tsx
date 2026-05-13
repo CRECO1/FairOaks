@@ -60,7 +60,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
               alt="Fair Oaks Realty Group"
               width={160}
               height={64}
-              className="h-14 w-auto object-contain"
+              className="h-[72px] w-auto object-contain"
               priority
             />
           </Link>
