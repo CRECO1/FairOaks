@@ -39,7 +39,14 @@ type LimiterKey = keyof typeof LIMITS;
 const limiters = new Map<LimiterKey, Ratelimit>();
 
 function getLimiter(key: LimiterKey): Ratelimit | null {
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return null;
+  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+    // Fail-open intentionally for local dev — but warn loudly in production
+    // so a misconfigured deployment doesn't silently disable rate limiting.
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[ratelimit] WARNING: KV_REST_API_URL/KV_REST_API_TOKEN not set — rate limiting is DISABLED for:', key);
+    }
+    return null;
+  }
 
   if (!limiters.has(key)) {
     const { requests, window: w } = LIMITS[key];

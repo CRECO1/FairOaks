@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_email`);
   }
 
-  console.log('[gmail/callback]', { stateUserId, gmailEmail, hasRefreshToken: !!tokens.refresh_token, stateBu, isRetry });
+  console.log('[gmail/callback] OAuth exchange completed', { hasRefreshToken: !!tokens.refresh_token, stateBu, isRetry });
 
   const expiresAt = new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString();
   const now       = new Date().toISOString();
@@ -111,17 +111,17 @@ export async function GET(req: NextRequest) {
       console.error('[gmail/callback] Update error:', updateErr);
       return NextResponse.redirect(`${returnBase}?gmail=error&reason=db_update`);
     }
-    console.log('[gmail/callback] Updated existing connection for', gmailEmail);
+    console.log('[gmail/callback] Updated existing connection');
 
   } else {
     // New connection — needs a refresh_token
     if (!tokens.refresh_token) {
-      console.error('[gmail/callback] No refresh_token for new connection:', gmailEmail, '— revoking stale grant');
+      console.error('[gmail/callback] No refresh_token for new connection — revoking stale grant');
       await fetch(`https://oauth2.googleapis.com/revoke?token=${tokens.access_token}`, { method: 'POST' }).catch(() => {});
 
       if (isRetry) {
         // Already retried once — give up and show a clear error
-        console.error('[gmail/callback] Still no refresh_token after retry for', gmailEmail);
+        console.error('[gmail/callback] Still no refresh_token after retry — giving up');
         return NextResponse.redirect(`${returnBase}?gmail=error&reason=no_refresh_token`);
       }
 
@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
       googleUrl.searchParams.set('login_hint',    gmailEmail);
       // Encode retry flag into state so we don't loop indefinitely
       googleUrl.searchParams.set('state', stateBu ? `${stateUserId}|${stateBu}|retry` : `${stateUserId}||retry`);
-      console.log('[gmail/callback] Auto-retrying OAuth for', gmailEmail);
+      console.log('[gmail/callback] Auto-retrying OAuth — prompting fresh consent');
       return NextResponse.redirect(googleUrl.toString());
     }
 
@@ -157,7 +157,7 @@ export async function GET(req: NextRequest) {
       console.error('[gmail/callback] Insert error:', insertErr);
       return NextResponse.redirect(`${returnBase}?gmail=error&reason=db_insert`);
     }
-    console.log('[gmail/callback] Inserted new connection for', gmailEmail, 'user', stateUserId);
+    console.log('[gmail/callback] Inserted new Gmail connection successfully');
   }
 
   return NextResponse.redirect(`${returnBase}?gmail=connected&account=${encodeURIComponent(gmailEmail)}`);

@@ -35,8 +35,10 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      // Scripts: self + inline (Next.js requires) + GTM/GA
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://maps.googleapis.com https://maps.gstatic.com",
+      // Scripts: self + inline (Next.js hydration requires unsafe-inline) + GTM/GA/Maps
+      // NOTE: 'unsafe-eval' removed — Next.js 14 production builds do not require it.
+      // Re-add only if a specific dependency explicitly needs it (check browser console for CSP violations).
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://maps.googleapis.com https://maps.gstatic.com",
       // Styles: self + inline (Tailwind/CSS-in-JS)
       "style-src 'self' 'unsafe-inline'",
       // Images: allow any https source + data URIs (listing photos, Supabase storage)
