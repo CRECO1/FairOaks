@@ -11,11 +11,10 @@ import { Container } from '@/components/ui/Container';
 const navLinks = [
   { href: '/listings', label: 'Listings' },
   { href: '/neighborhoods', label: 'Neighborhoods' },
-  { href: '/blog', label: 'Hill Country Living' },
+  { href: '/blog', label: 'Blog' },
   { href: '/services', label: 'Services' },
   { href: '/team', label: 'Team' },
   { href: '/sell', label: 'Sell' },
-  { href: '/quiz', label: 'Find My Home', isHighlight: true },
 ];
 
 interface HeaderProps {
@@ -69,72 +68,83 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
 
           {/* Desktop Navigation */}
           {variant !== 'minimal' && (
-            <div className="hidden items-center gap-6 lg:flex ml-12">
+            <div className="hidden items-center gap-5 lg:flex ml-8">
               {navLinks.map((link) => (
-                'isHighlight' in link && link.isHighlight ? (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={cn(
-                      'flex items-center gap-1.5 px-4 py-2 rounded-full text-body-sm font-semibold transition-all',
-                      isTransparent
-                        ? 'bg-gold text-primary hover:bg-gold-light'
-                        : 'bg-gold/10 text-gold-dark hover:bg-gold hover:text-primary',
-                      pathname === link.href && 'bg-gold text-primary'
-                    )}
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {link.label}
-                  </Link>
-                ) : (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={cn(
-                      'relative text-body-sm font-medium transition-colors',
-                      isTransparent
-                        ? 'text-white hover:text-gold-light'
-                        : 'text-primary hover:text-gold',
-                      pathname === link.href && 'text-gold'
-                    )}
-                    style={textShadowStyle}
-                  >
-                    {link.label}
-                    {pathname === link.href && (
-                      <span className="absolute -bottom-1 left-0 h-0.5 w-full bg-gold" />
-                    )}
-                  </Link>
-                )
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    'relative whitespace-nowrap text-body-sm font-medium transition-colors',
+                    isTransparent
+                      ? 'text-white hover:text-gold-light'
+                      : 'text-primary hover:text-gold',
+                    pathname === link.href && 'text-gold'
+                  )}
+                  style={textShadowStyle}
+                >
+                  {link.label}
+                  {pathname === link.href && (
+                    <span className="absolute -bottom-1 left-0 h-0.5 w-full bg-gold" />
+                  )}
+                </Link>
               ))}
             </div>
           )}
 
           {/* CTA Buttons */}
-          <div className="flex items-center gap-3">
-            {/* Phone - Always Visible */}
+          <div className="flex items-center gap-2">
+            {/* Phone - Desktop only */}
             <a
               href={`tel:${phone.replace(/\D/g, '')}`}
               className={cn(
-                'flex items-center gap-2 font-semibold transition-colors',
+                'hidden lg:flex items-center gap-1.5 text-body-sm font-semibold transition-colors',
                 isTransparent ? 'text-white' : 'text-primary',
                 'hover:text-gold'
               )}
               style={textShadowStyle}
             >
-              <Phone className="h-5 w-5" />
-              <span className="hidden sm:inline">{phone}</span>
+              <Phone className="h-4 w-4" />
+              <span>{phone}</span>
             </a>
 
-            {/* Contact Button - Desktop */}
+            {/* Phone icon only — mobile/tablet */}
+            <a
+              href={`tel:${phone.replace(/\D/g, '')}`}
+              className={cn(
+                'lg:hidden p-2 transition-colors',
+                isTransparent ? 'text-white' : 'text-primary',
+                'hover:text-gold'
+              )}
+              aria-label="Call us"
+            >
+              <Phone className="h-5 w-5" />
+            </a>
+
+            {/* Find My Home pill — desktop */}
+            {variant !== 'minimal' && (
+              <Link
+                href="/quiz"
+                className={cn(
+                  'hidden lg:inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap',
+                  isTransparent
+                    ? 'bg-gold text-primary hover:bg-gold/90'
+                    : 'bg-gold/10 text-gold-dark hover:bg-gold hover:text-primary border border-gold/30',
+                  pathname === '/quiz' && 'bg-gold text-primary'
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                Find My Home
+              </Link>
+            )}
+
+            {/* Contact Button — desktop */}
             <Button
               variant="primary"
               size="sm"
               className="hidden sm:inline-flex"
               asChild
             >
-              <Link href="/contact">
-                Contact Us
-              </Link>
+              <Link href="/contact">Contact Us</Link>
             </Button>
 
             {/* Mobile Menu Toggle */}
@@ -163,7 +173,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
         <div className="fixed inset-0 top-20 z-40 bg-white lg:hidden">
           <Container>
             <nav className="flex flex-col py-8">
-              {navLinks.filter(link => !('isHighlight' in link && link.isHighlight)).map((link) => (
+              {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
