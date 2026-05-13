@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Phone, Mail, MapPin, Facebook, Instagram, Youtube } from 'lucide-react';
 import { Container } from '@/components/ui/Container';
 import { supabase } from '@/lib/supabase';
@@ -56,10 +57,14 @@ export function Footer() {
           <div className="grid grid-cols-1 gap-12 md:grid-cols-2 lg:grid-cols-4">
             {/* Brand Column */}
             <div className="lg:col-span-1">
-              <Link href="/" className="inline-block mb-6">
-                <span className="font-heading text-2xl font-bold tracking-tight">
-                  Fair Oaks <span className="text-gold">Realty Group</span>
-                </span>
+              <Link href="/" className="inline-block mb-4">
+                <Image
+                  src="/fair-oaks-logo.png"
+                  alt="Fair Oaks Realty Group"
+                  width={200}
+                  height={200}
+                  className="h-36 w-auto object-contain"
+                />
               </Link>
               <p className="text-foreground-light text-body-sm leading-relaxed mb-6 max-w-xs">
                 Trusted local experts helping families find their perfect home in the Texas Hill Country since 2004.
