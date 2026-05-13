@@ -342,6 +342,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [commissionFilterYear, setCommissionFilterYear] = useState<string>(new Date().getFullYear().toString());
   const [commissionFilterAgent, setCommissionFilterAgent] = useState<string>('');
   const [commissionFilterStatus, setCommissionFilterStatus] = useState<string>('');
+  const [commissionView, setCommissionView] = useState<'list' | '1099'>('list');
+  const [commission1099Year, setCommission1099Year] = useState<string>(String(new Date().getFullYear() - 1));
   const [propIntel, setPropIntel] = useState<{ detail: any; comps: any[]; error?: string } | null>(null);
   const [propIntelLoading, setPropIntelLoading] = useState(false);
   const emailEditorRef = useRef<HTMLDivElement>(null);
@@ -2360,30 +2362,46 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
           {page === 'agents' && isAdmin && <button className="crm-btn crm-btn-gold" onClick={() => setShowInvite(true)}>+ Invite Agent</button>}
           {page === 'commissions' && isAdmin && (
-            <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 12 }} onClick={() => {
-              const filtered = allCommissions.filter(c =>
-                (!commissionFilterYear || c.close_date?.startsWith(commissionFilterYear)) &&
-                (!commissionFilterAgent || c.agent_id === commissionFilterAgent) &&
-                (!commissionFilterStatus || c.status === commissionFilterStatus)
-              );
-              const rows = [
-                ['Deal', 'Property', 'Agent', 'Deal Type', 'Sale Price', 'Rate %', 'Gross GCI', 'Agent Split %', 'Agent Net', 'Brokerage Net', 'Referral Fee', 'Referral To', 'Tx Fee', 'Status', 'Close Date', 'Paid Date', 'Notes'],
-                ...filtered.map(c => [
-                  c.deal?.client ?? '', c.deal?.property ?? '',
-                  c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '',
-                  c.deal_type ?? '', c.sale_price, c.commission_rate,
-                  c.gross_commission, c.agent_split, c.agent_net, c.brokerage_net,
-                  c.referral_fee, c.referral_to ?? '', c.transaction_fee,
-                  c.status, c.close_date ?? '', c.paid_date ?? '', c.notes ?? '',
-                ]),
-              ];
-              const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-              const blob = new Blob([csv], { type: 'text/csv' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a'); a.href = url;
-              a.download = `commissions-${commissionFilterYear || 'all'}.csv`; a.click();
-              URL.revokeObjectURL(url);
-            }}>⬇ Export CSV</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {/* View toggle */}
+              <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 7, padding: 2, gap: 2 }}>
+                {(['list', '1099'] as const).map(v => (
+                  <button key={v} onClick={() => setCommissionView(v)}
+                    style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", background: commissionView === v ? '#fff' : 'transparent', color: commissionView === v ? '#111' : '#6b7280', boxShadow: commissionView === v ? '0 1px 3px rgba(0,0,0,.1)' : 'none', transition: 'all .15s' }}>
+                    {v === 'list' ? '📋 List' : '📄 1099'}
+                  </button>
+                ))}
+              </div>
+              {commissionView === 'list' && (
+                <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 12 }} onClick={() => {
+                  const filtered = allCommissions.filter(c =>
+                    (!commissionFilterYear || c.close_date?.startsWith(commissionFilterYear)) &&
+                    (!commissionFilterAgent || c.agent_id === commissionFilterAgent) &&
+                    (!commissionFilterStatus || c.status === commissionFilterStatus)
+                  );
+                  const rows = [
+                    ['Deal', 'Property', 'Agent', 'Deal Type', 'Sale Price', 'Rate %', 'Gross GCI', 'Agent Split %', 'Agent Net', 'Brokerage Net', 'Referral Fee', 'Referral To', 'Tx Fee', 'Status', 'Close Date', 'Paid Date', 'Notes'],
+                    ...filtered.map(c => [
+                      c.deal?.client ?? '', c.deal?.property ?? '',
+                      c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '',
+                      c.deal_type ?? '', c.sale_price, c.commission_rate,
+                      c.gross_commission, c.agent_split, c.agent_net, c.brokerage_net,
+                      c.referral_fee, c.referral_to ?? '', c.transaction_fee,
+                      c.status, c.close_date ?? '', c.paid_date ?? '', c.notes ?? '',
+                    ]),
+                  ];
+                  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a'); a.href = url;
+                  a.download = `commissions-${commissionFilterYear || 'all'}.csv`; a.click();
+                  URL.revokeObjectURL(url);
+                }}>⬇ Export CSV</button>
+              )}
+              {commissionView === '1099' && (
+                <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 12 }} onClick={() => window.print()}>🖨 Print</button>
+              )}
+            </div>
           )}
         </div>}
 
@@ -4053,6 +4071,188 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               pending:  { bg: '#fef3c7', color: '#92400e' },
               disputed: { bg: '#fee2e2', color: '#991b1b' },
             };
+
+            // ── 1099 view ─────────────────────────────────────────────────────────
+            if (commissionView === '1099') {
+              const reportYears = Array.from(new Set(allCommissions.map(c => c.paid_date?.slice(0, 4) ?? c.close_date?.slice(0, 4)).filter(Boolean))).sort().reverse();
+              if (!reportYears.includes(String(new Date().getFullYear() - 1))) reportYears.unshift(String(new Date().getFullYear() - 1));
+              // Only include PAID commissions whose paid_date (or close_date fallback) falls in the selected year
+              const paidInYear = allCommissions.filter(c =>
+                c.status === 'paid' &&
+                ((c.paid_date ?? c.close_date) ?? '').startsWith(commission1099Year)
+              );
+              // Per-agent rollup
+              const agentTotals = profiles.map(p => {
+                const mine = paidInYear.filter(c => c.agent_id === p.id);
+                return { profile: p, total: mine.reduce((s, c) => s + (c.agent_net ?? 0), 0), deals: mine };
+              }).filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+              const totalPaid = agentTotals.reduce((s, r) => s + r.total, 0);
+              const needsFiling = agentTotals.filter(r => r.total >= 600);
+              const buName = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
+
+              return (
+                <div>
+                  {/* Print stylesheet injected inline */}
+                  <style>{`
+                    @media print {
+                      body > * { display: none !important; }
+                      #crm-1099-report { display: block !important; position: static !important; width: 100% !important; }
+                      .crm-1099-no-print { display: none !important; }
+                    }
+                  `}</style>
+
+                  {/* Controls — hidden on print */}
+                  <div className="crm-1099-no-print" style={{ marginBottom: 20 }}>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>1099-NEC Report</h2>
+                    <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}>Non-employee compensation summary for paid commissions. Agents earning ≥ $600 require a 1099-NEC filing.</p>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginRight: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Tax Year</label>
+                        <select className="crm-input" style={{ width: 'auto' }} value={commission1099Year} onChange={e => setCommission1099Year(e.target.value)}>
+                          {reportYears.map(y => <option key={y} value={y!}>{y}</option>)}
+                        </select>
+                      </div>
+                      <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                        {needsFiling.length > 0 && (
+                          <button style={{ padding: '7px 14px', fontSize: 12, fontWeight: 600, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+                            onClick={() => {
+                              const rows = [
+                                ['Recipient Name', 'Email', 'Phone', 'License #', `Box 1 NEC (${commission1099Year})`, 'Deal Count', 'Filing Required'],
+                                ...agentTotals.map(r => [
+                                  `${r.profile.first_name} ${r.profile.last_name}`,
+                                  r.profile.email,
+                                  r.profile.phone ?? '',
+                                  r.profile.license ?? '',
+                                  r.total.toFixed(2),
+                                  r.deals.length,
+                                  r.total >= 600 ? 'YES' : 'No',
+                                ]),
+                              ];
+                              const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+                              const blob = new Blob([csv], { type: 'text/csv' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a'); a.href = url;
+                              a.download = `1099-nec-${commission1099Year}.csv`; a.click();
+                              URL.revokeObjectURL(url);
+                            }}>
+                            ⬇ Export CSV
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Printable report */}
+                  <div id="crm-1099-report">
+                    {/* Report header */}
+                    <div style={{ marginBottom: 24, paddingBottom: 16, borderBottom: '2px solid #111' }}>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{buName}</div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>1099-NEC Non-Employee Compensation Report — Tax Year {commission1099Year}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>Generated {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+                    </div>
+
+                    {agentTotals.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb', color: '#9ca3af' }}>
+                        <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No paid commissions for {commission1099Year}</div>
+                        <div style={{ fontSize: 12 }}>Mark commissions as "Paid" on each deal to include them in this report.</div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Summary banner */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
+                          {[
+                            { label: 'Agents Paid', val: String(agentTotals.length), note: 'received commission' },
+                            { label: 'Must File 1099', val: String(needsFiling.length), note: '≥ $600 threshold' },
+                            { label: 'Total Compensation', val: fmt(totalPaid), note: 'agent net paid' },
+                          ].map(s => (
+                            <div key={s.label} style={{ background: '#f9f5ef', border: '1px solid #e8dcc8', borderRadius: 8, padding: '12px 16px' }}>
+                              <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
+                              <div style={{ fontSize: 22, fontWeight: 700, color: '#111', fontFamily: "'Cormorant Garamond',serif" }}>{s.val}</div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{s.note}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Per-agent cards */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          {agentTotals.map(r => {
+                            const mustFile = r.total >= 600;
+                            return (
+                              <div key={r.profile.id} style={{ background: '#fff', border: `1px solid ${mustFile ? '#fde68a' : '#e5e7eb'}`, borderLeft: `4px solid ${mustFile ? '#c9922c' : '#9ca3af'}`, borderRadius: 8, padding: '16px 20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+                                  <div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: '#111' }}>
+                                        {r.profile.first_name} {r.profile.last_name}
+                                      </span>
+                                      {mustFile
+                                        ? <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: '#fef3c7', color: '#92400e' }}>1099 REQUIRED</span>
+                                        : <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: '#f3f4f6', color: '#6b7280' }}>Below $600</span>
+                                      }
+                                    </div>
+                                    <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3, display: 'flex', gap: 14 }}>
+                                      <span>✉ {r.profile.email}</span>
+                                      {r.profile.phone && <span>📞 {r.profile.phone}</span>}
+                                      {r.profile.license && <span>Lic: {r.profile.license}</span>}
+                                    </div>
+                                  </div>
+                                  <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 16 }}>
+                                    <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500 }}>Box 1 — NEC</div>
+                                    <div style={{ fontSize: 22, fontWeight: 700, color: '#c9922c', fontFamily: "'Cormorant Garamond',serif" }}>{fmt(r.total)}</div>
+                                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{r.deals.length} deal{r.deals.length !== 1 ? 's' : ''}</div>
+                                  </div>
+                                </div>
+                                {/* Deal breakdown */}
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                  <thead>
+                                    <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                                      {['Deal / Property', 'Close Date', 'Paid Date', 'Agent Net'].map(h => (
+                                        <th key={h} style={{ padding: '5px 8px', textAlign: h === 'Agent Net' ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {r.deals.map(c => (
+                                      <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                        <td style={{ padding: '6px 8px' }}>
+                                          <div style={{ fontWeight: 500, color: '#111' }}>{c.deal?.client ?? '—'}</div>
+                                          <div style={{ color: '#9ca3af', fontSize: 11 }}>{c.deal?.property ?? ''}</div>
+                                        </td>
+                                        <td style={{ padding: '6px 8px', color: '#6b7280', whiteSpace: 'nowrap' }}>{c.close_date ? new Date(c.close_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                                        <td style={{ padding: '6px 8px', color: '#6b7280', whiteSpace: 'nowrap' }}>{c.paid_date ? new Date(c.paid_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                                        <td style={{ padding: '6px 8px', fontWeight: 700, color: '#059669', textAlign: 'right' }}>{fmt(c.agent_net)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr style={{ borderTop: '1px solid #e5e7eb' }}>
+                                      <td colSpan={3} style={{ padding: '6px 8px', fontWeight: 700, color: '#374151', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</td>
+                                      <td style={{ padding: '6px 8px', fontWeight: 700, color: '#c9922c', textAlign: 'right' }}>{fmt(r.total)}</td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                                {mustFile && (
+                                  <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, fontSize: 11, color: '#92400e' }}>
+                                    ⚠ Verify recipient's SSN/EIN and address before filing. This report is for internal reference only — consult your tax professional or CPA.
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Print footer */}
+                        <div style={{ marginTop: 24, paddingTop: 14, borderTop: '1px solid #e5e7eb', fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+                          {buName} · 1099-NEC Summary · Tax Year {commission1099Year} · For internal use only — not a substitute for professional tax advice.
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div>
                 {/* Header */}
