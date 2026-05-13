@@ -563,3 +563,50 @@
 .rtb-select:hover, .rtb-select:focus {
   border-color: #c9922c;
 }
+
+/* ── Blog / rich-text article styles ── */
+.prose-article h2 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.25;
+}
+.prose-article h3 {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.prose-article p {
+  color: #4b5563;
+  line-height: 1.75;
+  margin-bottom: 1rem;
+}
+.prose-article ul, .prose-article ol {
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+  color: #4b5563;
+  line-height: 1.75;
+}
+.prose-article ul { list-style-type: disc; }
+.prose-article ol { list-style-type: decimal; }
+.prose-article li { margin-bottom: 0.35rem; }
+.prose-article a {
+  color: #c9922c;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-article blockquote {
+  border-left: 4px solid #c9922c;
+  padding-left: 1.25rem;
+  font-style: italic;
+  color: #6b7280;
+  margin: 1.5rem 0;
+}
+.prose-article strong { color: #111; }

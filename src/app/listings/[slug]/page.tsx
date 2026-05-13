@@ -13,6 +13,7 @@ import { formatPrice } from '@/lib/utils';
 import { ListingContactForm } from './ListingContactForm';
 import { MortgageCalculator } from '@/components/sections/MortgageCalculator';
 import { ListingGallery } from '@/components/sections/ListingGallery';
+import { StickyContactBar } from '@/components/listings/StickyContactBar';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -426,6 +427,7 @@ export default async function ListingDetailPage({ params }: Props) {
       )}
 
       <Footer />
+      <StickyContactBar listingTitle={listing.title} price={listing.price ? formatPrice(listing.price) : undefined} />
     </>
   );
 }
