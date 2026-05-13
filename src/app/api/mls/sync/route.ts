@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
         .select('id, listing_key, title')
         .eq('source', 'mls')
         .in('status', ['active', 'pending'])
-        .not('listing_key', 'in', `(${listingIds.map(k => `'${k}'`).join(',')})`)
+        .not('listing_key', 'in', `(${listingIds.filter(k => /^[\w\-]+$/.test(k)).map(k => `'${k}'`).join(',')})`)  // only allow safe alphanumeric/dash MLS IDs
         .limit(500);
 
       if (stale && stale.length > 0) {
