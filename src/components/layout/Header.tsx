@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { Menu, X, Phone, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -53,17 +54,19 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
       <Container>
         <nav className="flex h-20 items-center justify-between">
           {/* Logo */}
-          <Link href="/" className="flex items-center">
-            <div
+          <Link href="/" className="flex items-center shrink-0">
+            <Image
+              src="/fair-oaks-logo.png"
+              alt="Fair Oaks Realty Group"
+              width={160}
+              height={64}
               className={cn(
-                'font-heading font-bold tracking-tight leading-tight flex flex-col',
-                isTransparent ? 'text-white' : 'text-primary'
+                'h-14 w-auto object-contain transition-all duration-300',
+                // On transparent header: invert white bg by blending with the dark overlay
+                isTransparent && 'brightness-0 invert drop-shadow-md'
               )}
-              style={textShadowStyle}
-            >
-              <span className="text-xl sm:text-2xl">Fair Oaks</span>
-              <span className="text-xl sm:text-2xl text-gold">Realty Group</span>
-            </div>
+              priority
+            />
           </Link>
 
           {/* Desktop Navigation */}
