@@ -60,11 +60,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
               alt="Fair Oaks Realty Group"
               width={160}
               height={64}
-              className={cn(
-                'h-14 w-auto object-contain transition-all duration-300',
-                // On transparent header: invert white bg by blending with the dark overlay
-                isTransparent && 'brightness-0 invert drop-shadow-md'
-              )}
+              className="h-14 w-auto object-contain"
               priority
             />
           </Link>
