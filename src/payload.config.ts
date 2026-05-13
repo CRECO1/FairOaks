@@ -12,6 +12,7 @@ import { Agents } from './collections/Agents';
 import { Neighborhoods } from './collections/Neighborhoods';
 import { Testimonials } from './collections/Testimonials';
 import { Leads } from './collections/Leads';
+import { Posts } from './collections/Posts';
 import { SiteSettings } from './globals/SiteSettings';
 
 const filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,7 @@ export default buildConfig({
     Neighborhoods,
     Testimonials,
     Leads,
+    Posts,
   ],
   globals: [SiteSettings],
   editor: lexicalEditor({}),
