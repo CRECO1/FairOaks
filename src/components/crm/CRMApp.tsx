@@ -316,7 +316,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -339,6 +339,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [commissionSaving, setCommissionSaving] = useState(false);
   const [allCommissions, setAllCommissions] = useState<Commission[]>([]);
   const [commissionForm, setCommissionForm] = useState({ sale_price: '', commission_rate: '3', agent_split: '70', referral_fee: '0', referral_to: '', transaction_fee: '0', status: 'pending' as Commission['status'], close_date: '', paid_date: '', notes: '' });
+  const [commissionFilterYear, setCommissionFilterYear] = useState<string>(new Date().getFullYear().toString());
+  const [commissionFilterAgent, setCommissionFilterAgent] = useState<string>('');
+  const [commissionFilterStatus, setCommissionFilterStatus] = useState<string>('');
   const [propIntel, setPropIntel] = useState<{ detail: any; comps: any[]; error?: string } | null>(null);
   const [propIntelLoading, setPropIntelLoading] = useState(false);
   const emailEditorRef = useRef<HTMLDivElement>(null);
@@ -2125,7 +2128,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2221,6 +2224,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           </button>
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
+          {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); }}>💰 &nbsp;Commissions</button>}
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -2355,6 +2359,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
           )}
           {page === 'agents' && isAdmin && <button className="crm-btn crm-btn-gold" onClick={() => setShowInvite(true)}>+ Invite Agent</button>}
+          {page === 'commissions' && isAdmin && (
+            <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 12 }} onClick={() => {
+              const filtered = allCommissions.filter(c =>
+                (!commissionFilterYear || c.close_date?.startsWith(commissionFilterYear)) &&
+                (!commissionFilterAgent || c.agent_id === commissionFilterAgent) &&
+                (!commissionFilterStatus || c.status === commissionFilterStatus)
+              );
+              const rows = [
+                ['Deal', 'Property', 'Agent', 'Deal Type', 'Sale Price', 'Rate %', 'Gross GCI', 'Agent Split %', 'Agent Net', 'Brokerage Net', 'Referral Fee', 'Referral To', 'Tx Fee', 'Status', 'Close Date', 'Paid Date', 'Notes'],
+                ...filtered.map(c => [
+                  c.deal?.client ?? '', c.deal?.property ?? '',
+                  c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '',
+                  c.deal_type ?? '', c.sale_price, c.commission_rate,
+                  c.gross_commission, c.agent_split, c.agent_net, c.brokerage_net,
+                  c.referral_fee, c.referral_to ?? '', c.transaction_fee,
+                  c.status, c.close_date ?? '', c.paid_date ?? '', c.notes ?? '',
+                ]),
+              ];
+              const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+              const blob = new Blob([csv], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url;
+              a.download = `commissions-${commissionFilterYear || 'all'}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}>⬇ Export CSV</button>
+          )}
         </div>}
 
         {/* Content */}
@@ -3941,7 +3971,196 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
               </div>
             )}
+
+            {/* ── Agent Commission Breakdown ── */}
+            {allCommissions.length > 0 && (() => {
+              const thisYear = new Date().getFullYear().toString();
+              const agentRows = profiles
+                .map(p => {
+                  const ytd = allCommissions.filter(c => c.agent_id === p.id && c.close_date?.startsWith(thisYear));
+                  return {
+                    profile: p,
+                    deals: ytd.length,
+                    gci: ytd.reduce((s, c) => s + (c.gross_commission ?? 0), 0),
+                    agentNet: ytd.reduce((s, c) => s + (c.agent_net ?? 0), 0),
+                    paid: ytd.filter(c => c.status === 'paid').length,
+                    pending: ytd.filter(c => c.status === 'pending').length,
+                  };
+                })
+                .filter(r => r.deals > 0)
+                .sort((a, b) => b.gci - a.gci);
+
+              if (agentRows.length === 0) return null;
+              const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+              return (
+                <div style={{ marginTop: 32 }}>
+                  <div style={{ marginBottom: 14 }}>
+                    <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', marginBottom: 2 }}>Commission Breakdown — {thisYear}</h3>
+                    <p style={{ fontSize: 12, color: '#6b7280' }}>Year-to-date commissions by agent</p>
+                  </div>
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e8dcc8', overflow: 'hidden' }}>
+                    <div className="mobile-table-scroll">
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#f9f5ef', borderBottom: '2px solid #e8dcc8' }}>
+                            {['Agent', 'Deals', 'Gross GCI', 'Agent Net', 'Paid', 'Pending'].map(h => (
+                              <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Agent' ? 'left' : 'right', fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: 0.5, textTransform: 'uppercase' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {agentRows.map((r, i) => (
+                            <tr key={r.profile.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                              <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: 13 }}>
+                                <div>{r.profile.first_name} {r.profile.last_name}</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>{r.profile.email}</div>
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#374151' }}>{r.deals}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#c9922c' }}>{fmt(r.gci)}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#059669' }}>{fmt(r.agentNet)}</td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: '#d1fae5', color: '#065f46' }}>{r.paid}</span>
+                              </td>
+                              <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                <span style={{ padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, background: '#fef3c7', color: '#92400e' }}>{r.pending}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </>)}
+
+          {/* ── Commissions Page ── */}
+          {page === 'commissions' && isAdmin && (() => {
+            const years = Array.from(new Set(allCommissions.map(c => c.close_date?.slice(0, 4)).filter(Boolean))).sort().reverse();
+            if (!years.includes(new Date().getFullYear().toString())) years.unshift(new Date().getFullYear().toString());
+            const filtered = allCommissions.filter(c =>
+              (!commissionFilterYear || c.close_date?.startsWith(commissionFilterYear)) &&
+              (!commissionFilterAgent || c.agent_id === commissionFilterAgent) &&
+              (!commissionFilterStatus || c.status === commissionFilterStatus)
+            );
+            const totalGCI = filtered.reduce((s, c) => s + (c.gross_commission ?? 0), 0);
+            const totalAgentNet = filtered.reduce((s, c) => s + (c.agent_net ?? 0), 0);
+            const totalBrokerNet = filtered.reduce((s, c) => s + (c.brokerage_net ?? 0), 0);
+            const fmt = (n: number) => `$${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+            const statusColor: Record<string, { bg: string; color: string }> = {
+              paid:     { bg: '#d1fae5', color: '#065f46' },
+              pending:  { bg: '#fef3c7', color: '#92400e' },
+              disputed: { bg: '#fee2e2', color: '#991b1b' },
+            };
+            return (
+              <div>
+                {/* Header */}
+                <div style={{ marginBottom: 20 }}>
+                  <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Commissions</h2>
+                  <p style={{ fontSize: 13, color: '#6b7280' }}>Deal-level commission tracking across all agents</p>
+                </div>
+
+                {/* Filters */}
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select className="crm-input" style={{ width: 'auto', minWidth: 110 }} value={commissionFilterYear} onChange={e => setCommissionFilterYear(e.target.value)}>
+                    <option value="">All Years</option>
+                    {years.map(y => <option key={y} value={y!}>{y}</option>)}
+                  </select>
+                  <select className="crm-input" style={{ width: 'auto', minWidth: 150 }} value={commissionFilterAgent} onChange={e => setCommissionFilterAgent(e.target.value)}>
+                    <option value="">All Agents</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                  </select>
+                  <select className="crm-input" style={{ width: 'auto', minWidth: 120 }} value={commissionFilterStatus} onChange={e => setCommissionFilterStatus(e.target.value)}>
+                    <option value="">All Statuses</option>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                    <option value="disputed">Disputed</option>
+                  </select>
+                  {(commissionFilterYear !== new Date().getFullYear().toString() || commissionFilterAgent || commissionFilterStatus) && (
+                    <button onClick={() => { setCommissionFilterYear(new Date().getFullYear().toString()); setCommissionFilterAgent(''); setCommissionFilterStatus(''); }}
+                      style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {/* Summary stat row */}
+                {filtered.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
+                    {[
+                      { label: 'Deals', val: String(filtered.length), color: '#111' },
+                      { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c' },
+                      { label: 'Agent Net', val: fmt(totalAgentNet), color: '#059669' },
+                      { label: 'Brokerage Net', val: fmt(totalBrokerNet), color: '#374151' },
+                    ].map(s => (
+                      <div key={s.label} style={{ background: '#fff', borderRadius: 8, padding: '14px 16px', border: '1px solid #e8dcc8', borderLeft: '4px solid #c9922c' }}>
+                        <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "'Cormorant Garamond',serif" }}>{s.val}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Table */}
+                {filtered.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb', color: '#9ca3af' }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>💰</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No commissions found</div>
+                    <div style={{ fontSize: 12 }}>Add commissions via the Commission tab on any deal.</div>
+                  </div>
+                ) : (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                    <div className="mobile-table-scroll">
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#f9f5ef', borderBottom: '2px solid #e8dcc8' }}>
+                            {['Client / Property', 'Agent', 'Close Date', 'Sale Price', 'Gross GCI', 'Agent Net', 'Broker Net', 'Status'].map(h => (
+                              <th key={h} style={{ padding: '10px 14px', textAlign: h === 'Client / Property' || h === 'Agent' ? 'left' : 'right', fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((c, i) => (
+                            <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa', cursor: 'pointer' }}
+                              onClick={() => { if (c.deal_id) { const d = deals.find(x => x.id === c.deal_id); if (d) { setPage('deals'); openDeal(d); setDealTab('commission'); } } }}>
+                              <td style={{ padding: '11px 14px', minWidth: 160 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{c.deal?.client ?? '—'}</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.deal?.property ?? ''}</div>
+                              </td>
+                              <td style={{ padding: '11px 14px', fontSize: 12, color: '#374151', whiteSpace: 'nowrap' }}>
+                                {c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '—'}
+                              </td>
+                              <td style={{ padding: '11px 14px', fontSize: 12, color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' }}>{c.close_date ? new Date(c.close_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                              <td style={{ padding: '11px 14px', fontSize: 12, fontWeight: 600, color: '#111', textAlign: 'right' }}>{fmt(c.sale_price)}</td>
+                              <td style={{ padding: '11px 14px', fontSize: 12, fontWeight: 600, color: '#c9922c', textAlign: 'right' }}>{fmt(c.gross_commission)}</td>
+                              <td style={{ padding: '11px 14px', fontSize: 12, fontWeight: 600, color: '#059669', textAlign: 'right' }}>{fmt(c.agent_net)}</td>
+                              <td style={{ padding: '11px 14px', fontSize: 12, fontWeight: 600, color: '#374151', textAlign: 'right' }}>{fmt(c.brokerage_net)}</td>
+                              <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                                <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 11, fontWeight: 600, ...(statusColor[c.status] ?? { bg: '#f3f4f6', color: '#374151' }), background: statusColor[c.status]?.bg }}>
+                                  {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        {/* Totals row */}
+                        <tfoot>
+                          <tr style={{ background: '#f9f5ef', borderTop: '2px solid #e8dcc8' }}>
+                            <td colSpan={4} style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total ({filtered.length})</td>
+                            <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: '#c9922c', textAlign: 'right' }}>{fmt(totalGCI)}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: '#059669', textAlign: 'right' }}>{fmt(totalAgentNet)}</td>
+                            <td style={{ padding: '10px 14px', fontSize: 13, fontWeight: 700, color: '#374151', textAlign: 'right' }}>{fmt(totalBrokerNet)}</td>
+                            <td />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── Campaigns Page ── */}
           {page === 'campaigns' && (
