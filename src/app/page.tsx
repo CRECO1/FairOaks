@@ -151,16 +151,6 @@ export default async function HomePage() {
         <div className="hero-overlay-luxury absolute inset-0" />
 
         <Container className="relative z-10 text-center text-white px-5 sm:px-6">
-          <div className="flex justify-center mb-4 sm:mb-6 animate-fade-in-down">
-            <Image
-              src="/fair-oaks-logo.png"
-              alt="Fair Oaks Realty Group"
-              width={220}
-              height={220}
-              className="h-36 sm:h-44 w-auto object-contain drop-shadow-xl"
-              priority
-            />
-          </div>
           <h1 className="mb-5 sm:mb-6 animate-fade-in-up font-heading text-display-xl font-bold text-white text-shadow-hero fill-both">
             {s.hero_headline.includes('\n')
               ? s.hero_headline.split('\n').map((line: string, i: number) => (
