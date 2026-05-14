@@ -53,11 +53,12 @@ function buildFilter(overrideFilter?: string): string {
 
 export async function POST(req: NextRequest) {
   // Accept either:
-  //  (a) Internal cron call — x-internal-key must equal the service role key
+  //  (a) Internal cron call — x-internal-key must equal INTERNAL_SYNC_SECRET (dedicated secret, not service role key)
   //  (b) Admin JWT Bearer token (from CRM browser session)
   //  (c) Admin cookie session (fallback)
   const internalKey = req.headers.get('x-internal-key');
-  const isInternalCron = internalKey && internalKey === process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const syncSecret = process.env.INTERNAL_SYNC_SECRET;
+  const isInternalCron = syncSecret && internalKey === syncSecret;
 
   if (!isInternalCron) {
     let isAdmin = false;

@@ -1,6 +1,7 @@
 /**
  * Universal Lead Webhook
- * POST /api/webhook/lead?apiKey=<WEBHOOK_SECRET>
+ * POST /api/webhook/lead
+ * Authorization: Bearer <WEBHOOK_SECRET>
  *
  * Use this endpoint with Zapier, Make, or any platform that can send a webhook.
  * Supports leads from Crexi, LoopNet, CoStar, or any other source.

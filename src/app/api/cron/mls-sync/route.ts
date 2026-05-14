@@ -36,9 +36,8 @@ export async function GET(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        // Pass the service role key so the sync route can use it without
-        // requiring a user session (cron runs server-to-server)
-        'x-internal-key': process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+        // Use a dedicated internal secret — never re-use the service role key as a transport token
+        'x-internal-key': process.env.INTERNAL_SYNC_SECRET ?? '',
       },
       body: JSON.stringify({ filter: deltaFilter }),
     });

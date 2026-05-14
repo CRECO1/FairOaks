@@ -130,7 +130,8 @@ export async function getListings(status = 'active'): Promise<Listing[]> {
     .from('listings')
     .select('*')
     .in('status', ['active', 'pending'])   // show both active and pending on the listings page
-    .order('listing_date', { ascending: false });
+    .order('listing_date', { ascending: false })
+    .limit(500);
 
   if (error) throw error;
   return data ?? [];
@@ -151,7 +152,8 @@ export async function getAgents(): Promise<Agent[]> {
   const { data, error } = await supabase
     .from('agents')
     .select('*')
-    .order('order', { ascending: true });
+    .order('order', { ascending: true })
+    .limit(100);
 
   if (error) throw error;
   return data ?? [];
@@ -174,7 +176,8 @@ export async function getNeighborhoods(): Promise<Neighborhood[]> {
   const { data, error } = await supabase
     .from('neighborhoods')
     .select('*')
-    .order('order', { ascending: true });
+    .order('order', { ascending: true })
+    .limit(100);
 
   if (error) throw error;
   return data ?? [];

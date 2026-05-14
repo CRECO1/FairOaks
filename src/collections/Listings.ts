@@ -7,6 +7,12 @@ export const Listings: CollectionConfig = {
     group: 'Real Estate',
     defaultColumns: ['title', 'status', 'price', 'city', 'updatedAt'],
   },
+  access: {
+    read:   () => true,                                   // public — listings are shown on the site
+    create: ({ req }) => req.user?.role === 'admin',
+    update: ({ req }) => !!req.user,                      // any authenticated user can update (agents)
+    delete: ({ req }) => req.user?.role === 'admin',
+  },
   fields: [
     {
       name: 'title',

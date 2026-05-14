@@ -20,25 +20,33 @@ const CONTACT_REASONS = [
 export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    setSubmitError('');
     const data = new FormData(e.currentTarget);
-    await fetch('/api/leads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: data.get('name'),
-        email: data.get('email'),
-        phone: data.get('phone'),
-        message: `Reason: ${data.get('reason')}\n\n${data.get('message')}`,
-        source: 'contact',
-        business_unit: 'residential',
-      }),
-    }).catch(() => {});
-    setLoading(false);
-    setSubmitted(true);
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.get('name'),
+          email: data.get('email'),
+          phone: data.get('phone'),
+          message: `Reason: ${data.get('reason')}\n\n${data.get('message')}`,
+          source: 'contact',
+          business_unit: 'residential',
+        }),
+      });
+      if (!res.ok) throw new Error('Server error');
+      setSubmitted(true);
+    } catch {
+      setSubmitError('Something went wrong. Please try again or call us directly.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -184,6 +192,11 @@ export default function ContactPage() {
                         <p className="text-caption text-foreground-muted">
                           By submitting, you agree to be contacted by Fair Oaks Realty Group regarding your inquiry.
                         </p>
+                        {submitError && (
+                          <p className="text-body-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3">
+                            {submitError}
+                          </p>
+                        )}
                         <Button type="submit" size="lg" fullWidth loading={loading}>
                           Send Message
                         </Button>

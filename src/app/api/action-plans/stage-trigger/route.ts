@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { getCrmUser } from '@/lib/crm-auth';
 
 const db = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
 
@@ -27,6 +28,9 @@ function applyMergeFields(t: string, ctx: any): string {
 // POST /api/action-plans/stage-trigger
 // Called when a deal stage changes — enrolls the contact in any matching stage_change action plans
 export async function POST(req: NextRequest) {
+  const caller = await getCrmUser();
+  if (!caller) return NextResponse.json({ enrolled: 0 }, { status: 401 });
+
   try {
     const { stage, clientId, agentId, businessUnit } = await req.json();
     if (!stage || !clientId) return NextResponse.json({ enrolled: 0 });

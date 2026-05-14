@@ -9,11 +9,19 @@ export async function POST() {
 
   const supabase = adminClient();
 
-  // Fetch all auth users (real last_sign_in_at from Supabase Auth)
-  const { data: authData, error: authErr } = await supabase.auth.admin.listUsers({ perPage: 1000 });
-  if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+  // Fetch all auth users across all pages (listUsers is paginated)
+  const allUsers: { id: string; last_sign_in_at?: string }[] = [];
+  let page = 1;
+  while (true) {
+    const { data: authData, error: authErr } = await supabase.auth.admin.listUsers({ perPage: 1000, page });
+    if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+    const batch = authData?.users ?? [];
+    allUsers.push(...batch);
+    if (batch.length < 1000) break;
+    page++;
+  }
 
-  const users = authData?.users ?? [];
+  const users = allUsers;
 
   // Upsert last_sign_in_at into crm_profiles for each user that has signed in
   const updates = users
