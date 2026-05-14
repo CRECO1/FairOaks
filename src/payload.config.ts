@@ -37,7 +37,7 @@ export default buildConfig({
   ],
   globals: [SiteSettings],
   editor: lexicalEditor({}),
-  secret: process.env.PAYLOAD_SECRET || 'default-secret-change-me',
+  secret: process.env.PAYLOAD_SECRET ?? (() => { throw new Error('PAYLOAD_SECRET env var must be set') })(),
   typescript: {
     outputFile: path.resolve(dirname, 'types/payload-types.ts'),
   },

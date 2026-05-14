@@ -7,6 +7,12 @@ export const Agents: CollectionConfig = {
     group: 'Real Estate',
     defaultColumns: ['name', 'title', 'email', 'updatedAt'],
   },
+  access: {
+    read:   () => true,                                   // public — agent profiles are shown on the site
+    create: ({ req }) => req.user?.role === 'admin',
+    update: ({ req }) => req.user?.role === 'admin',
+    delete: ({ req }) => req.user?.role === 'admin',
+  },
   fields: [
     {
       name: 'name',

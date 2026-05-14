@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Bed, Bath, Square, X } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
 
@@ -167,7 +168,7 @@ export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }
           </button>
           {selected.images?.[0] && (
             <div className="relative h-36 w-full">
-              <img src={selected.images[0]} alt={selected.title} className="w-full h-full object-cover" />
+              <Image src={selected.images[0]} alt={selected.title} fill className="object-cover" sizes="288px" />
             </div>
           )}
           <div className="p-4">

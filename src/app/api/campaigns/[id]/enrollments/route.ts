@@ -2,13 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-// CT = UTC-5 (CDT summer) / UTC-6 (CST winter). Using -05:00 as default (CDT).
-// The Date constructor with an explicit offset handles the UTC conversion correctly.
+/**
+ * Convert a Chicago local date+time string to a UTC ISO string.
+ * Uses Intl.DateTimeFormat to detect the correct CDT/CST offset for the given date.
+ */
+function chicagoLocalToUTC(dateStr: string, timeStr: string): string {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  // Treat as UTC temporarily to query Intl for the Chicago offset at this moment
+  const probe = new Date(Date.UTC(y, mo - 1, d, h, mi, 0));
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(probe).reduce<Record<string, number>>((a, p) => {
+    if (p.type !== 'literal') a[p.type] = parseInt(p.value, 10);
+    return a;
+  }, {});
+  const hrNorm = parts.hour === 24 ? 0 : parts.hour;
+  const chiAsUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day, hrNorm, parts.minute, parts.second ?? 0);
+  const offsetMs = probe.getTime() - chiAsUtcMs;
+  return new Date(probe.getTime() + offsetMs).toISOString();
+}
+
 function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
   if (frequency === 'one-time' && sendDate) {
     const time = sendTime || '08:00';
-    // Parse as Central Time (CDT = -05:00). JS Date will convert to UTC automatically.
-    return new Date(`${sendDate}T${time}:00-05:00`).toISOString();
+    // Convert Chicago local time → UTC using Intl (handles CDT/CST automatically — no library needed)
+    return chicagoLocalToUTC(sendDate, time);
   }
   const now = new Date();
   switch (frequency) {

@@ -9,7 +9,9 @@ export const Leads: CollectionConfig = {
     hideAPIURL: true,
   },
   access: {
-    create: () => true,
+    // Public lead creation goes through /api/leads (rate-limited Next.js route) not this Payload endpoint.
+    // Restrict direct Payload API creates to authenticated users only to prevent bypass.
+    create: ({ req }) => !!req.user,
     read: ({ req }) => !!req.user,
     update: ({ req }) => !!req.user,
     delete: ({ req }) => req.user?.role === 'admin',

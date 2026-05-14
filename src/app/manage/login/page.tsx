@@ -9,7 +9,9 @@ import { signIn } from '@/lib/auth';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') ?? '/manage';
+  // Validate redirect is a same-origin path to prevent open redirect attacks
+  const rawRedirect = searchParams.get('redirect') ?? '';
+  const redirect = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '/manage';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
