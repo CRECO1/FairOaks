@@ -218,6 +218,11 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                     {deal.value > 0 && (
                       <span style={{ fontSize: 11, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>
                     )}
+                    {deal.value > 0 && (() => {
+                      const gci = deal.value * 0.03;
+                      const gciStr = gci >= 1000000 ? `$${(gci/1000000).toFixed(2)}M` : gci >= 1000 ? `$${Math.round(gci/1000)}k` : `$${Math.round(gci)}`;
+                      return <span style={{ fontSize: 10, color: '#c9922c', fontWeight: 700 }}>{gciStr} GCI</span>;
+                    })()}
                   </div>
                   {isAdmin && (
                     <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 5 }}>👤 {agentName(deal.agent_id)}</div>
@@ -494,6 +499,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [searchQuery, setSearchQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Notification center
+  const [showNotifications, setShowNotifications] = useState(false);
+
   // Email preview
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
@@ -531,6 +539,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Bulk unenroll
   const [selectedUnenrollIds, setSelectedUnenrollIds] = useState<string[]>([]);
+
+  // Bulk reassign contacts
+  const [showBulkReassign, setShowBulkReassign] = useState(false);
+  const [bulkReassignTarget, setBulkReassignTarget] = useState('');
+  const [bulkReassigning, setBulkReassigning] = useState(false);
 
   // Campaign completed filter
   const [campaignFilter, setCampaignFilter] = useState<'all' | 'active' | 'draft' | 'paused' | 'completed'>('all');
@@ -607,11 +620,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }, [campaignView, emailEditorMode]); // eslint-disable-line
 
-  // Global search keyboard shortcut (⌘K / Ctrl+K)
+  // Global search keyboard shortcut (⌘K / Ctrl+K) + quick shortcuts
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowSearch(s => !s); setSearchQuery(''); }
-      if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); }
+      if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); setShowNotifications(false); }
+      // Quick nav shortcuts — only when no input/modal is focused
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        if (e.key === '/') { e.preventDefault(); setShowSearch(true); setSearchQuery(''); }
+        const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
+        if (e.key === 'n' && hash === 'contacts') { e.preventDefault(); setShowAddClient(true); }
+        if (e.key === 'c' && hash === 'deals') { e.preventDefault(); setShowAddDeal(true); }
+      }
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -2345,6 +2366,129 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             🔍 <span>Search…</span>
             <kbd style={{ fontSize: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 5px', fontFamily: 'monospace', marginLeft: 4 }}>⌘K</kbd>
           </button>
+
+          {/* Notification Bell */}
+          {(() => {
+            const now = Date.now();
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const overdueTasks = allTasks.filter(t => !t.completed_at && t.due_date && t.due_date < todayStr);
+            const newLeads = clients.filter(c => (c.tags ?? []).includes('New Lead') && c.created_at && (now - new Date(c.created_at).getTime()) < 7 * 86400000);
+            const upcomingBdays = clients.filter(c => {
+              if (!c.birthday) return false;
+              const bday = new Date(c.birthday + 'T00:00:00');
+              const base = new Date(); base.setHours(0,0,0,0);
+              const thisYearBday = new Date(base.getFullYear(), bday.getMonth(), bday.getDate());
+              const next = thisYearBday < base ? new Date(base.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYearBday;
+              return Math.ceil((next.getTime() - now) / 86400000) <= 14;
+            });
+            const lxpUrgent = clients.filter(c => {
+              if (!c.lease_expiration_date) return false;
+              const d = Math.ceil((new Date(c.lease_expiration_date).getTime() - now) / 86400000);
+              return d >= 0 && d <= 30;
+            });
+            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length;
+            return (
+              <div style={{ position: 'relative' }}>
+                <button onClick={() => setShowNotifications(n => !n)} title="Notifications"
+                  style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, border: `1px solid ${totalAlerts > 0 ? '#fde68a' : '#e5e7eb'}`, background: showNotifications ? '#fef9f0' : totalAlerts > 0 ? '#fffbeb' : '#f9fafb', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
+                  🔔
+                  {totalAlerts > 0 && (
+                    <span style={{ position: 'absolute', top: 3, right: 3, width: 15, height: 15, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #fff' }}>
+                      {totalAlerts > 9 ? '9+' : totalAlerts}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={() => setShowNotifications(false)} />
+                    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 9000, marginTop: 6, width: 340, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>🔔 Smart Alerts</span>
+                        {totalAlerts > 0 && <span style={{ fontSize: 11, color: '#6b7280' }}>{totalAlerts} item{totalAlerts !== 1 ? 's' : ''}</span>}
+                      </div>
+                      <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {totalAlerts === 0 && (
+                          <div style={{ padding: '28px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
+                            All clear — no alerts right now
+                          </div>
+                        )}
+                        {overdueTasks.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid #f9fafb' }}>
+                            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#dc2626', fontWeight: 700, marginBottom: 8 }}>⚠️ Overdue Tasks ({overdueTasks.length})</div>
+                            {overdueTasks.slice(0, 4).map(t => (
+                              <button key={t.id} onClick={() => { setPage('tasks'); setShowNotifications(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#dc2626', flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: '#111', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                                <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 600, flexShrink: 0 }}>{t.due_date}</span>
+                              </button>
+                            ))}
+                            {overdueTasks.length > 4 && <div style={{ fontSize: 11, color: '#9ca3af', paddingTop: 4 }}>+{overdueTasks.length - 4} more overdue</div>}
+                          </div>
+                        )}
+                        {newLeads.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid #f9fafb' }}>
+                            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#16a34a', fontWeight: 700, marginBottom: 8 }}>🆕 New Leads — Last 7 Days ({newLeads.length})</div>
+                            {newLeads.slice(0, 3).map(c => (
+                              <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', flexShrink: 0 }} />
+                                <span style={{ fontSize: 12, color: '#111', flex: 1 }}>{c.first_name} {c.last_name}</span>
+                                <span style={{ fontSize: 10, color: '#6b7280', flexShrink: 0 }}>{c.lead_source || 'Unknown source'}</span>
+                              </button>
+                            ))}
+                            {newLeads.length > 3 && <div style={{ fontSize: 11, color: '#9ca3af', paddingTop: 4 }}>+{newLeads.length - 3} more new leads</div>}
+                          </div>
+                        )}
+                        {upcomingBdays.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: lxpUrgent.length > 0 ? '1px solid #f9fafb' : 'none' }}>
+                            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 8 }}>🎂 Upcoming Birthdays</div>
+                            {upcomingBdays.slice(0, 3).map(c => {
+                              const bday = new Date(c.birthday! + 'T00:00:00');
+                              const base = new Date(); base.setHours(0,0,0,0);
+                              const thisYearBday = new Date(base.getFullYear(), bday.getMonth(), bday.getDate());
+                              const next = thisYearBday < base ? new Date(base.getFullYear() + 1, bday.getMonth(), bday.getDate()) : thisYearBday;
+                              const daysUntil = Math.ceil((next.getTime() - now) / 86400000);
+                              return (
+                                <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#c9922c', flexShrink: 0 }} />
+                                  <span style={{ fontSize: 12, color: '#111', flex: 1 }}>{c.first_name} {c.last_name}</span>
+                                  <span style={{ fontSize: 10, color: '#c9922c', fontWeight: 700, flexShrink: 0 }}>{daysUntil === 0 ? '🎉 Today!' : `in ${daysUntil}d`}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {lxpUrgent.length > 0 && (
+                          <div style={{ padding: '10px 16px' }}>
+                            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#c2410c', fontWeight: 700, marginBottom: 8 }}>🗓 LXP Expiring Within 30 Days ({lxpUrgent.length})</div>
+                            {lxpUrgent.slice(0, 3).map(c => {
+                              const daysLeft = Math.ceil((new Date(c.lease_expiration_date!).getTime() - now) / 86400000);
+                              return (
+                                <button key={c.id} onClick={() => { setPage('contacts'); setActiveClient(c); setShowNotifications(false); }}
+                                  style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '5px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f97316', flexShrink: 0 }} />
+                                  <span style={{ fontSize: 12, color: '#111', flex: 1 }}>{c.first_name} {c.last_name}</span>
+                                  <span style={{ fontSize: 10, color: '#c2410c', fontWeight: 700, flexShrink: 0 }}>{daysLeft}d left</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 10, color: '#9ca3af' }}>Keyboard shortcut: N (contacts) · C (deals) · / (search)</span>
+                        <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 11, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
           {page === 'deals' && <button className="crm-btn crm-btn-gold" onClick={() => setShowAddDeal(true)}>+ New Deal</button>}
           {page === 'contacts' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -2458,6 +2602,54 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       ))}
                     </div>
+                  </div>
+                );
+              })()}
+
+              {/* Commission Pipeline Forecast */}
+              {deals.some(d => ['Active', 'In Contract'].includes(d.stage) && d.value > 0) && (() => {
+                const fmtC = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(1)}K` : `$${n.toFixed(0)}`;
+                const RATE = 0.03;
+                const inContract = deals.filter(d => d.stage === 'In Contract' && d.value > 0);
+                const activePipe = deals.filter(d => d.stage === 'Active' && d.value > 0);
+                const contractGCI = inContract.reduce((s, d) => s + d.value * RATE, 0);
+                const pipeGCI = activePipe.reduce((s, d) => s + d.value * RATE, 0);
+                const totalPipeVal = inContract.reduce((s, d) => s + d.value, 0) + activePipe.reduce((s, d) => s + d.value, 0);
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>📈 Commission Pipeline Forecast</div>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>est. at 3% avg rate</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: inContract.length > 0 ? 14 : 0 }}>
+                      {[
+                        { label: 'In Contract GCI', val: contractGCI, color: '#c9922c', count: inContract.length },
+                        { label: 'Active Pipeline GCI', val: pipeGCI, color: '#3b82f6', count: activePipe.length },
+                        { label: 'Total Pipeline Value', val: totalPipeVal, color: '#374151', count: inContract.length + activePipe.length },
+                      ].map(s => (
+                        <div key={s.label} style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: "'Cormorant Garamond',serif" }}>{fmtC(s.val)}</div>
+                          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>{s.count} deal{s.count !== 1 ? 's' : ''}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {inContract.length > 0 && (
+                      <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 12 }}>
+                        <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>Deals In Contract</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {inContract.slice(0, 5).map(d => (
+                            <button key={d.id} onClick={() => { setPage('deals'); openDeal(d); }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                              <span style={{ fontSize: 12, fontWeight: 600, color: '#111', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client}{d.property ? ` — ${d.property}` : ''}</span>
+                              <span style={{ fontSize: 11, color: '#6b7280', flexShrink: 0 }}>{fmtC(d.value)}</span>
+                              <span style={{ fontSize: 11, color: '#c9922c', flexShrink: 0, fontWeight: 700 }}>~{fmtC(d.value * RATE)} GCI</span>
+                            </button>
+                          ))}
+                          {inContract.length > 5 && <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>+{inContract.length - 5} more in contract</div>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -2971,6 +3163,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       📣 Enroll in Campaign
                     </button>
                     <button
+                      onClick={() => { setBulkReassignTarget(''); setShowBulkReassign(true); }}
+                      style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      👤 Reassign
+                    </button>
+                    <button
                       onClick={massDeleteClients}
                       style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                       🗑 Delete Selected
@@ -3403,6 +3600,86 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       </>
                     )}
+                  </div>
+                );
+              })()}
+
+              {/* ── Lead Source ROI Report ── */}
+              {clients.length > 0 && (() => {
+                const sourceCounts: Record<string, { total: number; closed: number; value: number }> = {};
+                clients.forEach(c => {
+                  const src = c.lead_source || 'Unknown';
+                  if (!sourceCounts[src]) sourceCounts[src] = { total: 0, closed: 0, value: 0 };
+                  sourceCounts[src].total++;
+                });
+                deals.filter(d => d.stage === 'Closed').forEach(d => {
+                  const client = clients.find(c => c.id === d.client_id);
+                  const src = client?.lead_source || 'Unknown';
+                  if (!sourceCounts[src]) sourceCounts[src] = { total: 0, closed: 0, value: 0 };
+                  sourceCounts[src].closed++;
+                  sourceCounts[src].value += d.value || 0;
+                });
+                const rows = Object.entries(sourceCounts)
+                  .map(([src, data]) => ({ src, ...data, rate: data.total > 0 ? Math.round(data.closed / data.total * 100) : 0 }))
+                  .filter(r => r.total > 0)
+                  .sort((a, b) => b.total - a.total);
+                if (rows.length === 0) return null;
+                const fmtV = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(1)}K` : n > 0 ? `$${n}` : '—';
+                return (
+                  <div style={{ marginTop: 36, borderTop: '2px solid #f0f0f0', paddingTop: 28 }}>
+                    <div style={{ marginBottom: 16 }}>
+                      <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', marginBottom: 2 }}>Lead Source ROI</h3>
+                      <p style={{ fontSize: 12, color: '#6b7280' }}>Contact volume, closed deals, and revenue by lead source</p>
+                    </div>
+                    <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                      <div className="mobile-table-scroll">
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                              {['Source', 'Contacts', 'Closed Deals', 'Conv. Rate', 'Closed Value'].map(h => (
+                                <th key={h} style={{ padding: '10px 16px', textAlign: h === 'Source' ? 'left' : 'right', fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((r, i) => (
+                              <tr key={r.src} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                                <td style={{ padding: '11px 16px', fontWeight: 600, fontSize: 13, color: '#111' }}>
+                                  <button onClick={() => { setContactSourceFilter(r.src === 'Unknown' ? '' : r.src); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 13, padding: 0, textDecoration: 'underline', textDecorationStyle: 'dotted', fontFamily: "'DM Sans',sans-serif" }}>
+                                    {r.src}
+                                  </button>
+                                </td>
+                                <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontWeight: 600, color: '#374151' }}>{r.total}</td>
+                                <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13 }}>
+                                  {r.closed > 0 ? <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 9px', borderRadius: 8, fontWeight: 700, fontSize: 12 }}>{r.closed}</span> : <span style={{ color: '#d1d5db' }}>0</span>}
+                                </td>
+                                <td style={{ padding: '11px 16px', textAlign: 'right' }}>
+                                  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: r.rate >= 20 ? '#16a34a' : r.rate >= 10 ? '#c9922c' : '#374151' }}>{r.rate}%</span>
+                                    <div style={{ width: 60, height: 4, background: '#e5e7eb', borderRadius: 2, overflow: 'hidden' }}>
+                                      <div style={{ width: `${Math.min(r.rate, 100)}%`, height: '100%', background: r.rate >= 20 ? '#16a34a' : r.rate >= 10 ? '#c9922c' : '#9ca3af', borderRadius: 2 }} />
+                                    </div>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '11px 16px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: r.value > 0 ? '#c9922c' : '#d1d5db' }}>{fmtV(r.value)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ background: '#f9fafb', borderTop: '2px solid #e5e7eb' }}>
+                              <td style={{ padding: '10px 16px', fontWeight: 700, fontSize: 12, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: '#374151' }}>{rows.reduce((s, r) => s + r.total, 0)}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: '#166534' }}>{rows.reduce((s, r) => s + r.closed, 0)}</td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: '#374151' }}>
+                                {(() => { const t = rows.reduce((s, r) => s + r.total, 0); const c = rows.reduce((s, r) => s + r.closed, 0); return t > 0 ? `${Math.round(c/t*100)}%` : '—'; })()}
+                              </td>
+                              <td style={{ padding: '10px 16px', textAlign: 'right', fontWeight: 700, color: '#c9922c' }}>{fmtV(rows.reduce((s, r) => s + r.value, 0))}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 );
               })()}
@@ -8110,6 +8387,54 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview'))
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ── Bulk Reassign Modal ── */}
+      {showBulkReassign && isAdmin && (
+        <div className="overlay" onClick={() => setShowBulkReassign(false)}>
+          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 24px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0 }}>Reassign Contacts</h3>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', marginTop: 2 }}>{selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''} selected</div>
+              </div>
+              <button onClick={() => setShowBulkReassign(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 8 }}>Assign to Agent</label>
+                <select className="crm-input" value={bulkReassignTarget} onChange={e => setBulkReassignTarget(e.target.value)}>
+                  <option value="">Select an agent…</option>
+                  {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name} ({p.role})</option>)}
+                </select>
+              </div>
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#92400e' }}>
+                ⚠️ This will update the <strong>Owner</strong> field on {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''}. The contacts will remain visible to their original team.
+              </div>
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+                <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setShowBulkReassign(false)}>Cancel</button>
+                <button
+                  className="crm-btn crm-btn-gold"
+                  style={{ flex: 2 }}
+                  disabled={!bulkReassignTarget || bulkReassigning}
+                  onClick={async () => {
+                    if (!bulkReassignTarget) return;
+                    setBulkReassigning(true);
+                    const ids = Array.from(selectedClientIds);
+                    await supabase.from('crm_clients').update({ agent_id: bulkReassignTarget }).in('id', ids);
+                    setClients(prev => prev.map(c => selectedClientIds.has(c.id) ? { ...c, agent_id: bulkReassignTarget } : c));
+                    const agent = profiles.find(p => p.id === bulkReassignTarget);
+                    showToast(`✓ ${ids.length} contact${ids.length !== 1 ? 's' : ''} reassigned to ${agent?.first_name ?? 'agent'}`);
+                    setSelectedClientIds(new Set());
+                    setShowBulkReassign(false);
+                    setBulkReassigning(false);
+                  }}>
+                  {bulkReassigning ? 'Reassigning…' : `Reassign ${selectedClientIds.size} Contact${selectedClientIds.size !== 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
