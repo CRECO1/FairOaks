@@ -57,7 +57,7 @@ const DEMO_POSTS: Post[] = [
     category: 'new-developments',
     publishedAt: '2025-04-15',
     featured: true,
-    featuredImage: null,
+    featuredImage: { url: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&auto=format&fit=crop', alt: 'Master-planned community homes' },
     author: { name: 'Fair Oaks Realty Group' },
   },
   {
@@ -68,7 +68,7 @@ const DEMO_POSTS: Post[] = [
     category: 'new-developments',
     publishedAt: '2025-03-28',
     featured: false,
-    featuredImage: null,
+    featuredImage: { url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&auto=format&fit=crop', alt: 'Texas Hill Country creek and landscape' },
     author: { name: 'Fair Oaks Realty Group' },
   },
   {
@@ -79,7 +79,7 @@ const DEMO_POSTS: Post[] = [
     category: 'new-developments',
     publishedAt: '2025-03-10',
     featured: false,
-    featuredImage: null,
+    featuredImage: { url: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&auto=format&fit=crop', alt: 'Luxury Hill Country home exterior' },
     author: { name: 'Fair Oaks Realty Group' },
   },
   {
@@ -90,7 +90,7 @@ const DEMO_POSTS: Post[] = [
     category: 'market-update',
     publishedAt: '2025-04-01',
     featured: false,
-    featuredImage: null,
+    featuredImage: { url: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=800&auto=format&fit=crop', alt: 'Real estate market' },
     author: { name: 'Fair Oaks Realty Group' },
   },
   {
@@ -101,7 +101,7 @@ const DEMO_POSTS: Post[] = [
     category: 'neighborhoods',
     publishedAt: '2025-02-20',
     featured: false,
-    featuredImage: null,
+    featuredImage: { url: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800&auto=format&fit=crop', alt: 'Beautiful Hill Country neighborhood home' },
     author: { name: 'Fair Oaks Realty Group' },
   },
   {
@@ -112,7 +112,7 @@ const DEMO_POSTS: Post[] = [
     category: 'buyer-tips',
     publishedAt: '2025-02-05',
     featured: false,
-    featuredImage: null,
+    featuredImage: { url: 'https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=800&auto=format&fit=crop', alt: 'Couple discussing home purchase' },
     author: { name: 'Fair Oaks Realty Group' },
   },
 ];
