@@ -3208,7 +3208,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {isAdmin && <th>Owner</th>}
                         <th>Added</th>
                         <th>Last Contact</th>
-                        {isAdmin && <th></th>}
+                        <th>Task</th>
                       </tr>
                     </thead>
                     <tbody>
