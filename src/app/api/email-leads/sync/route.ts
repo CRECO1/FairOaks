@@ -449,7 +449,19 @@ function getHeader(msg: any, name: string): string {
 }
 
 // ── Main sync logic ──────────────────────────────────────────────────────────
-export async function POST() {
+export async function POST(req: import('next/server').NextRequest) {
+  // Require internal key (same secret used by cron→MLS sync)
+  const internalKey = req.headers.get('x-internal-key');
+  const syncSecret = process.env.INTERNAL_SYNC_SECRET;
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.get('authorization');
+  const isInternal = syncSecret && internalKey === syncSecret;
+  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+  if (!isInternal && !isCron) {
+    return import('next/server').then(({ NextResponse }) =>
+      NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    );
+  }
   try {
     const supabase = db();
 
@@ -637,4 +649,4 @@ export async function POST() {
   }
 }
 
-export async function GET() { return POST(); }
+export async function GET(req: import('next/server').NextRequest) { return POST(req); }
