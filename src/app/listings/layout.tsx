@@ -1,20 +1,20 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Homes for Sale in Fair Oaks Ranch TX | Search All Listings',
+  title: 'MLS Listings in Fair Oaks Ranch, Boerne & Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Browse homes for sale in Fair Oaks Ranch, Boerne, Helotes & the Texas Hill Country. Filter by price, bedrooms, and location. New listings updated daily. View photos, details & schedule tours.',
+    'Search all active MLS listings in Fair Oaks Ranch, Boerne, Helotes, San Antonio and the Texas Hill Country. Filter by price, beds, and city. Powered by SABOR MLS.',
   keywords: [
-    'homes for sale Fair Oaks Ranch TX',
-    'Fair Oaks Ranch real estate listings',
-    'houses for sale Fair Oaks Ranch',
-    'Boerne TX homes for sale',
-    'Helotes TX homes for sale',
-    'Texas Hill Country homes for sale',
-    'Fair Oaks Ranch MLS listings',
-    'residential homes for sale near San Antonio TX',
-    'luxury homes Fair Oaks Ranch Texas',
-    'new listings Fair Oaks Ranch',
+    'fair oaks ranch homes for sale',
+    'boerne tx mls listings',
+    'helotes homes for sale',
+    'san antonio mls search',
+    'texas hill country listings',
+    'active listings fair oaks ranch',
+    'search homes texas',
+    'sabor mls listings',
+    'new listings hill country',
+    'homes for sale texas',
   ],
   openGraph: {
     title: 'Homes for Sale in Fair Oaks Ranch TX | Fair Oaks Realty Group',

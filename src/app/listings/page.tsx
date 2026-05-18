@@ -186,7 +186,7 @@ function ListingsPageInner() {
         <div className="bg-primary py-10 sm:py-14 text-white">
           <Container>
             <p className="overline mb-2 text-gold">SABOR MLS</p>
-            <h1 className="font-heading text-display-sm font-bold">Search All MLS Listings</h1>
+            <h1 className="font-heading text-display-sm font-bold">MLS Listings — Fair Oaks Ranch, Boerne &amp; Texas Hill Country</h1>
             <p className="mt-2 text-body text-white/60">Powered by SABOR MLS</p>
           </Container>
         </div>
