@@ -40,9 +40,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <Script id="google-analytics" strategy="afterInteractive">
         {`
           window.dataLayer = window.dataLayer || [];
-          window.gtag = function(){window.dataLayer.push(arguments);}
+          window.gtag = window.gtag || function(){window.dataLayer.push(arguments);}
           window.gtag('js', new Date());
-          window.gtag('config', 'G-SYPXDGGWQS');
+          window.gtag('config', 'G-SYPXDGGWQS', { debug_mode: false });
         `}
       </Script>
     </>
