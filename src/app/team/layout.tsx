@@ -1,5 +1,49 @@
 import type { Metadata } from 'next';
 
+const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+
+const personSchema = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Person',
+      name: 'Sandra Whitfield',
+      jobTitle: 'Broker / Owner',
+      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
+      email: 'sandra@fairoaksrealtygroup.com',
+      url: `${BASE_URL}/team`,
+      knowsAbout: ['Luxury Estates', 'Relocation', 'Hill Country Acreage', 'Texas Real Estate'],
+    },
+    {
+      '@type': 'Person',
+      name: 'James Morales',
+      jobTitle: 'Realtor® — Buyer Specialist',
+      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
+      email: 'james@fairoaksrealtygroup.com',
+      url: `${BASE_URL}/team`,
+      knowsAbout: ['First-Time Buyers', 'New Construction', 'Investment Properties'],
+    },
+    {
+      '@type': 'Person',
+      name: 'Karen Liu',
+      jobTitle: 'Realtor® — Listing Specialist',
+      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
+      email: 'karen@fairoaksrealtygroup.com',
+      url: `${BASE_URL}/team`,
+      knowsAbout: ['Home Staging', 'Negotiation', 'Downsizing'],
+    },
+    {
+      '@type': 'Person',
+      name: 'David Reyes',
+      jobTitle: 'Realtor® — Military & VA Specialist',
+      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
+      email: 'david@fairoaksrealtygroup.com',
+      url: `${BASE_URL}/team`,
+      knowsAbout: ['VA Loans', 'Military Relocation', 'Investment Properties'],
+    },
+  ],
+};
+
 export const metadata: Metadata = {
   title: 'Meet Our Real Estate Team | Fair Oaks Realty Group',
   description:
@@ -29,5 +73,13 @@ export const metadata: Metadata = {
 };
 
 export default function TeamLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(personSchema) }}
+      />
+      {children}
+    </>
+  );
 }

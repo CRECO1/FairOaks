@@ -26,3 +26,6 @@ build/
 
 # Payload
 media/
+
+# Claude local files
+.claude/

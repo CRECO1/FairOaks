@@ -85,6 +85,35 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.85,
     },
+    // Blog
+    { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/blog/veramendi-new-braunfels`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    { url: `${BASE_URL}/blog/headwaters-barton-creek`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    { url: `${BASE_URL}/blog/miralomas-helotes`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    { url: `${BASE_URL}/blog/boerne-market-report-spring-2025`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    { url: `${BASE_URL}/blog/fair-oaks-ranch-best-value`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    { url: `${BASE_URL}/blog/questions-before-buying-master-planned`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    // Careers & join
+    { url: `${BASE_URL}/careers`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE_URL}/join`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    // City landing pages
+    { url: `${BASE_URL}/homes-for-sale`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
+    { url: `${BASE_URL}/homes-for-sale/boerne-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/helotes-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/san-antonio-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/fair-oaks-ranch-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/bulverde-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/homes-for-sale/new-braunfels-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/homes-for-sale/canyon-lake-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    { url: `${BASE_URL}/homes-for-sale/spring-branch-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    // Specialty landing pages
+    { url: `${BASE_URL}/luxury-homes`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/new-construction`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/military-homebuying`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    // Content / guides
+    { url: `${BASE_URL}/faq`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    { url: `${BASE_URL}/buyer-guide`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    { url: `${BASE_URL}/seller-guide`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
   ];
 
   // Dynamic listing pages — pulled live from SABOR MLS
