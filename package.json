@@ -12,6 +12,7 @@
     "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@payloadcms/db-postgres": "^3.0.0",
     "@payloadcms/next": "^3.0.0",
     "@payloadcms/richtext-lexical": "^3.0.0",
