@@ -1,4 +1,4 @@
-export const revalidate = 86400;
+export const revalidate = 3600;
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -17,6 +17,18 @@ export const metadata: Metadata = {
   title: 'New Construction Homes in Texas Hill Country | Fair Oaks Realty Group',
   description:
     'New construction homes in Boerne, Helotes, Bulverde, New Braunfels, and Fair Oaks Ranch TX. Builder-new homes, master-planned communities, and custom builds — with no extra cost to buyers.',
+  keywords: [
+    'new construction homes texas',
+    'new builds fair oaks ranch',
+    'new homes boerne tx',
+    'new construction san antonio',
+    'new homes texas hill country',
+    'newly built homes helotes',
+    'new homes bulverde tx',
+    'new construction near san antonio',
+    'builder homes hill country',
+    'move in ready homes texas',
+  ],
   alternates: { canonical: `${BASE_URL}/new-construction` },
   openGraph: {
     title: 'New Construction Homes in Texas Hill Country | Fair Oaks Realty Group',
@@ -285,6 +297,49 @@ export default function NewConstructionPage() {
             </div>
           </Container>
         </div>
+
+        {/* Browse by City */}
+        <section className="section-luxury bg-white">
+          <Container>
+            <div className="mb-10 text-center">
+              <p className="overline mb-3 text-gold">Explore by Location</p>
+              <h2 className="font-heading text-display-sm font-bold text-primary gold-line gold-line-center inline-block pb-4">
+                Browse New Construction by City
+              </h2>
+              <p className="mt-6 mx-auto max-w-2xl text-body text-foreground-muted">
+                We serve buyers across the Texas Hill Country. Select your city to see active developments,
+                top builders, and community details for that market.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {[
+                { name: 'Fair Oaks Ranch', href: '/new-construction/fair-oaks-ranch', isd: 'Boerne ISD', price: '$450K – $900K', desc: 'Gated communities, custom lots & Hill Country lifestyle 20 min from San Antonio.' },
+                { name: 'Boerne', href: '/new-construction/boerne', isd: 'Boerne ISD', price: '$380K – $850K', desc: 'Headwaters, Esperanza & other master-planned communities near historic downtown.' },
+                { name: 'Helotes', href: '/new-construction/helotes', isd: 'Northside ISD', price: '$450K – $950K', desc: 'Miralomas & other hillside communities with panoramic San Antonio views.' },
+                { name: 'San Antonio', href: '/new-construction/san-antonio', isd: 'Multiple ISDs', price: '$280K – $700K+', desc: 'New builds across all price ranges. Military-friendly, VA loan accepted.' },
+                { name: 'Bulverde', href: '/new-construction/bulverde', isd: 'Comal ISD', price: '$370K – $700K', desc: 'Fast-growing Hill Country community with Johnson Ranch, Copper Canyon & more.' },
+                { name: 'New Braunfels', href: '/new-construction/new-braunfels', isd: 'Comal ISD', price: '$350K – $750K', desc: 'Veramendi, Vintage Oaks & Solms Landing — Hill Country charm with city access.' },
+                { name: 'Canyon Lake', href: '/new-construction/canyon-lake', isd: 'Comal ISD', price: '$380K – $900K', desc: 'Custom and semi-custom builds near the lake. Hill Country views & vacation potential.' },
+              ].map(({ name, href, isd, price, desc }) => (
+                <Link
+                  key={name}
+                  href={href}
+                  className="group flex flex-col rounded-2xl border border-border bg-background-cream p-6 shadow-sm hover:border-gold hover:shadow-md transition-all"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-heading text-body font-bold text-primary group-hover:text-gold transition-colors">
+                      {name}
+                    </h3>
+                    <ArrowRight className="h-4 w-4 text-gold shrink-0" />
+                  </div>
+                  <p className="text-caption text-foreground-muted mb-1">{isd}</p>
+                  <p className="text-body-sm font-semibold text-gold mb-3">{price}</p>
+                  <p className="text-body-sm text-foreground-muted leading-relaxed flex-1">{desc}</p>
+                </Link>
+              ))}
+            </div>
+          </Container>
+        </section>
 
         {/* Why Use a Realtor for New Construction */}
         <section className="section-luxury bg-background-cream">
