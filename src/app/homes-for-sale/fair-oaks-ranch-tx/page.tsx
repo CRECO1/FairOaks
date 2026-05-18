@@ -289,6 +289,18 @@ export default function FairOaksRanchTxPage() {
           </Container>
         </section>
 
+        {/* Nearby Communities */}
+        <section className="py-10 bg-gray-50">
+          <Container>
+            <h2 className="text-xl font-semibold text-primary mb-4">Explore Nearby Communities</h2>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/homes-for-sale/boerne-tx" className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-primary hover:bg-primary hover:text-white transition-colors">Boerne, TX</Link>
+              <Link href="/homes-for-sale/helotes-tx" className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-primary hover:bg-primary hover:text-white transition-colors">Helotes, TX</Link>
+              <Link href="/homes-for-sale/san-antonio-tx" className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-primary hover:bg-primary hover:text-white transition-colors">Leon Springs, TX</Link>
+            </div>
+          </Container>
+        </section>
+
         <div className="py-6 bg-white border-t border-border">
           <Container>
             <Link href="/homes-for-sale" className="inline-flex items-center gap-2 text-body-sm text-foreground-muted hover:text-primary transition-colors">
