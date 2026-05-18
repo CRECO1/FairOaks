@@ -7,6 +7,7 @@ import { Menu, X, Phone, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { trackPhoneClick, trackCTA } from '@/lib/analytics';
 
 const navLinks = [
   { href: '/listings', label: 'Listings' },
@@ -96,6 +97,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
             {/* Phone - Desktop only */}
             <a
               href={`tel:${phone.replace(/\D/g, '')}`}
+              onClick={() => trackPhoneClick('header')}
               className={cn(
                 'hidden lg:flex items-center gap-1.5 text-body-sm font-semibold transition-colors',
                 isTransparent ? 'text-white' : 'text-primary',
@@ -110,6 +112,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
             {/* Phone icon only — mobile/tablet */}
             <a
               href={`tel:${phone.replace(/\D/g, '')}`}
+              onClick={() => trackPhoneClick('header')}
               className={cn(
                 'lg:hidden p-2 transition-colors',
                 isTransparent ? 'text-white' : 'text-primary',
@@ -124,6 +127,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
             {variant !== 'minimal' && (
               <Link
                 href="/quiz"
+                onClick={() => trackCTA({ text: 'Find My Home', location: 'header', destination: '/quiz' })}
                 className={cn(
                   'hidden lg:inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all whitespace-nowrap',
                   isTransparent
@@ -144,7 +148,7 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
               className="hidden sm:inline-flex"
               asChild
             >
-              <Link href="/contact">Contact Us</Link>
+              <Link href="/contact" onClick={() => trackCTA({ text: 'Contact Us', location: 'header', destination: '/contact' })}>Contact Us</Link>
             </Button>
 
             {/* Mobile Menu Toggle */}
@@ -203,19 +207,19 @@ export function Header({ variant = 'default', phone = '(210) 390-9997' }: Header
                   className="bg-gold hover:bg-gold-dark text-primary font-semibold"
                   asChild
                 >
-                  <Link href="/quiz" onClick={() => setIsMenuOpen(false)}>
+                  <Link href="/quiz" onClick={() => { setIsMenuOpen(false); trackCTA({ text: 'Find My Home', location: 'header', destination: '/quiz' }); }}>
                     <Sparkles className="mr-2 h-5 w-5" />
                     Find My Perfect Home
                   </Link>
                 </Button>
                 <Button variant="primary" size="lg" fullWidth asChild>
-                  <a href={`tel:${phone.replace(/\D/g, '')}`}>
+                  <a href={`tel:${phone.replace(/\D/g, '')}`} onClick={() => trackPhoneClick('header')}>
                     <Phone className="mr-2 h-5 w-5" />
                     Call Now: {phone}
                   </a>
                 </Button>
                 <Button variant="outline" size="lg" fullWidth asChild>
-                  <Link href="/contact">
+                  <Link href="/contact" onClick={() => trackCTA({ text: 'Contact Us', location: 'header', destination: '/contact' })}>
                     Contact Us
                   </Link>
                 </Button>

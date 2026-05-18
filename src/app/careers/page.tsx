@@ -6,6 +6,7 @@ import {
   DollarSign, MapPin, Clock, Briefcase, ArrowRight, Star,
 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { trackLead } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 
@@ -92,6 +93,7 @@ export default function CareersPage() {
       });
       if (!res.ok) throw new Error();
       setSubmitted(true);
+      trackLead({ form_type: 'agent_apply' });
     } catch {
       setError('Something went wrong. Please try again or call (210) 390-9997.');
     } finally {

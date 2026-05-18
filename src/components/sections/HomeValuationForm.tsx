@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Home, ArrowRight, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { trackLead } from '@/lib/analytics';
 
 export function HomeValuationForm() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', address: '' });
@@ -37,6 +38,7 @@ export function HomeValuationForm() {
       });
       if (!res.ok) throw new Error();
       setSubmitted(true);
+      trackLead({ form_type: 'valuation' });
     } catch {
       setError('Something went wrong. Please try again or call us directly.');
     } finally {

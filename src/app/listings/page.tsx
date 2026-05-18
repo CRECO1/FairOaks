@@ -12,6 +12,7 @@ import { Container } from '@/components/ui/Container';
 import { Input } from '@/components/ui/Input';
 import { formatPrice } from '@/lib/utils';
 import type { Listing } from '@/lib/supabase';
+import { trackViewItemList, trackSearch, trackSelectItem } from '@/lib/analytics';
 import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
 
 const FEATURED_AREAS = ['Fair Oaks Ranch', 'Boerne', 'Dominion', 'Cordillera Ranch'];
@@ -199,14 +200,14 @@ function ListingsPageInner() {
                 <Input
                   placeholder="Search address, neighborhood, or MLS#…"
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  onChange={e => { setSearch(e.target.value); trackSearch({ term: e.target.value, city, beds: minBeds > 0 ? String(minBeds) : undefined }); }}
                   className="pl-9"
                 />
               </div>
 
               <select
                 value={city}
-                onChange={e => setCity(e.target.value)}
+                onChange={e => { setCity(e.target.value); trackViewItemList({ list_name: 'Search Results', city: e.target.value }); }}
                 className="h-11 w-full sm:w-auto rounded-lg border border-border px-3 text-body-sm text-primary"
               >
                 <option value="All Areas">All Areas</option>
@@ -254,7 +255,7 @@ function ListingsPageInner() {
                     {PRICE_RANGES.map((r, i) => (
                       <button
                         key={r.label}
-                        onClick={() => setPriceRange(i)}
+                        onClick={() => { setPriceRange(i); trackViewItemList({ list_name: 'Search Results', city, price_min: r.min > 0 ? r.min : undefined, price_max: r.max < Infinity ? r.max : undefined }); }}
                         className={`rounded-full border px-4 py-1.5 text-caption transition-colors ${priceRange === i ? 'border-gold bg-gold text-primary' : 'border-border text-foreground-muted hover:border-gold'}`}
                       >
                         {r.label}
@@ -268,7 +269,7 @@ function ListingsPageInner() {
                     {[0, 2, 3, 4, 5].map(b => (
                       <button
                         key={b}
-                        onClick={() => setMinBeds(b)}
+                        onClick={() => { setMinBeds(b); trackViewItemList({ list_name: 'Search Results', city, beds: b > 0 ? String(b) : undefined }); }}
                         className={`rounded-full border px-4 py-1.5 text-caption transition-colors ${minBeds === b ? 'border-gold bg-gold text-primary' : 'border-border text-foreground-muted hover:border-gold'}`}
                       >
                         {b === 0 ? 'Any' : `${b}+`}
@@ -369,7 +370,7 @@ function ListingsPageInner() {
                     const attribution = agentParts.length > 0 ? `Listed by ${agentParts.join(' · ')}` : null;
 
                     return (
-                      <Link key={listing.id} href={`/listings/${listing.slug}`} className="card-luxury group block">
+                      <Link key={listing.id} href={`/listings/${listing.slug}`} className="card-luxury group block" onClick={() => trackSelectItem({ id: listing.id, name: listing.title, price: listing.price, list_name: 'Search Results' })}>
                         <div className="image-luxury aspect-property bg-background-warm">
                           {listing.images && (listing.images as string[])[0] ? (
                             <Image
