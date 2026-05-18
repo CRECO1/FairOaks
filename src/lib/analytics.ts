@@ -12,10 +12,17 @@ declare global {
   }
 }
 
+const GA4_ID = 'G-SYPXDGGWQS';
+
 function gtag(event: string, params?: Record<string, any>) {
   if (typeof window === 'undefined') return;
-  if (typeof window.gtag !== 'function') return;
-  window.gtag('event', event, params ?? {});
+  if (typeof window.gtag === 'function') {
+    window.gtag('event', event, { ...(params ?? {}), send_to: GA4_ID });
+  } else {
+    // Fallback: push to dataLayer for GTM to forward to GA4
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push({ event, ...params });
+  }
 }
 
 // ─── Lead Generation ──────────────────────────────────────────────────────────
