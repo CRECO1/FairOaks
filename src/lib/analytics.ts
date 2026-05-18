@@ -16,6 +16,7 @@ const GA4_ID = 'G-SYPXDGGWQS';
 
 function gtag(event: string, params?: Record<string, any>) {
   if (typeof window === 'undefined') return;
+  console.log('[GA4]', event, '| gtag:', typeof window.gtag, '| dataLayer:', Array.isArray(window.dataLayer));
   if (typeof window.gtag === 'function') {
     window.gtag('event', event, { ...(params ?? {}), send_to: GA4_ID });
   } else {
