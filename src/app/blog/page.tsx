@@ -12,6 +12,7 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: 'Hill Country Living | Fair Oaks Realty Group',
   description: 'The latest news, new residential developments, neighborhood guides, and expert real estate insights for the Texas Hill Country.',
+  alternates: { canonical: `${BASE_URL}/blog` },
   openGraph: {
     title: 'Hill Country Living | Fair Oaks Realty Group',
     description: 'New developments, neighborhood guides, and Hill Country real estate insights.',
