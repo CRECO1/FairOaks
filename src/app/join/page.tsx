@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CheckCircle, TrendingUp, Laptop, Megaphone, Users, Award, DollarSign } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { trackLead, trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 
@@ -78,6 +79,7 @@ export default function JoinPage() {
       });
       if (!res.ok) throw new Error('Submission failed');
       setSubmitted(true);
+      trackLead({ form_type: 'agent_apply' });
     } catch {
       setError('Something went wrong. Please try again or call us at (210) 390-9997.');
     } finally {
@@ -107,7 +109,7 @@ export default function JoinPage() {
                 className="inline-flex items-center gap-2 rounded-lg bg-gold px-6 py-3 font-semibold text-primary transition-colors hover:bg-gold-dark">
                 Apply Now
               </a>
-              <a href="tel:+12103909997"
+              <a href="tel:+12103909997" onClick={() => trackPhoneClick('join_page')}
                 className="inline-flex items-center gap-2 rounded-lg border border-white/30 px-6 py-3 font-semibold text-white transition-colors hover:border-gold hover:text-gold">
                 Call (210) 390-9997
               </a>

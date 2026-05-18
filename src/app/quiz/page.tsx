@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowRight, ArrowLeft, CheckCircle, Sparkles } from 'lucide-react';
+import { trackQuizStart, trackQuizStep, trackQuizComplete, trackLead } from '@/lib/analytics';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -97,6 +98,8 @@ export default function QuizPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
 
+  useEffect(() => { trackQuizStart(); }, []);
+
   const current = STEPS[step];
   const progress = ((step + 1) / STEPS.length) * 100;
 
@@ -107,6 +110,7 @@ export default function QuizPage() {
       setAnswers(a => ({ ...a, [current.id]: next }));
     } else {
       setAnswers(a => ({ ...a, [current.id]: value }));
+      trackQuizStep(step, value);
       if (step < STEPS.length - 1) {
         setTimeout(() => setStep(s => s + 1), 200);
       } else {
@@ -128,6 +132,8 @@ export default function QuizPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, phone, answers }),
     }).catch(() => {});
+    trackQuizComplete();
+    trackLead({ form_type: 'quiz' });
     setLoading(false);
     setDone(true);
   }

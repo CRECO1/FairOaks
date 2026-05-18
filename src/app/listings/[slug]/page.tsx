@@ -14,6 +14,8 @@ import { ListingContactForm } from './ListingContactForm';
 import { MortgageCalculator } from '@/components/sections/MortgageCalculator';
 import { ListingGallery } from '@/components/sections/ListingGallery';
 import { StickyContactBar } from '@/components/listings/StickyContactBar';
+import { ListingViewTracker } from './ListingViewTracker';
+import { PhoneLink } from './PhoneLink';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -218,6 +220,15 @@ export default async function ListingDetailPage({ params }: Props) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(realEstateListingLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Header variant="minimal" />
+      <ListingViewTracker
+        id={listing.listing_key}
+        name={listing.address}
+        price={listing.price ?? undefined}
+        city={listing.city}
+        beds={listing.bedrooms ?? undefined}
+        baths={listing.bathrooms ?? undefined}
+        property_type={listing.property_type ?? undefined}
+      />
       <main className="min-h-screen pt-20">
 
         {/* Back */}
@@ -351,10 +362,12 @@ export default async function ListingDetailPage({ params }: Props) {
                 <MortgageCalculator listingPrice={listing.price} />
                 <div className="mt-6 pt-6 border-t border-border text-center">
                   <p className="text-caption text-foreground-muted mb-2">Or call us directly</p>
-                  <a href="tel:+12103909997" className="inline-flex items-center gap-2 font-semibold text-primary hover:text-gold transition-colors">
-                    <Phone className="h-5 w-5" />
-                    (210) 390-9997
-                  </a>
+                  <PhoneLink location="listing_detail">
+                    <span className="inline-flex items-center gap-2 font-semibold text-primary hover:text-gold transition-colors">
+                      <Phone className="h-5 w-5" />
+                      (210) 390-9997
+                    </span>
+                  </PhoneLink>
                 </div>
               </div>
             </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Phone, MessageSquare, X } from 'lucide-react';
+import { trackLead, trackPhoneClick } from '@/lib/analytics';
 
 interface Props {
   listingTitle: string;
@@ -51,6 +52,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Something went wrong.'); return; }
       setSubmitted(true);
+      trackLead({ form_type: 'showing_request' });
     } catch { setError('Network error — please try again.'); }
     finally { setSending(false); }
   }
@@ -94,7 +96,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
           {price && <p className="text-gold font-bold font-heading text-base leading-none">{price}</p>}
           <p className="text-white/70 text-xs truncate mt-0.5">{listingTitle}</p>
         </div>
-        <a href="tel:+12103909997"
+        <a href="tel:+12103909997" onClick={() => trackPhoneClick('sticky_bar')}
           className="flex items-center gap-1.5 rounded-lg bg-white/10 border border-white/20 px-3 py-2 text-white text-xs font-semibold shrink-0">
           <Phone className="h-3.5 w-3.5" /> Call
         </a>

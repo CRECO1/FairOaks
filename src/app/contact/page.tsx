@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Phone, Mail, MapPin, Clock, CheckCircle, Calendar } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { trackLead, trackPhoneClick, trackEmailClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 
@@ -42,6 +43,7 @@ export default function ContactPage() {
       });
       if (!res.ok) throw new Error('Server error');
       setSubmitted(true);
+      trackLead({ form_type: 'contact' });
     } catch {
       setSubmitError('Something went wrong. Please try again or call us directly.');
     } finally {
@@ -84,7 +86,7 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-primary">Phone</p>
-                      <a href="tel:+12103909997" className="text-body-sm text-foreground-muted hover:text-gold transition-colors">
+                      <a href="tel:+12103909997" onClick={() => trackPhoneClick('contact_page')} className="text-body-sm text-foreground-muted hover:text-gold transition-colors">
                         (210) 390-9997
                       </a>
                     </div>
@@ -96,7 +98,7 @@ export default function ContactPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-primary">Email</p>
-                      <a href="mailto:info@fairoaksrealtygroup.com" className="text-body-sm text-foreground-muted hover:text-gold transition-colors">
+                      <a href="mailto:info@fairoaksrealtygroup.com" onClick={() => trackEmailClick('contact_page')} className="text-body-sm text-foreground-muted hover:text-gold transition-colors">
                         info@fairoaksrealtygroup.com
                       </a>
                     </div>
@@ -142,7 +144,7 @@ export default function ContactPage() {
                     Prefer to pick a time? Use the form to request your preferred date and time.
                   </p>
                   <Button variant="secondary" size="sm" asChild>
-                    <a href="tel:+12103909997">Call to Schedule</a>
+                    <a href="tel:+12103909997" onClick={() => trackPhoneClick('contact_page')}>Call to Schedule</a>
                   </Button>
                 </div>
               </div>

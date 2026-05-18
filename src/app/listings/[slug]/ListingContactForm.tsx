@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
+import { trackLead } from '@/lib/analytics';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -44,6 +45,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         return;
       }
       setSubmitted(true);
+      trackLead({ form_type: 'listing_inquiry' });
       form.reset();
     } catch {
       setError('Network error — please try again.');
