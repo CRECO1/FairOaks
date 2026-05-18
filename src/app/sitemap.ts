@@ -106,10 +106,34 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/homes-for-sale/new-braunfels-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
     { url: `${BASE_URL}/homes-for-sale/canyon-lake-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
     { url: `${BASE_URL}/homes-for-sale/spring-branch-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    // Price range landing pages
+    { url: `${BASE_URL}/homes-for-sale/under-500k`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/500k-750k`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/750k-1m`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/homes-for-sale/over-1m`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
     // Specialty landing pages
     { url: `${BASE_URL}/luxury-homes`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
     { url: `${BASE_URL}/new-construction`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/new-construction/fair-oaks-ranch`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    { url: `${BASE_URL}/new-construction/boerne`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    { url: `${BASE_URL}/new-construction/helotes`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    { url: `${BASE_URL}/new-construction/san-antonio`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.75 },
+    { url: `${BASE_URL}/new-construction/bulverde`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${BASE_URL}/new-construction/new-braunfels`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
+    { url: `${BASE_URL}/new-construction/canyon-lake`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.7 },
     { url: `${BASE_URL}/military-homebuying`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    // School district pages
+    { url: `${BASE_URL}/schools`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${BASE_URL}/schools/boerne-isd`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    { url: `${BASE_URL}/schools/northside-isd`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    { url: `${BASE_URL}/schools/comal-isd`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    // Subdivision pages
+    { url: `${BASE_URL}/neighborhoods/the-dominion`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${BASE_URL}/neighborhoods/cordillera-ranch`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${BASE_URL}/neighborhoods/fair-oaks-ranch`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    // Guides & resources
+    { url: `${BASE_URL}/relocation`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${BASE_URL}/investment-properties`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
     // Content / guides
     { url: `${BASE_URL}/faq`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
     { url: `${BASE_URL}/buyer-guide`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
