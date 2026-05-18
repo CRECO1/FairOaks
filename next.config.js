@@ -38,15 +38,15 @@ const securityHeaders = [
       // Scripts: self + inline (Next.js hydration requires unsafe-inline) + GTM/GA/Maps
       // NOTE: 'unsafe-eval' removed — Next.js 14 production builds do not require it.
       // Re-add only if a specific dependency explicitly needs it (check browser console for CSP violations).
-      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://maps.googleapis.com https://maps.gstatic.com",
-      // Styles: self + inline (Tailwind/CSS-in-JS)
-      "style-src 'self' 'unsafe-inline'",
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com",
+      // Styles: self + inline (Tailwind/CSS-in-JS) + Google Fonts
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Images: allow any https source + data URIs (listing photos, Supabase storage)
       "img-src 'self' data: https: https://maps.googleapis.com https://maps.gstatic.com https://*.ggpht.com https://streetviewpixels-pa.googleapis.com",
-      // Fonts: self only
-      "font-src 'self'",
-      // Connect: self + Supabase + Google APIs + Resend + ATTOM
-      "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.attomdata.com https://resend.com https://maps.googleapis.com https://maps.gstatic.com",
+      // Fonts: self + Google Fonts
+      "font-src 'self' https://fonts.gstatic.com",
+      // Connect: self + Supabase + Google APIs + Resend + ATTOM + Analytics
+      "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.attomdata.com https://resend.com https://maps.googleapis.com https://maps.gstatic.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://api-sabor.connectmls.com https://api.resend.com",
       // Frames: same origin only (CRM embeds)
       "frame-src 'self'",
       // Forms: self only
