@@ -433,6 +433,239 @@ export default function RelocationPage() {
           </Container>
         </section>
 
+        {/* Neighborhood Comparison Table */}
+        <section className="section-compact bg-white">
+          <Container>
+            <div className="mb-12 text-center">
+              <p className="overline mb-3 text-[#C9A84C]">Side-by-Side Comparison</p>
+              <h2 className="font-heading text-display font-bold text-primary gold-line gold-line-center inline-block pb-4">
+                Compare Communities at a Glance
+              </h2>
+              <p className="mt-6 mx-auto max-w-2xl text-body-lg text-foreground-muted">
+                Every community in the greater San Antonio Hill Country corridor has its own personality, price
+                point, and tradeoffs. Use this table to quickly identify which areas match your priorities.
+              </p>
+            </div>
+            <div className="overflow-x-auto rounded-2xl border border-border shadow-sm">
+              <table className="w-full text-body-sm min-w-[700px]">
+                <thead>
+                  <tr className="bg-primary text-white">
+                    <th className="px-4 py-3 text-left font-semibold">Community</th>
+                    <th className="px-4 py-3 text-left font-semibold">City</th>
+                    <th className="px-4 py-3 text-left font-semibold text-[#C9A84C]">Price Range</th>
+                    <th className="px-4 py-3 text-left font-semibold">School District</th>
+                    <th className="px-4 py-3 text-left font-semibold">Drive to Downtown SA</th>
+                    <th className="px-4 py-3 text-left font-semibold">Drive to Airport</th>
+                    <th className="px-4 py-3 text-left font-semibold">Best For</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { community: 'Fair Oaks Ranch', city: 'Fair Oaks Ranch', price: '$450K–$2M+', school: 'Boerne ISD', downtown: '30 min', airport: '30 min', bestFor: 'Families, horse properties' },
+                    { community: 'Boerne', city: 'Boerne', price: '$300K–$1.5M', school: 'Boerne ISD', downtown: '35 min', airport: '35 min', bestFor: 'Historic charm, retirees' },
+                    { community: 'Helotes', city: 'Helotes', price: '$350K–$1M', school: 'Northside ISD', downtown: '20 min', airport: '25 min', bestFor: 'Near city, large lots' },
+                    { community: 'Bulverde', city: 'Bulverde', price: '$350K–$1.1M', school: 'Comal ISD', downtown: '35 min', airport: '40 min', bestFor: 'Rural feel, newer builds' },
+                    { community: 'Stone Oak (SA)', city: 'San Antonio', price: '$300K–$900K', school: 'NEISD', downtown: '25 min', airport: '20 min', bestFor: 'Walkable, city amenities' },
+                    { community: 'New Braunfels', city: 'New Braunfels', price: '$280K–$800K', school: 'Comal ISD', downtown: '45 min', airport: '45 min', bestFor: 'Outdoor lifestyle, growth' },
+                  ].map((row, i) => (
+                    <tr key={row.community} className={i % 2 === 0 ? 'bg-white' : 'bg-background-cream/60'}>
+                      <td className="px-4 py-3 font-semibold text-primary">{row.community}</td>
+                      <td className="px-4 py-3 text-foreground-muted">{row.city}</td>
+                      <td className="px-4 py-3 font-semibold text-[#C9A84C]">{row.price}</td>
+                      <td className="px-4 py-3 text-foreground-muted">{row.school}</td>
+                      <td className="px-4 py-3 text-foreground-muted">{row.downtown}</td>
+                      <td className="px-4 py-3 text-foreground-muted">{row.airport}</td>
+                      <td className="px-4 py-3 text-foreground-muted">{row.bestFor}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="px-5 py-3 text-caption text-foreground-muted bg-background-cream border-t border-border">
+                Drive times are estimates under typical daytime traffic conditions from each community to downtown San Antonio and San Antonio International Airport (SAT).
+              </p>
+            </div>
+          </Container>
+        </section>
+
+        {/* Military Relocation */}
+        <section className="section-compact bg-background-cream">
+          <Container>
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+              <div>
+                <p className="overline mb-3 text-[#C9A84C]">Active-Duty &amp; Veterans</p>
+                <h2 className="mb-6 font-heading text-display font-bold text-primary gold-line inline-block pb-4">
+                  Military Relocation to San Antonio
+                </h2>
+                <div className="space-y-4 text-body text-foreground-muted leading-relaxed">
+                  <p>
+                    San Antonio is one of the most military-connected cities in the United States — and the
+                    surrounding Hill Country is among the most popular destinations for service members and
+                    their families choosing to put down permanent roots. Lackland AFB (JBSA-Lackland) is
+                    approximately 15 minutes from Helotes, making communities like Helotes, Fair Oaks Ranch,
+                    and Boerne particularly well-positioned for personnel stationed at that installation.
+                    JBSA-Randolph, located east of the city, is most accessible from northeast San Antonio,
+                    though many Randolph personnel choose the Hill Country for its schools and quality of life
+                    and accept a somewhat longer commute.
+                  </p>
+                  <p>
+                    Fair Oaks Realty Group includes VA loan specialists who have helped dozens of active-duty
+                    buyers and veterans purchase homes using their VA loan benefit — with zero down payment,
+                    no PMI, and competitive rates. We understand PCS timelines, can work with buyers who are
+                    still deployed or stationed elsewhere, and have extensive experience with remote closings
+                    and digital document workflows. Current BAH rates for the San Antonio area (E-7 with
+                    dependents) typically support home purchases in the $350K–$500K range, covering a wide
+                    selection of inventory in Helotes, Boerne, and Bulverde.
+                  </p>
+                </div>
+                <div className="mt-6">
+                  <Button asChild>
+                    <Link href="/military-homebuying">
+                      Military &amp; VA Home Buying Guide <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { label: 'JBSA-Lackland', detail: '~15 min from Helotes' },
+                  { label: 'JBSA-Randolph', detail: '~35 min from Fair Oaks Ranch' },
+                  { label: 'VA Loan Benefit', detail: '0% down, no PMI' },
+                  { label: 'BAH Coverage', detail: 'Covers $350K–$500K range' },
+                ].map(({ label, detail }) => (
+                  <div key={label} className="rounded-xl border border-border bg-white p-5 text-center shadow-sm">
+                    <div className="font-heading text-body font-bold text-primary mb-1">{label}</div>
+                    <div className="text-body-sm text-[#C9A84C] font-semibold">{detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Container>
+        </section>
+
+        {/* Cost of Living Comparison (expanded) */}
+        <section className="section-compact bg-white">
+          <Container>
+            <div className="mb-10 text-center">
+              <p className="overline mb-3 text-[#C9A84C]">Texas vs. Other Major Metros</p>
+              <h2 className="font-heading text-display font-bold text-primary gold-line gold-line-center inline-block pb-4">
+                Cost of Living: Texas in Context
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+              <div className="space-y-4 text-body text-foreground-muted leading-relaxed">
+                <p>
+                  Texas has no state income tax — a fact that immediately improves take-home pay for anyone
+                  relocating from California, Illinois, New York, or other high-tax states. For a household
+                  earning $150,000, the difference can exceed $10,000 annually. That savings, compounded over
+                  a decade, represents meaningful wealth accumulation that cost-of-living comparisons often
+                  understate.
+                </p>
+                <p>
+                  Property taxes in Texas are higher than the national average — effective rates in Kendall
+                  and Bexar counties typically run between 1.6% and 2.2% of assessed value. On a $600,000
+                  home, that translates to approximately $9,600–$13,200 per year. For buyers coming from low
+                  property-tax states, this can be a surprise — but the income tax savings typically more
+                  than offset it for most earning profiles.
+                </p>
+                <p>
+                  Compared to other major Texas metros, San Antonio and the Hill Country offer favorable
+                  home prices. Austin median home prices remain substantially higher — often $100,000–$200,000
+                  more for comparable properties and school districts. Dallas and Houston are more comparable
+                  in price, but San Antonio&apos;s Hill Country lifestyle is broadly considered a differentiator.
+                  For buyers who can work remotely or who are relocating for employment in San Antonio,
+                  the value proposition is strong.
+                </p>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { label: 'State Income Tax', sa: 'None', austin: 'None', dallas: 'None', california: '~9.3%' },
+                  { label: 'Effective Property Tax Rate', sa: '1.6–2.2%', austin: '1.8–2.4%', dallas: '1.9–2.3%', california: '~0.7%' },
+                  { label: 'Median Home Price', sa: '~$320K', austin: '~$500K', dallas: '~$390K', california: '~$700K+' },
+                ].map(({ label, sa, austin, dallas, california }) => (
+                  <div key={label} className="rounded-xl border border-border bg-background-cream p-5">
+                    <div className="font-heading text-body-sm font-bold text-primary mb-3">{label}</div>
+                    <div className="grid grid-cols-4 gap-2 text-caption">
+                      <div className="text-center">
+                        <div className="font-semibold text-[#C9A84C]">{sa}</div>
+                        <div className="text-foreground-muted">San Antonio</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-foreground-muted">{austin}</div>
+                        <div className="text-foreground-muted">Austin</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-foreground-muted">{dallas}</div>
+                        <div className="text-foreground-muted">Dallas</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-semibold text-foreground-muted">{california}</div>
+                        <div className="text-foreground-muted">California</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-caption text-foreground-muted">Data is approximate. Consult a financial advisor for personalized analysis.</p>
+              </div>
+            </div>
+          </Container>
+        </section>
+
+        {/* Climate & Lifestyle */}
+        <section className="section-compact bg-background-cream">
+          <Container>
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+              <div>
+                <p className="overline mb-3 text-[#C9A84C]">Year-Round Living</p>
+                <h2 className="mb-6 font-heading text-display font-bold text-primary gold-line inline-block pb-4">
+                  Climate &amp; Lifestyle
+                </h2>
+                <div className="space-y-4 text-body text-foreground-muted leading-relaxed">
+                  <p>
+                    The Texas Hill Country enjoys a semi-arid subtropical climate — long, warm summers with
+                    stretches of sunshine, mild winters that rarely see extended freezes, and spectacular spring
+                    and fall seasons that locals describe as the best weather in the country. Summer temperatures
+                    average in the low-to-mid 90s, with evening breezes off the hills offering relief. Winters
+                    are mild, with average lows in the 40s and only occasional cold snaps. The region averages
+                    roughly 220 sunny days per year — significantly more than the national average.
+                  </p>
+                  <p>
+                    Outdoor recreation is a daily reality, not a weekend luxury. The Guadalupe River — just 30
+                    to 45 minutes from Fair Oaks Ranch — is one of the premier tubing and kayaking rivers in
+                    Texas, particularly popular from spring through fall. Enchanted Rock State Natural Area and
+                    Pedernales Falls State Park offer world-class hiking within 90 minutes. Closer to home,
+                    Cibolo Nature Center in Boerne, Government Canyon State Natural Area, and the Hill Country
+                    State Natural Area provide accessible outdoor escapes year-round.
+                  </p>
+                  <p>
+                    San Antonio&apos;s cultural amenities complement the Hill Country lifestyle seamlessly. The
+                    famed River Walk, The Pearl District, world-class museums including the San Antonio Museum
+                    of Art and the McNay, live music venues, and a thriving restaurant scene are all within
+                    20–35 minutes of most Hill Country communities. Professional sports — the San Antonio Spurs
+                    (NBA) and the San Antonio FC (soccer) — add another dimension to the city&apos;s lifestyle
+                    appeal. For buyers who want the quiet of the Hill Country without giving up city-level
+                    culture and entertainment, the San Antonio metro delivers both.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  { title: 'Guadalupe River', detail: '30–45 min · Tubing & kayaking' },
+                  { title: 'Enchanted Rock', detail: '~90 min · Rock climbing & hiking' },
+                  { title: 'San Antonio Riverwalk', detail: '~30 min · Dining & culture' },
+                  { title: 'Cibolo Nature Center', detail: '~5 min from Boerne · Hiking' },
+                  { title: 'San Antonio Spurs', detail: '~30 min · NBA basketball' },
+                  { title: 'The Pearl District', detail: '~25 min · Food & nightlife' },
+                ].map(({ title, detail }) => (
+                  <div key={title} className="rounded-xl border border-border bg-white p-4 shadow-sm">
+                    <div className="font-heading text-body-sm font-bold text-primary mb-1">{title}</div>
+                    <div className="text-caption text-[#C9A84C]">{detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Container>
+        </section>
+
         {/* FAQ */}
         <section className="section-luxury bg-white">
           <Container>
