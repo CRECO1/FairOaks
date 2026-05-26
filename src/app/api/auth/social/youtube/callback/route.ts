@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { encryptToken } from '@/lib/token-crypto';
 
 const CRM_RETURN = 'https://www.fairoaksrealtygroup.com/crm/residential#social';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const state = req.nextUrl.searchParams.get('state'); // userId
+  const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
-  if (error || !code || !state) {
-    console.error('[youtube/callback] OAuth error:', { error, code: !!code, state });
+  if (error || !code || !stateParam) {
+    console.error('[youtube/callback] OAuth error:', { error, code: !!code, stateParam });
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=oauth_denied`);
   }
+
+  const [userId, stateNonce] = (stateParam ?? '').split(':');
+  const cookieStore = await cookies();
+  const storedNonce = cookieStore.get('yt_oauth_nonce')?.value;
+  if (!storedNonce || storedNonce !== stateNonce) {
+    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=invalid_state`);
+  }
+  cookieStore.delete('yt_oauth_nonce');
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +33,7 @@ export async function GET(req: NextRequest) {
   const { data: profile } = await supabase
     .from('crm_profiles')
     .select('id')
-    .eq('id', state)
+    .eq('id', userId)
     .maybeSingle();
 
   if (!profile) {
@@ -69,20 +79,18 @@ export async function GET(req: NextRequest) {
     .from('social_connections')
     .upsert(
       {
-        agent_id: state,
+        agent_id: userId,
         platform: 'youtube',
         platform_account_id: channel.id,
         account_name: channel.snippet?.title || channel.id,
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || null,
+        access_token: encryptToken(tokenData.access_token),
+        refresh_token: tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : null,
         expires_at: expiresAt,
         is_active: true,
         updated_at: now,
       },
       { onConflict: 'agent_id,platform,platform_account_id' }
     );
-
-  console.log(`[youtube/callback] Connected YouTube channel "${channel.snippet?.title}" for user ${state}`);
 
   return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=youtube`);
 }

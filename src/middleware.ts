@@ -35,11 +35,11 @@ function withSecurityHeaders(res: NextResponse): NextResponse {
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://www.recaptcha.net https://recaptcha.google.com",
+      "script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://www.recaptcha.net https://recaptcha.google.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' data: https://fonts.gstatic.com",
       "img-src 'self' data: blob: https: http:",
-      "connect-src 'self' https://*.supabase.co https://api.resend.com https://api-sabor.connectmls.com https://maps.googleapis.com https://vitals.vercel-insights.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms",
+      "connect-src 'self' https://*.supabase.co https://api.resend.com https://api-sabor.connectmls.com https://maps.googleapis.com https://vitals.vercel-insights.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://graph.facebook.com https://api.linkedin.com https://api.twitter.com https://accounts.google.com https://www.googleapis.com https://oauth2.googleapis.com",
       "frame-src 'self' https://www.google.com https://recaptcha.google.com https://www.recaptcha.net",
       "worker-src 'self' blob:",
     ].join('; ')
@@ -58,8 +58,10 @@ export async function middleware(request: NextRequest) {
   // Routes with session refresh + CSRF
   const isApiSessionRoute = apiSessionRoutes.some(route => pathname.startsWith(route));
   if (isApiSessionRoute) {
-    const csrfError = validateCsrf(request);
-    if (csrfError) {
+    const csrfResult = validateCsrf(request);
+    if (csrfResult) {
+      // If it's a NextResponse (e.g. fail-closed 403), return it directly; otherwise generic 403
+      if (csrfResult instanceof NextResponse) return csrfResult;
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     try {
