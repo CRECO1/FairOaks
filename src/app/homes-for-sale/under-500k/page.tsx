@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/under-500k`;
 export const metadata: Metadata = {
   title: 'Homes Under $500K in Fair Oaks Ranch & Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Browse homes under $500,000 in Fair Oaks Ranch, Boerne, Helotes, and San Antonio. Find starter homes, updated ranches, and great-value properties in the Texas Hill Country.',
-  alternates: { canonical: CANONICAL },
+    'Search homes for sale under $500,000 in Fair Oaks Ranch, Boerne, Helotes, and San Antonio. Affordable Hill Country and NW San Antonio homes updated daily.',
+  alternates: { canonical: '/homes-for-sale/under-500k' },
   openGraph: {
     title: 'Homes Under $500K in Fair Oaks Ranch & Texas Hill Country | Fair Oaks Realty Group',
     description:

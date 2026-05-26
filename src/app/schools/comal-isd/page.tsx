@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/schools/comal-isd`;
 export const metadata: Metadata = {
   title: 'Homes in Comal ISD | New Braunfels, Bulverde & Spring Branch TX',
   description:
-    'Find homes in Comal ISD — one of the fastest-growing and highest-rated school districts in Texas. Serving New Braunfels, Bulverde, Spring Branch, and Canyon Lake in the Texas Hill Country.',
-  alternates: { canonical: CANONICAL },
+    'Find homes for sale in Comal ISD — covering Bulverde, New Braunfels, Spring Branch, and Canyon Lake. Consistently rated an A school district.',
+  alternates: { canonical: '/schools/comal-isd' },
   openGraph: {
     title: 'Homes in Comal ISD | New Braunfels, Bulverde & Spring Branch TX',
     description:

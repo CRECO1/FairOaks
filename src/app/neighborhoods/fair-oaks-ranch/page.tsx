@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/neighborhoods/fair-oaks-ranch`;
 export const metadata: Metadata = {
   title: 'Fair Oaks Ranch TX Community Guide | Neighborhoods, Homes & Lifestyle',
   description:
-    'Explore Fair Oaks Ranch, TX — a premier master-planned community 20 miles from San Antonio. Boerne ISD schools, gated options, equestrian lifestyle, and homes from $400K to $2M+.',
-  alternates: { canonical: CANONICAL },
+    'Homes for sale in Fair Oaks Ranch TX — a scenic Hill Country community near San Antonio with top-rated Boerne ISD schools and beautiful natural surroundings.',
+  alternates: { canonical: '/neighborhoods/fair-oaks-ranch' },
   openGraph: {
     title: 'Fair Oaks Ranch TX Community Guide | Neighborhoods, Homes & Lifestyle',
     description:

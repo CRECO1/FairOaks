@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `Helotes TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse Helotes TX homes for sale. Avg. price ${AVG_PRICE}, Northside ISD, small-town Hill Country feel just 15 min from San Antonio. Large lots, acreage available.`;
+    `Search homes for sale in Helotes, TX — peaceful Hill Country suburb near San Antonio with great schools, large lots, and easy highway access.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/helotes-tx' },
     openGraph: {
       title,
       description,

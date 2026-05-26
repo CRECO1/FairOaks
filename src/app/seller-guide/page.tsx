@@ -15,9 +15,9 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: "Texas Home Seller's Guide | How to Get Top Dollar in Hill Country",
   description:
-    'Expert guide to selling your home in Fair Oaks Ranch, Boerne, and the Texas Hill Country. Pricing strategy, staging tips, marketing, and our proven 103% list-to-sale process.',
+    'Everything you need to know about selling your Hill Country home — pricing strategy, staging, negotiations, and closing. Free market analysis included.',
   keywords: ['sell my home texas', 'how to sell your home', 'home selling process texas', 'pricing your home', 'home staging tips', 'list to sale ratio texas', 'fair oaks ranch home seller', 'boerne tx sell home', 'texas hill country home sale', 'home valuation texas'],
-  alternates: { canonical: BASE_URL + '/seller-guide' },
+  alternates: { canonical: '/seller-guide' },
   openGraph: {
     title: "Texas Home Seller's Guide | How to Get Top Dollar in Hill Country",
     description:

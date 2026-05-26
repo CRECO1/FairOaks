@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `San Antonio TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse San Antonio TX homes for sale. Avg. price ${AVG_PRICE}. Military-friendly, VA loan experts, diverse neighborhoods & major employers. Local agents who know every zip code.`;
+    `Browse San Antonio TX homes for sale. Fair Oaks Realty Group specializes in NW San Antonio, Hill Country, and Northside ISD neighborhoods.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/san-antonio-tx' },
     openGraph: {
       title,
       description,

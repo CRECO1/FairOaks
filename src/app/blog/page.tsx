@@ -11,9 +11,9 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
 export const metadata: Metadata = {
   title: 'Hill Country Living | Fair Oaks Realty Group',
-  description: 'The latest news, new residential developments, neighborhood guides, and expert real estate insights for the Texas Hill Country.',
+  description: 'Real estate insights for the Texas Hill Country — Fair Oaks Ranch market reports, neighborhood guides, buyer tips, and home selling advice from local experts.',
   keywords: ['texas hill country real estate blog', 'san antonio real estate news', 'fair oaks ranch market trends', 'boerne tx real estate market', 'texas home buying tips', 'new developments hill country', 'neighborhood guides texas', 'real estate market update 2025', 'hill country living', 'texas real estate insights'],
-  alternates: { canonical: `${BASE_URL}/blog` },
+  alternates: { canonical: '/blog' },
   openGraph: {
     title: 'Hill Country Living | Fair Oaks Realty Group',
     description: 'New developments, neighborhood guides, and Hill Country real estate insights.',

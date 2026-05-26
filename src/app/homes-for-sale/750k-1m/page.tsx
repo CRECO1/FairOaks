@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/750k-1m`;
 export const metadata: Metadata = {
   title: 'Homes $750K–$1M in Texas Hill Country | Fair Oaks Ranch & Boerne',
   description:
-    'Discover luxury homes $750,000–$1,000,000 in Fair Oaks Ranch, Boerne, and the Texas Hill Country. Gated communities, custom builds, and Hill Country estates near San Antonio.',
-  alternates: { canonical: CANONICAL },
+    'Find homes priced $750K–$1M in Fair Oaks Ranch, Boerne, and luxury Hill Country neighborhoods. Spacious estates with premium finishes.',
+  alternates: { canonical: '/homes-for-sale/750k-1m' },
   openGraph: {
     title: 'Homes $750K–$1M in Texas Hill Country | Fair Oaks Ranch & Boerne',
     description:

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'MLS Listings in Fair Oaks Ranch, Boerne & Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Search all active MLS listings in Fair Oaks Ranch, Boerne, Helotes, San Antonio and the Texas Hill Country. Filter by price, beds, and city. Powered by SABOR MLS.',
+    'Search all active MLS listings in Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country. Filter by price, beds, and neighborhood. Updated daily from SABOR MLS.',
   keywords: [
     'fair oaks ranch homes for sale',
     'boerne tx mls listings',
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.fairoaksrealtygroup.com/listings',
+    canonical: '/listings',
   },
 };
 

@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `Bulverde TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse Bulverde TX homes for sale. Avg. price ${AVG_PRICE}, Comal ISD, fast-growing Hill Country community with new construction & acreage lots, 30 min from San Antonio.`;
+    `Find homes for sale in Bulverde, TX — fast-growing Hill Country community with large lots, Comal ISD schools, and homes from $350K to $1M+.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/bulverde-tx' },
     openGraph: {
       title,
       description,

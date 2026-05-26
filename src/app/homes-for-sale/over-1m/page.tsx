@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/over-1m`;
 export const metadata: Metadata = {
   title: 'Luxury Homes Over $1 Million in Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Browse luxury homes over $1 million in Fair Oaks Ranch, Boerne, Cordillera Ranch, The Dominion, and the Texas Hill Country. Hill Country estates, waterfront properties, and custom builds.',
-  alternates: { canonical: CANONICAL },
+    'Explore luxury homes over $1 million in Fair Oaks Ranch, Boerne, The Dominion, and Cordillera Ranch. Hill Country\'s finest properties with acreage and custom features.',
+  alternates: { canonical: '/homes-for-sale/over-1m' },
   openGraph: {
     title: 'Luxury Homes Over $1 Million in Texas Hill Country | Fair Oaks Realty Group',
     description:

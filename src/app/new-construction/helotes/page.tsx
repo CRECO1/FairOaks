@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/helotes`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in Helotes, TX | Fair Oaks Realty Group',
   description:
-    'Explore new construction homes in Helotes, TX. New builds in Miralomas and other Hill Country communities. Northside ISD schools, large lots, small-town feel near San Antonio.',
+    'New construction homes in Helotes TX — brand-new builds on large lots with Hill Country character. Easy access to San Antonio and Loop 1604.',
   keywords: [
     'new construction helotes tx',
     'new homes helotes texas',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'new homes near helotes tx',
     'newly built homes helotes',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/helotes' },
   openGraph: {
     title: 'New Construction Homes in Helotes, TX | Fair Oaks Realty Group',
     description:
-      'Explore new construction homes in Helotes, TX. New builds in Miralomas and other Hill Country communities. Northside ISD schools, large lots, small-town feel near San Antonio.',
+      'New construction homes in Helotes TX — brand-new builds on large lots with Hill Country character. Easy access to San Antonio and Loop 1604.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes in Helotes, TX' }],

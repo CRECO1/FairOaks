@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/canyon-lake`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in Canyon Lake, TX | Fair Oaks Realty Group',
   description:
-    'Explore new construction homes near Canyon Lake, TX. Find new builds with Hill Country views, lake access, and custom home opportunities. Comal ISD, vacation home potential, and growing community.',
+    'New construction homes near Canyon Lake TX — custom builds and spec homes with Hill Country views, acreage, and lake proximity.',
   keywords: [
     'new construction canyon lake tx',
     'new homes canyon lake texas',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'builder homes canyon lake tx',
     'newly built homes canyon lake',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/canyon-lake' },
   openGraph: {
     title: 'New Construction Homes in Canyon Lake, TX | Fair Oaks Realty Group',
     description:
-      'Explore new construction homes near Canyon Lake, TX. Find new builds with Hill Country views, lake access, and custom home opportunities. Comal ISD, vacation home potential, and growing community.',
+      'New construction homes near Canyon Lake TX — custom builds and spec homes with Hill Country views, acreage, and lake proximity.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes Near Canyon Lake, TX' }],

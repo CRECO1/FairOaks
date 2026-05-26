@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/schools`;
 export const metadata: Metadata = {
   title: 'Best School Districts in Texas Hill Country | Fair Oaks Ranch Real Estate',
   description:
-    'Find homes in top-rated school districts near San Antonio — Boerne ISD, Northside ISD, and Comal ISD. Expert local realtors help families find the right neighborhood and school zone.',
-  alternates: { canonical: CANONICAL },
+    'Find homes by school district in the Texas Hill Country — Boerne ISD, Northside ISD, Comal ISD, and more. School ratings, boundaries, and listings.',
+  alternates: { canonical: '/schools' },
   openGraph: {
     title: 'Best School Districts in Texas Hill Country | Fair Oaks Ranch Real Estate',
     description:

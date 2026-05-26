@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Fair Oaks Ranch Homes for Sale | #1 Local Realtor – Fair Oaks Realty Group',
   description:
-    'Search homes for sale in Fair Oaks Ranch TX. Top-rated local realtors with 500+ homes sold, 103% list-to-sale ratio & 21-day average DOM. Free home valuations. Serving Fair Oaks Ranch, Boerne & Helotes.',
+    'Browse homes for sale in Fair Oaks Ranch, TX with Fair Oaks Realty Group — your local Hill Country real estate experts. Search Boerne, Helotes & San Antonio listings. Free home valuation.',
   keywords: [
     'Fair Oaks Ranch homes for sale',
     'Fair Oaks Ranch real estate',
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.fairoaksrealtygroup.com',
+    canonical: '/',
   },
 };
 

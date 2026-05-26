@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `New Braunfels TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse New Braunfels TX homes for sale. Avg. price ${AVG_PRICE}, Comal ISD, Guadalupe River, Schlitterbahn, historic Gruene. Fast-growing market, all price ranges.`;
+    `Search New Braunfels TX homes for sale. Hill Country charm meets rapid growth — Comal ISD schools, Guadalupe River access, and diverse price points.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/new-braunfels-tx' },
     openGraph: {
       title,
       description,
