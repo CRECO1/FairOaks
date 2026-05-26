@@ -131,6 +131,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/neighborhoods/the-dominion`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
     { url: `${BASE_URL}/neighborhoods/cordillera-ranch`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
     { url: `${BASE_URL}/neighborhoods/fair-oaks-ranch`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
+    { url: `${BASE_URL}/neighborhoods/stone-creek-ranch`, lastModified: new Date(), changeFrequency: 'monthly' as const, priority: 0.75 },
+    { url: `${BASE_URL}/neighborhoods/the-preserve-fair-oaks`, lastModified: new Date(), changeFrequency: 'monthly' as const, priority: 0.75 },
+    { url: `${BASE_URL}/neighborhoods/sonoma-verde`, lastModified: new Date(), changeFrequency: 'monthly' as const, priority: 0.75 },
+    { url: `${BASE_URL}/neighborhoods/herff-ranch`, lastModified: new Date(), changeFrequency: 'monthly' as const, priority: 0.75 },
+    { url: `${BASE_URL}/neighborhoods/johnson-ranch`, lastModified: new Date(), changeFrequency: 'monthly' as const, priority: 0.75 },
     // Guides & resources
     { url: `${BASE_URL}/relocation`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
     { url: `${BASE_URL}/investment-properties`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.75 },
