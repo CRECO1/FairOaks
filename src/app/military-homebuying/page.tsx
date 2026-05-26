@@ -15,8 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: 'Military & VA Home Buying in San Antonio TX | Fair Oaks Realty Group',
   description:
-    'Expert VA loan guidance for military families in San Antonio. Zero down payment, no PMI, competitive rates. Serving Fort Sam Houston, Randolph AFB, Lackland AFB, and all Texas Hill Country bases.',
-  alternates: { canonical: BASE_URL + '/military-homebuying' },
+    'VA loan specialists helping military families buy homes near San Antonio, TX. Fair Oaks Realty Group understands military relocation and PCS moves.',
+  alternates: { canonical: '/military-homebuying' },
   openGraph: {
     title: 'Military & VA Home Buying in San Antonio TX | Fair Oaks Realty Group',
     description:

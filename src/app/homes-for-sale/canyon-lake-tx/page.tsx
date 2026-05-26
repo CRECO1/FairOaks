@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `Canyon Lake TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse Canyon Lake TX homes for sale. Avg. price ${AVG_PRICE}, Comal ISD, lakefront properties, Hill Country views & vacation/investment potential. 45 min from San Antonio.`;
+    `Browse Canyon Lake TX homes for sale — waterfront properties, Hill Country cabins, and lake-view estates. A peaceful escape 45 minutes from San Antonio.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/canyon-lake-tx' },
     openGraph: {
       title,
       description,

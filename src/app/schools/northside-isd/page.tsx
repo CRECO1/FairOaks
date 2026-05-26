@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/schools/northside-isd`;
 export const metadata: Metadata = {
   title: 'Homes in Northside ISD | Helotes, Leon Springs & San Antonio TX',
   description:
-    'Search homes in Northside ISD — one of the largest and most respected school districts in Texas. Serving Helotes, Leon Springs, and northwest San Antonio. Find homes near top-rated Northside schools.',
-  alternates: { canonical: CANONICAL },
+    'Browse homes for sale in Northside ISD — San Antonio\'s largest school district covering Helotes, Leon Valley, and northwest San Antonio neighborhoods.',
+  alternates: { canonical: '/schools/northside-isd' },
   openGraph: {
     title: 'Homes in Northside ISD | Helotes, Leon Springs & San Antonio TX',
     description:

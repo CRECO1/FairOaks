@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Contact Fair Oaks Realty Group | Fair Oaks Ranch TX Realtors',
   description:
-    'Reach our team of Texas Hill Country real estate experts. Call (210) 390-9997 or send a message. Serving Fair Oaks Ranch, Boerne, Helotes, San Antonio and surrounding areas.',
+    'Contact Fair Oaks Realty Group — local real estate experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country. Call, email, or request a showing.',
   keywords: [
     'Fair Oaks Ranch realtor contact',
     'contact real estate agent Fair Oaks Ranch TX',
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.fairoaksrealtygroup.com/contact',
+    canonical: '/contact',
   },
 };
 

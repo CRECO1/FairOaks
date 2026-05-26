@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/fair-oaks-ranch`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in Fair Oaks Ranch, TX | Fair Oaks Realty Group',
   description:
-    'Browse new construction homes in Fair Oaks Ranch, TX. New builds in master-planned communities, gated neighborhoods, and custom lots. Boerne ISD, Hill Country lifestyle, 20 min from San Antonio.',
+    'New construction homes in Fair Oaks Ranch TX — master-planned communities with gated entries, resort amenities, and Hill Country views. Move-in ready homes available.',
   keywords: [
     'new construction fair oaks ranch tx',
     'new homes fair oaks ranch',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'custom homes fair oaks ranch tx',
     'new construction hill country',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/fair-oaks-ranch' },
   openGraph: {
     title: 'New Construction Homes in Fair Oaks Ranch, TX | Fair Oaks Realty Group',
     description:
-      'Browse new construction homes in Fair Oaks Ranch, TX. New builds in master-planned communities, gated neighborhoods, and custom lots. Boerne ISD, Hill Country lifestyle, 20 min from San Antonio.',
+      'New construction homes in Fair Oaks Ranch TX — master-planned communities with gated entries, resort amenities, and Hill Country views. Move-in ready homes available.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes in Fair Oaks Ranch, TX' }],

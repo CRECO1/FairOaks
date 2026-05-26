@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/investment-properties`;
 export const metadata: Metadata = {
   title: 'Investment Properties in San Antonio & Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Find investment properties in San Antonio, Fair Oaks Ranch, Boerne, and the Texas Hill Country. Rental homes, fix-and-flip opportunities, and long-term real estate investment strategies. Expert local guidance.',
-  alternates: { canonical: CANONICAL },
+    'Find investment properties in San Antonio and the Texas Hill Country — rental homes, multi-family, and land. Expert guidance from Fair Oaks Realty Group.',
+  alternates: { canonical: '/investment-properties' },
   openGraph: {
     title: 'Investment Properties in San Antonio & Texas Hill Country | Fair Oaks Realty Group',
     description:

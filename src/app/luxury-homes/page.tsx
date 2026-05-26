@@ -15,9 +15,9 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: 'Luxury Homes for Sale in Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Browse luxury homes $750K+ in Fair Oaks Ranch, Boerne, and the Texas Hill Country. Gated communities, Hill Country estates, waterfront properties, and custom builds.',
+    'Explore luxury homes for sale in the Texas Hill Country — Fair Oaks Ranch, Boerne, and San Antonio\'s finest neighborhoods. Properties from $750K to $3M+.',
   keywords: ['luxury homes texas hill country', 'luxury homes fair oaks ranch', 'luxury homes boerne tx', 'homes over 1 million san antonio', 'gated communities san antonio', 'cordillera ranch homes', 'the dominion san antonio', 'hill country estates', 'custom homes texas hill country', 'waterfront luxury homes texas'],
-  alternates: { canonical: `${BASE_URL}/luxury-homes` },
+  alternates: { canonical: '/luxury-homes' },
   openGraph: {
     title: 'Luxury Homes for Sale in Texas Hill Country | Fair Oaks Realty Group',
     description:

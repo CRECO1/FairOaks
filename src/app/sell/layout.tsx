@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Sell Your Home in Fair Oaks Ranch TX | Free Home Valuation',
   description:
-    'Ready to sell your home in Fair Oaks Ranch or Texas Hill Country? Get a free, no-obligation home valuation. We sell homes at 103% of list price with an average of 21 days on market.',
+    'Thinking of selling your Fair Oaks Ranch or Hill Country home? Get a free home valuation and market analysis from Fair Oaks Realty Group\'s local experts.',
   keywords: [
     'sell my home Fair Oaks Ranch TX',
     'Fair Oaks Ranch home valuation',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.fairoaksrealtygroup.com/sell',
+    canonical: '/sell',
   },
 };
 

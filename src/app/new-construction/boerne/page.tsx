@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/boerne`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in Boerne, TX | Fair Oaks Realty Group',
   description:
-    'Browse new construction homes in Boerne, TX. Find new builds in Headwaters at Barton Creek, Esperanza, and other master-planned communities. Top-rated Boerne ISD schools.',
+    'Browse new construction homes in Boerne TX — new builds in master-planned communities near top-rated Boerne ISD schools. Prices from $400K.',
   keywords: [
     'new construction boerne tx',
     'new homes boerne texas',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'new development boerne texas',
     'newly built homes boerne',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/boerne' },
   openGraph: {
     title: 'New Construction Homes in Boerne, TX | Fair Oaks Realty Group',
     description:
-      'Browse new construction homes in Boerne, TX. Find new builds in Headwaters at Barton Creek, Esperanza, and other master-planned communities. Top-rated Boerne ISD schools.',
+      'Browse new construction homes in Boerne TX — new builds in master-planned communities near top-rated Boerne ISD schools. Prices from $400K.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes in Boerne, TX' }],

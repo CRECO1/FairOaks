@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `Fair Oaks Ranch TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse Fair Oaks Ranch TX homes for sale. Avg. price ${AVG_PRICE}, Boerne ISD, premier master-planned Hill Country community with gated options & equestrian trails. 20 min to SA.`;
+    `Browse homes for sale in Fair Oaks Ranch, TX. Gated communities, horse properties, and Hill Country estates from $400K–$2M+. Local MLS listings updated daily.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/fair-oaks-ranch-tx' },
     openGraph: {
       title,
       description,

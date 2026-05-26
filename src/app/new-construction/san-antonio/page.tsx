@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/san-antonio`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in San Antonio, TX | Fair Oaks Realty Group',
   description:
-    'Search new construction homes in San Antonio, TX. New builds across all price ranges — from affordable starter homes to luxury estates. Military-friendly builders, VA loan accepted, all school districts.',
+    'Find new construction homes in San Antonio TX — new communities in the NW corridor, Stone Oak, and Hill Country Village. Move-in ready options available.',
   keywords: [
     'new construction san antonio tx',
     'new homes san antonio texas',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'san antonio new development',
     'newly built homes san antonio',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/san-antonio' },
   openGraph: {
     title: 'New Construction Homes in San Antonio, TX | Fair Oaks Realty Group',
     description:
-      'Search new construction homes in San Antonio, TX. New builds across all price ranges — from affordable starter homes to luxury estates. Military-friendly builders, VA loan accepted, all school districts.',
+      'Find new construction homes in San Antonio TX — new communities in the NW corridor, Stone Oak, and Hill Country Village. Move-in ready options available.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes in San Antonio, TX' }],

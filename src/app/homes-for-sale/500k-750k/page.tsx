@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/500k-750k`;
 export const metadata: Metadata = {
   title: 'Homes $500K–$750K in Fair Oaks Ranch, Boerne & Texas Hill Country',
   description:
-    'Browse homes $500,000–$750,000 in Fair Oaks Ranch, Boerne, Helotes, and surrounding Hill Country communities. Spacious family homes, premium finishes, and top school districts.',
-  alternates: { canonical: CANONICAL },
+    'Browse homes priced $500K–$750K in the Texas Hill Country — Fair Oaks Ranch, Boerne, and Helotes. Move-up homes with space, views, and top schools.',
+  alternates: { canonical: '/homes-for-sale/500k-750k' },
   openGraph: {
     title: 'Homes $500K–$750K in Fair Oaks Ranch, Boerne & Texas Hill Country',
     description:

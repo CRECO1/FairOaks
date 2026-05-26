@@ -14,8 +14,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: 'Texas Hill Country Homes for Sale | Browse All Areas | Fair Oaks Realty Group',
   description:
-    'Browse homes for sale across Boerne, Helotes, San Antonio, Bulverde, New Braunfels, Fair Oaks Ranch, Canyon Lake & Spring Branch TX. Local experts, Hill Country real estate.',
-  alternates: { canonical: `${BASE_URL}/homes-for-sale` },
+    'Search homes for sale across Fair Oaks Ranch, Boerne, Helotes, Bulverde, and San Antonio. Fair Oaks Realty Group — Hill Country\'s local real estate experts.',
+  alternates: { canonical: '/homes-for-sale' },
   openGraph: {
     title: 'Texas Hill Country Homes for Sale | Browse All Areas | Fair Oaks Realty Group',
     description:

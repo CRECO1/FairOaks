@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/neighborhoods/cordillera-ranch`;
 export const metadata: Metadata = {
   title: 'Cordillera Ranch Boerne TX | Luxury Hill Country Community Homes',
   description:
-    'Discover Cordillera Ranch in Boerne, TX — a premier luxury gated community with custom estates, private club, and stunning Hill Country views. Homes from $800K to $5M+. Expert local agents.',
-  alternates: { canonical: CANONICAL },
+    'Homes for sale in Cordillera Ranch, Boerne TX — 8,700-acre Hill Country community with equestrian facilities, golf, and luxury custom homes from $700K.',
+  alternates: { canonical: '/neighborhoods/cordillera-ranch' },
   openGraph: {
     title: 'Cordillera Ranch Boerne TX | Luxury Hill Country Community Homes',
     description:

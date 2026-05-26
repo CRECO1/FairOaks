@@ -15,9 +15,9 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: "Texas Home Buyer's Guide | Step-by-Step Guide for Hill Country Buyers",
   description:
-    'Complete guide to buying a home in the Texas Hill Country. Step-by-step process, costs breakdown, first-time buyer tips, and local market insights for Fair Oaks Ranch, Boerne, and Helotes.',
+    'Complete home buyer\'s guide for Fair Oaks Ranch and the Texas Hill Country — from pre-approval to closing. Expert advice from Fair Oaks Realty Group.',
   keywords: ['texas home buyer guide', 'how to buy a home in texas', 'first-time homebuyer texas', 'home buying process texas hill country', 'mortgage preapproval texas', 'closing costs texas', 'home inspection texas', 'fair oaks ranch buyer guide', 'boerne tx home buying', 'texas real estate process'],
-  alternates: { canonical: BASE_URL + '/buyer-guide' },
+  alternates: { canonical: '/buyer-guide' },
   openGraph: {
     title: "Texas Home Buyer's Guide | Step-by-Step Guide for Hill Country Buyers",
     description:

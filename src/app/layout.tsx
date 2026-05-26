@@ -4,6 +4,9 @@ import './globals.css';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.fairoaksrealtygroup.com'),
+  alternates: {
+    canonical: '/',
+  },
   title: {
     default: 'Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
     template: '%s | Fair Oaks Realty Group',

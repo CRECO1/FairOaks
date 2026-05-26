@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `Boerne TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse Boerne TX homes for sale. Avg. price ${AVG_PRICE}, top-rated Boerne ISD schools, Hill Country lifestyle, Historic Main Street. Local agents, real results.`;
+    `Find homes for sale in Boerne, TX — charming Hill Country town with top-rated Boerne ISD schools, scenic landscapes, and homes from $300K to $1.5M+.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/boerne-tx' },
     openGraph: {
       title,
       description,

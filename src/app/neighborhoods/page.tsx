@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Fair Oaks Ranch Neighborhoods & Communities | Area Guide',
   description:
-    'Explore neighborhoods in Fair Oaks Ranch, Boerne, Helotes, and The Dominion TX. Find the perfect Texas Hill Country community — school ratings, home prices, and local highlights.',
+    'Explore neighborhoods in the Texas Hill Country — Fair Oaks Ranch, Boerne, Helotes, The Dominion, Cordillera Ranch, and more. Find your perfect community.',
   keywords: [
     'Fair Oaks Ranch neighborhoods',
     'Fair Oaks Ranch communities',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     type: 'website',
   },
   alternates: {
-    canonical: 'https://www.fairoaksrealtygroup.com/neighborhoods',
+    canonical: '/neighborhoods',
   },
 };
 

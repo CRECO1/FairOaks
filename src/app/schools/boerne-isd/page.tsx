@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/schools/boerne-isd`;
 export const metadata: Metadata = {
   title: 'Homes in Boerne ISD | Fair Oaks Ranch & Boerne TX Real Estate',
   description:
-    'Find homes zoned to Boerne ISD — one of Texas\'s top-rated school districts. Serving Fair Oaks Ranch, Boerne, and surrounding Hill Country communities. Explore neighborhoods, school ratings, and active listings.',
-  alternates: { canonical: CANONICAL },
+    'Search homes for sale in Boerne ISD — one of Texas\'s top-rated school districts. Find Fair Oaks Ranch, Boerne, and Leon Springs properties zoned to Boerne ISD.',
+  alternates: { canonical: '/schools/boerne-isd' },
   openGraph: {
     title: 'Homes in Boerne ISD | Fair Oaks Ranch & Boerne TX Real Estate',
     description:

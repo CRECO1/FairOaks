@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/relocation`;
 export const metadata: Metadata = {
   title: 'Relocating to San Antonio & Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'Moving to San Antonio or the Texas Hill Country? Get a complete relocation guide — neighborhoods, schools, cost of living, commute times, and expert local real estate agents to help you find the perfect home.',
-  alternates: { canonical: CANONICAL },
+    'Relocating to San Antonio or the Texas Hill Country? Our complete relocation guide covers neighborhoods, schools, commute times, and the local real estate market.',
+  alternates: { canonical: '/relocation' },
   openGraph: {
     title: 'Relocating to San Antonio & Texas Hill Country | Fair Oaks Realty Group',
     description:

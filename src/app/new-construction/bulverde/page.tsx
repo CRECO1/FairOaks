@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/bulverde`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in Bulverde, TX | Fair Oaks Realty Group',
   description:
-    'Find new construction homes in Bulverde, TX. One of the fastest-growing Hill Country communities with new master-planned developments, Comal ISD schools, and easy access to San Antonio.',
+    'New construction homes in Bulverde TX — growing Hill Country community with Comal ISD schools, large lots, and new master-planned developments.',
   keywords: [
     'new construction bulverde tx',
     'new homes bulverde texas',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'bulverde new construction 2025',
     'newly built homes bulverde',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/bulverde' },
   openGraph: {
     title: 'New Construction Homes in Bulverde, TX | Fair Oaks Realty Group',
     description:
-      'Find new construction homes in Bulverde, TX. One of the fastest-growing Hill Country communities with new master-planned developments, Comal ISD schools, and easy access to San Antonio.',
+      'New construction homes in Bulverde TX — growing Hill Country community with Comal ISD schools, large lots, and new master-planned developments.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes in Bulverde, TX' }],

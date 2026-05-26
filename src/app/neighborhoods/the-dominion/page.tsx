@@ -16,8 +16,8 @@ const CANONICAL = `${BASE_URL}/neighborhoods/the-dominion`;
 export const metadata: Metadata = {
   title: 'The Dominion San Antonio TX | Luxury Gated Community Homes for Sale',
   description:
-    'Browse homes for sale in The Dominion, San Antonio\'s most prestigious gated community. Custom estates $800K–$5M+, 24-hour security, private golf club, and elite Hill Country living. Expert local agents.',
-  alternates: { canonical: CANONICAL },
+    'Homes for sale in The Dominion, San Antonio TX — San Antonio\'s most prestigious gated community with 24-hour security, golf course, and luxury estates from $800K.',
+  alternates: { canonical: '/neighborhoods/the-dominion' },
   openGraph: {
     title: 'The Dominion San Antonio TX | Luxury Gated Community Homes for Sale',
     description:

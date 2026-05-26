@@ -23,12 +23,12 @@ const CANONICAL = `${BASE_URL}/homes-for-sale/${SLUG}`;
 export async function generateMetadata(): Promise<Metadata> {
   const title = `Spring Branch TX Homes for Sale | Fair Oaks Realty Group`;
   const description =
-    `Browse Spring Branch TX homes for sale. Avg. price ${AVG_PRICE}, Comal ISD, secluded Hill Country acreage, Guadalupe River access & custom homes. 35 min from San Antonio.`;
+    `Find homes for sale in Spring Branch, TX — rural Hill Country living near Canyon Lake with large acreage properties and Comal ISD schools.`;
 
   return {
     title,
     description,
-    alternates: { canonical: CANONICAL },
+    alternates: { canonical: '/homes-for-sale/spring-branch-tx' },
     openGraph: {
       title,
       description,

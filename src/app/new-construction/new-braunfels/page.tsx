@@ -16,7 +16,7 @@ const CANONICAL = `${BASE_URL}/new-construction/new-braunfels`;
 export const metadata: Metadata = {
   title: 'New Construction Homes in New Braunfels, TX | Fair Oaks Realty Group',
   description:
-    'Browse new construction homes in New Braunfels, TX. Find new homes in Veramendi, Vintage Oaks, and other fast-growing communities. Comal ISD schools, Guadalupe River access, and Hill Country charm.',
+    'Browse new construction in New Braunfels TX — rapidly growing Hill Country city with Comal ISD schools and easy access to Austin and San Antonio.',
   keywords: [
     'new construction new braunfels tx',
     'new homes new braunfels texas',
@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     'new homes near new braunfels',
     'newly built homes new braunfels',
   ],
-  alternates: { canonical: CANONICAL },
+  alternates: { canonical: '/new-construction/new-braunfels' },
   openGraph: {
     title: 'New Construction Homes in New Braunfels, TX | Fair Oaks Realty Group',
     description:
-      'Browse new construction homes in New Braunfels, TX. Find new homes in Veramendi, Vintage Oaks, and other fast-growing communities. Comal ISD schools, Guadalupe River access, and Hill Country charm.',
+      'Browse new construction in New Braunfels TX — rapidly growing Hill Country city with Comal ISD schools and easy access to Austin and San Antonio.',
     url: CANONICAL,
     type: 'website',
     images: [{ url: `${BASE_URL}/images/og-home.jpg`, alt: 'New Construction Homes in New Braunfels, TX' }],

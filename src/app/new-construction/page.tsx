@@ -16,7 +16,7 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 export const metadata: Metadata = {
   title: 'New Construction Homes in Texas Hill Country | Fair Oaks Realty Group',
   description:
-    'New construction homes in Boerne, Helotes, Bulverde, New Braunfels, and Fair Oaks Ranch TX. Builder-new homes, master-planned communities, and custom builds — with no extra cost to buyers.',
+    'Browse new construction homes in Fair Oaks Ranch, Boerne, Helotes, and surrounding Hill Country communities. New builds from top Texas builders.',
   keywords: [
     'new construction homes texas',
     'new builds fair oaks ranch',
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     'builder homes hill country',
     'move in ready homes texas',
   ],
-  alternates: { canonical: `${BASE_URL}/new-construction` },
+  alternates: { canonical: '/new-construction' },
   openGraph: {
     title: 'New Construction Homes in Texas Hill Country | Fair Oaks Realty Group',
     description:
