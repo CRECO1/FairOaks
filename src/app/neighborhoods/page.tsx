@@ -55,8 +55,29 @@ export default async function NeighborhoodsPage() {
   const featured = data.filter(n => n.featured);
   const rest = data.filter(n => !n.featured);
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'Fair Oaks Ranch Neighborhoods & Communities',
+    description: 'Explore neighborhoods in Fair Oaks Ranch, Boerne, Helotes, and The Dominion TX.',
+    url: 'https://www.fairoaksrealtygroup.com/neighborhoods',
+    mainEntity: {
+      '@type': 'ItemList',
+      itemListElement: data.map((n, index) => ({
+        '@type': 'ListItem',
+        position: index + 1,
+        url: `https://www.fairoaksrealtygroup.com/neighborhoods/${n.slug}`,
+        name: n.name,
+      })),
+    },
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Header />
       <main className="min-h-screen pt-20">
         {/* Hero */}

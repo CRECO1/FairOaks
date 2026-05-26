@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import Anthropic from '@anthropic-ai/sdk';
+import { rateLimit } from '@/lib/ratelimit';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -15,6 +16,11 @@ const platformGuides: Record<string, string> = {
 export async function POST(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return unauthorized();
+
+  const rl = await rateLimit(req, 'quiz'); // reuse quiz limiter (20/hr is reasonable for AI caption generation)
+  if (!rl.success) {
+    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
+  }
 
   const body = await req.json();
   const { platforms, topic, tone } = body;

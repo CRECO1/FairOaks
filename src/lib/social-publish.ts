@@ -1,3 +1,5 @@
+import { decryptToken } from '@/lib/token-crypto';
+
 export interface SocialConnection {
   id: string;
   agent_id: string;
@@ -46,6 +48,7 @@ export async function publishToplatform(
 
 async function publishToFacebook(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
   const pageId = connection.page_id || connection.platform_account_id;
+  const token = decryptToken(connection.access_token);
 
   const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/feed`, {
     method: 'POST',
@@ -53,7 +56,7 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
     body: JSON.stringify({
       message: post.content,
       link: post.link_url || undefined,
-      access_token: connection.access_token,
+      access_token: token,
     }),
   });
 
@@ -67,6 +70,8 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
     return { success: false, error: 'Instagram requires at least one image' };
   }
 
+  const token = decryptToken(connection.access_token);
+
   // Step 1: Create media container
   const containerRes = await fetch(
     `https://graph.facebook.com/v18.0/${connection.platform_account_id}/media`,
@@ -76,7 +81,7 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
       body: JSON.stringify({
         image_url: post.media_urls[0],
         caption: post.content,
-        access_token: connection.access_token,
+        access_token: token,
       }),
     }
   );
@@ -94,7 +99,7 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         creation_id: container.id,
-        access_token: connection.access_token,
+        access_token: token,
       }),
     }
   );
@@ -108,7 +113,7 @@ async function publishToLinkedIn(connection: SocialConnection, post: PostPayload
   const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${connection.access_token}`,
+      Authorization: `Bearer ${decryptToken(connection.access_token)}`,
       'Content-Type': 'application/json',
       'X-Restli-Protocol-Version': '2.0.0',
     },
@@ -134,7 +139,7 @@ async function publishToTwitter(connection: SocialConnection, post: PostPayload)
   const res = await fetch('https://api.twitter.com/2/tweets', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${connection.access_token}`,
+      Authorization: `Bearer ${decryptToken(connection.access_token)}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ text: post.content.substring(0, 280) }),

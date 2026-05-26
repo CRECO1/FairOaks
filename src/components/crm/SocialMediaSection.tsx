@@ -533,6 +533,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   );
                 })}
               </div>
+              {composerPlatforms.includes('youtube') && (
+                <div style={{ fontSize: 11, color: '#d97706', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px', marginTop: 8 }}>
+                  ⚠️ YouTube video upload is not yet supported — text posts only
+                </div>
+              )}
             </div>
 
             {/* AI Caption */}

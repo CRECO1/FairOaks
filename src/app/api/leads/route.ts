@@ -4,7 +4,7 @@ import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
-const FROM_EMAIL = 'onboarding@resend.dev'; // works on free Resend plan; swap to noreply@fairoaksrealtygroup.com after domain verification
+const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

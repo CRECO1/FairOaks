@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { encryptToken } from '@/lib/token-crypto';
 
 const CRM_RETURN = 'https://www.fairoaksrealtygroup.com/crm/residential#social';
 
@@ -90,8 +91,8 @@ export async function GET(req: NextRequest) {
         platform: 'twitter',
         platform_account_id: twitterUser.id,
         account_name: `@${twitterUser.username}`,
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || null,
+        access_token: encryptToken(tokenData.access_token),
+        refresh_token: tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : null,
         expires_at: expiresAt,
         is_active: true,
         updated_at: now,
@@ -101,8 +102,6 @@ export async function GET(req: NextRequest) {
 
   // Clear verifier cookie
   cookieStore.delete('twitter_code_verifier');
-
-  console.log(`[twitter/callback] Connected Twitter @${twitterUser.username} for user ${state}`);
 
   return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=twitter`);
 }

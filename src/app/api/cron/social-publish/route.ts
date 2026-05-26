@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 // Called by Vercel Cron every 5 minutes: */5 * * * *
 export async function GET(req: NextRequest) {
   // Verify cron secret
-  const authHeader = req.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -64,16 +64,18 @@ export async function GET(req: NextRequest) {
     }
 
     // Update post status
-    const newStatus = failures.length === (post.platforms as string[]).length ? 'failed' : 'published';
+    const allFailed = failures.length === (post.platforms as string[]).length;
+    const newStatus = allFailed ? 'failed' : 'published';
+    const failNote = failures.length > 0
+      ? `\n[CRON] Partial/full failure: ${failures.join('; ')}`
+      : `\n[CRON] Published successfully at ${new Date().toISOString()}`;
     await supabase
       .from('social_posts')
       .update({
         status: newStatus,
         published_at: new Date().toISOString(),
         platform_post_ids: platformPostIds,
-        internal_notes: failures.length > 0
-          ? `Partial failures: ${failures.join('; ')}`
-          : post.internal_notes,
+        internal_notes: (post.internal_notes ?? '') + failNote,
         updated_at: new Date().toISOString(),
       })
       .eq('id', post.id);

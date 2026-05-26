@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { encryptToken } from '@/lib/token-crypto';
 
 const CRM_RETURN = 'https://www.fairoaksrealtygroup.com/crm/residential#social';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
-  const state = req.nextUrl.searchParams.get('state'); // userId
+  const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
-  if (error || !code || !state) {
-    console.error('[facebook/callback] OAuth error:', { error, code: !!code, state });
+  if (error || !code || !stateParam) {
+    console.error('[facebook/callback] OAuth error:', { error, code: !!code, stateParam });
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=oauth_denied`);
   }
+
+  const [userId, stateNonce] = (stateParam ?? '').split(':');
+  const cookieStore = await cookies();
+  const storedNonce = cookieStore.get('fb_oauth_nonce')?.value;
+  if (!storedNonce || storedNonce !== stateNonce) {
+    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=invalid_state`);
+  }
+  cookieStore.delete('fb_oauth_nonce');
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +33,7 @@ export async function GET(req: NextRequest) {
   const { data: profile } = await supabase
     .from('crm_profiles')
     .select('id')
-    .eq('id', state)
+    .eq('id', userId)
     .maybeSingle();
 
   if (!profile) {
@@ -75,11 +85,11 @@ export async function GET(req: NextRequest) {
       .from('social_connections')
       .upsert(
         {
-          agent_id: state,
+          agent_id: userId,
           platform: 'facebook',
           platform_account_id: page.id,
           account_name: page.name,
-          access_token: page.access_token,
+          access_token: encryptToken(page.access_token),
           page_id: page.id,
           is_active: true,
           updated_at: now,
@@ -107,11 +117,11 @@ export async function GET(req: NextRequest) {
         .from('social_connections')
         .upsert(
           {
-            agent_id: state,
+            agent_id: userId,
             platform: 'instagram',
             platform_account_id: igAccountId,
             account_name: igInfo.username || igInfo.name || `IG: ${page.name}`,
-            access_token: page.access_token,
+            access_token: encryptToken(page.access_token),
             page_id: page.id,
             is_active: true,
             updated_at: now,
@@ -122,8 +132,6 @@ export async function GET(req: NextRequest) {
       connectedCount++;
     }
   }
-
-  console.log(`[facebook/callback] Connected ${connectedCount} accounts for user ${state}`);
 
   return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=facebook`);
 }

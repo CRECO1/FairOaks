@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 
 // Methods that mutate state — these require CSRF validation
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -57,12 +58,17 @@ function getAllowedOrigins(): Set<string> {
  *    server-to-server calls (webhooks, cron jobs) that legitimately
  *    have no browser Origin.
  */
-export function validateCsrf(req: NextRequest): string | null {
+export function validateCsrf(req: NextRequest): string | NextResponse | null {
   if (!MUTATING_METHODS.has(req.method)) return null;
 
   // Server-to-server: Bearer token present → skip CSRF (verified by the route handler)
   const authorization = req.headers.get('authorization');
   if (authorization?.startsWith('Bearer ')) return null;
+
+  // If no server URL is configured in production, fail closed for safety
+  if (!process.env.NEXT_PUBLIC_SERVER_URL && process.env.NODE_ENV === 'production') {
+    return new NextResponse('CSRF check failed — NEXT_PUBLIC_SERVER_URL not configured', { status: 403 });
+  }
 
   const origin = req.headers.get('origin');
   const referer = req.headers.get('referer');
