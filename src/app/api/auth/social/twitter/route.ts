@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
+import { rateLimit } from '@/lib/ratelimit';
 
 function generateCodeVerifier(): string {
   return crypto.randomBytes(64).toString('base64url').substring(0, 128);
@@ -15,6 +16,9 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export async function GET(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return unauthorized();
+
+  const rl = await rateLimit(req, 'oauth');
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
   const userId = req.nextUrl.searchParams.get('userId') ?? user.id;
   if (userId !== user.id) {
