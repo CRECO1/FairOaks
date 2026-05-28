@@ -2198,7 +2198,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table col.col-email{width:180px;}
         .contacts-table col.col-phone{width:130px;}
         .contacts-table col.col-deals{width:100px;}
-        .contacts-table col.col-team{width:120px;}
         .contacts-table col.col-owner{width:100px;}
         .contacts-table col.col-added{width:90px;}
         .contacts-table col.col-touch{width:90px;}
@@ -3224,7 +3223,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <col className="col-email" />
                       <col className="col-phone" />
                       <col className="col-deals" />
-                      <col className="col-team" />
                       {isAdmin && <col className="col-owner" />}
                       <col className="col-added" />
                       <col className="col-touch" />
@@ -3252,7 +3250,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Deals</th>
-                        <th>Team</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Added</th>
                         <th>Last Touch</th>
@@ -3468,59 +3465,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               )}
                             </td>
 
-                            {/* Tagged agents column */}
-                            <td style={{ position: 'relative' }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                                {taggedAgents.map(a => (
-                                  <span key={a.id} title={`${a.first_name} ${a.last_name}`}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 20, padding: '2px 8px 2px 6px', fontSize: 11, color: '#374151' }}>
-                                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, flexShrink: 0 }}>
-                                      {(a.first_name[0] ?? '') + (a.last_name[0] ?? '')}
-                                    </span>
-                                    {a.first_name}
-                                    {canTag && (
-                                      <button onClick={e => { e.stopPropagation(); toggleAgentTag(c.id, a.id); }}
-                                        style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: 0 }} title="Remove">✕</button>
-                                    )}
-                                  </span>
-                                ))}
-
-                                {/* Tag button — only for creator or admin */}
-                                {canTag && (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setTagClientId(isTagPickerOpen ? null : c.id); }}
-                                    style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 20, padding: '2px 8px', fontSize: 11, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                    {taggedAgents.length === 0 ? '＋ Tag Agent' : '＋'}
-                                  </button>
-                                )}
-
-                                {/* Agent picker dropdown */}
-                                {isTagPickerOpen && (
-                                  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 220, padding: '6px 0' }}
-                                    onClick={e => e.stopPropagation()}>
-                                    <div style={{ padding: '6px 12px 4px', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500 }}>Tag an Agent</div>
-                                    {taggableAgents.length === 0 ? (
-                                      <div style={{ padding: '8px 12px', fontSize: 12, color: '#9ca3af' }}>No other agents available</div>
-                                    ) : taggableAgents.map(a => {
-                                      const isTagged = (c.assigned_agent_ids ?? []).includes(a.id);
-                                      return (
-                                        <button key={a.id} onClick={e => { e.stopPropagation(); toggleAgentTag(c.id, a.id); }}
-                                          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', background: isTagged ? '#f0fdf4' : 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#111', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
-                                          <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
-                                            {(a.first_name[0] ?? '') + (a.last_name[0] ?? '')}
-                                          </span>
-                                          <span style={{ flex: 1 }}>{a.first_name} {a.last_name}<br /><span style={{ fontSize: 11, color: '#9ca3af' }}>{a.role}</span></span>
-                                          {isTagged && <span style={{ fontSize: 12, color: '#16a34a' }}>✓</span>}
-                                        </button>
-                                      );
-                                    })}
-                                    <div style={{ borderTop: '1px solid #f0f0f0', padding: '6px 12px 2px' }}>
-                                      <button onClick={e => { e.stopPropagation(); setTagClientId(null); }} style={{ background: 'none', border: 'none', fontSize: 11, color: '#9ca3af', cursor: 'pointer', padding: 0 }}>Close</button>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
 
                             {/* Owner agent (admin only) */}
                             {isAdmin && <td style={{ fontSize: 12, color: '#6b7280' }}>{agentName(c.agent_id)}</td>}
