@@ -156,7 +156,10 @@ export default async function HomePage() {
               ? s.hero_headline.split('\n').map((line: string, i: number) => (
                 <span key={i}>{i > 0 && <br />}{line}</span>
               ))
-              : <><span className="text-gradient-gold">{s.hero_headline}</span></>
+              : <>
+                  {s.hero_headline.replace('Texas Hill Country', '').trimEnd()}{' '}
+                  <span className="text-gold">Texas Hill Country</span>
+                </>
             }
           </h1>
           <p className="mx-auto mb-8 sm:mb-10 max-w-2xl animate-fade-in text-base sm:text-body-lg text-white/80 delay-200 fill-both">
@@ -164,10 +167,10 @@ export default async function HomePage() {
           </p>
           <div className="flex flex-col items-center gap-3 sm:gap-4 sm:flex-row sm:justify-center animate-fade-in delay-300 fill-both w-full">
             <Button size="lg" className="w-full sm:w-auto" asChild>
-              <Link href="/listings">Browse Homes <ArrowRight className="ml-2 h-5 w-5" /></Link>
+              <Link href="/listings">Search Active Listings <ArrowRight className="ml-2 h-5 w-5" /></Link>
             </Button>
             <Button size="lg" variant="outline" className="w-full sm:w-auto border-white text-white hover:bg-white hover:text-primary" asChild>
-              <Link href="#valuation">Free Home Valuation</Link>
+              <Link href="#valuation">Get My Free Valuation</Link>
             </Button>
           </div>
 
@@ -235,7 +238,7 @@ export default async function HomePage() {
           </div>
           <div className="mt-12 text-center">
             <Button variant="outline" size="lg" asChild>
-              <Link href="/listings">View All Listings <ArrowRight className="ml-2 h-5 w-5" /></Link>
+              <Link href="/listings">View All Active Listings <ArrowRight className="ml-2 h-5 w-5" /></Link>
             </Button>
           </div>
         </Container>

@@ -93,7 +93,7 @@
 
   /* Better link visibility */
   a:not([class]) {
-    @apply text-gold-dark underline underline-offset-2 decoration-gold/50;
+    @apply text-foreground underline underline-offset-2 decoration-border-dark;
     transition: color 0.2s ease;
   }
 
