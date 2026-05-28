@@ -3331,17 +3331,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         }}
                                         style={{
                                           ...typeStyle,
-                                          marginTop: 4,
+                                          marginTop: 3,
                                           border: 'none',
-                                          borderRadius: 20,
-                                          fontSize: 10,
-                                          fontWeight: 600,
-                                          padding: '2px 8px',
+                                          borderRadius: 6,
+                                          fontSize: 11,
+                                          fontWeight: 500,
+                                          padding: '2px 7px',
                                           cursor: 'pointer',
                                           appearance: 'none' as const,
                                           WebkitAppearance: 'none' as const,
                                           outline: 'none',
-                                          letterSpacing: '.3px',
                                           display: 'inline-block',
                                         }}
                                       >
