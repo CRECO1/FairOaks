@@ -8,9 +8,11 @@ interface Props {
   minPrice?: number;
   maxPrice?: number;
   minBeds?: number;
+  minBaths?: number;
+  search?: string;
 }
 
-export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds }: Props) {
+export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths, search }: Props) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -21,9 +23,11 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds }: Props)
   // Build a human-readable summary of the current filters
   const filterSummary = [
     cities.length > 0 && cities[0] !== 'All Areas' ? cities.join(', ') : 'All Areas',
+    search ? `"${search}"` : null,
     minPrice ? `$${(minPrice / 1000).toFixed(0)}k+` : null,
     maxPrice ? `up to $${(maxPrice / 1000).toFixed(0)}k` : null,
     minBeds ? `${minBeds}+ beds` : null,
+    minBaths ? `${minBaths}+ baths` : null,
   ].filter(Boolean).join(' · ');
 
   async function handleSubmit(e: React.FormEvent) {
@@ -37,7 +41,16 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds }: Props)
       const res = await fetch('/api/listing-alerts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, cities, min_price: minPrice, max_price: maxPrice, min_beds: minBeds }),
+        body: JSON.stringify({
+          name,
+          email,
+          cities,
+          min_price: minPrice,
+          max_price: maxPrice,
+          min_beds: minBeds,
+          min_baths: minBaths,
+          search: search ?? null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed');
@@ -82,7 +95,7 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds }: Props)
                 </div>
                 <h3 className="font-heading text-heading-lg font-bold text-primary">You're all set!</h3>
                 <p className="text-body-sm text-foreground-muted">
-                  We'll email you as soon as a new listing matches your search. Check your inbox for a confirmation.
+                  You'll get email alerts when new listings match your search. Check your inbox for a confirmation email.
                 </p>
                 <button
                   onClick={() => setOpen(false)}

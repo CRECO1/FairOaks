@@ -69,6 +69,8 @@ export async function GET(req: NextRequest) {
   const minPrice = sp.get('minPrice') ? Number(sp.get('minPrice')) : null;
   const maxPrice = sp.get('maxPrice') ? Number(sp.get('maxPrice')) : null;
   const minBeds  = sp.get('minBeds')  ? Number(sp.get('minBeds'))  : null;
+  const minBaths = sp.get('minBaths') ? Number(sp.get('minBaths')) : null;
+  const statusParam = sp.get('status') ?? ''; // 'active' | 'under_contract' | 'coming_soon'
   const search   = sp.get('search')   ?? '';
   const page     = Math.max(1, Number(sp.get('page')  ?? '1'));
   // mapMode=1 fetches a larger batch for the map view (no pagination needed)
@@ -77,7 +79,19 @@ export async function GET(req: NextRequest) {
   const skip     = (page - 1) * limit;
 
   try {
-    const filters: string[] = [STATUS_FILTER];
+    // Build status filter: honour explicit status param, otherwise default to active+pending
+    let activeStatusFilter: string;
+    if (statusParam === 'active') {
+      activeStatusFilter = statusFilter(['ACTIVE']);
+    } else if (statusParam === 'under_contract') {
+      activeStatusFilter = statusFilter(['ACTIVE_UNDER_CONTRACT', 'PENDING']);
+    } else if (statusParam === 'coming_soon') {
+      activeStatusFilter = statusFilter(['COMING_SOON']);
+    } else {
+      activeStatusFilter = STATUS_FILTER; // default: active + under contract + pending
+    }
+
+    const filters: string[] = [activeStatusFilter];
 
     if (city && city !== 'All Areas') {
       const cityFilter = buildCityFilter(city);
@@ -87,6 +101,7 @@ export async function GET(req: NextRequest) {
     if (minPrice !== null && Number.isFinite(minPrice)) filters.push(`ListPrice ge ${minPrice}`);
     if (maxPrice !== null && Number.isFinite(maxPrice)) filters.push(`ListPrice le ${maxPrice}`);
     if (minBeds  !== null && Number.isFinite(minBeds) && minBeds > 0) filters.push(`BedroomsTotal ge ${minBeds}`);
+    if (minBaths !== null && Number.isFinite(minBaths) && minBaths > 0) filters.push(`BathroomsFull ge ${minBaths}`);
     if (search) {
       const safe = (s: string) => s.replace(/'/g, "''");
       const tokens = search.trim().split(/\s+/);
