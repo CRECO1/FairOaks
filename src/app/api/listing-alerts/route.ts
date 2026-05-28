@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, email, cities, min_price, max_price, min_beds } = body;
+    const { name, email, cities, min_price, max_price, min_beds, min_baths, search } = body;
 
     if (!name?.trim() || !email?.trim()) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
@@ -37,12 +37,20 @@ export async function POST(req: NextRequest) {
     if (min_beds !== undefined && (typeof min_beds !== 'number' || min_beds < 0)) {
       return NextResponse.json({ error: 'Invalid min_beds' }, { status: 400 });
     }
+    if (min_baths !== undefined && (typeof min_baths !== 'number' || min_baths < 0)) {
+      return NextResponse.json({ error: 'Invalid min_baths' }, { status: 400 });
+    }
+    if (search !== undefined && search !== null && typeof search !== 'string') {
+      return NextResponse.json({ error: 'Invalid search' }, { status: 400 });
+    }
 
     const safeCities: string[] = Array.isArray(cities) ? cities.slice(0, 20).map(String).filter(c => c.length <= 100) : [];
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const supabase = createClient(supabaseUrl, serviceKey);
+
+    const safeSearch = typeof search === 'string' ? search.slice(0, 200).trim() : null;
 
     const { error: dbErr } = await supabase.from('listing_alerts').insert([{
       name: name.trim(),
@@ -51,6 +59,8 @@ export async function POST(req: NextRequest) {
       min_price: min_price ?? null,
       max_price: max_price ?? null,
       min_beds: min_beds ?? null,
+      min_baths: min_baths ?? null,
+      search: safeSearch || null,
     }]);
 
     if (dbErr) {
@@ -63,9 +73,11 @@ export async function POST(req: NextRequest) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const filterParts = [
         safeCities.length > 0 && safeCities[0] !== 'All Areas' ? safeCities.join(', ') : 'All Areas',
+        safeSearch ? `"${safeSearch}"` : null,
         min_price ? `$${(min_price / 1000).toFixed(0)}k+` : null,
         max_price ? `up to $${(max_price / 1000).toFixed(0)}k` : null,
         min_beds ? `${min_beds}+ beds` : null,
+        min_baths ? `${min_baths}+ baths` : null,
       ].filter(Boolean).join(' · ');
 
       await resend.emails.send({

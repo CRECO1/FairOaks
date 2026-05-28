@@ -311,7 +311,7 @@ function ListingsPageInner() {
                 <div>
                   <p className="label-readable">Min Bedrooms</p>
                   <div className="flex gap-2">
-                    {[0, 2, 3, 4, 5].map(b => (
+                    {[0, 1, 2, 3, 4, 5].map(b => (
                       <button
                         key={b}
                         onClick={() => { setMinBeds(b); trackViewItemList({ list_name: 'Search Results', city, beds: b > 0 ? String(b) : undefined }); }}
@@ -322,6 +322,76 @@ function ListingsPageInner() {
                     ))}
                   </div>
                 </div>
+                <div>
+                  <p className="label-readable">Min Bathrooms</p>
+                  <div className="flex gap-2">
+                    {[0, 1, 2, 3].map(b => (
+                      <button
+                        key={b}
+                        onClick={() => setMinBaths(b)}
+                        className={`rounded-full border px-4 py-1.5 text-caption transition-colors ${minBaths === b ? 'border-gold bg-gold text-primary' : 'border-border text-foreground-muted hover:border-gold'}`}
+                      >
+                        {b === 0 ? 'Any' : `${b}+`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="label-readable">Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {STATUS_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setStatus(opt.value)}
+                        className={`rounded-full border px-4 py-1.5 text-caption transition-colors ${status === opt.value ? 'border-gold bg-gold text-primary' : 'border-border text-foreground-muted hover:border-gold'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Active filter chips */}
+            {hasFilters && (
+              <div className="flex flex-wrap gap-2 pb-3">
+                {search && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    &ldquo;{search}&rdquo;
+                    <button onClick={() => setSearch('')} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove search filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {city !== 'All Areas' && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    <MapPin className="h-3 w-3" />{city}
+                    <button onClick={() => setCity('All Areas')} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove city filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {priceRange !== 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    {PRICE_RANGES[priceRange].label}
+                    <button onClick={() => setPriceRange(0)} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove price filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {minBeds !== 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    <Bed className="h-3 w-3" />{minBeds}+ beds
+                    <button onClick={() => setMinBeds(0)} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove beds filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {minBaths !== 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    <Bath className="h-3 w-3" />{minBaths}+ baths
+                    <button onClick={() => setMinBaths(0)} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove baths filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {status !== '' && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    {STATUS_OPTIONS.find(o => o.value === status)?.label ?? status}
+                    <button onClick={() => setStatus('')} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove status filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
               </div>
             )}
           </Container>
@@ -332,7 +402,7 @@ function ListingsPageInner() {
           <Container>
 
             {/* Result count + List/Map toggle */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               {!loading && total !== null ? (
                 <p className="text-body-sm text-foreground-muted">
                   {total > 0
@@ -356,6 +426,22 @@ function ListingsPageInner() {
                   <Map className="h-4 w-4" /> Map
                 </button>
               </div>
+            </div>
+
+            {/* Listing alerts CTA — always visible, pre-filled with current filters */}
+            <div className="mb-6 flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 px-5 py-3.5">
+              <div>
+                <p className="text-body-sm font-semibold text-primary">Don&apos;t miss a new listing</p>
+                <p className="text-caption text-foreground-muted">Get emailed the moment a home matching your search hits the market.</p>
+              </div>
+              <SaveSearchButton
+                cities={city === 'All Areas' ? ['All Areas'] : [city]}
+                minPrice={PRICE_RANGES[priceRange].min > 0 ? PRICE_RANGES[priceRange].min : undefined}
+                maxPrice={PRICE_RANGES[priceRange].max < Infinity ? PRICE_RANGES[priceRange].max : undefined}
+                minBeds={minBeds > 0 ? minBeds : undefined}
+                minBaths={minBaths > 0 ? minBaths : undefined}
+                search={search || undefined}
+              />
             </div>
 
             {/* Loading skeleton */}
