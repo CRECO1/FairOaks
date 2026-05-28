@@ -2191,8 +2191,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table th{color:#94a3b8!important;font-size:10.5px!important;letter-spacing:.9px!important;padding:11px 14px!important;border-bottom:1px solid #e8edf2!important;font-weight:600!important;}
         .contacts-table td{padding:11px 14px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;overflow:hidden!important;text-overflow:ellipsis!important;}
         .contacts-table col.col-check{width:36px;}
-        .contacts-table col.col-name{width:220px;}
-        .contacts-table col.col-type{width:130px;}
+        .contacts-table col.col-name{width:240px;}
         .contacts-table col.col-asset{width:130px;}
         .contacts-table col.col-source{width:100px;}
         .contacts-table col.col-tags{width:160px;}
@@ -3219,7 +3218,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <colgroup>
                       <col className="col-check" />
                       <col className="col-name" />
-                      <col className="col-type" />
                       <col className="col-asset" />
                       <col className="col-source" />
                       <col className="col-tags" />
@@ -3248,7 +3246,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           />
                         </th>
                         <th>Contact</th>
-                        <th>Type</th>
                         <th>Asset Type</th>
                         <th>Source</th>
                         <th>Tags</th>
@@ -3305,54 +3302,55 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
                               />
                             </td>
-                            {/* Name — avatar + clickable name */}
-                            <td>
+                            {/* Name + Type pill inline */}
+                            <td onClick={e => e.stopPropagation()}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <div style={{ width: 34, height: 34, borderRadius: '50%', background: `linear-gradient(135deg, ${avatarG1}, ${avatarG2})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 13, fontWeight: 700, flexShrink: 0, letterSpacing: .5 }}>
                                   {rowInitials}
                                 </div>
-                                <button
-                                  onClick={e => { e.stopPropagation(); setActiveClient(c); }}
-                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0 }}>
-                                  <div style={{ fontWeight: 600, color: '#111', fontSize: 13, whiteSpace: 'nowrap' }}>
-                                    {c.first_name} {c.last_name}
-                                  </div>
-                                  {c.business_name && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap' }}>{c.business_name}</div>}
-                                </button>
+                                <div style={{ minWidth: 0 }}>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setActiveClient(c); }}
+                                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', maxWidth: '100%' }}>
+                                    <div style={{ fontWeight: 600, color: '#111', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {c.first_name} {c.last_name}
+                                    </div>
+                                    {c.business_name && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
+                                  </button>
+                                  {/* Type pill — inline select below name */}
+                                  {(() => {
+                                    const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
+                                    return (
+                                      <select
+                                        value={c.type}
+                                        title="Change contact type"
+                                        onChange={async e => {
+                                          const newType = e.target.value as Client['type'];
+                                          await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
+                                          setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
+                                        }}
+                                        style={{
+                                          ...typeStyle,
+                                          marginTop: 4,
+                                          border: 'none',
+                                          borderRadius: 20,
+                                          fontSize: 10,
+                                          fontWeight: 600,
+                                          padding: '2px 8px',
+                                          cursor: 'pointer',
+                                          appearance: 'none' as const,
+                                          WebkitAppearance: 'none' as const,
+                                          outline: 'none',
+                                          letterSpacing: '.3px',
+                                          display: 'inline-block',
+                                        }}
+                                      >
+                                        {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                      </select>
+                                    );
+                                  })()}
+                                </div>
                               </div>
-                            </td>
-
-                            {/* Type — styled pill select */}
-                            <td onClick={e => e.stopPropagation()}>
-                              {(() => {
-                                const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
-                                return (
-                                  <select
-                                    value={c.type}
-                                    title="Change contact type"
-                                    onChange={async e => {
-                                      const newType = e.target.value as Client['type'];
-                                      await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
-                                      setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
-                                    }}
-                                    style={{
-                                      ...typeStyle,
-                                      border: 'none',
-                                      borderRadius: 20,
-                                      fontSize: 11,
-                                      fontWeight: 600,
-                                      padding: '3px 10px',
-                                      cursor: 'pointer',
-                                      appearance: 'none' as const,
-                                      WebkitAppearance: 'none' as const,
-                                      outline: 'none',
-                                      letterSpacing: '.3px',
-                                    }}
-                                  >
-                                    {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
-                                );
-                              })()}
                             </td>
 
                             {/* Asset Type / Property Interest */}
