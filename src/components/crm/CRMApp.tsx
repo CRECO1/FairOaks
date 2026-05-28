@@ -22,7 +22,7 @@ interface ActionPlan { id: string; created_by: string; name: string; description
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
-interface DealEmail { id: string; deal_id: string; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
+interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
@@ -983,7 +983,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       }
     }
     const { error } = await supabase.from('crm_clients').insert([{
-      ...nc, agent_id: profile!.id, business_unit: businessUnit,
+      ...nc,
+      agent_id: profile!.id,
+      business_unit: businessUnit,
+      // date columns reject empty strings — coerce to null
+      lease_expiration_date: nc.lease_expiration_date || null,
+      birthday: nc.birthday || null,
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
@@ -1240,8 +1245,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       type,
       note,
     }]);
-    if (error) { console.error('Activity log error:', error.message); return; }
-    // Stamp last_touched_at on client
+    if (error) { console.error('Activity log error:', error.message); }
+    // Always stamp last_touched_at on client regardless of activity insert outcome
     await supabase.from('crm_clients').update({ last_touched_at: now }).eq('id', clientId);
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, last_touched_at: now } : c));
     // Refresh feed if profile modal is open
