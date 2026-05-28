@@ -129,7 +129,7 @@ export default function TeamPage() {
           onClick={() => setSelected(null)}
         >
           <div
-            className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            className="relative w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
             onClick={e => e.stopPropagation()}
           >
             {/* Close button */}
@@ -141,13 +141,13 @@ export default function TeamPage() {
               <X className="h-5 w-5" />
             </button>
 
-            {/* Photo */}
-            <div className="relative h-40 w-full bg-background-warm">
+            {/* Photo — portrait aspect ratio so full headshot shows */}
+            <div className="relative w-full bg-background-warm" style={{ aspectRatio: '4/5', maxHeight: '420px' }}>
               {selected.image_url ? (
                 <Image src={selected.image_url as string} alt={selected.name} fill className="object-cover object-top" />
               ) : (
                 <div className="flex h-full items-center justify-center">
-                  <User className="h-20 w-20 text-foreground-subtle" />
+                  <User className="h-24 w-24 text-foreground-subtle" />
                 </div>
               )}
             </div>
