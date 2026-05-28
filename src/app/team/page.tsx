@@ -37,7 +37,7 @@ type Agent = typeof DEMO_AGENTS[0];
 
 const STATS = [
   { value: '500+', label: 'Homes Sold' },
-  { value: '20+', label: 'Years in Business' },
+  { value: '2024', label: 'Founded' },
   { value: '98%', label: 'Client Satisfaction' },
   { value: '21', label: 'Avg Days on Market' },
 ];
@@ -94,11 +94,11 @@ export default function TeamPage() {
             <RevealOnScroll>
               <p className="overline mb-3 text-gold">About Fair Oaks Realty Group</p>
               <h1 className="font-heading text-display-sm font-bold text-white max-w-3xl mb-5">
-                20+ Years of Trusted{' '}
+                Trusted{' '}
                 <span className="text-gradient-gold">Hill Country Real Estate</span>
               </h1>
               <p className="text-body-lg text-white/70 max-w-2xl mb-16">
-                Founded in 2003, Fair Oaks Realty Group has been the local experts families across
+                Founded in 2024, Fair Oaks Realty Group has been the local experts families across
                 Fair Oaks Ranch, Boerne, and the greater Texas Hill Country turn to when it matters
                 most. We are not just agents — we are neighbors.
               </p>
@@ -134,7 +134,7 @@ export default function TeamPage() {
                   you&rsquo;ll ever make. Our job is to make it feel like the easiest.
                 </blockquote>
                 <p className="mt-8 text-body text-foreground-muted">
-                  Since 2003, every decision we make has been guided by that belief. We don&rsquo;t
+                  Since 2024, every decision we make has been guided by that belief. We don&rsquo;t
                   chase volume — we chase results for the families who trust us with their most
                   valuable asset.
                 </p>
