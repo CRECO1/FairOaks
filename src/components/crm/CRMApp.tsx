@@ -2185,6 +2185,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .modal{background:#fff;border-radius:12px;width:760px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.3);flex-shrink:0;}
         .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:500;}
         @keyframes spin{to{transform:rotate(360deg)}}
+        /* ── Contacts redesign ── */
+        .contacts-table{border:1px solid #e8edf2!important;border-radius:12px!important;overflow:hidden!important;box-shadow:0 1px 4px rgba(0,0,0,.05)!important;}
+        .contacts-table thead{background:#f8fafc!important;color:inherit!important;}
+        .contacts-table th{color:#94a3b8!important;font-size:10.5px!important;letter-spacing:.9px!important;padding:11px 14px!important;border-bottom:1px solid #e8edf2!important;font-weight:600!important;}
+        .contacts-table td{padding:11px 14px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;}
+        .contacts-table tr:last-child td{border-bottom:none!important;}
+        .contacts-table tr:hover td{background:#fafbfd!important;}
+        .contacts-table .row-actions{opacity:0;transition:opacity .15s;}
+        .contacts-table tr:hover .row-actions{opacity:1;}
+        .cf-select{padding:6px 30px 6px 11px;border-radius:8px;border:1px solid #e2e8f0;font-size:12.5px;font-family:'DM Sans',sans-serif;color:#374151;background:#fff;cursor:pointer;font-weight:500;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:border-color .15s,box-shadow .15s;}
+        .cf-select:hover{border-color:#c9922c;}
+        .cf-select:focus{outline:none;border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
+        .cf-select.active{border-color:#c9922c;background-color:#fffbf2;color:#92400e;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2392400e'/%3E%3C/svg%3E");}
+        .cf-tag-input{padding:6px 11px;border-radius:8px;border:1px solid #e2e8f0;font-size:12.5px;font-family:'DM Sans',sans-serif;color:#374151;background:#fff;transition:border-color .15s,box-shadow .15s;outline:none;}
+        .cf-tag-input:focus{border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
+        .cf-tag-input.active{border-color:#c9922c;background:#fffbf2;}
         @media(max-width:767px){
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
           .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
@@ -2992,75 +3008,73 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ marginBottom: 16 }}>
                   {/* Saved Smart Lists */}
                   {smartLists.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, alignSelf: 'center', textTransform: 'uppercase', letterSpacing: 1 }}>Lists:</span>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+                      <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Saved lists</span>
                       {smartLists.map(sl => (
                         <button key={sl.id} onClick={() => applySmartList(sl)}
-                          style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif", display: 'flex', alignItems: 'center', gap: 4 }}>
-                          📋 {sl.name}
-                          <span onClick={e => { e.stopPropagation(); deleteSmartList(sl.id); }} style={{ color: '#9ca3af', fontSize: 10, marginLeft: 2, cursor: 'pointer' }}>✕</span>
+                          style={{ padding: '4px 10px', borderRadius: 20, fontSize: 12, cursor: 'pointer', border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 500, transition: 'border-color .15s' }}>
+                          <span style={{ fontSize: 11 }}>📋</span> {sl.name}
+                          <span onClick={e => { e.stopPropagation(); deleteSmartList(sl.id); }} style={{ color: '#94a3b8', fontSize: 11, cursor: 'pointer', lineHeight: 1 }}>✕</span>
                         </button>
                       ))}
                     </div>
                   )}
                   {/* Filter row */}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                    {/* shared style for all filter controls */}
-                    {(() => {
-                      const arrow = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23ffffff'/%3E%3C/svg%3E")`;
-                      const fs: React.CSSProperties = { padding: '5px 28px 5px 10px', borderRadius: 8, border: '1px solid #1a1a2e', fontSize: 12, fontFamily: "'DM Sans',sans-serif", color: '#fff', background: `#1a1a2e ${arrow} no-repeat right 8px center`, cursor: 'pointer', fontWeight: 500, appearance: 'none' as const, WebkitAppearance: 'none' as const };
-                      const fsActive: React.CSSProperties = { ...fs, background: `#c9922c ${arrow} no-repeat right 8px center`, border: '1px solid #c9922c' };
-                      return (<>
-                        {/* Type filter */}
-                        <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} style={contactTypeFilter ? fsActive : fs}>
-                          <option value="">All Types</option>
-                          {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        {/* Lead source filter */}
-                        <select value={contactSourceFilter} onChange={e => setContactSourceFilter(e.target.value)} style={contactSourceFilter ? fsActive : fs}>
-                          <option value="">All Sources</option>
-                          {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                        {/* Specialization filter */}
-                        <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} style={contactSpecFilter ? fsActive : fs}>
-                          <option value="">All Asset Types</option>
-                          {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
-                        </select>
-                        {/* Owner / agent filter — admin only */}
-                        {isAdmin && profiles.length > 0 && (
-                          <select value={contactOwnerFilter} onChange={e => setContactOwnerFilter(e.target.value)} style={contactOwnerFilter ? fsActive : fs}>
-                            <option value="">All Owners</option>
-                            {profiles.map(p => (
-                              <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
-                            ))}
-                          </select>
-                        )}
-                        {/* Sort order */}
-                        <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} style={fs}>
-                          <option value="recent">Sort: Most Recent</option>
-                          <option value="never">Sort: Never Contacted</option>
-                          <option value="az">Sort: A → Z</option>
-                          <option value="added">Sort: Newest Added</option>
-                        </select>
-                        {/* Tag filter */}
-                        <input placeholder="🏷 Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
-                          style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${contactTagFilter ? '#c9922c' : '#1a1a2e'}`, fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140, background: contactTagFilter ? '#c9922c' : '#1a1a2e', color: '#fff', outline: 'none', fontWeight: 500 }} />
-                      </>);
-                    })()}
+                    {/* Type filter */}
+                    <select value={contactTypeFilter} onChange={e => setContactTypeFilter(e.target.value)} className={`cf-select${contactTypeFilter ? ' active' : ''}`}>
+                      <option value="">All Types</option>
+                      {['Buyer','Seller','Tenant','Landlord/Investor','Agent','Broker'].map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    {/* Lead source filter */}
+                    <select value={contactSourceFilter} onChange={e => setContactSourceFilter(e.target.value)} className={`cf-select${contactSourceFilter ? ' active' : ''}`}>
+                      <option value="">All Sources</option>
+                      {LEAD_SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    {/* Specialization filter */}
+                    <select value={contactSpecFilter} onChange={e => setContactSpecFilter(e.target.value)} className={`cf-select${contactSpecFilter ? ' active' : ''}`}>
+                      <option value="">All Asset Types</option>
+                      {ASSET_TYPES.map(at => <option key={at} value={at}>{at}</option>)}
+                    </select>
+                    {/* Owner / agent filter — admin only */}
+                    {isAdmin && profiles.length > 0 && (
+                      <select value={contactOwnerFilter} onChange={e => setContactOwnerFilter(e.target.value)} className={`cf-select${contactOwnerFilter ? ' active' : ''}`}>
+                        <option value="">All Owners</option>
+                        {profiles.map(p => (
+                          <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                        ))}
+                      </select>
+                    )}
+                    {/* Sort order */}
+                    <select value={contactSort} onChange={e => setContactSort(e.target.value as typeof contactSort)} className="cf-select">
+                      <option value="recent">Most Recent</option>
+                      <option value="never">Never Contacted</option>
+                      <option value="az">A → Z</option>
+                      <option value="added">Newest Added</option>
+                    </select>
+                    {/* Tag filter */}
+                    <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
+                      className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: 140 }} />
                     {/* Clear */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); }} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Clear filters</button>
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); }}
+                        style={{ fontSize: 12, color: '#6b7280', background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                        Clear
+                      </button>
                     )}
                     {/* Save as Smart List */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && !showSaveList && (
-                      <button onClick={() => setShowSaveList(true)} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #c9922c', fontSize: 12, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>💾 Save List</button>
+                      <button onClick={() => setShowSaveList(true)}
+                        style={{ padding: '5px 11px', borderRadius: 8, border: '1px solid #c9922c', fontSize: 12, background: '#fffbf2', color: '#92400e', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>
+                        Save as List
+                      </button>
                     )}
                     {showSaveList && (
                       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                         <input autoFocus placeholder="List name…" value={newListName} onChange={e => setNewListName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveSmartList(); if (e.key === 'Escape') setShowSaveList(false); }}
-                          style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #c9922c', fontSize: 12, fontFamily: "'DM Sans',sans-serif", width: 140 }} />
-                        <button onClick={saveSmartList} style={{ padding: '4px 10px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Save</button>
-                        <button onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 13, cursor: 'pointer' }}>✕</button>
+                          className="cf-tag-input active" style={{ width: 140 }} />
+                        <button onClick={saveSmartList} style={{ padding: '5px 12px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>Save</button>
+                        <button onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>✕</button>
                       </div>
                     )}
                   </div>
@@ -3187,7 +3201,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 )}
                 <div style={{ overflowX: 'auto' }}>
-                  <table>
+                  <table className="contacts-table">
                     <thead>
                       <tr>
                         <th style={{ width: 36, paddingRight: 0 }}>
@@ -3203,19 +3217,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
                           />
                         </th>
-                        <th>Name</th>
+                        <th>Contact</th>
                         <th>Type</th>
                         <th>Asset Type</th>
                         <th>Source</th>
                         <th>Tags</th>
                         <th>Email</th>
                         <th>Phone</th>
-                        <th>Active Deals</th>
-                        <th>Tagged</th>
+                        <th>Deals</th>
+                        <th>Team</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Added</th>
-                        <th>Last Contact</th>
-                        <th>Task</th>
+                        <th>Last Touch</th>
+                        <th style={{ width: 90 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3229,8 +3243,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         // Agents available to tag (exclude creator and already tagged)
                         const taggableAgents = profiles.filter(p => p.id !== c.agent_id && p.id !== profile!.id || isAdmin);
 
+                        // Avatar gradient based on first letter
+                        const avatarColors: Record<string, string> = {
+                          A:'#667eea,#764ba2', B:'#f093fb,#f5576c', C:'#4facfe,#00f2fe',
+                          D:'#43e97b,#38f9d7', E:'#fa709a,#fee140', F:'#a18cd1,#fbc2eb',
+                          G:'#fccb90,#d57eeb', H:'#a1c4fd,#c2e9fb', I:'#fd7043,#ff8a65',
+                          J:'#66bb6a,#43a047', K:'#ab47bc,#8e24aa', L:'#26c6da,#00acc1',
+                          M:'#ef5350,#e53935', N:'#7e57c2,#673ab7', O:'#ff7043,#f4511e',
+                          P:'#26a69a,#00897b', Q:'#d4ac0d,#b7950b', R:'#5c6bc0,#3949ab',
+                          S:'#ec407a,#d81b60', T:'#29b6f6,#039be5', U:'#9ccc65,#7cb342',
+                          V:'#ff8a65,#f4511e', W:'#26c6da,#0097a7', X:'#ab47bc,#7b1fa2',
+                          Y:'#ffca28,#ffb300', Z:'#78909c,#546e7a',
+                        };
+                        const rowInitials = (c.first_name[0] ?? '') + (c.last_name[0] ?? '');
+                        const avatarPair = (avatarColors[(c.first_name[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
+                        const avatarG1 = avatarPair[0];
+                        const avatarG2 = avatarPair[1];
+
                         return (
-                          <tr key={c.id} style={{ background: selectedClientIds.has(c.id) ? '#fef9f0' : undefined }}>
+                          <tr key={c.id} style={{ background: selectedClientIds.has(c.id) ? '#fffbf2' : undefined }}>
                             {/* Checkbox */}
                             <td style={{ paddingRight: 0, width: 36 }} onClick={e => e.stopPropagation()}>
                               <input
@@ -3244,45 +3275,54 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
                               />
                             </td>
-                            {/* Name — clickable to open profile */}
+                            {/* Name — avatar + clickable name */}
                             <td>
-                              <button
-                                onClick={e => { e.stopPropagation(); setActiveClient(c); }}
-                                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-                                <div style={{ fontWeight: 600, color: '#c9922c', textDecoration: 'underline', textDecorationStyle: 'dotted' }}>
-                                  {c.first_name} {c.last_name}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: `linear-gradient(135deg, ${avatarG1}, ${avatarG2})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 13, fontWeight: 700, flexShrink: 0, letterSpacing: .5 }}>
+                                  {rowInitials}
                                 </div>
-                                {c.business_name && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.business_name}</div>}
-                              </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); setActiveClient(c); }}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', minWidth: 0 }}>
+                                  <div style={{ fontWeight: 600, color: '#111', fontSize: 13, whiteSpace: 'nowrap' }}>
+                                    {c.first_name} {c.last_name}
+                                  </div>
+                                  {c.business_name && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap' }}>{c.business_name}</div>}
+                                </button>
+                              </div>
                             </td>
 
-                            {/* Type — inline dropdown to change without opening contact */}
+                            {/* Type — styled pill select */}
                             <td onClick={e => e.stopPropagation()}>
-                              <select
-                                value={c.type}
-                                title="Change contact type"
-                                onChange={async e => {
-                                  const newType = e.target.value as Client['type'];
-                                  await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
-                                  setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
-                                }}
-                                style={{
-                                  ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties,
-                                  border: '1px solid transparent',
-                                  borderRadius: 4,
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  padding: '2px 6px',
-                                  cursor: 'pointer',
-                                  appearance: 'none' as const,
-                                  WebkitAppearance: 'none' as const,
-                                  outline: 'none',
-                                }}
-                                onFocus={e => { e.currentTarget.style.borderColor = '#c9922c'; }}
-                                onBlur={e => { e.currentTarget.style.borderColor = 'transparent'; }}
-                              >
-                                {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
+                              {(() => {
+                                const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
+                                return (
+                                  <select
+                                    value={c.type}
+                                    title="Change contact type"
+                                    onChange={async e => {
+                                      const newType = e.target.value as Client['type'];
+                                      await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
+                                      setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
+                                    }}
+                                    style={{
+                                      ...typeStyle,
+                                      border: 'none',
+                                      borderRadius: 20,
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      padding: '3px 10px',
+                                      cursor: 'pointer',
+                                      appearance: 'none' as const,
+                                      WebkitAppearance: 'none' as const,
+                                      outline: 'none',
+                                      letterSpacing: '.3px',
+                                    }}
+                                  >
+                                    {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                );
+                              })()}
                             </td>
 
                             {/* Asset Type / Property Interest */}
@@ -3302,53 +3342,72 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 500 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                             </td>
 
-                            {/* Tags — inline editable */}
+                            {/* Tags — inline editable, colorful */}
                             <td onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
-                                {(c.tags ?? []).map(tag => (
-                                  <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: '#fef3c7', color: '#92400e', padding: '1px 5px 1px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>
-                                    {tag}
-                                    <button
-                                      onClick={e => { e.stopPropagation(); saveClientTags(c.id, (c.tags ?? []).filter(t => t !== tag)); }}
-                                      style={{ background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', fontSize: 10, lineHeight: 1, padding: 0, marginLeft: 1 }}
-                                      title="Remove tag"
-                                    >✕</button>
-                                  </span>
-                                ))}
-                                {editTagsClientId === c.id ? (
-                                  <input
-                                    autoFocus
-                                    value={inlineTagInput}
-                                    onChange={e => setInlineTagInput(e.target.value)}
-                                    onKeyDown={e => {
-                                      if ((e.key === 'Enter' || e.key === ',') && inlineTagInput.trim()) {
-                                        e.preventDefault();
-                                        const tag = inlineTagInput.trim().replace(/,$/, '');
-                                        if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
-                                        setInlineTagInput('');
-                                        setEditTagsClientId(null);
-                                      }
-                                      if (e.key === 'Escape') { setEditTagsClientId(null); setInlineTagInput(''); }
-                                    }}
-                                    onBlur={() => {
-                                      if (inlineTagInput.trim()) {
-                                        const tag = inlineTagInput.trim();
-                                        if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
-                                      }
-                                      setInlineTagInput('');
-                                      setEditTagsClientId(null);
-                                    }}
-                                    placeholder="tag + Enter"
-                                    style={{ width: 90, fontSize: 10, border: '1px solid #f59e0b', borderRadius: 6, padding: '2px 6px', outline: 'none', background: '#fffbeb' }}
-                                  />
-                                ) : (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setEditTagsClientId(c.id); setInlineTagInput(''); }}
-                                    style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 6, padding: '1px 6px', fontSize: 10, color: '#9ca3af', cursor: 'pointer' }}
-                                    title="Add tag"
-                                  >＋</button>
-                                )}
-                              </div>
+                              {(() => {
+                                // Hash tag text to one of 8 palettes
+                                const TAG_PALETTES = [
+                                  { bg:'#dbeafe', color:'#1d4ed8' }, // blue
+                                  { bg:'#dcfce7', color:'#15803d' }, // green
+                                  { bg:'#fce7f3', color:'#9d174d' }, // pink
+                                  { bg:'#ede9fe', color:'#6d28d9' }, // purple
+                                  { bg:'#ffedd5', color:'#c2410c' }, // orange
+                                  { bg:'#cffafe', color:'#0e7490' }, // cyan
+                                  { bg:'#fef9c3', color:'#a16207' }, // yellow
+                                  { bg:'#f1f5f9', color:'#475569' }, // slate
+                                ];
+                                const tagPalette = (t: string) => TAG_PALETTES[t.split('').reduce((a,c) => a + c.charCodeAt(0), 0) % TAG_PALETTES.length];
+                                return (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center', maxWidth: 160 }}>
+                                    {(c.tags ?? []).map(tag => {
+                                      const p = tagPalette(tag);
+                                      return (
+                                        <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: p.bg, color: p.color, padding: '2px 6px 2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 600 }}>
+                                          {tag}
+                                          <button
+                                            onClick={e => { e.stopPropagation(); saveClientTags(c.id, (c.tags ?? []).filter(t => t !== tag)); }}
+                                            style={{ background: 'none', border: 'none', color: p.color, cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 0 0 1px', opacity: .6 }}
+                                            title="Remove tag"
+                                          >✕</button>
+                                        </span>
+                                      );
+                                    })}
+                                    {editTagsClientId === c.id ? (
+                                      <input
+                                        autoFocus
+                                        value={inlineTagInput}
+                                        onChange={e => setInlineTagInput(e.target.value)}
+                                        onKeyDown={e => {
+                                          if ((e.key === 'Enter' || e.key === ',') && inlineTagInput.trim()) {
+                                            e.preventDefault();
+                                            const tag = inlineTagInput.trim().replace(/,$/, '');
+                                            if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
+                                            setInlineTagInput('');
+                                            setEditTagsClientId(null);
+                                          }
+                                          if (e.key === 'Escape') { setEditTagsClientId(null); setInlineTagInput(''); }
+                                        }}
+                                        onBlur={() => {
+                                          if (inlineTagInput.trim()) {
+                                            const tag = inlineTagInput.trim();
+                                            if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
+                                          }
+                                          setInlineTagInput('');
+                                          setEditTagsClientId(null);
+                                        }}
+                                        placeholder="tag…"
+                                        style={{ width: 80, fontSize: 10.5, border: '1px solid #c9922c', borderRadius: 20, padding: '2px 8px', outline: 'none', background: '#fffbf2', color: '#92400e' }}
+                                      />
+                                    ) : (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); setEditTagsClientId(c.id); setInlineTagInput(''); }}
+                                        style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 20, padding: '2px 7px', fontSize: 10.5, color: '#9ca3af', cursor: 'pointer', lineHeight: 1.4 }}
+                                        title="Add tag"
+                                      >+</button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </td>
 
                             {/* Email */}
@@ -3454,30 +3513,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               })()}
                             </td>
 
-                            {/* Task + Edit / Delete actions */}
+                            {/* Actions — hover-reveal */}
                             <td onClick={e => e.stopPropagation()}>
-                              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                                {/* Task button — always visible */}
+                              <div className="row-actions" style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
                                 {(() => {
                                   const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
                                   return (
                                     <button
                                       onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
-                                      style={{ position: 'relative', background: pendingCount > 0 ? '#fef3e2' : 'none', border: pendingCount > 0 ? '1px solid #fde68a' : 'none', borderRadius: 6, color: pendingCount > 0 ? '#92400e' : '#9ca3af', fontSize: 13, cursor: 'pointer', padding: '2px 5px', display: 'flex', alignItems: 'center', gap: 3 }}
+                                      style={{ position: 'relative', background: pendingCount > 0 ? '#fef3e2' : '#f8fafc', border: `1px solid ${pendingCount > 0 ? '#fde68a' : '#e2e8f0'}`, borderRadius: 7, color: pendingCount > 0 ? '#92400e' : '#6b7280', fontSize: 12, cursor: 'pointer', padding: '4px 7px', display: 'flex', alignItems: 'center', gap: 3, fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}
                                       title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''}` : 'Add task'}>
-                                      ✅
-                                      {pendingCount > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e' }}>{pendingCount}</span>}
+                                      {pendingCount > 0 ? `${pendingCount} task${pendingCount !== 1 ? 's' : ''}` : '+ Task'}
                                     </button>
                                   );
                                 })()}
+                                <button onClick={e => { e.stopPropagation(); setActiveClient(c); }}
+                                  style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 11, cursor: 'pointer', padding: '4px 8px', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}
+                                  title="Open contact">
+                                  View
+                                </button>
                                 {isAdmin && (
                                   <>
                                     <button onClick={() => openEditClient(c)}
-                                      style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 13, cursor: 'pointer', padding: '2px 4px' }} title="Edit contact">
+                                      style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '4px 7px' }} title="Edit contact">
                                       ✏️
                                     </button>
                                     <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
-                                      style={{ background: 'none', border: 'none', color: '#fca5a5', fontSize: 13, cursor: 'pointer', padding: '2px 4px' }} title="Remove client (admin only)">
+                                      style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 12, cursor: 'pointer', padding: '4px 7px' }} title="Remove client (admin only)">
                                       🗑
                                     </button>
                                   </>
