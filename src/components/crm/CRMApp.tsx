@@ -2186,10 +2186,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:500;}
         @keyframes spin{to{transform:rotate(360deg)}}
         /* ── Contacts redesign ── */
-        .contacts-table{border:1px solid #e8edf2!important;border-radius:12px!important;overflow:hidden!important;box-shadow:0 1px 4px rgba(0,0,0,.05)!important;}
+        .contacts-table{border:1px solid #e8edf2!important;border-radius:12px!important;overflow:hidden!important;box-shadow:0 1px 4px rgba(0,0,0,.05)!important;table-layout:fixed!important;}
         .contacts-table thead{background:#f8fafc!important;color:inherit!important;}
         .contacts-table th{color:#94a3b8!important;font-size:10.5px!important;letter-spacing:.9px!important;padding:11px 14px!important;border-bottom:1px solid #e8edf2!important;font-weight:600!important;}
-        .contacts-table td{padding:11px 14px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;}
+        .contacts-table td{padding:11px 14px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;overflow:hidden!important;text-overflow:ellipsis!important;}
+        .contacts-table col.col-check{width:36px;}
+        .contacts-table col.col-name{width:220px;}
+        .contacts-table col.col-type{width:130px;}
+        .contacts-table col.col-asset{width:130px;}
+        .contacts-table col.col-source{width:100px;}
+        .contacts-table col.col-tags{width:160px;}
+        .contacts-table col.col-email{width:180px;}
+        .contacts-table col.col-phone{width:130px;}
+        .contacts-table col.col-deals{width:100px;}
+        .contacts-table col.col-team{width:120px;}
+        .contacts-table col.col-owner{width:100px;}
+        .contacts-table col.col-added{width:90px;}
+        .contacts-table col.col-touch{width:90px;}
+        .contacts-table col.col-actions{width:160px;}
         .contacts-table tr:last-child td{border-bottom:none!important;}
         .contacts-table tr:hover td{background:#fafbfd!important;}
         .contacts-table .row-actions{opacity:0;transition:opacity .15s;}
@@ -3202,6 +3216,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
                 <div style={{ overflowX: 'auto' }}>
                   <table className="contacts-table">
+                    <colgroup>
+                      <col className="col-check" />
+                      <col className="col-name" />
+                      <col className="col-type" />
+                      <col className="col-asset" />
+                      <col className="col-source" />
+                      <col className="col-tags" />
+                      <col className="col-email" />
+                      <col className="col-phone" />
+                      <col className="col-deals" />
+                      <col className="col-team" />
+                      {isAdmin && <col className="col-owner" />}
+                      <col className="col-added" />
+                      <col className="col-touch" />
+                      <col className="col-actions" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th style={{ width: 36, paddingRight: 0 }}>
