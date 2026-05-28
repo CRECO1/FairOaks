@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Phone, Mail, Award, User, X } from 'lucide-react';
+import { Phone, Mail, Award, User, X, CheckCircle2 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { supabase } from '@/lib/supabase';
 
 const DEMO_AGENTS = [
@@ -34,6 +35,36 @@ const DEMO_AGENTS = [
 
 type Agent = typeof DEMO_AGENTS[0];
 
+const STATS = [
+  { value: '500+', label: 'Homes Sold' },
+  { value: '20+', label: 'Years in Business' },
+  { value: '98%', label: 'Client Satisfaction' },
+  { value: '21', label: 'Avg Days on Market' },
+];
+
+const VALUES = [
+  {
+    title: 'Local Expertise',
+    description: 'We live, work, and raise families in the communities we serve. Our boots-on-the-ground knowledge gives you an insider advantage in every transaction.',
+  },
+  {
+    title: 'Honest Communication',
+    description: 'We tell you what you need to hear, not just what you want to hear. Straight talk, clear guidance, and full transparency from first showing to closing day.',
+  },
+  {
+    title: 'Community First',
+    description: 'The Hill Country is more than a market to us — it\'s home. We are invested in the long-term health of these neighborhoods and the families who call them home.',
+  },
+];
+
+const CREDENTIALS = [
+  'REALTOR® Member',
+  'Texas REALTORS® Member',
+  'SABOR Member',
+  'Accredited Buyer\'s Representative',
+  'Certified Luxury Home Marketing Specialist',
+];
+
 export default function TeamPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selected, setSelected] = useState<Agent | null>(null);
@@ -57,65 +88,166 @@ export default function TeamPage() {
       <Header />
       <main className="min-h-screen pt-20">
 
-        {/* Hero */}
-        <div className="bg-primary py-10 sm:py-16 text-white">
-          <Container>
-            <p className="overline mb-2 text-gold">Your Partners in Real Estate</p>
-            <h1 className="font-heading text-display-sm font-bold">Meet Our Team</h1>
-            <p className="mt-3 max-w-xl text-body text-white/60">
-              Local experts who live, work, and raise families in the communities they serve.
-            </p>
-          </Container>
-        </div>
+        {/* ── Section A: Company Story Hero ─────────────────────────── */}
+        <section className="bg-primary text-white">
+          <Container className="py-20 md:py-28 lg:py-32">
+            <RevealOnScroll>
+              <p className="overline mb-3 text-gold">About Fair Oaks Realty Group</p>
+              <h1 className="font-heading text-display-sm font-bold text-white max-w-3xl mb-5">
+                20+ Years of Trusted{' '}
+                <span className="text-gradient-gold">Hill Country Real Estate</span>
+              </h1>
+              <p className="text-body-lg text-white/70 max-w-2xl mb-16">
+                Founded in 2003, Fair Oaks Realty Group has been the local experts families across
+                Fair Oaks Ranch, Boerne, and the greater Texas Hill Country turn to when it matters
+                most. We are not just agents — we are neighbors.
+              </p>
+            </RevealOnScroll>
 
-        {/* Agent Grid */}
-        <section className="section-luxury bg-white">
-          <Container>
-            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {agents.map((agent) => (
-                <button
-                  key={agent.id}
-                  onClick={() => setSelected(agent)}
-                  className="card-luxury group p-6 text-center w-full text-left focus:outline-none focus:ring-2 focus:ring-gold rounded-2xl transition-all hover:-translate-y-1"
-                >
-                  <div className="mx-auto mb-5 h-28 w-28 rounded-full bg-background-warm overflow-hidden">
-                    {agent.image_url ? (
-                      <Image src={agent.image_url as string} alt={agent.name} width={112} height={112} className="object-cover w-full h-full" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center">
-                        <User className="h-12 w-12 text-foreground-subtle" />
-                      </div>
-                    )}
+            {/* Stats Row */}
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 sm:grid-cols-4">
+              {STATS.map(({ value, label }, i) => (
+                <RevealOnScroll key={label} delay={i * 80}>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-5 sm:p-7 text-center backdrop-blur-sm">
+                    <div className="font-heading text-display-sm font-bold text-gold mb-1">{value}</div>
+                    <div className="text-caption uppercase tracking-widest text-white/60">{label}</div>
                   </div>
-                  <h3 className="font-heading text-heading font-semibold text-primary">{agent.name}</h3>
-                  <p className="text-body-sm text-foreground-muted mt-1 mb-4">{agent.title}</p>
-                  {agent.specialties && (
-                    <div className="flex flex-wrap justify-center gap-2 mb-5">
-                      {(agent.specialties as string[]).slice(0, 3).map(s => (
-                        <span key={s} className="rounded-full border border-border px-3 py-1 text-caption text-foreground-muted">
-                          {s}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <span className="text-caption font-semibold text-gold group-hover:underline">View Profile →</span>
-                </button>
+                </RevealOnScroll>
               ))}
             </div>
           </Container>
         </section>
 
-        {/* Join CTA */}
-        <section className="section-compact bg-background-cream">
+        {/* ── Section B: Our Mission ────────────────────────────────── */}
+        <section className="section-luxury bg-background-cream">
           <Container>
-            <div className="text-center max-w-xl mx-auto">
-              <h2 className="font-heading text-display-sm font-bold text-primary mb-4">Are You a Realtor®?</h2>
-              <p className="text-body text-foreground-muted mb-8">
-                We&apos;re always looking for talented, client-focused agents to join our growing team.
+            <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-start">
+
+              {/* Left: Mission Quote */}
+              <RevealOnScroll direction="left">
+                <p className="overline mb-4">Our Mission</p>
+                <h2 className="font-heading text-display-sm font-bold text-primary mb-8 gold-line pb-4">
+                  What We Believe
+                </h2>
+                <blockquote className="quote-luxury text-foreground-muted">
+                  We believe buying or selling a home is one of the most important decisions
+                  you&rsquo;ll ever make. Our job is to make it feel like the easiest.
+                </blockquote>
+                <p className="mt-8 text-body text-foreground-muted">
+                  Since 2003, every decision we make has been guided by that belief. We don&rsquo;t
+                  chase volume — we chase results for the families who trust us with their most
+                  valuable asset.
+                </p>
+              </RevealOnScroll>
+
+              {/* Right: Values */}
+              <RevealOnScroll direction="right">
+                <p className="overline mb-4">Our Values</p>
+                <div className="space-y-6">
+                  {VALUES.map(({ title, description }) => (
+                    <div key={title} className="flex gap-4">
+                      <CheckCircle2 className="h-6 w-6 text-gold shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="font-heading text-heading font-semibold text-primary mb-1">
+                          {title}
+                        </h3>
+                        <p className="text-body-sm text-foreground-muted">{description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </RevealOnScroll>
+            </div>
+          </Container>
+        </section>
+
+        {/* ── Section C: Awards & Credentials ──────────────────────── */}
+        <section className="section-compact bg-white border-y border-border">
+          <Container>
+            <RevealOnScroll>
+              <p className="overline text-center mb-6">Professional Affiliations & Credentials</p>
+            </RevealOnScroll>
+            <RevealOnScroll>
+              <div className="flex flex-wrap justify-center gap-3">
+                {CREDENTIALS.map((credential) => (
+                  <span
+                    key={credential}
+                    className="rounded-full border border-gold/40 bg-white px-5 py-2.5 text-body-sm font-semibold text-primary shadow-sm"
+                  >
+                    {credential}
+                  </span>
+                ))}
+              </div>
+            </RevealOnScroll>
+          </Container>
+        </section>
+
+        {/* ── Agent Grid ───────────────────────────────────────────── */}
+        <section className="section-luxury bg-white">
+          <Container>
+            <RevealOnScroll>
+              <div className="mb-14 text-center">
+                <p className="overline mb-3">The People Behind the Promise</p>
+                <h2 className="font-heading text-display font-bold text-primary gold-line gold-line-center inline-block pb-4">
+                  Meet Our Team
+                </h2>
+                <p className="mx-auto mt-6 max-w-xl text-body text-foreground-muted">
+                  Local experts who live, work, and raise families in the communities they serve.
+                </p>
+              </div>
+            </RevealOnScroll>
+            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {agents.map((agent, i) => (
+                <RevealOnScroll key={agent.id} delay={i * 80}>
+                  <button
+                    onClick={() => setSelected(agent)}
+                    className="card-luxury group p-6 text-center w-full text-left focus:outline-none focus:ring-2 focus:ring-gold rounded-2xl transition-all hover:-translate-y-1"
+                  >
+                    <div className="mx-auto mb-5 h-28 w-28 rounded-full bg-background-warm overflow-hidden">
+                      {agent.image_url ? (
+                        <Image src={agent.image_url as string} alt={agent.name} width={112} height={112} className="object-cover w-full h-full" />
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <User className="h-12 w-12 text-foreground-subtle" />
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="font-heading text-heading font-semibold text-primary">{agent.name}</h3>
+                    <p className="text-body-sm text-foreground-muted mt-1 mb-4">{agent.title}</p>
+                    {agent.specialties && (
+                      <div className="flex flex-wrap justify-center gap-2 mb-5">
+                        {(agent.specialties as string[]).slice(0, 3).map(s => (
+                          <span key={s} className="rounded-full border border-border px-3 py-1 text-caption text-foreground-muted">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="text-caption font-semibold text-gold group-hover:underline">View Profile →</span>
+                  </button>
+                </RevealOnScroll>
+              ))}
+            </div>
+          </Container>
+        </section>
+
+        {/* ── Join CTA (Hiring) ─────────────────────────────────────── */}
+        <section className="section-luxury bg-primary text-white">
+          <Container>
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="overline mb-3 text-gold">We&apos;re Hiring</p>
+              <h2 className="font-heading text-display-xs font-bold mb-4">
+                Interested in Joining Our Team?
+              </h2>
+              <p className="text-body text-white/70 mb-8">
+                We&apos;re always looking for talented, motivated agents who want to grow their career with one of the Texas Hill Country&apos;s most trusted brokerages.
               </p>
-              <Button size="lg" asChild>
-                <Link href="/careers">Join Our Team</Link>
-              </Button>
+              <a
+                href="/careers"
+                className="inline-flex items-center gap-2 rounded-lg bg-gold px-8 py-3.5 font-semibold text-primary transition-colors hover:bg-gold-dark"
+              >
+                Join Our Team
+              </a>
             </div>
           </Container>
         </section>
@@ -198,27 +330,6 @@ export default function TeamPage() {
           </div>
         </div>
       )}
-
-      {/* Join CTA */}
-      <section className="section-luxury bg-primary text-white">
-        <Container>
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="overline mb-3 text-gold">We&apos;re Hiring</p>
-            <h2 className="font-heading text-display-xs font-bold mb-4">
-              Interested in Joining Our Team?
-            </h2>
-            <p className="text-body text-white/70 mb-8">
-              We&apos;re always looking for talented, motivated agents who want to grow their career with one of the Texas Hill Country&apos;s most trusted brokerages.
-            </p>
-            <a
-              href="/careers"
-              className="inline-flex items-center gap-2 rounded-lg bg-gold px-8 py-3.5 font-semibold text-primary transition-colors hover:bg-gold-dark"
-            >
-              Join Our Team
-            </a>
-          </div>
-        </Container>
-      </section>
     </>
   );
 }

@@ -13,8 +13,9 @@ const navLinks = [
   { href: '/listings', label: 'Listings' },
   { href: '/neighborhoods', label: 'Neighborhoods' },
   { href: '/blog', label: 'Blog' },
+  { href: '/market-reports', label: 'Market Reports' },
   { href: '/services', label: 'Services' },
-  { href: '/team', label: 'Team' },
+  { href: '/team', label: 'About' },
   { href: '/sell', label: 'Sell' },
 ];
 
