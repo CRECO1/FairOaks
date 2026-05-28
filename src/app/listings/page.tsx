@@ -15,8 +15,42 @@ import type { Listing } from '@/lib/supabase';
 import { trackViewItemList, trackSearch, trackSelectItem } from '@/lib/analytics';
 import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
 
+/** Compute days on market from a listing date string. */
+function calcDaysOnMarket(listingDate: string | null | undefined): number | null {
+  if (!listingDate) return null;
+  const listed = new Date(listingDate);
+  if (isNaN(listed.getTime())) return null;
+  return Math.floor((Date.now() - listed.getTime()) / 86_400_000);
+}
+
+/** Status badge config */
+function statusBadge(status: string): { label: string; cls: string } {
+  switch (status) {
+    case 'active':  return { label: 'Active',          cls: 'bg-green-500 text-white' };
+    case 'pending': return { label: 'Under Contract',  cls: 'bg-amber-500 text-white' };
+    case 'sold':    return { label: 'Closed',          cls: 'bg-gray-500 text-white'  };
+    default:        return { label: 'Coming Soon',     cls: 'bg-blue-500 text-white'  };
+  }
+}
+
+/** DOM badge config */
+function domBadge(days: number | null): { label: string; cls: string } | null {
+  if (days === null) return null;
+  if (days <= 7)  return { label: 'Just Listed', cls: 'bg-green-500 text-white' };
+  if (days <= 14) return { label: `${days} days`, cls: 'bg-green-500 text-white' };
+  if (days <= 45) return { label: `${days} days`, cls: 'bg-amber-500 text-white' };
+  return { label: `${days} days`, cls: 'bg-gray-500 text-white' };
+}
+
 const FEATURED_AREAS = ['Fair Oaks Ranch', 'Boerne', 'Dominion', 'Cordillera Ranch'];
 const MORE_AREAS = ['San Antonio', 'Helotes', 'Bulverde', 'New Braunfels', 'Kerrville', 'Fredericksburg'];
+
+const STATUS_OPTIONS = [
+  { label: 'Any Status',     value: '' },
+  { label: 'Active',         value: 'active' },
+  { label: 'Under Contract', value: 'under_contract' },
+  { label: 'Coming Soon',    value: 'coming_soon' },
+];
 
 const PRICE_RANGES = [
   { label: 'Any Price',     min: 0,       max: Infinity },
@@ -76,6 +110,8 @@ function ListingsPageInner() {
   });
   const [priceRange, setPriceRange] = useState(0);
   const [minBeds,    setMinBeds]    = useState(0);
+  const [minBaths,   setMinBaths]   = useState(0);
+  const [status,     setStatus]     = useState('');
   const [viewMode,   setViewMode]   = useState<'list' | 'map'>('list');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -91,6 +127,8 @@ function ListingsPageInner() {
     priceIdx: number,
     minBedsVal: number,
     pageVal: number,
+    minBathsVal: number,
+    statusVal: string,
   ) => {
     setLoading(true);
     const params = new URLSearchParams();
@@ -100,6 +138,8 @@ function ListingsPageInner() {
     if (range.min > 0)          params.set('minPrice', String(range.min));
     if (range.max < Infinity)   params.set('maxPrice', String(range.max));
     if (minBedsVal > 0)         params.set('minBeds',  String(minBedsVal));
+    if (minBathsVal > 0)        params.set('minBaths', String(minBathsVal));
+    if (statusVal)              params.set('status',   statusVal);
     params.set('page',  String(pageVal));
     params.set('limit', String(PAGE_LIMIT));
 
@@ -124,6 +164,8 @@ function ListingsPageInner() {
     priceIdx: number,
     minBedsVal: number,
     searchVal: string,
+    minBathsVal: number,
+    statusVal: string,
   ) => {
     setMapLoading(true);
     const params = new URLSearchParams();
@@ -134,6 +176,8 @@ function ListingsPageInner() {
     if (range.min > 0)        params.set('minPrice', String(range.min));
     if (range.max < Infinity) params.set('maxPrice', String(range.max));
     if (minBedsVal > 0)       params.set('minBeds',  String(minBedsVal));
+    if (minBathsVal > 0)      params.set('minBaths', String(minBathsVal));
+    if (statusVal)            params.set('status',   statusVal);
     fetch(`/api/listings?${params.toString()}`)
       .then(r => r.json())
       .then(d => { setMapListings(d.listings ?? []); setMapLoading(false); })
@@ -143,33 +187,44 @@ function ListingsPageInner() {
   // Load map listings when entering map view or when filters change in map mode
   useEffect(() => {
     if (viewMode !== 'map') return;
-    fetchMapListings(city, priceRange, minBeds, search);
-  }, [viewMode, city, priceRange, minBeds, search, fetchMapListings]);
+    fetchMapListings(city, priceRange, minBeds, search, minBaths, status);
+  }, [viewMode, city, priceRange, minBeds, search, minBaths, status, fetchMapListings]);
 
   // Debounced fetch when filters change — reset to page 1
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setPage(1);
-      fetchListings(search, city, priceRange, minBeds, 1);
+      fetchListings(search, city, priceRange, minBeds, 1, minBaths, status);
     }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, city, priceRange, minBeds, fetchListings]);
+  }, [search, city, priceRange, minBeds, minBaths, status, fetchListings]);
 
   // Fetch immediately when page changes (no debounce needed)
   useEffect(() => {
-    fetchListings(search, city, priceRange, minBeds, page);
+    fetchListings(search, city, priceRange, minBeds, page, minBaths, status);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const hasFilters = city !== 'All Areas' || priceRange !== 0 || minBeds !== 0 || search !== '';
+  const hasFilters = city !== 'All Areas' || priceRange !== 0 || minBeds !== 0 || minBaths !== 0 || status !== '' || search !== '';
+
+  // Count of non-search active filters for the badge
+  const activeFilterCount = [
+    city !== 'All Areas',
+    priceRange !== 0,
+    minBeds !== 0,
+    minBaths !== 0,
+    status !== '',
+  ].filter(Boolean).length;
 
   const clearFilters = () => {
     setSearch('');
     setCity('All Areas');
     setPriceRange(0);
     setMinBeds(0);
+    setMinBaths(0);
+    setStatus('');
   };
 
   const pageList = buildPageList(page, totalPages);
@@ -221,11 +276,10 @@ function ListingsPageInner() {
 
               <button
                 onClick={() => setFiltersOpen(v => !v)}
-                className="flex h-11 items-center gap-2 rounded-lg border border-border px-4 text-body-sm text-primary hover:border-gold transition-colors"
+                className={`flex h-11 items-center gap-2 rounded-lg border px-4 text-body-sm font-semibold transition-colors ${filtersOpen || activeFilterCount > 0 ? 'border-gold bg-gold/10 text-primary' : 'border-border text-primary hover:border-gold'}`}
               >
                 <SlidersHorizontal className="h-4 w-4" />
-                Filters
-                {hasFilters && <span className="h-2 w-2 rounded-full bg-gold" />}
+                {activeFilterCount > 0 ? `Filters (${activeFilterCount})` : 'Filters'}
               </button>
 
               {hasFilters && (
@@ -236,15 +290,6 @@ function ListingsPageInner() {
                   <X className="h-3 w-3" /> Clear
                 </button>
               )}
-
-              <div className="ml-auto">
-                <SaveSearchButton
-                  cities={city === 'All Areas' ? ['All Areas'] : [city]}
-                  minPrice={PRICE_RANGES[priceRange].min > 0 ? PRICE_RANGES[priceRange].min : undefined}
-                  maxPrice={PRICE_RANGES[priceRange].max < Infinity ? PRICE_RANGES[priceRange].max : undefined}
-                  minBeds={minBeds > 0 ? minBeds : undefined}
-                />
-              </div>
             </div>
 
             {filtersOpen && (
@@ -368,13 +413,18 @@ function ListingsPageInner() {
                     if (listing.list_agent_name)  agentParts.push(listing.list_agent_name);
                     if (listing.list_office_name) agentParts.push(listing.list_office_name);
                     const attribution = agentParts.length > 0 ? `Listed by ${agentParts.join(' · ')}` : null;
+                    const listingImages = Array.isArray(listing.images) ? listing.images as string[] : [];
+                    const firstImage = listingImages[0] ?? null;
+                    const dom = calcDaysOnMarket(listing.listing_date);
+                    const sb  = statusBadge(listing.status);
+                    const db  = domBadge(dom);
 
                     return (
                       <Link key={listing.id} href={`/listings/${listing.slug}`} className="card-luxury group block" onClick={() => trackSelectItem({ id: listing.id, name: listing.title, price: listing.price, list_name: 'Search Results' })}>
                         <div className="image-luxury aspect-property bg-background-warm">
-                          {listing.images && (listing.images as string[])[0] ? (
+                          {firstImage ? (
                             <Image
-                              src={(listing.images as string[])[0]}
+                              src={firstImage}
                               alt={listing.title}
                               fill
                               className="object-cover"
@@ -384,11 +434,20 @@ function ListingsPageInner() {
                               <Home className="h-10 w-10" />
                             </div>
                           )}
-                          <div className="absolute top-4 left-4">
-                            <span className="rounded-full bg-gold px-3 py-1 text-caption font-semibold text-primary uppercase">
-                              {listing.status}
+                          {/* Status badge — top-left */}
+                          <div className="absolute top-2 left-2">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm bg-black/40 ${sb.cls}`}>
+                              {sb.label}
                             </span>
                           </div>
+                          {/* Days on market badge — top-right */}
+                          {db && (
+                            <div className="absolute top-2 right-2">
+                              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm bg-black/40 ${db.cls}`}>
+                                {db.label}
+                              </span>
+                            </div>
+                          )}
                         </div>
                         <div className="p-6">
                           <p className="mb-1 text-caption text-foreground-muted">

@@ -38,6 +38,33 @@ export const metadata: Metadata = {
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Star, Home, TrendingUp, Award, Sparkles, MapPin, Bed, Bath, Square } from 'lucide-react';
+
+/** Compute days on market from a listing date string. Returns null if date is missing. */
+function calcDaysOnMarket(listingDate: string | null | undefined): number | null {
+  if (!listingDate) return null;
+  const listed = new Date(listingDate);
+  if (isNaN(listed.getTime())) return null;
+  return Math.floor((Date.now() - listed.getTime()) / 86_400_000);
+}
+
+/** Status badge config */
+function statusBadge(status: string): { label: string; cls: string } {
+  switch (status) {
+    case 'active':  return { label: 'Active',          cls: 'bg-green-500 text-white' };
+    case 'pending': return { label: 'Under Contract',  cls: 'bg-amber-500 text-white' };
+    case 'sold':    return { label: 'Closed',          cls: 'bg-gray-500 text-white'  };
+    default:        return { label: 'Coming Soon',     cls: 'bg-blue-500 text-white'  };
+  }
+}
+
+/** DOM badge config */
+function domBadge(days: number | null): { label: string; cls: string } | null {
+  if (days === null) return null;
+  if (days <= 7)  return { label: 'Just Listed', cls: 'bg-green-500 text-white' };
+  if (days <= 14) return { label: `${days} days`, cls: 'bg-green-500 text-white' };
+  if (days <= 45) return { label: `${days} days`, cls: 'bg-amber-500 text-white' };
+  return { label: `${days} days`, cls: 'bg-gray-500 text-white' };
+}
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -204,21 +231,39 @@ export default async function HomePage() {
             </div>
           </RevealOnScroll>
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {featuredListings.map(({ area, listing }, i) => (
+            {featuredListings.map(({ area, listing }, i) => {
+              const images = Array.isArray(listing.images) ? listing.images as string[] : [];
+              const firstImage = images[0] ?? null;
+              const dom = calcDaysOnMarket(listing.listing_date);
+              const sb  = statusBadge(listing.status);
+              const db  = domBadge(dom);
+              return (
               <RevealOnScroll key={area} delay={i * 100}>
                 <Link href={`/listings/${listing.slug}`} className="card-luxury group block">
                   <div className="image-luxury aspect-property bg-background-warm">
-                    {listing.images && (listing.images as string[])[0] ? (
-                      <Image src={(listing.images as string[])[0]} alt={listing.title} fill className="object-cover" />
+                    {firstImage ? (
+                      <Image src={firstImage} alt={listing.title} fill className="object-cover" />
                     ) : (
                       <div className="flex h-full items-center justify-center text-foreground-subtle"><Home className="h-12 w-12" /></div>
                     )}
-                    {/* Area badge */}
-                    <div className="absolute top-3 left-3">
-                      <span className="rounded-full bg-primary/80 backdrop-blur-sm px-3 py-1 text-[11px] font-semibold text-white uppercase tracking-wide">
+                    {/* Status badge — top-left */}
+                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm bg-black/40 ${sb.cls}`}>
+                        {sb.label}
+                      </span>
+                      {/* Area badge */}
+                      <span className="rounded-full bg-primary/80 backdrop-blur-sm px-2.5 py-0.5 text-[10px] font-semibold text-white uppercase tracking-wide">
                         {area}
                       </span>
                     </div>
+                    {/* Days on market badge — top-right */}
+                    {db && (
+                      <div className="absolute top-2 right-2">
+                        <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm bg-black/40 ${db.cls}`}>
+                          {db.label}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="p-5">
                     <p className="mb-1 text-caption uppercase tracking-wider text-foreground-muted">
@@ -234,7 +279,8 @@ export default async function HomePage() {
                   </div>
                 </Link>
               </RevealOnScroll>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-12 text-center">
             <Button variant="outline" size="lg" asChild>
