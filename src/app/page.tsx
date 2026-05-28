@@ -218,8 +218,51 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── Featured Listings ─────────────────────────────────────────── */}
+      {/* ── Neighborhoods ─────────────────────────────────────────────── */}
       <section className="section-luxury bg-background-cream">
+        <Container>
+          <RevealOnScroll>
+            <div className="mb-14 text-center">
+              <p className="overline mb-3">Where You&apos;ll Live</p>
+              <h2 className="font-heading text-display font-bold text-primary gold-line gold-line-center inline-block pb-4">Explore Neighborhoods</h2>
+            </div>
+          </RevealOnScroll>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {featuredNeighborhoods.map((n, i) => (
+              <RevealOnScroll key={n.id} delay={i * 120}>
+                <Link href={`/neighborhoods/${n.slug}`}
+                  className="group relative overflow-hidden rounded-xl bg-primary aspect-[4/3] flex flex-col justify-end p-6 text-white">
+                  {n.image_url ? (
+                    <Image src={n.image_url} alt={n.name} fill className="object-cover transition-transform duration-700 group-hover:scale-105" />
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-hillcountry-oak to-primary" />
+                  )}
+                  <div className="gradient-card absolute inset-0" />
+                  <div className="relative z-10">
+                    <h3 className="font-heading text-heading-lg font-bold">{n.name}</h3>
+                    {n.avg_price && <p className="mt-1 text-body-sm text-white/70">From {formatPrice(n.avg_price)}</p>}
+                    {Array.isArray(n.highlights) && n.highlights.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(n.highlights as string[]).slice(0, 2).map((h: string) => (
+                          <span key={h} className="rounded-full bg-white/20 px-3 py-1 text-caption backdrop-blur-sm">{h}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              </RevealOnScroll>
+            ))}
+          </div>
+          <div className="mt-10 text-center">
+            <Button variant="outline" size="lg" asChild>
+              <Link href="/neighborhoods">All Neighborhoods</Link>
+            </Button>
+          </div>
+        </Container>
+      </section>
+
+      {/* ── Featured Listings ─────────────────────────────────────────── */}
+      <section className="section-luxury bg-white">
         <Container>
           <RevealOnScroll>
             <div className="mb-14 text-center">
@@ -285,49 +328,6 @@ export default async function HomePage() {
           <div className="mt-12 text-center">
             <Button variant="outline" size="lg" asChild>
               <Link href="/listings">View All Active Listings <ArrowRight className="ml-2 h-5 w-5" /></Link>
-            </Button>
-          </div>
-        </Container>
-      </section>
-
-      {/* ── Neighborhoods ─────────────────────────────────────────────── */}
-      <section className="section-luxury bg-white">
-        <Container>
-          <RevealOnScroll>
-            <div className="mb-14 text-center">
-              <p className="overline mb-3">Where You&apos;ll Live</p>
-              <h2 className="font-heading text-display font-bold text-primary gold-line gold-line-center inline-block pb-4">Explore Neighborhoods</h2>
-            </div>
-          </RevealOnScroll>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {featuredNeighborhoods.map((n, i) => (
-              <RevealOnScroll key={n.id} delay={i * 120}>
-                <Link href={`/neighborhoods/${n.slug}`}
-                  className="group relative overflow-hidden rounded-xl bg-primary aspect-[4/3] flex flex-col justify-end p-6 text-white">
-                  {n.image_url ? (
-                    <Image src={n.image_url} alt={n.name} fill className="object-cover transition-transform duration-700 group-hover:scale-105" />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-hillcountry-oak to-primary" />
-                  )}
-                  <div className="gradient-card absolute inset-0" />
-                  <div className="relative z-10">
-                    <h3 className="font-heading text-heading-lg font-bold">{n.name}</h3>
-                    {n.avg_price && <p className="mt-1 text-body-sm text-white/70">From {formatPrice(n.avg_price)}</p>}
-                    {Array.isArray(n.highlights) && n.highlights.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {(n.highlights as string[]).slice(0, 2).map((h: string) => (
-                          <span key={h} className="rounded-full bg-white/20 px-3 py-1 text-caption backdrop-blur-sm">{h}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              </RevealOnScroll>
-            ))}
-          </div>
-          <div className="mt-10 text-center">
-            <Button variant="outline" size="lg" asChild>
-              <Link href="/neighborhoods">All Neighborhoods</Link>
             </Button>
           </div>
         </Container>
