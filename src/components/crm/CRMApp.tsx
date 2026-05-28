@@ -3339,6 +3339,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           WebkitAppearance: 'none' as const,
                                           outline: 'none',
                                           display: 'inline-block',
+                                          width: 'fit-content',
+                                          maxWidth: '100%',
+                                          lineHeight: 1.4,
                                         }}
                                       >
                                         {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
