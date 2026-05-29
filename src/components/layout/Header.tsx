@@ -16,7 +16,6 @@ const navLinks = [
   { href: '/market-reports', label: 'Market Reports' },
   { href: '/services', label: 'Services' },
   { href: '/team', label: 'About' },
-  { href: '/sell', label: 'Sell' },
 ];
 
 interface HeaderProps {
