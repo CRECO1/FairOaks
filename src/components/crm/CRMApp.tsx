@@ -67,6 +67,20 @@ const STAGE_CLS: Record<string, string> = {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
+function emailDisplayName(addr: string): string {
+  const m = addr.match(/^"?(.+?)"?\s*<[^>]+>/);
+  return m ? m[1].trim() : addr.split('@')[0];
+}
+function emailInitials(addr: string): string {
+  const n = emailDisplayName(addr).split(' ');
+  return n.length >= 2 ? (n[0][0] + n[n.length - 1][0]).toUpperCase() : n[0].slice(0, 2).toUpperCase();
+}
+function emailAvatarColor(addr: string): string {
+  const colors = ['#4f46e5','#0891b2','#059669','#d97706','#dc2626','#7c3aed','#db2777','#0284c7'];
+  let h = 0; for (let i = 0; i < addr.length; i++) h = (h * 31 + addr.charCodeAt(i)) & 0xffffffff;
+  return colors[Math.abs(h) % colors.length];
+}
+
 function cleanEmailBody(raw: string): string {
   const lines = raw.split('\n');
   const result: string[] = [];
@@ -6521,8 +6535,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                         const openedEmails = sentEmails.filter(e => e.opened_at);
                         const hasTracked = sentEmails.some(e => e.tracking_id);
+                        const senderAddr = latest.direction === 'sent' ? latest.to_email : latest.from_email;
                         return (
-                          <div key={threadKey} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
+                          <div key={threadKey} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
                             {/* Thread header row */}
                             <div
                               onClick={() => setExpandedThreads(prev => {
@@ -6530,58 +6545,64 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey);
                                 return next;
                               })}
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', cursor: 'pointer', background: isExpanded ? '#f9fafb' : '#fff', transition: 'background .12s' }}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: isExpanded ? '#f9fafb' : '#fff', transition: 'background .12s' }}
                             >
-                              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: latest.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: latest.direction === 'sent' ? '#1e40af' : '#065f46', flexShrink: 0 }}>
-                                {latest.direction.toUpperCase()}
-                              </span>
-                              <span style={{ fontSize: 12, color: '#374151', flexShrink: 0 }}>
-                                {latest.direction === 'sent' ? latest.to_email : latest.from_email}
-                              </span>
-                              {threadEmails.length > 1 && (
-                                <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>({threadEmails.length})</span>
-                              )}
-                              {/* Open status badge — visible even when collapsed */}
-                              {openedEmails.length > 0 && (
-                                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46', flexShrink: 0 }}>
-                                  👁 {openedEmails.length > 1 ? `${openedEmails.length} opened` : `Opened ${new Date(openedEmails[0].opened_at!).toLocaleDateString()}`}
-                                </span>
-                              )}
-                              {openedEmails.length === 0 && hasTracked && (
-                                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#9ca3af', flexShrink: 0 }}>Not opened</span>
-                              )}
-                              <span style={{ fontSize: 13, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', maxWidth: 180 }}>
-                                {latest.subject}
-                              </span>
-                              <span style={{ fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
-                                — {snippet}
-                              </span>
-                              <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0, marginLeft: 8 }}>{latest.email_date}</span>
-                              <span style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, marginLeft: 4 }}>{isExpanded ? '▼' : '▶'}</span>
+                              {/* Avatar */}
+                              <div style={{ width: 34, height: 34, borderRadius: '50%', background: emailAvatarColor(senderAddr), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                                {emailInitials(senderAddr)}
+                              </div>
+                              {/* Middle: name + subject/snippet */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flexShrink: 0 }}>{emailDisplayName(senderAddr)}</span>
+                                  {threadEmails.length > 1 && <span style={{ fontSize: 11, color: '#9ca3af' }}>{threadEmails.length}</span>}
+                                  {openedEmails.length > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46' }}>👁 Opened</span>}
+                                  {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f3f4f6', color: '#9ca3af' }}>Not opened</span>}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
+                                  <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</span>
+                                  <span style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}> — {snippet}</span>
+                                </div>
+                              </div>
+                              {/* Right: date + chevron */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                <span style={{ fontSize: 11, color: '#9ca3af' }}>{latest.email_date}</span>
+                                <span style={{ fontSize: 11, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
+                              </div>
                             </div>
 
                             {/* Expanded thread emails */}
                             {isExpanded && (
                               <div style={{ borderTop: '1px solid #f0f0f0' }}>
-                                {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map(e => (
-                                  <div key={e.id} style={{ borderLeft: `3px solid ${e.direction === 'sent' ? '#3b82f6' : '#16a34a'}`, padding: '12px 14px', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: e.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: e.direction === 'sent' ? '#1e40af' : '#065f46' }}>{e.direction.toUpperCase()}</span>
-                                      {e.direction === 'sent' && e.opened_at && (
-                                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46' }}>
-                                          👁 Opened {new Date(e.opened_at).toLocaleDateString()}
-                                        </span>
-                                      )}
-                                      {e.direction === 'sent' && !e.opened_at && e.tracking_id && (
-                                        <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#6b7280' }}>Not opened</span>
-                                      )}
-                                      <span style={{ fontSize: 11, color: '#6b7280' }}>{e.direction === 'sent' ? `To: ${e.to_email}` : `From: ${e.from_email}`}</span>
-                                      <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>{e.email_date}</span>
+                                {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => {
+                                  const fromAddr = e.direction === 'sent' ? e.to_email : e.from_email;
+                                  const toAddr = e.direction === 'sent' ? e.to_email : e.from_email;
+                                  return (
+                                  <div key={e.id} style={{ padding: '14px 16px', background: idx % 2 === 0 ? '#fafafa' : '#fff', borderBottom: idx < arr.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                                    {/* Email header */}
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
+                                        {emailInitials(e.from_email)}
+                                      </div>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                          <div>
+                                            <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{emailDisplayName(e.from_email)}</span>
+                                            <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
+                                          </div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                            {e.direction === 'sent' && e.opened_at && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontWeight: 600 }}>👁 Opened</span>}
+                                            {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f3f4f6', color: '#9ca3af' }}>Not opened</span>}
+                                            <span style={{ fontSize: 11, color: '#9ca3af' }}>{e.email_date}</span>
+                                          </div>
+                                        </div>
+                                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>to {emailDisplayName(e.to_email)}</div>
+                                      </div>
                                     </div>
-                                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.subject}</div>
-                                    <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cleanEmailBody(e.body)}</div>
+                                    <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap', paddingLeft: 42 }}>{cleanEmailBody(e.body)}</div>
                                   </div>
-                                ))}
+                                );})}
+
                                 {/* Reply button at the bottom of expanded thread */}
                                 {gmailConnected && activeDeal?.client_email && (
                                   <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 14px', background: '#fff' }}>
@@ -7908,8 +7929,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                           const openedEmails = sentEmails.filter(e => e.opened_at);
                           const hasTracked = sentEmails.some(e => e.tracking_id);
+                          const senderAddrC = latest.direction === 'sent' ? latest.to_email : latest.from_email;
                           return (
-                            <div key={threadKey} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
+                            <div key={threadKey} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
                               {/* Thread header */}
                               <div
                                 onClick={() => setExpandedContactThreads(prev => {
@@ -7917,55 +7939,54 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   if (next.has(threadKey)) next.delete(threadKey); else next.add(threadKey);
                                   return next;
                                 })}
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', cursor: 'pointer', background: isExpanded ? '#f9fafb' : '#fff', transition: 'background .12s' }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', cursor: 'pointer', background: isExpanded ? '#f9fafb' : '#fff', transition: 'background .12s' }}
                               >
-                                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: latest.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: latest.direction === 'sent' ? '#1e40af' : '#065f46', flexShrink: 0 }}>
-                                  {latest.direction.toUpperCase()}
-                                </span>
-                                <span style={{ fontSize: 12, color: '#374151', flexShrink: 0 }}>
-                                  {latest.direction === 'sent' ? latest.to_email : latest.from_email}
-                                </span>
-                                {threadEmails.length > 1 && (
-                                  <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>({threadEmails.length})</span>
-                                )}
-                                {openedEmails.length > 0 && (
-                                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46', flexShrink: 0 }}>
-                                    👁 {openedEmails.length > 1 ? `${openedEmails.length} opened` : `Opened ${new Date(openedEmails[0].opened_at!).toLocaleDateString()}`}
-                                  </span>
-                                )}
-                                {openedEmails.length === 0 && hasTracked && (
-                                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#9ca3af', flexShrink: 0 }}>Not opened</span>
-                                )}
-                                <span style={{ fontSize: 12, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', maxWidth: 160 }}>
-                                  {latest.subject}
-                                </span>
-                                <span style={{ fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
-                                  — {snippet}
-                                </span>
-                                <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0, marginLeft: 8 }}>{latest.email_date}</span>
-                                <span style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, marginLeft: 4 }}>{isExpanded ? '▼' : '▶'}</span>
+                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: emailAvatarColor(senderAddrC), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                                  {emailInitials(senderAddrC)}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: '#111', flexShrink: 0 }}>{emailDisplayName(senderAddrC)}</span>
+                                    {threadEmails.length > 1 && <span style={{ fontSize: 11, color: '#9ca3af' }}>{threadEmails.length}</span>}
+                                    {openedEmails.length > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46' }}>👁 Opened</span>}
+                                    {openedEmails.length === 0 && hasTracked && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f3f4f6', color: '#9ca3af' }}>Not opened</span>}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, overflow: 'hidden' }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{latest.subject}</span>
+                                    <span style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}> — {snippet}</span>
+                                  </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                  <span style={{ fontSize: 11, color: '#9ca3af' }}>{latest.email_date}</span>
+                                  <span style={{ fontSize: 11, color: '#cbd5e1' }}>{isExpanded ? '▾' : '▸'}</span>
+                                </div>
                               </div>
 
                               {/* Expanded messages */}
                               {isExpanded && (
                                 <div style={{ borderTop: '1px solid #f0f0f0' }}>
-                                  {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map(e => (
-                                    <div key={e.id} style={{ borderLeft: `3px solid ${e.direction === 'sent' ? '#3b82f6' : '#16a34a'}`, padding: '12px 14px', background: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
-                                        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .8, padding: '2px 7px', borderRadius: 3, background: e.direction === 'sent' ? '#dbeafe' : '#d1fae5', color: e.direction === 'sent' ? '#1e40af' : '#065f46' }}>{e.direction.toUpperCase()}</span>
-                                        {e.direction === 'sent' && e.opened_at && (
-                                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#d1fae5', color: '#065f46' }}>
-                                            👁 Opened {new Date(e.opened_at).toLocaleDateString()}
-                                          </span>
-                                        )}
-                                        {e.direction === 'sent' && !e.opened_at && e.tracking_id && (
-                                          <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 3, background: '#f3f4f6', color: '#6b7280' }}>Not opened</span>
-                                        )}
-                                        <span style={{ fontSize: 11, color: '#6b7280' }}>{e.direction === 'sent' ? `To: ${e.to_email}` : `From: ${e.from_email}`}</span>
-                                        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>{e.email_date}</span>
+                                  {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => (
+                                    <div key={e.id} style={{ padding: '14px 16px', background: idx % 2 === 0 ? '#fafafa' : '#fff', borderBottom: idx < arr.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
+                                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: emailAvatarColor(e.from_email), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>
+                                          {emailInitials(e.from_email)}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                            <div>
+                                              <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{emailDisplayName(e.from_email)}</span>
+                                              <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                              {e.direction === 'sent' && e.opened_at && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontWeight: 600 }}>👁 Opened</span>}
+                                              {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 10, background: '#f3f4f6', color: '#9ca3af' }}>Not opened</span>}
+                                              <span style={{ fontSize: 11, color: '#9ca3af' }}>{e.email_date}</span>
+                                            </div>
+                                          </div>
+                                          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>to {emailDisplayName(e.to_email)}</div>
+                                        </div>
                                       </div>
-                                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.subject}</div>
-                                      <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cleanEmailBody(e.body)}</div>
+                                      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap', paddingLeft: 42 }}>{cleanEmailBody(e.body)}</div>
                                     </div>
                                   ))}
                                   {/* Reply button */}
