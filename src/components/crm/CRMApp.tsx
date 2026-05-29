@@ -2227,8 +2227,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table col.col-actions{width:160px;}
         .contacts-table tr:last-child td{border-bottom:none!important;}
         .contacts-table tr:hover td{background:#fafbfd!important;}
-        .contacts-table .row-actions{opacity:0;transition:opacity .15s;}
-        .contacts-table tr:hover .row-actions{opacity:1;}
+        .contacts-table .row-actions{opacity:1;}
         .cf-select{padding:6px 30px 6px 11px;border-radius:8px;border:1px solid #e2e8f0;font-size:12.5px;font-family:'DM Sans',sans-serif;color:#374151;background:#fff;cursor:pointer;font-weight:500;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:border-color .15s,box-shadow .15s;}
         .cf-select:hover{border-color:#c9922c;}
         .cf-select:focus{outline:none;border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
