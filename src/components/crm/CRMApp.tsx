@@ -2201,9 +2201,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-btn-gold{background:#c9922c;color:#111;font-weight:600;}
         .crm-btn-ghost{background:transparent;border:1px solid #ccc;color:#6b7280;}
         .crm-btn-sm{padding:5px 12px;font-size:13px;}
-        .crm-nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.65);font-size:14px;border:none;background:none;width:100%;font-family:'DM Sans',sans-serif;text-align:left;transition:all .15s;}
-        .crm-nav:hover{background:rgba(255,255,255,.07);color:#fff;}
-        .crm-nav.active{background:rgba(201,168,76,.15);color:#c9922c;}
+        .crm-nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.85);font-size:14px;font-weight:500;border:none;background:none;width:100%;font-family:'DM Sans',sans-serif;text-align:left;transition:all .15s;}
+        .crm-nav:hover{background:rgba(255,255,255,.08);color:#fff;}
+        .crm-nav.active{background:rgba(201,168,76,.18);color:#c9922c;font-weight:600;}
         table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e8e8e8;}
         thead{background:#111;color:#fff;}
         th{padding:10px 14px;text-align:left;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;font-weight:500;}
@@ -2255,7 +2255,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {!isMobile && <nav style={{ width: 248, background: '#111', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
         <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid rgba(201,146,44,.3)' }}>
           <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
-          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.4)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 12 }}>{brand.tagline}</div>
+          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.6)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 12 }}>{brand.tagline}</div>
           {/* Workspace switcher — admin only */}
           {isAdmin && (
             <a
@@ -2268,31 +2268,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             >
               <span style={{ fontSize: 14 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.35)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,.7)' }}>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.9)' }}>
                   {businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}
                 </div>
               </div>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>→</span>
+              <span style={{ fontSize: 13, color: 'rgba(255,255,255,.55)' }}>→</span>
             </a>
           )}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
           <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}>📋 &nbsp;All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>People</div>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
           <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>👥 &nbsp;Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
           <button className={`crm-nav${page === 'prospects' ? ' active' : ''}`} onClick={() => { setPage('prospects'); loadProspects(); }}>🎯 &nbsp;Prospects {prospects.filter(p => p.client?.prospect_status === 'new').length > 0 && <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{prospects.filter(p => p.client?.prospect_status === 'new').length}</span>}</button>
           {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}>🤝 &nbsp;Broker / Agents</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
+          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
           <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); }}>
             ✅ &nbsp;Tasks
@@ -2309,7 +2309,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
-            <div style={{ fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>MLS</div>
+            <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>MLS</div>
             <button
               onClick={async () => {
                 setMlsSyncing(true);
@@ -2325,7 +2325,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 }
               }}
               disabled={mlsSyncing}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, cursor: mlsSyncing ? 'default' : 'pointer', border: '1px solid rgba(201,146,44,.3)', background: 'rgba(201,146,44,.08)', color: 'rgba(255,255,255,.65)', fontSize: 13, fontFamily: "'DM Sans',sans-serif", width: '100%', opacity: mlsSyncing ? 0.7 : 1, transition: 'all .15s' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 6, cursor: mlsSyncing ? 'default' : 'pointer', border: '1px solid rgba(201,146,44,.3)', background: 'rgba(201,146,44,.08)', color: 'rgba(255,255,255,.85)', fontSize: 14, fontFamily: "'DM Sans',sans-serif", width: '100%', opacity: mlsSyncing ? 0.7 : 1, transition: 'all .15s' }}>
               <span>{mlsSyncing ? '⏳' : '🏠'}</span>
               <span>{mlsSyncing ? 'Syncing MLS…' : '↻ Sync MLS Listings'}</span>
             </button>
