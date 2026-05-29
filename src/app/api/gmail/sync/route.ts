@@ -113,11 +113,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'userId, (dealId or clientId), clientEmail required' }, { status: 400 });
     }
 
-    const caller = await getCrmUser();
+    const caller = await getCrmUser(req);
     if (!caller) return unauthorized();
     // Admins can sync Gmail for any agent's contacts; non-admins can only sync their own
     if (caller.id !== userId) {
-      const adminUser = await getCrmAdmin();
+      const adminUser = await getCrmAdmin(req);
       if (!adminUser) return forbidden('Cannot access another user\'s Gmail connection');
     }
 
