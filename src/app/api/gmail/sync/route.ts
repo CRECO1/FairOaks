@@ -181,22 +181,16 @@ export async function POST(req: NextRequest) {
       const dateStr = get('Date');
       const body = extractBody(msgData.payload);
 
-      // Secondary guard: confirm this email actually involves the client directly
-      // (not just a CC, forwarded thread, etc.)
       const fromLower = from.toLowerCase();
       const toLower = to.toLowerCase();
+      const ccLower = get('Cc').toLowerCase();
       const clientLower = clientEmail.toLowerCase();
+
+      // Check if client appears anywhere in From, To, or Cc
       const clientInFrom = fromLower.includes(clientLower);
       const clientInTo = toLower.includes(clientLower);
-      if (!clientInFrom && !clientInTo) continue; // skip unrelated emails
-
-      // If we know the agent's email, double-check the other side of the thread too
-      if (agentEmail) {
-        const agentLower = agentEmail.toLowerCase();
-        const agentInFrom = fromLower.includes(agentLower);
-        const agentInTo = toLower.includes(agentLower);
-        if (!agentInFrom && !agentInTo) continue;
-      }
+      const clientInCc = ccLower.includes(clientLower);
+      if (!clientInFrom && !clientInTo && !clientInCc) continue;
 
       // email_date column is type 'date' — use YYYY-MM-DD only
       const emailDate = dateStr ? new Date(dateStr).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
