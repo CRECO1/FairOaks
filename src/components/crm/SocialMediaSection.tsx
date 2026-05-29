@@ -235,7 +235,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
   // Preview / Campaign
   const [rightPanelTab, setRightPanelTab] = useState<'preview' | 'queue'>('preview');
-  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [campaignImporting, setCampaignImporting] = useState(false);
 
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -291,6 +291,39 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       setAnalytics(data.analytics || []);
     } catch {
       // silent
+    }
+  }
+
+  async function importCampaignAsDrafts() {
+    setCampaignImporting(true);
+    try {
+      await Promise.all(
+        CAMPAIGN_POSTS.map(cp =>
+          fetch('/api/crm/social/posts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: cp.content,
+              platforms: [cp.platform],
+              connection_ids: [],
+              scheduled_at: null,
+              status: 'draft',
+              link_url: 'https://fairoaksrealtygroup.com',
+              hashtags: cp.hashtags.split(' ').filter(Boolean),
+              first_comment: '',
+              internal_notes: `New Office Campaign — ${cp.label}`,
+            }),
+          })
+        )
+      );
+      toast('📢 5 campaign posts saved to Drafts!');
+      setPostQueueTab('drafts');
+      setRightPanelTab('queue');
+      loadPosts();
+    } catch {
+      toast('Failed to import campaign');
+    } finally {
+      setCampaignImporting(false);
     }
   }
 
@@ -466,12 +499,21 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '16px 20px', marginBottom: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af' }}>Connected Accounts</div>
-              <button
-                onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
-                style={{ fontSize: 11, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
-              >
-                + Connect Account
-              </button>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <button
+                  onClick={importCampaignAsDrafts}
+                  disabled={campaignImporting}
+                  style={{ fontSize: 11, color: '#92400e', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px', cursor: campaignImporting ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                >
+                  {campaignImporting ? '⏳ Importing…' : '📢 Import Campaign'}
+                </button>
+                <button
+                  onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
+                  style={{ fontSize: 11, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                >
+                  + Connect Account
+                </button>
+              </div>
             </div>
             {connectionsLoading ? (
               <div style={{ fontSize: 12, color: '#9ca3af' }}>Loading...</div>
@@ -584,62 +626,6 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {composerPlatforms.includes('youtube') && (
                 <div style={{ fontSize: 11, color: '#d97706', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px', marginTop: 8 }}>
                   ⚠️ YouTube video upload is not yet supported — text posts only
-                </div>
-              )}
-            </div>
-
-            {/* Campaign Quick-Load */}
-            <div style={{ marginBottom: 16 }}>
-              <button
-                onClick={() => setCampaignOpen(!campaignOpen)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, width: '100%',
-                  padding: '9px 14px', borderRadius: 8,
-                  border: '1.5px solid #C9A84C60',
-                  background: campaignOpen ? '#fffbeb' : '#fefce8',
-                  cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#92400e',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <span>📢 New Office Campaign — 8000 Fair Oaks Pkwy</span>
-                <span style={{ fontSize: 10 }}>{campaignOpen ? '▲' : '▼'}</span>
-              </button>
-              {campaignOpen && (
-                <div style={{ marginTop: 8, padding: '12px', background: '#fffbeb', borderRadius: 10, border: '1px solid #fde68a', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ fontSize: 11, color: '#92400e', fontWeight: 600, marginBottom: 4 }}>
-                    Click any post to load it into the composer and preview it →
-                  </div>
-                  {CAMPAIGN_POSTS.map((cp, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        setComposerContent(cp.content);
-                        setComposerHashtags(cp.hashtags);
-                        setComposerPlatforms([cp.platform]);
-                        setRightPanelTab('preview');
-                        const d = new Date();
-                        d.setDate(d.getDate() + cp.scheduledDaysOut);
-                        d.setHours(9, 0, 0, 0);
-                        setComposerScheduledAt(d.toISOString().slice(0, 16));
-                      }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '9px 12px', borderRadius: 8,
-                        border: '1px solid #fde68a', background: '#fff',
-                        cursor: 'pointer', textAlign: 'left', width: '100%',
-                        transition: 'background .12s',
-                      }}
-                    >
-                      <span style={{ fontSize: 18, flexShrink: 0 }}>{cp.emoji}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e' }}>{cp.label}</div>
-                        <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {cp.content.slice(0, 60)}…
-                        </div>
-                      </div>
-                      <span style={{ marginLeft: 'auto', fontSize: 10, color: '#C9A84C', fontWeight: 700, flexShrink: 0 }}>Load →</span>
-                    </button>
-                  ))}
                 </div>
               )}
             </div>
