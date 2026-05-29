@@ -2278,11 +2278,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}>📋 &nbsp;All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
-          {DEAL_TYPES.map(t => (
-            <button key={t} className={`crm-nav${page === 'deals' && filter === t ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(t); }}>
-              {t === 'Buyer Purchase' ? '🏡' : t === 'Tenant Lease' ? '🔑' : t === 'Seller Listing' ? '🪧' : '🏢'} &nbsp;{t.split(' ')[0]}s
-            </button>
-          ))}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', color: 'rgba(255,255,255,.3)', padding: '0 8px', marginBottom: 6 }}>People</div>
