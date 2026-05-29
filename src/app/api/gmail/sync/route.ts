@@ -150,20 +150,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ synced: 0 });
     }
 
-    // Fetch already-synced Gmail message IDs for this deal/contact to avoid duplicates
+    // Fetch already-synced IDs for this deal/contact to avoid duplicates
+    // Check both gmail_message_id (per-account) and rfc_message_id (universal) so two
+    // agents syncing the same deal don't create duplicate entries for the same email.
     const scopeFilter = dealId ? `deal_id=eq.${dealId}` : `client_id=eq.${clientId}`;
     const existingRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scopeFilter}&select=gmail_message_id`,
+      `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scopeFilter}&select=gmail_message_id,rfc_message_id`,
       { headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` } }
     );
     const existing = await existingRes.json();
     const existingMsgIds = new Set(
       (existing || []).map((e: any) => e.gmail_message_id).filter(Boolean)
     );
+    const existingRfcIds = new Set(
+      (existing || []).map((e: any) => e.rfc_message_id).filter(Boolean)
+    );
 
     let synced = 0;
     for (const msg of listData.messages) {
       if (existingMsgIds.has(msg.id)) continue;
+      // rfc_message_id check happens after fetching headers below
 
       const msgRes = await fetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
@@ -179,7 +185,11 @@ export async function POST(req: NextRequest) {
       const to = get('To');
       const subject = get('Subject') || '(no subject)';
       const dateStr = get('Date');
+      const rfcMsgId = get('Message-ID') || null;
       const body = extractBody(msgData.payload);
+
+      // Skip if another agent already synced this exact email (same rfc_message_id)
+      if (rfcMsgId && existingRfcIds.has(rfcMsgId)) continue;
 
       const fromLower = from.toLowerCase();
       const toLower = to.toLowerCase();
