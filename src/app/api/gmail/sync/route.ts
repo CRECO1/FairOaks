@@ -126,10 +126,14 @@ export async function POST(req: NextRequest) {
 
     // Try the deal/contact owner's Gmail connection first; fall back to the caller's own
     let connection = await getValidConnection(userId, anonKey, serviceRoleKey);
-    if (!connection && caller.id !== userId) {
+    const triedFallback = !connection && caller.id !== userId;
+    if (triedFallback) {
       connection = await getValidConnection(caller.id, anonKey, serviceRoleKey);
     }
-    if (!connection) return NextResponse.json({ error: 'Gmail not connected' }, { status: 401 });
+    if (!connection) return NextResponse.json({
+      error: 'Gmail not connected',
+      debug: { userId, callerId: caller.id, triedFallback, hasAnonKey: !!anonKey, hasServiceKey: !!serviceRoleKey }
+    }, { status: 401 });
     const { accessToken, agentEmail } = connection;
 
     // Search Gmail for emails that are direct exchanges between this agent and the client.
