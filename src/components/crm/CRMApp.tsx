@@ -3242,7 +3242,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <col className="col-name" />
                       <col className="col-asset" />
                       <col className="col-source" />
-                      <col className="col-tags" />
                       <col className="col-email" />
                       <col className="col-phone" />
                       <col className="col-deals" />
@@ -3269,7 +3268,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <th>Contact</th>
                         <th>Asset Type</th>
                         <th>Source</th>
-                        <th>Tags</th>
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Deals</th>
@@ -3387,74 +3385,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {/* Lead Source */}
                             <td style={{ fontSize: 11, color: '#6b7280' }}>
                               {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 500 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
-                            </td>
-
-                            {/* Tags — inline editable, colorful */}
-                            <td onClick={e => e.stopPropagation()} style={{ position: 'relative' }}>
-                              {(() => {
-                                // Hash tag text to one of 8 palettes
-                                const TAG_PALETTES = [
-                                  { bg:'#dbeafe', color:'#1d4ed8' }, // blue
-                                  { bg:'#dcfce7', color:'#15803d' }, // green
-                                  { bg:'#fce7f3', color:'#9d174d' }, // pink
-                                  { bg:'#ede9fe', color:'#6d28d9' }, // purple
-                                  { bg:'#ffedd5', color:'#c2410c' }, // orange
-                                  { bg:'#cffafe', color:'#0e7490' }, // cyan
-                                  { bg:'#fef9c3', color:'#a16207' }, // yellow
-                                  { bg:'#f1f5f9', color:'#475569' }, // slate
-                                ];
-                                const tagPalette = (t: string) => TAG_PALETTES[t.split('').reduce((a,c) => a + c.charCodeAt(0), 0) % TAG_PALETTES.length];
-                                return (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center', maxWidth: 160 }}>
-                                    {(c.tags ?? []).map(tag => {
-                                      const p = tagPalette(tag);
-                                      return (
-                                        <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, background: p.bg, color: p.color, padding: '2px 6px 2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 600 }}>
-                                          {tag}
-                                          <button
-                                            onClick={e => { e.stopPropagation(); saveClientTags(c.id, (c.tags ?? []).filter(t => t !== tag)); }}
-                                            style={{ background: 'none', border: 'none', color: p.color, cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 0 0 1px', opacity: .6 }}
-                                            title="Remove tag"
-                                          >✕</button>
-                                        </span>
-                                      );
-                                    })}
-                                    {editTagsClientId === c.id ? (
-                                      <input
-                                        autoFocus
-                                        value={inlineTagInput}
-                                        onChange={e => setInlineTagInput(e.target.value)}
-                                        onKeyDown={e => {
-                                          if ((e.key === 'Enter' || e.key === ',') && inlineTagInput.trim()) {
-                                            e.preventDefault();
-                                            const tag = inlineTagInput.trim().replace(/,$/, '');
-                                            if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
-                                            setInlineTagInput('');
-                                            setEditTagsClientId(null);
-                                          }
-                                          if (e.key === 'Escape') { setEditTagsClientId(null); setInlineTagInput(''); }
-                                        }}
-                                        onBlur={() => {
-                                          if (inlineTagInput.trim()) {
-                                            const tag = inlineTagInput.trim();
-                                            if (!(c.tags ?? []).includes(tag)) saveClientTags(c.id, [...(c.tags ?? []), tag]);
-                                          }
-                                          setInlineTagInput('');
-                                          setEditTagsClientId(null);
-                                        }}
-                                        placeholder="tag…"
-                                        style={{ width: 80, fontSize: 10.5, border: '1px solid #c9922c', borderRadius: 20, padding: '2px 8px', outline: 'none', background: '#fffbf2', color: '#92400e' }}
-                                      />
-                                    ) : (
-                                      <button
-                                        onClick={e => { e.stopPropagation(); setEditTagsClientId(c.id); setInlineTagInput(''); }}
-                                        style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 20, padding: '2px 7px', fontSize: 10.5, color: '#9ca3af', cursor: 'pointer', lineHeight: 1.4 }}
-                                        title="Add tag"
-                                      >+</button>
-                                    )}
-                                  </div>
-                                );
-                              })()}
                             </td>
 
                             {/* Email */}
