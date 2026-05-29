@@ -14,7 +14,7 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
@@ -3323,8 +3323,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <button
                                     onClick={e => { e.stopPropagation(); setActiveClient(c); }}
                                     style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', maxWidth: '100%' }}>
-                                    <div style={{ fontWeight: 600, color: '#111', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      {c.first_name} {c.last_name}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <span style={{ fontWeight: 600, color: '#111', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {c.first_name} {c.last_name}
+                                      </span>
+                                      {c.is_shared && <span title="Team contact — visible to all agents" style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5, background: '#ede9fe', color: '#6d28d9', borderRadius: 6, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase' }}>Team</span>}
                                     </div>
                                     {c.business_name && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
                                   </button>
@@ -7972,6 +7975,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         });
                       })()}
                     </div>
+                  </div>
+                )}
+
+                {/* Team Contact Toggle — owner or admin only */}
+                {(isAdmin || c.agent_id === profile!.id) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: c.is_shared ? '#f5f3ff' : '#f9fafb', borderRadius: 8, border: `1px solid ${c.is_shared ? '#ddd6fe' : '#e5e7eb'}` }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>🏢 Team Contact</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Visible to all agents on the team — for shared brokers, landlords, and industry contacts.</div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const newVal = !c.is_shared;
+                        await supabase.from('crm_clients').update({ is_shared: newVal }).eq('id', c.id);
+                        setClients(prev => prev.map(x => x.id === c.id ? { ...x, is_shared: newVal } : x));
+                        setActiveClient(prev => prev && prev.id === c.id ? { ...prev, is_shared: newVal } : prev);
+                      }}
+                      style={{ position: 'relative', width: 40, height: 22, borderRadius: 11, border: 'none', background: c.is_shared ? '#7c3aed' : '#d1d5db', cursor: 'pointer', transition: 'background .2s', flexShrink: 0, padding: 0 }}
+                    >
+                      <span style={{ position: 'absolute', top: 3, left: c.is_shared ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' }} />
+                    </button>
                   </div>
                 )}
 
