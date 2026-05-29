@@ -3388,8 +3388,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </td>
 
 
-                            {/* Owner agent (admin only) */}
-                            {isAdmin && <td style={{ fontSize: 12, color: '#6b7280' }}>{agentName(c.agent_id)}</td>}
+                            {/* Owner agent (admin only) — click to reassign */}
+                            {isAdmin && (
+                              <td style={{ fontSize: 12 }} onClick={e => e.stopPropagation()}>
+                                <div style={{ position: 'relative', display: 'inline-block' }} title="Change owner">
+                                  <span style={{ display: 'inline-block', background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 8, fontSize: 11, fontWeight: 600, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+                                    {agentName(c.agent_id)}
+                                  </span>
+                                  <select
+                                    value={c.agent_id}
+                                    onChange={async e => {
+                                      const newOwnerId = e.target.value;
+                                      await supabase.from('crm_clients').update({ agent_id: newOwnerId }).eq('id', c.id);
+                                      setClients(prev => prev.map(x => x.id === c.id ? { ...x, agent_id: newOwnerId } : x));
+                                    }}
+                                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                                  >
+                                    {profiles.map(p => (
+                                      <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </td>
+                            )}
 
                             {/* Date added */}
                             {/* Last Contact */}
