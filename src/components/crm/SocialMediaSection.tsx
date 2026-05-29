@@ -95,6 +95,50 @@ const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; emoji: string; co
 
 const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'linkedin', 'twitter', 'youtube'];
 
+// ── New Office Campaign Posts ──────────────────────────────────────────────────
+const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlatform; content: string; hashtags: string; scheduledDaysOut: number }> = [
+  {
+    label: 'Post 1 — Teaser',
+    emoji: '👀',
+    platform: 'instagram',
+    scheduledDaysOut: 0,
+    content: `Something big is coming to Fair Oaks. 👀\n\nWe've been building something special for our clients, our agents, and our community — and we can't wait to share it with you.\n\nStay tuned. 🗝️`,
+    hashtags: '#FairOaksRealty #ComingSoon #FairOaks #RealEstateTexas #NewBeginnings',
+  },
+  {
+    label: 'Post 2 — Grand Announcement',
+    emoji: '🎉',
+    platform: 'instagram',
+    scheduledDaysOut: 3,
+    content: `🎉 WE'VE MOVED — and we love our new home.\n\nFair Oaks Realty Group has officially opened its doors at our brand-new location:\n\n📍 8000 Fair Oaks Pkwy\n\nThis move is more than a new address — it's a reflection of how far we've come and our commitment to serving you at the highest level. Bigger space. Better tools. Same team that's always had your back.\n\nCome see us. We'd love to have you stop by. 🤝`,
+    hashtags: '#FairOaksRealtyGroup #NewOffice #FairOaksPkwy #RealEstate #SanAntonio #GrandOpening #WeveMovedHome',
+  },
+  {
+    label: 'Post 3 — Inside Look',
+    emoji: '🏠',
+    platform: 'instagram',
+    scheduledDaysOut: 4,
+    content: `Take a look inside our new home. 🏠✨\n\nWe designed this space with one goal in mind — giving our clients and agents the best possible experience. Swipe to see where the magic happens. ➡️\n\nWhether you're buying, selling, or just curious about the market — our door is always open.\n\n📍 8000 Fair Oaks Pkwy\n🌐 fairoaksrealtygroup.com`,
+    hashtags: '#OfficeTour #FairOaksRealty #RealEstateLife #NewSpace #RealEstateAgents #FairOaksTexas',
+  },
+  {
+    label: 'Post 4 — Meet the Team',
+    emoji: '💛',
+    platform: 'instagram',
+    scheduledDaysOut: 5,
+    content: `The people make the place. 💛\n\nMeet the team behind Fair Oaks Realty Group — now settled into our new office at 8000 Fair Oaks Pkwy and ready to help you make your next move.\n\nBuying? Selling? Relocating? We've got an expert for every situation.\n\nDrop a 👋 in the comments and we'll make sure you're connected with the right agent.`,
+    hashtags: '#MeetTheTeam #FairOaksRealtyGroup #RealEstateAgents #FairOaks #NewOffice #YourRealtors',
+  },
+  {
+    label: 'Post 5 — Community CTA',
+    emoji: '🏡',
+    platform: 'instagram',
+    scheduledDaysOut: 7,
+    content: `Home isn't just where you live — it's where you belong. 🏡\n\nAt Fair Oaks Realty Group, we've planted our roots right here in the community we love. Our new office at 8000 Fair Oaks Pkwy is our home base, but your dream home is what drives us.\n\nIf you're thinking about buying or selling in 2025 — let's talk. No pressure, just a conversation.\n\n🔗 Link in bio to connect with an agent.`,
+    hashtags: '#FairOaksRealty #DreamHome #TexasRealEstate #BuyingAHome #SellingYourHome #FairOaksCommunity #RealEstateTips',
+  },
+];
+
 function platformEmoji(p: SocialPlatform) { return PLATFORM_CONFIG[p].emoji; }
 function platformColor(p: SocialPlatform) { return PLATFORM_CONFIG[p].color; }
 function platformLabel(p: SocialPlatform) { return PLATFORM_CONFIG[p].label; }
@@ -188,6 +232,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   // Calendar
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<'month' | 'week'>('month');
+
+  // Preview / Campaign
+  const [rightPanelTab, setRightPanelTab] = useState<'preview' | 'queue'>('preview');
+  const [campaignOpen, setCampaignOpen] = useState(false);
 
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -419,7 +467,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af' }}>Connected Accounts</div>
               <button
-                onClick={() => window.open('/api/auth/social/connect', '_blank')}
+                onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
                 style={{ fontSize: 11, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
               >
                 + Connect Account
@@ -432,7 +480,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 {ALL_PLATFORMS.map(p => (
                   <button
                     key={p}
-                    onClick={() => window.open(`/api/auth/social/${p}/connect`, '_blank')}
+                    onClick={() => window.open(`/api/auth/social/${p === 'instagram' ? 'facebook' : p}?userId=${agentId}`, '_blank')}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
                       padding: '7px 12px', borderRadius: 8,
@@ -477,7 +525,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                   return (
                     <button
                       key={p}
-                      onClick={() => window.open(`/api/auth/social/${p}/connect`, '_blank')}
+                      onClick={() => window.open(`/api/auth/social/${p === 'instagram' ? 'facebook' : p}?userId=${agentId}`, '_blank')}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 6,
                         padding: '7px 12px', borderRadius: 8,
@@ -536,6 +584,62 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {composerPlatforms.includes('youtube') && (
                 <div style={{ fontSize: 11, color: '#d97706', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px', marginTop: 8 }}>
                   ⚠️ YouTube video upload is not yet supported — text posts only
+                </div>
+              )}
+            </div>
+
+            {/* Campaign Quick-Load */}
+            <div style={{ marginBottom: 16 }}>
+              <button
+                onClick={() => setCampaignOpen(!campaignOpen)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                  padding: '9px 14px', borderRadius: 8,
+                  border: '1.5px solid #C9A84C60',
+                  background: campaignOpen ? '#fffbeb' : '#fefce8',
+                  cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#92400e',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>📢 New Office Campaign — 8000 Fair Oaks Pkwy</span>
+                <span style={{ fontSize: 10 }}>{campaignOpen ? '▲' : '▼'}</span>
+              </button>
+              {campaignOpen && (
+                <div style={{ marginTop: 8, padding: '12px', background: '#fffbeb', borderRadius: 10, border: '1px solid #fde68a', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: 11, color: '#92400e', fontWeight: 600, marginBottom: 4 }}>
+                    Click any post to load it into the composer and preview it →
+                  </div>
+                  {CAMPAIGN_POSTS.map((cp, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setComposerContent(cp.content);
+                        setComposerHashtags(cp.hashtags);
+                        setComposerPlatforms([cp.platform]);
+                        setRightPanelTab('preview');
+                        const d = new Date();
+                        d.setDate(d.getDate() + cp.scheduledDaysOut);
+                        d.setHours(9, 0, 0, 0);
+                        setComposerScheduledAt(d.toISOString().slice(0, 16));
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '9px 12px', borderRadius: 8,
+                        border: '1px solid #fde68a', background: '#fff',
+                        cursor: 'pointer', textAlign: 'left', width: '100%',
+                        transition: 'background .12s',
+                      }}
+                    >
+                      <span style={{ fontSize: 18, flexShrink: 0 }}>{cp.emoji}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e' }}>{cp.label}</div>
+                        <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {cp.content.slice(0, 60)}…
+                        </div>
+                      </div>
+                      <span style={{ marginLeft: 'auto', fontSize: 10, color: '#C9A84C', fontWeight: 700, flexShrink: 0 }}>Load →</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -818,9 +922,139 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
         </div>
 
-        {/* ── Right: Post Queue ── */}
+        {/* ── Right: Preview / Post Queue ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+            {/* Top-level tab: Preview vs Queue */}
+            <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
+              {(['preview', 'queue'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setRightPanelTab(t)}
+                  style={{
+                    flex: 1, padding: '12px 8px', border: 'none',
+                    borderBottom: `2px solid ${rightPanelTab === t ? '#E1306C' : 'transparent'}`,
+                    background: 'none', fontSize: 12, fontWeight: 700,
+                    color: rightPanelTab === t ? '#E1306C' : '#9ca3af',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {t === 'preview' ? '👁 Live Preview' : '📋 Post Queue'}
+                </button>
+              ))}
+            </div>
+
+            {/* Instagram Live Preview */}
+            {rightPanelTab === 'preview' && (
+              <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f9fafb', minHeight: 400 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 16 }}>
+                  📸 Instagram Preview
+                </div>
+                {/* Phone frame */}
+                <div style={{
+                  width: 340, background: '#fff', borderRadius: 16,
+                  border: '1px solid #dbdbdb', boxShadow: '0 4px 20px rgba(0,0,0,.08)',
+                  overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                }}>
+                  {/* IG Post Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', gap: 10 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0,
+                    }}>
+                      FO
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
+                      <div style={{ fontSize: 11, color: '#8e8e8e' }}>
+                        {composerScheduledAt
+                          ? new Date(composerScheduledAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                          : 'Scheduled'}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 18, color: '#000', cursor: 'pointer' }}>···</span>
+                  </div>
+
+                  {/* Media placeholder */}
+                  {composerMediaUrls.length > 0 ? (
+                    <img
+                      src={composerMediaUrls[0]}
+                      alt="post media"
+                      style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: '100%', aspectRatio: '1 / 1',
+                      background: 'linear-gradient(135deg, #1a1a2e 0%, #C9A84C 100%)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      gap: 8,
+                    }}>
+                      <div style={{ fontSize: 36 }}>🏡</div>
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Fair Oaks Realty Group</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Add a photo above ↑</div>
+                    </div>
+                  )}
+
+                  {/* Action bar */}
+                  <div style={{ padding: '10px 12px 4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', gap: 14 }}>
+                        <span style={{ fontSize: 22, cursor: 'pointer' }}>🤍</span>
+                        <span style={{ fontSize: 22, cursor: 'pointer' }}>💬</span>
+                        <span style={{ fontSize: 22, cursor: 'pointer' }}>📤</span>
+                      </div>
+                      <span style={{ fontSize: 22, cursor: 'pointer' }}>🔖</span>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#000', marginBottom: 6 }}>243 likes</div>
+
+                    {/* Caption */}
+                    <div style={{ fontSize: 13, color: '#000', lineHeight: 1.5, marginBottom: 6 }}>
+                      <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
+                      {composerContent ? (
+                        <span style={{ whiteSpace: 'pre-wrap' }}>
+                          {composerContent.split('\n').map((line, li) => (
+                            <span key={li}>
+                              {line.split(' ').map((word, wi) => (
+                                <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? '#00376b' : 'inherit' }}>
+                                  {word}{' '}
+                                </span>
+                              ))}
+                              {li < composerContent.split('\n').length - 1 && <br />}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span style={{ color: '#8e8e8e' }}>Your caption will appear here…</span>
+                      )}
+                    </div>
+
+                    {/* Hashtags */}
+                    {composerHashtags && (
+                      <div style={{ fontSize: 13, color: '#00376b', marginBottom: 6, lineHeight: 1.5 }}>
+                        {composerHashtags}
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 11, color: '#8e8e8e', marginBottom: 8 }}>View all 12 comments</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #efefef', paddingTop: 8 }}>
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)', flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: '#8e8e8e', flex: 1 }}>Add a comment…</span>
+                      <span style={{ fontSize: 12, color: '#0095f6', fontWeight: 700 }}>Post</span>
+                    </div>
+                  </div>
+                </div>
+                {!composerContent && (
+                  <div style={{ marginTop: 14, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+                    ← Load a campaign post or write your caption to see the preview
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Post Queue */}
+            {rightPanelTab === 'queue' && (<>
             <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0' }}>
               {(['scheduled', 'drafts', 'published', 'failed'] as const).map(tab => (
                 <button
@@ -925,6 +1159,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 </div>
               )}
             </div>
+            </>)}
           </div>
         </div>
       </div>
