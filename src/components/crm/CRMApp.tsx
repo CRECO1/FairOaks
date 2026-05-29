@@ -3244,7 +3244,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <col className="col-phone" />
                       <col className="col-deals" />
                       {isAdmin && <col className="col-owner" />}
-                      <col className="col-added" />
                       <col className="col-touch" />
                       <col className="col-source" />
                       <col className="col-actions" />
@@ -3269,7 +3268,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <th>Phone</th>
                         <th>Deals</th>
                         {isAdmin && <th>Owner</th>}
-                        <th>Added</th>
                         <th>Last Touch</th>
                         <th>Source</th>
                         <th style={{ width: 90 }}></th>
@@ -3394,8 +3392,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {isAdmin && <td style={{ fontSize: 12, color: '#6b7280' }}>{agentName(c.agent_id)}</td>}
 
                             {/* Date added */}
-                            <td style={{ fontSize: 11, color: '#9ca3af' }}>{c.created_at?.slice(0, 10)}</td>
-
                             {/* Last Contact */}
                             <td>
                               {(() => {
