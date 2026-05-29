@@ -137,8 +137,6 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
   handleDrop: (stage: string) => void; openDeal: (deal: Deal) => void;
   isMobile: boolean;
 }) {
-  const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
-
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -386,7 +384,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const docFileRef = useRef<HTMLInputElement>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
-  const [tagClientId, setTagClientId] = useState<string | null>(null);
   const [editTagsClientId, setEditTagsClientId] = useState<string | null>(null);
   const [inlineTagInput, setInlineTagInput] = useState('');
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
@@ -414,7 +411,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [gmailConnected, setGmailConnected] = useState(false);
   const [showGmailInput, setShowGmailInput] = useState(false);
   const [gmailInputValue, setGmailInputValue] = useState('');
-  const [gmailEmail, setGmailEmail] = useState('');
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [mlsSyncing, setMlsSyncing] = useState(false);
@@ -718,7 +714,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .then(d => {
         if (d.connected) {
           setGmailConnected(true);
-          setGmailEmail(d.email);
           setGmailAccounts(d.accounts ?? []);
           // Fetch & save Gmail signature in the background
           fetch(`/api/gmail/signature?userId=${session.user.id}`)
@@ -740,7 +735,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .then(d => {
           if (d.connected) {
             setGmailConnected(true);
-            setGmailEmail(d.email);
             setGmailAccounts(d.accounts ?? []);
             const msg = connectedAccount
               ? `✓ ${connectedAccount} connected`
@@ -1596,8 +1590,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     });
     const updated = gmailAccounts.filter(a => a.id !== connectionId);
     setGmailAccounts(updated);
-    if (updated.length === 0) { setGmailConnected(false); setGmailEmail(''); }
-    else setGmailEmail(updated[0].email);
+    if (updated.length === 0) setGmailConnected(false);
     showToast('Account disconnected');
   }
 
@@ -2615,7 +2608,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>}
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setTagClientId(null); setAssetDropdownOpen(null); }}>
+        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
@@ -3293,9 +3286,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
                         const taggedAgents = (c.assigned_agent_ids ?? []).map(aid => profiles.find(p => p.id === aid)).filter(Boolean) as Profile[];
                         const canTag = isAdmin || c.agent_id === profile!.id;
-                        const isTagPickerOpen = tagClientId === c.id;
-                        // Agents available to tag (exclude creator and already tagged)
-                        const taggableAgents = profiles.filter(p => p.id !== c.agent_id && p.id !== profile!.id || isAdmin);
 
                         // Avatar gradient based on first letter
                         const avatarColors: Record<string, string> = {
