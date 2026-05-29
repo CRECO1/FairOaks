@@ -64,11 +64,6 @@ async function getAllConnections(userId: string, anonKey: string, serviceRoleKey
   return results.filter((r): r is { accessToken: string; agentEmail: string | null } => r !== null);
 }
 
-async function getValidConnection(userId: string, anonKey: string, serviceRoleKey: string): Promise<{ accessToken: string; agentEmail: string | null } | null> {
-  const all = await getAllConnections(userId, anonKey, serviceRoleKey);
-  return all[0] ?? null;
-}
-
 function decodeBase64(encoded: string): string {
   return Buffer.from(encoded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
 }
