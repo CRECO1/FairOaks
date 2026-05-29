@@ -12,7 +12,7 @@ interface GmailConnection {
 
 async function getValidConnection(userId: string, anonKey: string, serviceRoleKey: string): Promise<{ accessToken: string; agentEmail: string | null } | null> {
   // Fetch stored tokens
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&order=created_at.desc&limit=1`, {
     headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
   });
   const rows: GmailConnection[] = await res.json();
