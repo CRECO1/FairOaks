@@ -106,6 +106,30 @@ function extractBody(payload: any): string {
   return '';
 }
 
+function cleanBody(raw: string): string {
+  const lines = raw.split('\n');
+  const result: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    // Stop at quoted reply blocks
+    if (t.startsWith('>')) continue;
+    // Stop at "On [date] ... wrote:" reply markers
+    if (/^On .{5,120} wrote:$/.test(t)) break;
+    // Stop at dividers that typically precede signatures/footers
+    if (/^[-_]{3,}/.test(t)) break;
+    // Stop at confidentiality/legal disclaimers
+    if (/^CONFIDENTIALITY NOTICE/i.test(t)) break;
+    if (/^This (e-?mail|message) (message |communication )?(is intended|may contain)/i.test(t)) break;
+    // Stop at common signature starters
+    if (/^(Thanks,?|Thank you,?|Best,?|Regards,?|Sincerely,?|Cheers,?)$/i.test(t)) {
+      result.push(line); // keep the sign-off line
+      break;
+    }
+    result.push(line);
+  }
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId, dealId, clientId, clientEmail } = await req.json();
@@ -222,7 +246,7 @@ export async function POST(req: NextRequest) {
           from_email: from,
           to_email: to,
           subject,
-          body: body.slice(0, 4000),
+          body: cleanBody(body).slice(0, 4000),
           email_date: emailDate,
           gmail_thread_id: msgData.threadId ?? null,
           rfc_message_id: get('Message-ID') || null,
