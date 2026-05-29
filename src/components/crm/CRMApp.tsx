@@ -4097,7 +4097,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
-                            <input className="crm-input" style={{ marginTop: 3 }} type="tel" placeholder="(210) 555-0000" value={editAgentForm.phone} onChange={e => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} />
+                            <input className="crm-input" style={{ marginTop: 3 }} type="tel" placeholder="210-555-0000" value={editAgentForm.phone} onChange={e => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} />
                           </div>
                           <div>
                             <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>License #</label>
@@ -5041,7 +5041,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 .replace(/\{\{last_name\}\}/g, 'Smith')
                                 .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                                 .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
                                 .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                                 || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No SMS body set.</span>}
                             </div>
@@ -5087,7 +5087,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     .replace(/\{\{client_type\}\}/g, 'Buyer')
                                     .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
                                     .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
                                     .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                                     .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
                                   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${body}</body></html>`;
@@ -5725,7 +5725,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       .replace(/\{\{client_type\}\}/g, 'Tenant')
                       .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
                       .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                      .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                      .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
                       .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                       .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
 
@@ -5936,7 +5936,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               .replaceAll('{{client_type}}', 'Buyer')
                               .replaceAll('{{agent_name}}', 'Zachary Stovall')
                               .replaceAll('{{agent_email}}', 'info@fairoaksrealtygroup.com')
-                              .replaceAll('{{agent_phone}}', '(210) 390-9997')
+                              .replaceAll('{{agent_phone}}', '210-390-9997')
                               .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
                               .replaceAll('{{unsubscribe_url}}', '#');
                             return (
@@ -6985,11 +6985,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div>
                     <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="(210) 555-0000" value={nc.phone} onChange={e => setNc({ ...nc, phone: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="210-555-0000" value={nc.phone} onChange={e => setNc({ ...nc, phone: e.target.value })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cell Phone</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="(210) 555-0001" value={nc.cell_phone} onChange={e => setNc({ ...nc, cell_phone: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="210-555-0001" value={nc.cell_phone} onChange={e => setNc({ ...nc, cell_phone: e.target.value })} />
                   </div>
                 </div>
               </div>
@@ -8361,7 +8361,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   .replace(/\{\{client_type\}\}/g, 'Buyer')
                   .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`)
                   .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '(210) 390-9997')
+                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
                   .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                   .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview'))
               }}

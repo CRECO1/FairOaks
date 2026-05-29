@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   const agentFirst = profile.first_name ?? 'Agent';
   const agentLast  = profile.last_name ?? '';
   const agentEmail = isCommercial ? 'info@crecotx.com' : (profile.email ?? user.email ?? '');
-  const agentPhone = isCommercial ? '(210) 817-3443' : (profile.phone ?? '(210) 390-9997');
+  const agentPhone = isCommercial ? '210-817-3443' : (profile.phone ?? '210-390-9997');
 
   const renderedSubject = applyMergeFields(subject ?? '(no subject)', agentFirst, agentLast, agentEmail, agentPhone);
   let renderedBody      = applyMergeFields(body ?? '', agentFirst, agentLast, agentEmail, agentPhone);

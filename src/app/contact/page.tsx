@@ -87,7 +87,7 @@ export default function ContactPage() {
                     <div>
                       <p className="font-semibold text-primary">Phone</p>
                       <a href="tel:+12103909997" onClick={() => trackPhoneClick('contact_page')} className="text-body-sm text-foreground-muted hover:text-gold transition-colors">
-                        (210) 390-9997
+                        210-390-9997
                       </a>
                     </div>
                   </div>
@@ -173,7 +173,7 @@ export default function ContactPage() {
                           </div>
                           <div>
                             <label className="label-readable">Phone</label>
-                            <input name="phone" type="tel" placeholder="(210) 555-0000" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
+                            <input name="phone" type="tel" placeholder="210-555-0000" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                           </div>
                         </div>
                         <div>

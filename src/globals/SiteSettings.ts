@@ -14,7 +14,7 @@ export const SiteSettings: GlobalConfig = {
     {
       name: 'phone',
       type: 'text',
-      defaultValue: '(210) 390-9997',
+      defaultValue: '210-390-9997',
     },
     {
       name: 'email',

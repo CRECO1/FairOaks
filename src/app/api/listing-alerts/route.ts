@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
             <a href="https://www.fairoaksrealtygroup.com/listings" style="display: inline-block; background: #1a1a2e; color: #fff; text-decoration: none; border-radius: 8px; padding: 12px 24px; font-weight: 600; font-size: 15px;">Browse Current Listings</a>
             <p style="margin-top: 40px; font-size: 13px; color: #999;">
               Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015<br />
-              <a href="tel:+12103909997" style="color: #c9a84c;">(210) 390-9997</a>
+              <a href="tel:+12103909997" style="color: #c9a84c;">210-390-9997</a>
             </p>
           </div>`,
       }).catch(e => console.error('Resend confirmation error:', e));

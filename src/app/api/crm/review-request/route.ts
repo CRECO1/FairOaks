@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
             Warmly,<br/>
             <strong style="color:#1a1a2e">${esc(agentName)}</strong><br/>
             Fair Oaks Realty Group<br/>
-            <a href="tel:+12103909997" style="color:#c9922c;text-decoration:none">(210) 390-9997</a>
+            <a href="tel:+12103909997" style="color:#c9922c;text-decoration:none">210-390-9997</a>
           </p>
         </div>
 

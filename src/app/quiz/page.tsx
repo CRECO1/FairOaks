@@ -208,7 +208,7 @@ export default function QuizPage() {
                 </div>
                 <div>
                   <label className="label-readable">Phone (optional)</label>
-                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(210) 555-0000" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
+                  <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="210-555-0000" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                 </div>
                 <p className="text-caption text-foreground-muted">
                   By submitting, you agree to be contacted by Fair Oaks Realty Group. We never share your information.

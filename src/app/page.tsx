@@ -104,7 +104,7 @@ const DEFAULT_SETTINGS = {
   about_text: 'We\'ve been helping families call the Texas Hill Country home for over 20 years. Our deep roots in Fair Oaks Ranch give you an insider advantage.',
   cta_headline: 'Not sure where to start?',
   cta_subheadline: 'Take our 2-minute quiz and we\'ll match you with your perfect neighborhood.',
-  phone: '(210) 390-9997',
+  phone: '210-390-9997',
   email: 'info@fairoaksrealtygroup.com',
   address: '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015',
 };

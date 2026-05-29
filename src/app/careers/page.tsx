@@ -95,7 +95,7 @@ export default function CareersPage() {
       setSubmitted(true);
       trackLead({ form_type: 'agent_apply' });
     } catch {
-      setError('Something went wrong. Please try again or call (210) 390-9997.');
+      setError('Something went wrong. Please try again or call 210-390-9997.');
     } finally {
       setLoading(false);
     }
@@ -357,7 +357,7 @@ export default function CareersPage() {
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                       <div>
                         <label className="label-readable">Phone *</label>
-                        <input name="phone" type="tel" required placeholder="(210) 555-0000"
+                        <input name="phone" type="tel" required placeholder="210-555-0000"
                           className="w-full rounded-lg border border-border bg-white px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                       </div>
                       <div>

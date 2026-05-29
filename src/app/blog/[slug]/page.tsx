@@ -392,7 +392,7 @@ export default async function BlogPostPage({ params }: Props) {
                     <p className="text-caption text-foreground-muted mb-2">Or call us directly</p>
                     <a href="tel:+12103909997"
                       className="inline-flex items-center gap-2 font-semibold text-primary hover:text-gold transition-colors">
-                      <Phone className="h-4 w-4" /> (210) 390-9997
+                      <Phone className="h-4 w-4" /> 210-390-9997
                     </a>
                   </div>
                 </div>

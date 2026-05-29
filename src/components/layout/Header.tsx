@@ -23,7 +23,7 @@ interface HeaderProps {
   phone?: string;
 }
 
-export function Header({ variant = 'default', phone = '(210) 390-9997' }: HeaderProps) {
+export function Header({ variant = 'default', phone = '210-390-9997' }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isScrolled, setIsScrolled] = React.useState(false);
   const pathname = usePathname();

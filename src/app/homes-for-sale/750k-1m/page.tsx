@@ -407,7 +407,7 @@ export default function From750kTo1mPage() {
                       href="tel:+12103909997"
                       className="flex items-center justify-center gap-2 text-body-sm font-semibold text-primary hover:text-gold transition-colors"
                     >
-                      <Phone className="h-4 w-4" /> (210) 390-9997
+                      <Phone className="h-4 w-4" /> 210-390-9997
                     </a>
                   </div>
                 </div>

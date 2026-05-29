@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
           <div style="font-family:sans-serif;max-width:600px">
             <h2 style="color:#1a1a2e">Hi ${esc(name)},</h2>
             <p>Thanks for completing our Home Finder Quiz! Based on your answers, one of our local experts will reach out within 24 hours with personalized home recommendations matched to your criteria.</p>
-            <p>Want to connect sooner? Call us at <a href="tel:+12103909997">(210) 390-9997</a>.</p>
+            <p>Want to connect sooner? Call us at <a href="tel:+12103909997">210-390-9997</a>.</p>
             <br/>
             <p>— The Fair Oaks Realty Group Team</p>
           </div>

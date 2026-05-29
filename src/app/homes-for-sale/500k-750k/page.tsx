@@ -167,7 +167,7 @@ export default function From500kTo750kPage() {
                   <Link href="/listings?minPrice=500000&maxPrice=750000">Browse $500K–$750K Homes</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />(210) 390-9997</a>
+                  <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
                 </Button>
               </div>
             </div>
@@ -339,7 +339,7 @@ export default function From500kTo750kPage() {
                       href="tel:+12103909997"
                       className="flex items-center justify-center gap-2 text-body-sm font-semibold text-primary hover:text-gold transition-colors"
                     >
-                      <Phone className="h-4 w-4" /> (210) 390-9997
+                      <Phone className="h-4 w-4" /> 210-390-9997
                     </a>
                   </div>
                 </div>
