@@ -190,7 +190,7 @@ export default function NorthsideIsdPage() {
                   <Link href="/listings?district=northside-isd">Browse Northside ISD Homes</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />(210) 390-9997</a>
+                  <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
                 </Button>
               </div>
             </div>
@@ -308,7 +308,7 @@ export default function NorthsideIsdPage() {
                       href="tel:+12103909997"
                       className="flex items-center justify-center gap-2 text-body-sm font-semibold text-primary hover:text-[#C9A84C] transition-colors"
                     >
-                      <Phone className="h-4 w-4" /> (210) 390-9997
+                      <Phone className="h-4 w-4" /> 210-390-9997
                     </a>
                   </div>
                   <div className="mt-5 border-t border-border pt-5">

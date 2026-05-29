@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
                 Thank you for applying to join <strong>Fair Oaks Realty Group</strong>! We've received your application and a member of our leadership team will be in touch with you within <strong>1 business day</strong>.
               </p>
               <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6">
-                In the meantime, feel free to learn more about our team at <a href="https://fairoaksrealtygroup.com/team" style="color:#d4a843">fairoaksrealtygroup.com/team</a> or give us a call at <a href="tel:+12103909997" style="color:#d4a843">(210) 390-9997</a>.
+                In the meantime, feel free to learn more about our team at <a href="https://fairoaksrealtygroup.com/team" style="color:#d4a843">fairoaksrealtygroup.com/team</a> or give us a call at <a href="tel:+12103909997" style="color:#d4a843">210-390-9997</a>.
               </p>
               <p style="margin:0;font-size:15px;color:#444">We look forward to speaking with you!</p>
               <br/>

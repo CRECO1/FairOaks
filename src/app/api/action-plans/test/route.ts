@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const BASE_URL = 'https://www.fairoaksrealtygroup.com';
   const isCommercial = plan.business_unit === 'commercial';
   const agentEmail = isCommercial ? 'info@crecotx.com' : (agent.email || 'info@fairoaksrealtygroup.com');
-  const agentPhone = isCommercial ? '(210) 817-3443' : (agent.phone || '(210) 390-9997');
+  const agentPhone = isCommercial ? '210-817-3443' : (agent.phone || '210-390-9997');
   const brokerage  = isCommercial ? 'CRECO Commercial Real Estate Company' : 'Fair Oaks Realty Group';
   const fromAddr   = isCommercial ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
 

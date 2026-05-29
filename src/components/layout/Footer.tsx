@@ -22,7 +22,7 @@ const footerLinks = {
 };
 
 const DEFAULTS = {
-  phone: '(210) 390-9997',
+  phone: '210-390-9997',
   email: 'info@fairoaksrealtygroup.com',
   address: '8000 Fair Oaks Pkwy Suite 102\nFair Oaks Ranch, TX 78015',
 };

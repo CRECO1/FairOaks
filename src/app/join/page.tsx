@@ -81,7 +81,7 @@ export default function JoinPage() {
       setSubmitted(true);
       trackLead({ form_type: 'agent_apply' });
     } catch {
-      setError('Something went wrong. Please try again or call us at (210) 390-9997.');
+      setError('Something went wrong. Please try again or call us at 210-390-9997.');
     } finally {
       setLoading(false);
     }
@@ -111,7 +111,7 @@ export default function JoinPage() {
               </a>
               <a href="tel:+12103909997" onClick={() => trackPhoneClick('join_page')}
                 className="inline-flex items-center gap-2 rounded-lg border border-white/30 px-6 py-3 font-semibold text-white transition-colors hover:border-gold hover:text-gold">
-                Call (210) 390-9997
+                Call 210-390-9997
               </a>
             </div>
           </Container>
@@ -190,7 +190,7 @@ export default function JoinPage() {
                       <div>
                         <label className="label-readable">Phone *</label>
                         <input
-                          name="phone" type="tel" required placeholder="(210) 555-0000"
+                          name="phone" type="tel" required placeholder="210-555-0000"
                           className="w-full rounded-lg border border-border bg-white px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold"
                         />
                       </div>

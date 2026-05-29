@@ -435,7 +435,7 @@ export default function LuxuryHomesPage() {
                 </Button>
                 <Button size="lg" variant="outline" fullWidth className="mt-3" asChild>
                   <a href="tel:+12103909997">
-                    <Phone className="mr-2 h-4 w-4" />(210) 390-9997
+                    <Phone className="mr-2 h-4 w-4" />210-390-9997
                   </a>
                 </Button>
               </div>

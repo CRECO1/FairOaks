@@ -231,7 +231,7 @@ export default function RelocationPage() {
                   <Link href="/contact?service=relocation">Schedule a Relocation Consultation</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />(210) 390-9997</a>
+                  <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
                 </Button>
               </div>
             </div>
@@ -716,7 +716,7 @@ export default function RelocationPage() {
               </div>
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-6 text-body-sm text-white/50">
                 <a href="tel:+12103909997" className="flex items-center gap-2 hover:text-white transition-colors">
-                  <Phone className="h-4 w-4" /> (210) 390-9997
+                  <Phone className="h-4 w-4" /> 210-390-9997
                 </a>
                 <span className="hidden sm:block">|</span>
                 <Link href="/schools" className="flex items-center gap-2 hover:text-white transition-colors">

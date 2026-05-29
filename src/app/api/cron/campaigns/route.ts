@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
       : agentMap[client.agent_id];
     const isCommercialCampaign = campaign.business_unit === 'commercial';
     const fallbackAgentEmail = isCommercialCampaign ? 'info@crecotx.com' : 'info@fairoaksrealtygroup.com';
-    const fallbackAgentPhone = isCommercialCampaign ? '(210) 817-3443' : '(210) 390-9997';
+    const fallbackAgentPhone = isCommercialCampaign ? '210-817-3443' : '210-390-9997';
     const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
     const brokerageName = isCommercialCampaign ? 'CRECO' : 'Fair Oaks Realty Group';
 

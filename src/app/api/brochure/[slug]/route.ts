@@ -26,7 +26,7 @@ export async function GET(
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(150);
-    doc.text('(210) 390-9997 | info@fairoaksrealtygroup.com', 20, 32);
+    doc.text('210-390-9997 | info@fairoaksrealtygroup.com', 20, 32);
     doc.setTextColor(0);
 
     // Divider

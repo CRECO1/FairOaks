@@ -30,7 +30,7 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || '(210) 817-3443')
+    .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
     .replaceAll('{{brokerage}}', 'CRECO Commercial Real Estate Company')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
@@ -103,11 +103,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .single();
 
   const isCommercial = plan.business_unit === 'commercial';
-  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '(210) 390-9997' };
+  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '210-390-9997' };
   // For commercial plans always use CRECO contact info regardless of agent profile values
   if (isCommercial) {
     agentCtx.email = 'info@crecotx.com';
-    agentCtx.phone = '(210) 817-3443';
+    agentCtx.phone = '210-817-3443';
   }
 
   // Fetch step 1

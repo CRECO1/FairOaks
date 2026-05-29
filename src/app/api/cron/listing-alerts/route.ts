@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
               You&rsquo;re receiving this because you saved a search on fairoaksrealtygroup.com.<br />
               To unsubscribe, reply to this email with &ldquo;unsubscribe&rdquo;.<br /><br />
               Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015 ·
-              <a href="tel:+12103909997" style="color: #c9a84c;">(210) 390-9997</a>
+              <a href="tel:+12103909997" style="color: #c9a84c;">210-390-9997</a>
             </p>
           </div>`,
       });

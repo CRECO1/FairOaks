@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
             <h2 style="color:#1a1a2e">Hi ${esc(name)},</h2>
             <p>Thank you for reaching out to <strong>Fair Oaks Realty Group</strong>!</p>
             <p>A member of our team will be in touch within 1 business day.</p>
-            <p>In the meantime, feel free to browse our latest listings or call us directly at <a href="tel:+12103909997">(210) 390-9997</a>.</p>
+            <p>In the meantime, feel free to browse our latest listings or call us directly at <a href="tel:+12103909997">210-390-9997</a>.</p>
             <br/>
             <p>— The Fair Oaks Realty Group Team</p>
           </div>

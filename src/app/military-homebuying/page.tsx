@@ -205,7 +205,7 @@ export default function MilitaryHomebuyingPage() {
                     <Link href="/contact?service=military">Schedule a Free VA Consultation</Link>
                   </Button>
                   <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                    <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />(210) 390-9997</a>
+                    <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
                   </Button>
                 </div>
               </div>
@@ -433,7 +433,7 @@ export default function MilitaryHomebuyingPage() {
                   href="tel:+12103909997"
                   className="inline-flex items-center gap-2 rounded-lg border border-white/30 px-8 py-3.5 text-body font-semibold text-white hover:bg-white/10 transition-colors"
                 >
-                  <Phone className="h-4 w-4" />(210) 390-9997
+                  <Phone className="h-4 w-4" />210-390-9997
                 </a>
               </div>
             </div>

@@ -365,7 +365,7 @@ export default async function ListingDetailPage({ params }: Props) {
                   <PhoneLink location="listing_detail">
                     <span className="inline-flex items-center gap-2 font-semibold text-primary hover:text-gold transition-colors">
                       <Phone className="h-5 w-5" />
-                      (210) 390-9997
+                      210-390-9997
                     </span>
                   </PhoneLink>
                 </div>
