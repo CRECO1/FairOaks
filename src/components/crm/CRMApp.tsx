@@ -130,12 +130,12 @@ const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> 
   'Lost':        { bg: '#fef2f2', border: '#fecaca', dot: '#ef4444' },
 };
 
-function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal, isMobile }: {
+function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, setDraggedDealId, setDragOverStage, handleDrop, openDeal, isMobile, onAddDeal }: {
   deals: Deal[]; isAdmin: boolean; agentName: (id: string) => string;
   draggedDealId: string | null; dragOverStage: string | null;
   setDraggedDealId: (id: string | null) => void; setDragOverStage: (s: string | null) => void;
   handleDrop: (stage: string) => void; openDeal: (deal: Deal) => void;
-  isMobile: boolean;
+  isMobile: boolean; onAddDeal?: () => void;
 }) {
   if (isMobile) {
     return (
@@ -259,8 +259,14 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                 </div>
               ))}
               {stageDeals.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 12 }}>
-                  Drop here
+                <div style={{ textAlign: 'center', padding: '28px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <div style={{ fontSize: 22, opacity: 0.25 }}>📋</div>
+                  <div style={{ fontSize: 12, color: '#d1d5db', fontWeight: 500 }}>No deals here</div>
+                  {onAddDeal && (
+                    <button onClick={onAddDeal} style={{ fontSize: 11, color: '#c9922c', background: 'none', border: '1px dashed #fde68a', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, marginTop: 2 }}>
+                      + Add Deal
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -2902,7 +2908,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 );
               })()}
 
-              <KanbanBoard deals={deals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} />
+              <KanbanBoard deals={deals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} onAddDeal={() => setShowAddDeal(true)} />
             </div>
           )}
 
@@ -2918,7 +2924,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ))}
                 <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginLeft: 'auto', width: 200 }} />
               </div>
-              <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} />
+              <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} onAddDeal={() => setShowAddDeal(true)} />
             </div>
           )}
 
@@ -7268,10 +7274,63 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
 
+              {/* Smart Status Banner */}
+              {(() => {
+                const activeDeal = clientDeals.find(d => d.stage !== 'Closed' && d.stage !== 'Lost');
+                const closedDeal = clientDeals.find(d => d.stage === 'Closed');
+                const daysSinceTouch = c.last_touched_at ? Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000) : null;
+                const lxpDays = c.lease_expiration_date ? Math.ceil((new Date(c.lease_expiration_date).getTime() - Date.now()) / 86400000) : null;
+
+                if (lxpDays !== null && lxpDays < 90) {
+                  const isExpired = lxpDays < 0;
+                  const bg = isExpired ? '#fee2e2' : lxpDays < 30 ? '#fff7ed' : '#fefce8';
+                  const color = isExpired ? '#dc2626' : lxpDays < 30 ? '#c2410c' : '#a16207';
+                  return (
+                    <div style={{ background: bg, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color, borderBottom: `1px solid ${color}22` }}>
+                      <span>🗓 {isExpired ? `Lease expired ${Math.abs(lxpDays)}d ago` : `Lease expires in ${lxpDays} day${lxpDays === 1 ? '' : 's'}`}</span>
+                      <button onClick={() => openEditClient(c)} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 11, color, cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>Update →</button>
+                    </div>
+                  );
+                }
+                if (activeDeal) {
+                  const stageMeta: Record<string, [string, string]> = {
+                    'Prospect': ['#eff6ff', '#1e4d8c'], 'Active': ['#dcfce7', '#15803d'],
+                    'LOI': ['#f3e8ff', '#7e22ce'], 'In Contract': ['#fefce8', '#92400e'],
+                  };
+                  const [bg, color] = stageMeta[activeDeal.stage] ?? ['#f3f4f6', '#374151'];
+                  return (
+                    <div style={{ background: bg, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color, borderBottom: `1px solid ${color}22` }}>
+                      <span>🟢 Active — {activeDeal.type}</span>
+                      <span style={{ background: `${color}22`, color, padding: '1px 8px', borderRadius: 10, fontSize: 11 }}>{activeDeal.stage}</span>
+                      <button onClick={() => { setActiveClient(null); setPage('deals'); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 11, color, cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>View deal →</button>
+                    </div>
+                  );
+                }
+                if (closedDeal) {
+                  return (
+                    <div style={{ background: '#f3f4f6', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 500, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>
+                      <span>⚫ Past client — deal closed</span>
+                      {closedDeal.created_at && <span style={{ color: '#9ca3af' }}>{new Date(closedDeal.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>}
+                    </div>
+                  );
+                }
+                if (daysSinceTouch !== null && daysSinceTouch >= 90) {
+                  return (
+                    <div style={{ background: '#fff7ed', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#c2410c', borderBottom: '1px solid #fed7aa' }}>
+                      <span>🔴 No contact in {daysSinceTouch} days</span>
+                      <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af', fontWeight: 400 }}>Log a touch below ↓</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
                 {/* Contact Info */}
                 <div>
-                  <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Contact Information</div>
+                  <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>
+                    {c.type === 'Tenant' ? '🔑 Tenant Details' : c.type === 'Buyer' ? '🏡 Buyer Details' : c.type === 'Seller' ? '🪧 Seller Details' : c.type === 'Landlord/Investor' ? '🏢 Landlord Details' : c.type === 'Agent' || c.type === 'Broker' ? '🤝 Agent Details' : 'Contact Information'}
+                  </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', gridColumn: (c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 6 }}>
@@ -7334,7 +7393,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 13, fontWeight: 500, color: '#374151' }}>{c.size_range}</div>
                       </div>
                     )}
-                    {(c.lease_expiration_date ? (() => {
+                    {(c.type === 'Tenant' || c.type === 'Landlord/Investor' || c.lease_expiration_date) && (c.lease_expiration_date ? (() => {
                       const lxpDate = new Date(c.lease_expiration_date);
                       const daysLeft = Math.ceil((lxpDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                       const lxpBg = daysLeft < 0 ? '#fee2e2' : daysLeft < 90 ? '#fed7aa' : daysLeft < 180 ? '#fef9c3' : '#dcfce7';
@@ -7900,9 +7959,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
 
                 {/* Meta */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 20, paddingTop: 4, borderTop: '1px solid #f0f0f0', fontSize: 11, color: '#9ca3af' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 4, borderTop: '1px solid #f0f0f0', fontSize: 11, color: '#9ca3af', flexWrap: 'wrap' }}>
                   <span>📅 Added {c.created_at?.slice(0, 10)}</span>
                   <span>👤 Owner: {ownerName}</span>
+                  {c.last_touched_at ? (
+                    <span>🤝 Last touch: <strong style={{ color: (() => { const d = Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000); return d >= 90 ? '#dc2626' : d >= 30 ? '#c2410c' : '#16a34a'; })() }}>{Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000)}d ago</strong></span>
+                  ) : (
+                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>🤝 Never contacted</span>
+                  )}
                 </div>
 
                 {/* Actions */}
