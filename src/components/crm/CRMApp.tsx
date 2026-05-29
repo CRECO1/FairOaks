@@ -1577,8 +1577,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setSyncing(true);
     const res = await fetch('/api/gmail/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, clientEmail: deal.client_email }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
+      body: JSON.stringify({ userId: deal.agent_id ?? session!.user.id, dealId: deal.id, clientEmail: deal.client_email }),
     });
     const json = await res.json();
     if (!res.ok) showToast('Sync error: ' + json.error);
@@ -1601,8 +1601,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // Now re-sync with the corrected query
     const res = await fetch('/api/gmail/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, clientEmail: deal.client_email }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
+      body: JSON.stringify({ userId: deal.agent_id ?? session!.user.id, dealId: deal.id, clientEmail: deal.client_email }),
     });
     const json = await res.json();
     if (!res.ok) showToast('Sync error: ' + json.error);
@@ -1616,8 +1616,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setSyncing(true);
     const res = await fetch('/api/gmail/sync', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: session!.user.id, clientId: client.id, clientEmail: client.email }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
+      body: JSON.stringify({ userId: client.agent_id ?? session!.user.id, clientId: client.id, clientEmail: client.email }),
     });
     const json = await res.json();
     if (!res.ok) showToast('Sync error: ' + (json.error ?? res.status));
