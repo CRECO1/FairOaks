@@ -187,7 +187,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   // Posts
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
-  const [postQueueTab, setPostQueueTab] = useState<'scheduled' | 'drafts' | 'published' | 'failed'>('scheduled');
+  const [postQueueTab, setPostQueueTab] = useState<'all' | 'scheduled' | 'drafts' | 'published' | 'failed'>('all');
+  const [publisherView, setPublisherView] = useState<'list' | 'detail' | 'builder'>('list');
+  const [activePost, setActivePost] = useState<SocialPost | null>(null);
 
   // Inbox
   const [inboxItems, setInboxItems] = useState<SocialInboxItem[]>([]);
@@ -233,9 +235,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<'month' | 'week'>('month');
 
-  // Preview / Campaign
-  const [rightPanelTab, setRightPanelTab] = useState<'preview' | 'queue'>('preview');
+  // Campaign
   const [campaignImporting, setCampaignImporting] = useState(false);
+  const [previewPostId, setPreviewPostId] = useState<string | null>(null);
 
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -318,7 +320,6 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       );
       toast('📢 5 campaign posts saved to Drafts!');
       setPostQueueTab('drafts');
-      setRightPanelTab('queue');
       loadPosts();
     } catch {
       toast('Failed to import campaign');
@@ -425,9 +426,25 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     setComposerFirstComment('');
     setComposerNotes('');
     setEditingPost(null);
+    setActivePost(null);
     setShowAICaption(false);
     setShowFirstComment(false);
     setShowInternalNotes(false);
+    setPublisherView('list');
+  }
+
+  function openDetailPost(post: SocialPost) {
+    setActivePost(post);
+    setPublisherView('detail');
+    // Pre-load composer state so editing from detail is instant
+    setEditingPost(post);
+    setComposerContent(post.content);
+    setComposerPlatforms(post.platforms);
+    setComposerScheduledAt(post.scheduled_at || '');
+    setComposerLinkUrl(post.link_url || '');
+    setComposerHashtags(post.hashtags.join(' '));
+    setComposerFirstComment(post.first_comment || '');
+    setComposerNotes(post.internal_notes || '');
   }
 
   function openEditPost(post: SocialPost) {
@@ -440,6 +457,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     setComposerFirstComment(post.first_comment || '');
     setComposerNotes(post.internal_notes || '');
     setComposerOpen(true);
+    setPublisherView('builder');
   }
 
   function togglePlatform(p: SocialPlatform) {
@@ -908,139 +926,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
         </div>
 
-        {/* ── Right: Preview / Post Queue ── */}
+        {/* ── Right: Post Queue ── */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-            {/* Top-level tab: Preview vs Queue */}
-            <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
-              {(['preview', 'queue'] as const).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setRightPanelTab(t)}
-                  style={{
-                    flex: 1, padding: '12px 8px', border: 'none',
-                    borderBottom: `2px solid ${rightPanelTab === t ? '#E1306C' : 'transparent'}`,
-                    background: 'none', fontSize: 12, fontWeight: 700,
-                    color: rightPanelTab === t ? '#E1306C' : '#9ca3af',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {t === 'preview' ? '👁 Live Preview' : '📋 Post Queue'}
-                </button>
-              ))}
-            </div>
-
-            {/* Instagram Live Preview */}
-            {rightPanelTab === 'preview' && (
-              <div style={{ padding: '24px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f9fafb', minHeight: 400 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 16 }}>
-                  📸 Instagram Preview
-                </div>
-                {/* Phone frame */}
-                <div style={{
-                  width: 340, background: '#fff', borderRadius: 16,
-                  border: '1px solid #dbdbdb', boxShadow: '0 4px 20px rgba(0,0,0,.08)',
-                  overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                }}>
-                  {/* IG Post Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', gap: 10 }}>
-                    <div style={{
-                      width: 36, height: 36, borderRadius: '50%',
-                      background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 14, fontWeight: 800, color: '#fff', flexShrink: 0,
-                    }}>
-                      FO
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
-                      <div style={{ fontSize: 11, color: '#8e8e8e' }}>
-                        {composerScheduledAt
-                          ? new Date(composerScheduledAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-                          : 'Scheduled'}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 18, color: '#000', cursor: 'pointer' }}>···</span>
-                  </div>
-
-                  {/* Media placeholder */}
-                  {composerMediaUrls.length > 0 ? (
-                    <img
-                      src={composerMediaUrls[0]}
-                      alt="post media"
-                      style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
-                    />
-                  ) : (
-                    <div style={{
-                      width: '100%', aspectRatio: '1 / 1',
-                      background: 'linear-gradient(135deg, #1a1a2e 0%, #C9A84C 100%)',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                      gap: 8,
-                    }}>
-                      <div style={{ fontSize: 36 }}>🏡</div>
-                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Fair Oaks Realty Group</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Add a photo above ↑</div>
-                    </div>
-                  )}
-
-                  {/* Action bar */}
-                  <div style={{ padding: '10px 12px 4px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <div style={{ display: 'flex', gap: 14 }}>
-                        <span style={{ fontSize: 22, cursor: 'pointer' }}>🤍</span>
-                        <span style={{ fontSize: 22, cursor: 'pointer' }}>💬</span>
-                        <span style={{ fontSize: 22, cursor: 'pointer' }}>📤</span>
-                      </div>
-                      <span style={{ fontSize: 22, cursor: 'pointer' }}>🔖</span>
-                    </div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#000', marginBottom: 6 }}>243 likes</div>
-
-                    {/* Caption */}
-                    <div style={{ fontSize: 13, color: '#000', lineHeight: 1.5, marginBottom: 6 }}>
-                      <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
-                      {composerContent ? (
-                        <span style={{ whiteSpace: 'pre-wrap' }}>
-                          {composerContent.split('\n').map((line, li) => (
-                            <span key={li}>
-                              {line.split(' ').map((word, wi) => (
-                                <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? '#00376b' : 'inherit' }}>
-                                  {word}{' '}
-                                </span>
-                              ))}
-                              {li < composerContent.split('\n').length - 1 && <br />}
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#8e8e8e' }}>Your caption will appear here…</span>
-                      )}
-                    </div>
-
-                    {/* Hashtags */}
-                    {composerHashtags && (
-                      <div style={{ fontSize: 13, color: '#00376b', marginBottom: 6, lineHeight: 1.5 }}>
-                        {composerHashtags}
-                      </div>
-                    )}
-
-                    <div style={{ fontSize: 11, color: '#8e8e8e', marginBottom: 8 }}>View all 12 comments</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid #efefef', paddingTop: 8 }}>
-                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)', flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, color: '#8e8e8e', flex: 1 }}>Add a comment…</span>
-                      <span style={{ fontSize: 12, color: '#0095f6', fontWeight: 700 }}>Post</span>
-                    </div>
-                  </div>
-                </div>
-                {!composerContent && (
-                  <div style={{ marginTop: 14, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
-                    ← Load a campaign post or write your caption to see the preview
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Post Queue */}
-            {rightPanelTab === 'queue' && (<>
             <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0' }}>
               {(['scheduled', 'drafts', 'published', 'failed'] as const).map(tab => (
                 <button
@@ -1091,61 +979,118 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       : post.published_at
                       ? new Date(post.published_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
                       : null;
+                    const isPreviewing = previewPostId === post.id;
 
                     return (
-                      <div
-                        key={post.id}
-                        style={{ padding: '14px', borderRadius: 10, border: '1px solid #f0f0f0', background: '#fafafa' }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-                          <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                            {post.platforms.map(p => renderPlatformBadge(p))}
+                      <div key={post.id} style={{ borderRadius: 10, border: `1px solid ${isPreviewing ? '#E1306C40' : '#f0f0f0'}`, background: '#fafafa', overflow: 'hidden', transition: 'border-color .2s' }}>
+                        {/* Card header */}
+                        <div style={{ padding: '14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                            <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                              {post.platforms.map(p => renderPlatformBadge(p))}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ margin: 0, fontSize: 13, color: '#1a1a2e', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                                {post.content}
+                              </p>
+                            </div>
+                            <span style={{ padding: '3px 9px', borderRadius: 12, fontSize: 10, fontWeight: 700, background: badge.bg, color: badge.color, flexShrink: 0 }}>
+                              {post.status}
+                            </span>
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p style={{ margin: 0, fontSize: 13, color: '#1a1a2e', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                              {post.content}
-                            </p>
+
+                          {timeStr && (
+                            <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
+                              {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
+                            </div>
+                          )}
+
+                          {post.status === 'published' && (
+                            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
+                              <span style={{ fontSize: 11, color: '#6b7280' }}>🔁 {post.engagement?.shares || 0}</span>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => setPreviewPostId(isPreviewing ? null : post.id)}
+                              style={{ padding: '4px 12px', borderRadius: 7, border: `1px solid ${isPreviewing ? '#E1306C' : '#e5e7eb'}`, background: isPreviewing ? '#fff0f5' : '#fff', fontSize: 11, color: isPreviewing ? '#E1306C' : '#374151', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              {isPreviewing ? '✕ Hide Preview' : '📸 Preview'}
+                            </button>
+                            <button
+                              onClick={() => openEditPost(post)}
+                              style={{ padding: '4px 12px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', fontSize: 11, color: '#374151', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              onClick={() => deletePost(post.id)}
+                              style={{ padding: '4px 12px', borderRadius: 7, border: '1px solid #fee2e2', background: '#fff', fontSize: 11, color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              🗑️ Delete
+                            </button>
                           </div>
-                          <span style={{ padding: '3px 9px', borderRadius: 12, fontSize: 10, fontWeight: 700, background: badge.bg, color: badge.color, flexShrink: 0 }}>
-                            {post.status}
-                          </span>
                         </div>
 
-                        {timeStr && (
-                          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
-                            {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
+                        {/* Inline Instagram Preview */}
+                        {isPreviewing && (
+                          <div style={{ borderTop: '1px solid #E1306C20', background: '#fff8fa', padding: '16px', display: 'flex', justifyContent: 'center' }}>
+                            <div style={{
+                              width: '100%', maxWidth: 320, background: '#fff', borderRadius: 12,
+                              border: '1px solid #dbdbdb', boxShadow: '0 2px 12px rgba(0,0,0,.07)',
+                              overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                            }}>
+                              {/* IG header */}
+                              <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8 }}>
+                                <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff', flexShrink: 0 }}>FO</div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
+                                  <div style={{ fontSize: 10, color: '#8e8e8e' }}>{timeStr || 'Draft'}</div>
+                                </div>
+                                <span style={{ fontSize: 16, color: '#000' }}>···</span>
+                              </div>
+                              {/* Image area */}
+                              <div style={{ width: '100%', aspectRatio: '1 / 1', background: 'linear-gradient(135deg, #1a1a2e 0%, #C9A84C 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                <div style={{ fontSize: 30 }}>🏡</div>
+                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Add photo when editing</div>
+                              </div>
+                              {/* Actions + caption */}
+                              <div style={{ padding: '8px 12px 10px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                                  <div style={{ display: 'flex', gap: 12 }}>
+                                    <span style={{ fontSize: 20 }}>🤍</span>
+                                    <span style={{ fontSize: 20 }}>💬</span>
+                                    <span style={{ fontSize: 20 }}>📤</span>
+                                  </div>
+                                  <span style={{ fontSize: 20 }}>🔖</span>
+                                </div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: '#000', marginBottom: 4 }}>243 likes</div>
+                                <div style={{ fontSize: 12, color: '#000', lineHeight: 1.5 }}>
+                                  <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
+                                  <span style={{ whiteSpace: 'pre-wrap' }}>
+                                    {post.content.split(' ').map((word, wi) => (
+                                      <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? '#00376b' : 'inherit' }}>{word} </span>
+                                    ))}
+                                  </span>
+                                </div>
+                                {post.hashtags?.length > 0 && (
+                                  <div style={{ fontSize: 12, color: '#00376b', marginTop: 4, lineHeight: 1.5 }}>
+                                    {post.hashtags.join(' ')}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         )}
-
-                        {post.status === 'published' && (
-                          <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-                            <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
-                            <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
-                            <span style={{ fontSize: 11, color: '#6b7280' }}>🔁 {post.engagement?.shares || 0}</span>
-                          </div>
-                        )}
-
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button
-                            onClick={() => openEditPost(post)}
-                            style={{ padding: '4px 12px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', fontSize: 11, color: '#374151', cursor: 'pointer', fontWeight: 600 }}
-                          >
-                            ✏️ Edit
-                          </button>
-                          <button
-                            onClick={() => deletePost(post.id)}
-                            style={{ padding: '4px 12px', borderRadius: 7, border: '1px solid #fee2e2', background: '#fff', fontSize: 11, color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
-                          >
-                            🗑️ Delete
-                          </button>
-                        </div>
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
-            </>)}
           </div>
         </div>
       </div>
