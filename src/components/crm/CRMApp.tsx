@@ -3240,7 +3240,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <colgroup>
                       <col className="col-check" />
                       <col className="col-name" />
-                      <col className="col-source" />
                       <col className="col-email" />
                       <col className="col-phone" />
                       <col className="col-deals" />
@@ -3265,7 +3264,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           />
                         </th>
                         <th>Contact</th>
-                        <th>Source</th>
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Deals</th>
@@ -3356,11 +3354,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   })()}
                                 </div>
                               </div>
-                            </td>
-
-                            {/* Lead Source */}
-                            <td style={{ fontSize: 11, color: '#6b7280' }}>
-                              {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 500 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                             </td>
 
                             {/* Email */}
@@ -7962,6 +7955,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, paddingTop: 4, borderTop: '1px solid #f0f0f0', fontSize: 11, color: '#9ca3af', flexWrap: 'wrap' }}>
                   <span>📅 Added {c.created_at?.slice(0, 10)}</span>
                   <span>👤 Owner: {ownerName}</span>
+                  {c.lead_source && (
+                    <span>📌 <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '1px 7px', borderRadius: 8, fontWeight: 600, fontSize: 10 }}>{c.lead_source}</span></span>
+                  )}
                   {c.last_touched_at ? (
                     <span>🤝 Last touch: <strong style={{ color: (() => { const d = Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000); return d >= 90 ? '#dc2626' : d >= 30 ? '#c2410c' : '#16a34a'; })() }}>{Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000)}d ago</strong></span>
                   ) : (
