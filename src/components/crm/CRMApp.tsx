@@ -3246,6 +3246,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {isAdmin && <col className="col-owner" />}
                       <col className="col-added" />
                       <col className="col-touch" />
+                      <col className="col-source" />
                       <col className="col-actions" />
                     </colgroup>
                     <thead>
@@ -3270,6 +3271,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {isAdmin && <th>Owner</th>}
                         <th>Added</th>
                         <th>Last Touch</th>
+                        <th>Source</th>
                         <th style={{ width: 90 }}></th>
                       </tr>
                     </thead>
@@ -3404,6 +3406,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </span>
                                 );
                               })()}
+                            </td>
+
+                            {/* Source */}
+                            <td style={{ fontSize: 11 }}>
+                              {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 600 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                             </td>
 
                             {/* Actions — hover-reveal */}
