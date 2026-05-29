@@ -2220,7 +2220,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table th{color:#94a3b8!important;font-size:10.5px!important;letter-spacing:.9px!important;padding:11px 14px!important;border-bottom:1px solid #e8edf2!important;font-weight:600!important;}
         .contacts-table td{padding:11px 14px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;overflow:hidden!important;text-overflow:ellipsis!important;}
         .contacts-table col.col-check{width:36px;}
-        .contacts-table col.col-name{width:240px;}
+        .contacts-table col.col-name{width:180px;}
         .contacts-table col.col-asset{width:130px;}
         .contacts-table col.col-source{width:100px;}
         .contacts-table col.col-tags{width:160px;}
