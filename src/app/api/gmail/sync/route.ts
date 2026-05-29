@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmUser, getCrmAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -115,7 +115,11 @@ export async function POST(req: NextRequest) {
 
     const caller = await getCrmUser();
     if (!caller) return unauthorized();
-    if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
+    // Admins can sync Gmail for any agent's contacts; non-admins can only sync their own
+    if (caller.id !== userId) {
+      const adminUser = await getCrmAdmin();
+      if (!adminUser) return forbidden('Cannot access another user\'s Gmail connection');
+    }
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
