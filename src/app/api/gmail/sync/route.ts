@@ -124,7 +124,11 @@ export async function POST(req: NextRequest) {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    const connection = await getValidConnection(userId, anonKey, serviceRoleKey);
+    // Try the deal/contact owner's Gmail connection first; fall back to the caller's own
+    let connection = await getValidConnection(userId, anonKey, serviceRoleKey);
+    if (!connection && caller.id !== userId) {
+      connection = await getValidConnection(caller.id, anonKey, serviceRoleKey);
+    }
     if (!connection) return NextResponse.json({ error: 'Gmail not connected' }, { status: 401 });
     const { accessToken, agentEmail } = connection;
 
