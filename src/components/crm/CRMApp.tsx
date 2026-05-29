@@ -3335,34 +3335,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   {(() => {
                                     const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
                                     return (
-                                      <select
-                                        value={c.type}
-                                        title="Change contact type"
-                                        onChange={async e => {
-                                          const newType = e.target.value as Client['type'];
-                                          await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
-                                          setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
-                                        }}
-                                        style={{
-                                          ...typeStyle,
-                                          marginTop: 3,
-                                          border: 'none',
-                                          borderRadius: 8,
-                                          fontSize: 10,
-                                          fontWeight: 600,
-                                          padding: '1px 6px',
-                                          cursor: 'pointer',
-                                          appearance: 'none' as const,
-                                          WebkitAppearance: 'none' as const,
-                                          outline: 'none',
-                                          display: 'inline-block',
-                                          width: 'fit-content',
-                                          maxWidth: '100%',
-                                          lineHeight: 1.4,
-                                        }}
-                                      >
-                                        {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                      </select>
+                                      <div style={{ position: 'relative', display: 'inline-block', marginTop: 3 }} title="Change contact type">
+                                        {/* Visual span — matches source pill exactly */}
+                                        <span style={{ ...typeStyle, display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 10.5, fontWeight: 600, lineHeight: 1.4, pointerEvents: 'none' }}>
+                                          {c.type}
+                                        </span>
+                                        {/* Invisible select overlay for dropdown */}
+                                        <select
+                                          value={c.type}
+                                          onChange={async e => {
+                                            const newType = e.target.value as Client['type'];
+                                            await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
+                                            setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
+                                          }}
+                                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
+                                        >
+                                          {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </select>
+                                      </div>
                                     );
                                   })()}
                                 </div>
