@@ -10,19 +10,11 @@ interface GmailConnection {
   email?: string; // stored agent email, if available
 }
 
-async function getValidConnection(userId: string, anonKey: string, serviceRoleKey: string): Promise<{ accessToken: string; agentEmail: string | null } | null> {
-  // Fetch stored tokens
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&order=created_at.desc&limit=1`, {
-    headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
-  });
-  const rows: GmailConnection[] = await res.json();
-  if (!rows || rows.length === 0) return null;
-
-  const conn = rows[0];
+/** Returns a valid access token + agentEmail for a single GmailConnection row, refreshing if needed. */
+async function resolveConnection(conn: GmailConnection, userId: string, anonKey: string, serviceRoleKey: string): Promise<{ accessToken: string; agentEmail: string | null } | null> {
   const expiresAt = new Date(conn.expires_at).getTime();
   let accessToken = conn.access_token;
 
-  // If token expired (with 2 min buffer), refresh it
   if (Date.now() >= expiresAt - 120_000) {
     const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
@@ -34,27 +26,17 @@ async function getValidConnection(userId: string, anonKey: string, serviceRoleKe
         grant_type: 'refresh_token',
       }),
     });
-
     const refreshed = await refreshRes.json();
     if (!refreshRes.ok || !refreshed.access_token) return null;
-
     accessToken = refreshed.access_token;
     const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-
-    // Update stored token
-    await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&email=eq.${encodeURIComponent(conn.email ?? '')}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': anonKey,
-        'Authorization': `Bearer ${serviceRoleKey}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
       body: JSON.stringify({ access_token: accessToken, expires_at: newExpiry, updated_at: new Date().toISOString() }),
     });
   }
 
-  // Get the agent's own Gmail address (used to narrow the search query)
-  // Try the stored email first; fall back to the Gmail profile API
   let agentEmail: string | null = conn.email ?? null;
   if (!agentEmail) {
     try {
@@ -64,26 +46,27 @@ async function getValidConnection(userId: string, anonKey: string, serviceRoleKe
       if (profileRes.ok) {
         const profile = await profileRes.json();
         agentEmail = profile.emailAddress ?? null;
-
-        // Persist it so we don't have to fetch it every time
-        if (agentEmail) {
-          await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': anonKey,
-              'Authorization': `Bearer ${serviceRoleKey}`,
-            },
-            body: JSON.stringify({ email: agentEmail }),
-          });
-        }
       }
-    } catch {
-      // Non-fatal — we'll fall back to Gmail's built-in "me" operators
-    }
+    } catch { /* non-fatal */ }
   }
 
   return { accessToken, agentEmail };
+}
+
+/** Returns all valid Gmail connections for a user. */
+async function getAllConnections(userId: string, anonKey: string, serviceRoleKey: string): Promise<Array<{ accessToken: string; agentEmail: string | null }>> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&order=created_at.desc`, {
+    headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
+  });
+  const rows: GmailConnection[] = await res.json();
+  if (!rows || rows.length === 0) return [];
+  const results = await Promise.all(rows.map(r => resolveConnection(r, userId, anonKey, serviceRoleKey)));
+  return results.filter((r): r is { accessToken: string; agentEmail: string | null } => r !== null);
+}
+
+async function getValidConnection(userId: string, anonKey: string, serviceRoleKey: string): Promise<{ accessToken: string; agentEmail: string | null } | null> {
+  const all = await getAllConnections(userId, anonKey, serviceRoleKey);
+  return all[0] ?? null;
 }
 
 function decodeBase64(encoded: string): string {
@@ -148,31 +131,27 @@ export async function POST(req: NextRequest) {
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    // Try the deal/contact owner's Gmail connection first; fall back to the caller's own
-    let connection = await getValidConnection(userId, anonKey, serviceRoleKey);
-    const triedFallback = !connection && caller.id !== userId;
-    if (triedFallback) {
-      connection = await getValidConnection(caller.id, anonKey, serviceRoleKey);
-    }
-    if (!connection) return NextResponse.json({
-      error: 'Gmail not connected',
-      debug: { userId, callerId: caller.id, triedFallback, hasAnonKey: !!anonKey, hasServiceKey: !!serviceRoleKey }
-    }, { status: 401 });
-    const { accessToken, agentEmail } = connection;
+    // Gather all Gmail connections to search — deal/contact owner first, then caller's accounts
+    const ownerConns = await getAllConnections(userId, anonKey, serviceRoleKey);
+    const callerConns = caller.id !== userId ? await getAllConnections(caller.id, anonKey, serviceRoleKey) : [];
+    const allConns = [...ownerConns, ...callerConns];
+    if (allConns.length === 0) return NextResponse.json({ error: 'Gmail not connected' }, { status: 401 });
 
-    // Search Gmail for emails that are direct exchanges between this agent and the client.
-    // Using agent email explicitly when available; otherwise rely on Gmail's built-in "me" alias.
-    // This avoids pulling in emails where the client was only CC'd or BCC'd on unrelated threads.
-    // Search for any email in this account involving the client directly
+    // Search every connected Gmail account and aggregate message stubs
     const query = encodeURIComponent(`from:${clientEmail} OR to:${clientEmail}`);
-    const listRes = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=100`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const listData = await listRes.json();
-    if (!listData.messages || listData.messages.length === 0) {
-      return NextResponse.json({ synced: 0 });
+    // Map of gmailMsgId → { conn, msgId } so we know which token to use when fetching full message
+    const msgConnMap = new Map<string, { accessToken: string; agentEmail: string | null }>();
+    for (const conn of allConns) {
+      const listRes = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=100`,
+        { headers: { Authorization: `Bearer ${conn.accessToken}` } }
+      );
+      const listData = await listRes.json();
+      for (const msg of listData.messages ?? []) {
+        if (!msgConnMap.has(msg.id)) msgConnMap.set(msg.id, conn);
+      }
     }
+    if (msgConnMap.size === 0) return NextResponse.json({ synced: 0 });
 
     // Fetch already-synced IDs for this deal/contact to avoid duplicates
     // Check both gmail_message_id (per-account) and rfc_message_id (universal) so two
@@ -191,13 +170,13 @@ export async function POST(req: NextRequest) {
     );
 
     let synced = 0;
-    for (const msg of listData.messages) {
-      if (existingMsgIds.has(msg.id)) continue;
+    for (const [msgId, conn] of msgConnMap) {
+      if (existingMsgIds.has(msgId)) continue;
       // rfc_message_id check happens after fetching headers below
 
       const msgRes = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}?format=full`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${msgId}?format=full`,
+        { headers: { Authorization: `Bearer ${conn.accessToken}` } }
       );
       const msgData = await msgRes.json();
       if (!msgRes.ok) continue;
@@ -239,7 +218,7 @@ export async function POST(req: NextRequest) {
           'Prefer': 'return=minimal',
         },
         body: JSON.stringify({
-          gmail_message_id: msg.id,
+          gmail_message_id: msgId,
           ...(dealId ? { deal_id: dealId } : {}),
           ...(clientId ? { client_id: clientId } : {}),
           direction,
@@ -256,7 +235,7 @@ export async function POST(req: NextRequest) {
       if (insertRes.ok || insertRes.status === 201) synced++;
       else {
         const errText = await insertRes.text();
-        console.error(`Failed to insert email ${msg.id}:`, errText);
+        console.error(`Failed to insert email ${msgId}:`, errText);
       }
     }
 
