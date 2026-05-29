@@ -31,8 +31,8 @@ const LIMITS = {
   attom:       { requests: 30, window: '1 m'  },
   // Agent application form — 3 per IP per hour
   'agent-apply': { requests: 3, window: '1 h' },
-  // OAuth initiation — 10 per IP per hour (prevents redirect-loop abuse)
-  oauth:         { requests: 10, window: '1 h' },
+  // OAuth initiation — 30 per IP per hour (prevents redirect-loop abuse)
+  oauth:         { requests: 30, window: '1 h' },
 } as const;
 
 type LimiterKey = keyof typeof LIMITS;
