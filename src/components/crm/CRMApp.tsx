@@ -67,6 +67,22 @@ const STAGE_CLS: Record<string, string> = {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
+function cleanEmailBody(raw: string): string {
+  const lines = raw.split('\n');
+  const result: string[] = [];
+  for (const line of lines) {
+    const t = line.trim();
+    if (t.startsWith('>')) continue;
+    if (/^On .{5,120} wrote:$/.test(t)) break;
+    if (/^[-_]{3,}/.test(t)) break;
+    if (/^CONFIDENTIALITY NOTICE/i.test(t)) break;
+    if (/^This (e-?mail|message) (message |communication )?(is intended|may contain)/i.test(t)) break;
+    if (/^(Thanks,?|Thank you,?|Best,?|Regards,?|Sincerely,?|Cheers,?)$/i.test(t)) { result.push(line); break; }
+    result.push(line);
+  }
+  return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function timeAgo(dateStr: string | undefined | null): { label: string; color: string; bg: string } {
   if (!dateStr) return { label: 'Never', color: '#dc2626', bg: '#fee2e2' };
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -6500,7 +6516,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       return groups.map(([threadKey, threadEmails]) => {
                         const isExpanded = expandedThreads.has(threadKey);
                         const latest = threadEmails.reduce((mx, e) => e.email_date > mx.email_date ? e : mx, threadEmails[0]);
-                        const snippet = latest.body.slice(0, 120).replace(/\s+/g, ' ');
+                        const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
                         // Open status summary for collapsed header
                         const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                         const openedEmails = sentEmails.filter(e => e.opened_at);
@@ -6563,7 +6579,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>{e.email_date}</span>
                                     </div>
                                     <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.subject}</div>
-                                    <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>{e.body}</div>
+                                    <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cleanEmailBody(e.body)}</div>
                                   </div>
                                 ))}
                                 {/* Reply button at the bottom of expanded thread */}
@@ -7888,7 +7904,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         return groups.map(([threadKey, threadEmails]) => {
                           const isExpanded = expandedContactThreads.has(threadKey);
                           const latest = threadEmails.reduce((mx, e) => e.email_date > mx.email_date ? e : mx, threadEmails[0]);
-                          const snippet = latest.body.slice(0, 120).replace(/\s+/g, ' ');
+                          const snippet = cleanEmailBody(latest.body).slice(0, 120).replace(/\s+/g, ' ');
                           const sentEmails = threadEmails.filter(e => e.direction === 'sent');
                           const openedEmails = sentEmails.filter(e => e.opened_at);
                           const hasTracked = sentEmails.some(e => e.tracking_id);
@@ -7949,7 +7965,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>{e.email_date}</span>
                                       </div>
                                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{e.subject}</div>
-                                      <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6 }}>{e.body}</div>
+                                      <div style={{ fontSize: 12, color: '#555', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{cleanEmailBody(e.body)}</div>
                                     </div>
                                   ))}
                                   {/* Reply button */}
