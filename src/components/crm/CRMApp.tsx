@@ -1581,7 +1581,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       body: JSON.stringify({ userId: deal.agent_id ?? session!.user.id, dealId: deal.id, clientEmail: deal.client_email }),
     });
     const json = await res.json();
-    if (!res.ok) showToast('Sync error: ' + json.error);
+    if (!res.ok) showToast('Sync error: ' + (json.error ?? res.status) + (json.debug ? ' | ' + JSON.stringify(json.debug) : ''));
     else { showToast(`Synced ${json.synced} new email${json.synced !== 1 ? 's' : ''} from Gmail`); loadDealEmails(deal.id); }
     setSyncing(false);
   }
@@ -1620,7 +1620,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       body: JSON.stringify({ userId: client.agent_id ?? session!.user.id, clientId: client.id, clientEmail: client.email }),
     });
     const json = await res.json();
-    if (!res.ok) showToast('Sync error: ' + (json.error ?? res.status));
+    if (!res.ok) showToast('Sync error: ' + (json.error ?? res.status) + (json.debug ? ' | ' + JSON.stringify(json.debug) : ''));
     else { showToast(`Synced ${json.synced} new email${json.synced !== 1 ? 's' : ''}`); loadContactEmails(client.id); }
     setSyncing(false);
   }
