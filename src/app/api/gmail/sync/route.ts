@@ -139,10 +139,8 @@ export async function POST(req: NextRequest) {
     // Search Gmail for emails that are direct exchanges between this agent and the client.
     // Using agent email explicitly when available; otherwise rely on Gmail's built-in "me" alias.
     // This avoids pulling in emails where the client was only CC'd or BCC'd on unrelated threads.
-    const agentPart = agentEmail ?? 'me';
-    const query = encodeURIComponent(
-      `(from:${clientEmail} to:${agentPart}) OR (from:${agentPart} to:${clientEmail})`
-    );
+    // Search for any email in this account involving the client directly
+    const query = encodeURIComponent(`from:${clientEmail} OR to:${clientEmail}`);
     const listRes = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${query}&maxResults=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
