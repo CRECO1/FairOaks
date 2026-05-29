@@ -3348,9 +3348,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           marginTop: 3,
                                           border: 'none',
                                           borderRadius: 8,
-                                          fontSize: 10.5,
+                                          fontSize: 10,
                                           fontWeight: 600,
-                                          padding: '2px 7px',
+                                          padding: '1px 6px',
                                           cursor: 'pointer',
                                           appearance: 'none' as const,
                                           WebkitAppearance: 'none' as const,
@@ -3450,11 +3450,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     </button>
                                   );
                                 })()}
-                                <button onClick={e => { e.stopPropagation(); setActiveClient(c); }}
-                                  style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 11, cursor: 'pointer', padding: '4px 8px', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}
-                                  title="Open contact">
-                                  View
-                                </button>
                                 {isAdmin && (
                                   <>
                                     <button onClick={() => openEditClient(c)}
