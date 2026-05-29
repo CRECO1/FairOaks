@@ -3239,7 +3239,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <colgroup>
                       <col className="col-check" />
                       <col className="col-name" />
-                      <col className="col-asset" />
                       <col className="col-source" />
                       <col className="col-email" />
                       <col className="col-phone" />
@@ -3265,7 +3264,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           />
                         </th>
                         <th>Contact</th>
-                        <th>Asset Type</th>
                         <th>Source</th>
                         <th>Email</th>
                         <th>Phone</th>
@@ -3357,18 +3355,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   })()}
                                 </div>
                               </div>
-                            </td>
-
-                            {/* Asset Type / Property Interest */}
-                            <td>
-                              {(c.asset_types ?? []).length > 0 ? (
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                                  {(c.asset_types ?? []).slice(0, 2).map(at => (
-                                    <span key={at} style={{ background: (c.type === 'Agent' || c.type === 'Broker') ? '#e0f2fe' : '#fef3e2', color: (c.type === 'Agent' || c.type === 'Broker') ? '#075985' : '#92400e', padding: '1px 7px', borderRadius: 8, fontSize: 10, fontWeight: 600 }}>{at}</span>
-                                  ))}
-                                  {(c.asset_types ?? []).length > 2 && <span style={{ fontSize: 10, color: '#9ca3af' }}>+{(c.asset_types ?? []).length - 2}</span>}
-                                </div>
-                              ) : <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>}
                             </td>
 
                             {/* Lead Source */}
