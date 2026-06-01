@@ -247,6 +247,35 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     loadPosts();
     loadInbox();
     loadAnalytics();
+
+    // Handle OAuth callback result from URL params
+    const params = new URLSearchParams(window.location.search);
+    const socialResult = params.get('social');
+    const platform = params.get('platform');
+    const reason = params.get('reason');
+    if (socialResult === 'connected') {
+      toast(`✅ ${platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account'} connected successfully!`);
+      // Clean up URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('social');
+      url.searchParams.delete('platform');
+      url.searchParams.delete('count');
+      window.history.replaceState({}, '', url);
+    } else if (socialResult === 'error') {
+      const messages: Record<string, string> = {
+        oauth_denied: 'Connection cancelled.',
+        invalid_state: 'Security check failed — please try again.',
+        token_exchange: 'Failed to get access token from Facebook.',
+        no_pages: 'No Facebook Pages found. Make sure you manage at least one Page.',
+        invalid_user: 'User not found — please log in again.',
+      };
+      toast(`❌ ${messages[reason ?? ''] ?? `Connection failed: ${reason}`}`);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('social');
+      url.searchParams.delete('platform');
+      url.searchParams.delete('reason');
+      window.history.replaceState({}, '', url);
+    }
   }, []);
 
   // ── Load functions ────────────────────────────────────────────────────────────
