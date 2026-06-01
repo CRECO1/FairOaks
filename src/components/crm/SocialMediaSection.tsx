@@ -604,7 +604,16 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                           <div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtNum(conn.followers_count)} followers</div>
                         </div>
                         <button
-                          onClick={() => { /* disconnect */ }}
+                          onClick={async () => {
+                            if (!confirm(`Disconnect ${conn.account_name}?`)) return;
+                            await fetch('/api/crm/social/accounts', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ connection_id: conn.id }),
+                            });
+                            setConnections(prev => prev.filter(c => c.id !== conn.id));
+                            toast(`Disconnected ${conn.account_name}`);
+                          }}
                           style={{ background: 'none', border: 'none', fontSize: 10, color: '#9ca3af', cursor: 'pointer', marginLeft: 4 }}
                           title="Disconnect"
                         >✕</button>
