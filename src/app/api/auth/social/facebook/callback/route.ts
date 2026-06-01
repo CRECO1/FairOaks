@@ -10,15 +10,21 @@ export async function GET(req: NextRequest) {
   const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
+  console.log('[facebook/callback] start', { error, hasCode: !!code, hasState: !!stateParam });
+
   if (error || !code || !stateParam) {
-    console.error('[facebook/callback] OAuth error:', { error, code: !!code, stateParam });
+    console.error('[facebook/callback] OAuth denied or missing params:', { error, hasCode: !!code, hasState: !!stateParam });
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=oauth_denied`);
   }
 
   const [userId, stateNonce] = (stateParam ?? '').split(':');
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get('fb_oauth_nonce')?.value;
+
+  console.log('[facebook/callback] nonce check', { userId, hasStoredNonce: !!storedNonce, nonceMatch: storedNonce === stateNonce });
+
   if (!storedNonce || storedNonce !== stateNonce) {
+    console.error('[facebook/callback] Nonce mismatch — stored:', storedNonce?.slice(0,8), 'received:', stateNonce?.slice(0,8));
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=invalid_state`);
   }
   cookieStore.delete('fb_oauth_nonce');
@@ -35,6 +41,8 @@ export async function GET(req: NextRequest) {
     .select('id')
     .eq('id', userId)
     .maybeSingle();
+
+  console.log('[facebook/callback] profile lookup', { userId, found: !!profile });
 
   if (!profile) {
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=invalid_user`);
@@ -53,6 +61,8 @@ export async function GET(req: NextRequest) {
   });
 
   const tokenData = await tokenRes.json();
+  console.log('[facebook/callback] token exchange', { success: !!tokenData.access_token, error: tokenData.error });
+
   if (!tokenData.access_token) {
     console.error('[facebook/callback] Token exchange failed:', tokenData);
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=token_exchange`);
@@ -72,7 +82,10 @@ export async function GET(req: NextRequest) {
   const pagesData = await pagesRes.json();
   const pages: Array<{ id: string; name: string; access_token: string }> = pagesData.data ?? [];
 
+  console.log('[facebook/callback] pages found:', pages.length, pages.map(p => p.name));
+
   if (pages.length === 0) {
+    console.error('[facebook/callback] No pages found. pagesData:', JSON.stringify(pagesData));
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=no_pages`);
   }
 
@@ -80,8 +93,7 @@ export async function GET(req: NextRequest) {
   let connectedCount = 0;
 
   for (const page of pages) {
-    // Upsert Facebook page connection
-    await supabase
+    const { error: upsertError } = await supabase
       .from('social_connections')
       .upsert(
         {
@@ -97,6 +109,7 @@ export async function GET(req: NextRequest) {
         { onConflict: 'agent_id,platform,platform_account_id' }
       );
 
+    console.log('[facebook/callback] upsert facebook page', page.name, { error: upsertError });
     connectedCount++;
 
     // Check for linked Instagram business account
@@ -106,14 +119,15 @@ export async function GET(req: NextRequest) {
     const igData = await igRes.json();
     const igAccountId = igData.instagram_business_account?.id;
 
+    console.log('[facebook/callback] instagram linked to page', page.name, { igAccountId });
+
     if (igAccountId) {
-      // Get Instagram account name
       const igInfoRes = await fetch(
         `https://graph.facebook.com/v18.0/${igAccountId}?fields=name,username&access_token=${page.access_token}`
       );
       const igInfo = await igInfoRes.json();
 
-      await supabase
+      const { error: igUpsertError } = await supabase
         .from('social_connections')
         .upsert(
           {
@@ -129,9 +143,11 @@ export async function GET(req: NextRequest) {
           { onConflict: 'agent_id,platform,platform_account_id' }
         );
 
+      console.log('[facebook/callback] upsert instagram', igInfo.username, { error: igUpsertError });
       connectedCount++;
     }
   }
 
-  return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=facebook`);
+  console.log('[facebook/callback] done, connectedCount:', connectedCount);
+  return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=facebook&count=${connectedCount}`);
 }
