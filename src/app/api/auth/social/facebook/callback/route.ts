@@ -3,7 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
-const CRM_RETURN = 'https://www.fairoaksrealtygroup.com/crm/residential#social';
+const CRM_BASE = 'https://www.fairoaksrealtygroup.com/crm/residential';
+// Query params must come BEFORE the hash — append #social at the end of each redirect
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateParam) {
     console.error('[facebook/callback] OAuth denied or missing params:', { error, hasCode: !!code, hasState: !!stateParam });
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=oauth_denied`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=oauth_denied`);
   }
 
   const [userId, stateNonce] = (stateParam ?? '').split(':');
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   if (!storedNonce || storedNonce !== stateNonce) {
     console.error('[facebook/callback] Nonce mismatch — stored:', storedNonce?.slice(0,8), 'received:', stateNonce?.slice(0,8));
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=invalid_state`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=invalid_state`);
   }
   cookieStore.delete('fb_oauth_nonce');
 
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
   console.log('[facebook/callback] profile lookup', { userId, found: !!profile });
 
   if (!profile) {
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=invalid_user`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=invalid_user`);
   }
 
   // Exchange code for short-lived token
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
 
   if (!tokenData.access_token) {
     console.error('[facebook/callback] Token exchange failed:', tokenData);
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=token_exchange`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=token_exchange`);
   }
 
   // Exchange for long-lived user token
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
 
   if (pages.length === 0) {
     console.error('[facebook/callback] No pages found. pagesData:', JSON.stringify(pagesData));
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=facebook&reason=no_pages`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=no_pages`);
   }
 
   const now = new Date().toISOString();
@@ -149,5 +150,5 @@ export async function GET(req: NextRequest) {
   }
 
   console.log('[facebook/callback] done, connectedCount:', connectedCount);
-  return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=facebook&count=${connectedCount}`);
+  return NextResponse.redirect(`${CRM_BASE}?social=connected&platform=facebook&count=${connectedCount}`);
 }
