@@ -345,7 +345,17 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     if (!popup || popup.closed) {
       // Popup blocked — fall back to same-tab redirect
       window.location.href = `/api/auth/social/${platform}?userId=${agentId}`;
+      return;
     }
+    // Poll until popup closes (handles both auto-close and manual close)
+    const poll = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(poll);
+        loadConnections();
+      }
+    }, 600);
+    // Safety: clear poll after 5 minutes
+    setTimeout(() => clearInterval(poll), 300_000);
   }
 
   // ── Load functions ────────────────────────────────────────────────────────────
