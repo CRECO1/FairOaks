@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimit } from '@/lib/ratelimit';
 
 export async function POST(req: NextRequest) {
+  const rl = await rateLimit(req, 'quiz');
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   try {
     const body = await req.json();
     const { answers } = body;

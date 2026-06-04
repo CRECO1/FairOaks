@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { encryptToken } from '@/lib/token-crypto';
 
 const REDIRECT_URI = 'https://www.fairoaksrealtygroup.com/api/gmail/callback';
 const CRM_URL      = 'https://www.fairoaksrealtygroup.com/crm';
@@ -94,11 +95,11 @@ export async function GET(req: NextRequest) {
   if (existing) {
     // Refresh tokens on existing connection
     const updatePayload: Record<string, string> = {
-      access_token: tokens.access_token,
+      access_token: encryptToken(tokens.access_token),
       expires_at:   expiresAt,
       updated_at:   now,
     };
-    if (tokens.refresh_token) updatePayload.refresh_token = tokens.refresh_token;
+    if (tokens.refresh_token) updatePayload.refresh_token = encryptToken(tokens.refresh_token);
 
     const { error: updateErr } = await supabase
       .from('gmail_connections')
@@ -143,8 +144,8 @@ export async function GET(req: NextRequest) {
         user_id:       stateUserId,
         gmail_email:   gmailEmail,
         email:         gmailEmail,
-        access_token:  tokens.access_token,
-        refresh_token: tokens.refresh_token,
+        access_token:  encryptToken(tokens.access_token),
+        refresh_token: encryptToken(tokens.refresh_token),
         expires_at:    expiresAt,
         updated_at:    now,
       });

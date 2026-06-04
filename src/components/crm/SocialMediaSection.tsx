@@ -93,10 +93,10 @@ const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; emoji: string; co
   youtube:   { label: 'YouTube',   emoji: '▶️', color: '#FF0000', charLimit: 5000,  bgClass: '' },
 };
 
-const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'linkedin', 'twitter', 'youtube'];
+const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
 
 // ── New Office Campaign Posts ──────────────────────────────────────────────────
-const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlatform; content: string; hashtags: string; scheduledDaysOut: number }> = [
+const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlatform; content: string; hashtags: string; scheduledDaysOut: number; mediaUrls: string[] }> = [
   {
     label: 'Post 1 — Teaser',
     emoji: '👀',
@@ -104,6 +104,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
     scheduledDaysOut: 0,
     content: `Something big is coming to Fair Oaks. 👀\n\nWe've been building something special for our clients, our agents, and our community — and we can't wait to share it with you.\n\nStay tuned. 🗝️`,
     hashtags: '#FairOaksRealty #ComingSoon #FairOaks #RealEstateTexas #NewBeginnings',
+    mediaUrls: ['https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=1080&h=1080&fit=crop'],
   },
   {
     label: 'Post 2 — Grand Announcement',
@@ -112,6 +113,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
     scheduledDaysOut: 3,
     content: `🎉 WE'VE MOVED — and we love our new home.\n\nFair Oaks Realty Group has officially opened its doors at our brand-new location:\n\n📍 8000 Fair Oaks Pkwy\n\nThis move is more than a new address — it's a reflection of how far we've come and our commitment to serving you at the highest level. Bigger space. Better tools. Same team that's always had your back.\n\nCome see us. We'd love to have you stop by. 🤝`,
     hashtags: '#FairOaksRealtyGroup #NewOffice #FairOaksPkwy #RealEstate #SanAntonio #GrandOpening #WeveMovedHome',
+    mediaUrls: ['https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1080&h=1080&fit=crop'],
   },
   {
     label: 'Post 3 — Inside Look',
@@ -120,6 +122,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
     scheduledDaysOut: 4,
     content: `Take a look inside our new home. 🏠✨\n\nWe designed this space with one goal in mind — giving our clients and agents the best possible experience. Swipe to see where the magic happens. ➡️\n\nWhether you're buying, selling, or just curious about the market — our door is always open.\n\n📍 8000 Fair Oaks Pkwy\n🌐 fairoaksrealtygroup.com`,
     hashtags: '#OfficeTour #FairOaksRealty #RealEstateLife #NewSpace #RealEstateAgents #FairOaksTexas',
+    mediaUrls: ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=1080&h=1080&fit=crop'],
   },
   {
     label: 'Post 4 — Meet the Team',
@@ -128,6 +131,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
     scheduledDaysOut: 5,
     content: `The people make the place. 💛\n\nMeet the team behind Fair Oaks Realty Group — now settled into our new office at 8000 Fair Oaks Pkwy and ready to help you make your next move.\n\nBuying? Selling? Relocating? We've got an expert for every situation.\n\nDrop a 👋 in the comments and we'll make sure you're connected with the right agent.`,
     hashtags: '#MeetTheTeam #FairOaksRealtyGroup #RealEstateAgents #FairOaks #NewOffice #YourRealtors',
+    mediaUrls: ['https://images.unsplash.com/photo-1600880292203-757bb62b4baf?w=1080&h=1080&fit=crop'],
   },
   {
     label: 'Post 5 — Community CTA',
@@ -136,6 +140,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
     scheduledDaysOut: 7,
     content: `Home isn't just where you live — it's where you belong. 🏡\n\nAt Fair Oaks Realty Group, we've planted our roots right here in the community we love. Our new office at 8000 Fair Oaks Pkwy is our home base, but your dream home is what drives us.\n\nIf you're thinking about buying or selling in 2025 — let's talk. No pressure, just a conversation.\n\n🔗 Link in bio to connect with an agent.`,
     hashtags: '#FairOaksRealty #DreamHome #TexasRealEstate #BuyingAHome #SellingYourHome #FairOaksCommunity #RealEstateTips',
+    mediaUrls: ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1080&h=1080&fit=crop'],
   },
 ];
 
@@ -187,7 +192,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   // Posts
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
-  const [postQueueTab, setPostQueueTab] = useState<'all' | 'scheduled' | 'drafts' | 'published' | 'failed'>('all');
+  const [postQueueTab, setPostQueueTab] = useState<'all' | 'scheduled' | 'drafts' | 'published' | 'failed'>('drafts');
   const [publisherView, setPublisherView] = useState<'list' | 'detail' | 'builder'>('list');
   const [activePost, setActivePost] = useState<SocialPost | null>(null);
 
@@ -222,6 +227,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [composerFirstComment, setComposerFirstComment] = useState('');
   const [composerNotes, setComposerNotes] = useState('');
   const [composerLoading, setComposerLoading] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [captionLoading, setCaptionLoading] = useState(false);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [showFirstComment, setShowFirstComment] = useState(false);
@@ -239,12 +245,21 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [campaignImporting, setCampaignImporting] = useState(false);
   const [previewPostId, setPreviewPostId] = useState<string | null>(null);
 
+  // Schedule from draft card
+  const [schedulingPostId, setSchedulingPostId] = useState<string | null>(null);
+  const [schedulingDate, setSchedulingDate] = useState('');
+
+  // Manual Instagram connect modal
+  const [showIgModal, setShowIgModal] = useState(false);
+  const [igHandle, setIgHandle] = useState('');
+  const [igSaving, setIgSaving] = useState(false);
+
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadConnections();
-    loadPosts();
+    loadPosts(true);
     loadInbox();
     loadAnalytics();
 
@@ -292,12 +307,17 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     }
   }
 
-  async function loadPosts() {
+  async function loadPosts(seedIfEmpty = false) {
     setPostsLoading(true);
     try {
       const res = await fetch('/api/crm/social/posts');
       const data = await res.json();
-      setPosts(data.posts || []);
+      const loaded: SocialPost[] = data.posts || [];
+      setPosts(loaded);
+      // Auto-seed campaign drafts on first load if the queue is empty
+      if (seedIfEmpty && loaded.length === 0) {
+        await importCampaignAsDrafts(true);
+      }
     } catch {
       toast('Failed to load posts');
     } finally {
@@ -325,35 +345,65 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     }
   }
 
-  async function importCampaignAsDrafts() {
+  async function importCampaignAsDrafts(silent = false) {
     setCampaignImporting(true);
     try {
-      await Promise.all(
-        CAMPAIGN_POSTS.map(cp =>
-          fetch('/api/crm/social/posts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content: cp.content,
-              platforms: [cp.platform],
-              connection_ids: [],
-              scheduled_at: null,
-              status: 'draft',
-              link_url: 'https://fairoaksrealtygroup.com',
-              hashtags: cp.hashtags.split(' ').filter(Boolean),
-              first_comment: '',
-              internal_notes: `New Office Campaign — ${cp.label}`,
-            }),
-          })
-        )
-      );
-      toast('📢 5 campaign posts saved to Drafts!');
+      const today = new Date();
+      today.setHours(9, 0, 0, 0); // Schedule at 9am each day
+      // Seed sequentially so created_at order matches campaign order
+      for (const cp of CAMPAIGN_POSTS) {
+        const scheduledDate = new Date(today);
+        scheduledDate.setDate(today.getDate() + cp.scheduledDaysOut);
+        await fetch('/api/crm/social/posts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: cp.content,
+            platforms: [cp.platform],
+            connection_ids: [],
+            scheduled_at: scheduledDate.toISOString(),
+            status: 'draft',
+            media_urls: cp.mediaUrls,
+            link_url: 'https://fairoaksrealtygroup.com',
+            hashtags: cp.hashtags.split(' ').filter(Boolean),
+            first_comment: '',
+            internal_notes: `New Office Campaign — ${cp.label}`,
+          }),
+        });
+      }
+      if (!silent) toast('📢 5 campaign posts saved to Drafts!');
       setPostQueueTab('drafts');
-      loadPosts();
+      const res = await fetch('/api/crm/social/posts');
+      const data = await res.json();
+      setPosts(data.posts || []);
     } catch {
-      toast('Failed to import campaign');
+      if (!silent) toast('Failed to import campaign');
     } finally {
       setCampaignImporting(false);
+    }
+  }
+
+  async function saveManualInstagram() {
+    const handle = igHandle.replace(/^@/, '').trim();
+    if (!handle) return;
+    setIgSaving(true);
+    try {
+      // Pass the Facebook page_id so the endpoint can link the page token
+      const fbConn = connections.find(c => c.platform === 'facebook');
+      const res = await fetch('/api/crm/social/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'instagram', account_name: handle, page_id: fbConn?.page_id ?? null }),
+      });
+      if (!res.ok) throw new Error();
+      toast(`✅ Instagram @${handle} connected!`);
+      setShowIgModal(false);
+      setIgHandle('');
+      loadConnections();
+    } catch {
+      toast('Failed to connect Instagram');
+    } finally {
+      setIgSaving(false);
     }
   }
 
@@ -366,6 +416,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         connection_ids: connections.filter(c => composerPlatforms.includes(c.platform)).map(c => c.id),
         scheduled_at: status === 'scheduled' ? composerScheduledAt : null,
         status,
+        media_urls: composerMediaUrls,
         link_url: composerLinkUrl,
         hashtags: composerHashtags.split(' ').filter(Boolean),
         first_comment: composerFirstComment,
@@ -435,6 +486,23 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     }
   }
 
+  async function schedulePost(postId: string, scheduledAt: string) {
+    try {
+      const res = await fetch(`/api/crm/social/posts/${postId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'scheduled', scheduled_at: scheduledAt }),
+      });
+      if (!res.ok) throw new Error();
+      toast('📅 Post scheduled!');
+      setSchedulingPostId(null);
+      setSchedulingDate('');
+      loadPosts();
+    } catch {
+      toast('Failed to schedule post');
+    }
+  }
+
   async function deletePost(postId: string) {
     try {
       await fetch(`/api/crm/social/posts/${postId}`, { method: 'DELETE' });
@@ -485,6 +553,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     setComposerHashtags(post.hashtags.join(' '));
     setComposerFirstComment(post.first_comment || '');
     setComposerNotes(post.internal_notes || '');
+    setComposerMediaUrls(post.media_urls || []);
     setComposerOpen(true);
     setPublisherView('builder');
   }
@@ -538,598 +607,898 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       return false;
     });
 
+    const tabConfig: Array<{ key: 'drafts' | 'scheduled' | 'published' | 'failed'; label: string; icon: string; activeColor: string }> = [
+      { key: 'drafts',    label: 'Drafts',    icon: '✏️', activeColor: '#1a1a2e' },
+      { key: 'scheduled', label: 'Scheduled', icon: '📅', activeColor: '#1a1a2e' },
+      { key: 'published', label: 'Published', icon: '✅', activeColor: '#1a1a2e' },
+      { key: 'failed',    label: 'Failed',    icon: '❌', activeColor: '#dc2626' },
+    ];
+
     return (
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-        {/* ── Left: Composer ── */}
-        <div style={{ flex: '0 0 520px', maxWidth: 520 }}>
-          {/* Connected accounts strip */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '16px 20px', marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af' }}>Connected Accounts</div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <button
-                  onClick={importCampaignAsDrafts}
-                  disabled={campaignImporting}
-                  style={{ fontSize: 11, color: '#92400e', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px', cursor: campaignImporting ? 'not-allowed' : 'pointer', fontWeight: 700 }}
-                >
-                  {campaignImporting ? '⏳ Importing…' : '📢 Import Campaign'}
-                </button>
-                <button
-                  onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
-                  style={{ fontSize: 11, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
-                >
-                  + Connect Account
-                </button>
-              </div>
-            </div>
-            {connectionsLoading ? (
-              <div style={{ fontSize: 12, color: '#9ca3af' }}>Loading...</div>
-            ) : connections.length === 0 ? (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {ALL_PLATFORMS.map(p => (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+        {/* ── Connected Accounts Bar ── */}
+        <div style={{
+          background: '#fff',
+          borderRadius: 16,
+          border: '1px solid #f0f0f0',
+          padding: '14px 20px',
+          marginBottom: 20,
+          boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: '#9ca3af', marginRight: 4, whiteSpace: 'nowrap' }}>
+            Accounts
+          </span>
+
+          {connectionsLoading ? (
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>Loading...</span>
+          ) : (
+            <>
+              {ALL_PLATFORMS.map(p => {
+                const conn = connections.find(c => c.platform === p);
+                if (conn) {
+                  return (
+                    <div
+                      key={p}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 8,
+                        padding: '6px 12px 6px 8px',
+                        borderRadius: 100,
+                        border: `2px solid ${platformColor(p)}`,
+                        background: `${platformColor(p)}0d`,
+                      }}
+                    >
+                      <div style={{
+                        width: 30, height: 30, borderRadius: '50%',
+                        background: platformColor(p),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 15, flexShrink: 0,
+                      }}>
+                        {platformEmoji(p)}
+                      </div>
+                      <div style={{ lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e' }}>{conn.account_name}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtNum(conn.followers_count)} followers</div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Disconnect ${conn.account_name}?`)) return;
+                          await fetch('/api/crm/social/accounts', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ connection_id: conn.id }),
+                          });
+                          setConnections(prev => prev.filter(c => c.id !== conn.id));
+                          toast(`Disconnected ${conn.account_name}`);
+                        }}
+                        title="Disconnect"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: '#9ca3af', fontSize: 13, lineHeight: 1,
+                          padding: '0 0 0 4px', display: 'flex', alignItems: 'center',
+                        }}
+                      >✕</button>
+                    </div>
+                  );
+                }
+                return (
                   <button
                     key={p}
-                    onClick={() => window.open(`/api/auth/social/${p === 'instagram' ? 'facebook' : p}?userId=${agentId}`, '_blank')}
+                    onClick={() => {
+                      if (p === 'instagram') setShowIgModal(true);
+                      else window.open(`/api/auth/social/${p}?userId=${agentId}`, '_blank');
+                    }}
+                    title={`Connect ${platformLabel(p)}`}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '7px 12px', borderRadius: 8,
-                      border: '1px dashed #d1d5db',
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '6px 12px', borderRadius: 100,
+                      border: '1.5px dashed #d1d5db',
                       background: '#f9fafb', cursor: 'pointer',
-                      fontSize: 12, color: '#9ca3af',
+                      fontSize: 12, color: '#9ca3af', fontWeight: 600,
                     }}
                   >
-                    <span>{platformEmoji(p)}</span>
+                    <span style={{ opacity: 0.5, fontSize: 14 }}>{platformEmoji(p)}</span>
                     <span>Connect {platformLabel(p)}</span>
                   </button>
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {ALL_PLATFORMS.map(p => {
-                  const conn = connections.find(c => c.platform === p);
-                  if (conn) {
+                );
+              })}
+            </>
+          )}
+
+          <button
+            onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '7px 14px', borderRadius: 100,
+              border: '1.5px solid #C9A84C',
+              background: 'transparent', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, color: '#C9A84C',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + Connect Account
+          </button>
+        </div>
+
+        {/* ── Two-column layout ── */}
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+
+          {/* ── LEFT: Composer ── */}
+          <div style={{ flex: '0 0 460px', maxWidth: 460 }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 16,
+              border: '1px solid #f0f0f0',
+              padding: '24px',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            }}>
+
+              {/* Editing banner */}
+              {editingPost && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 18, padding: '10px 14px',
+                  background: 'linear-gradient(90deg, #fffbeb, #fef3c7)',
+                  border: '1px solid #fde68a', borderRadius: 10,
+                }}>
+                  <span style={{ fontSize: 12, color: '#92400e', fontWeight: 700 }}>✏️ Editing post</span>
+                  <button
+                    onClick={resetComposer}
+                    style={{ background: 'none', border: 'none', fontSize: 11, color: '#92400e', cursor: 'pointer', fontWeight: 600, opacity: 0.8 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {/* POST TO */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.4, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 10 }}>
+                  Post To
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {ALL_PLATFORMS.map(p => {
+                    const selected = composerPlatforms.includes(p);
+                    const connected = connections.some(c => c.platform === p);
                     return (
-                      <div
+                      <button
                         key={p}
+                        onClick={() => connected && togglePlatform(p)}
+                        title={connected ? platformLabel(p) : `Connect ${platformLabel(p)} first`}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 7,
-                          padding: '7px 12px', borderRadius: 8,
-                          border: `1px solid ${platformColor(p)}30`,
-                          background: `${platformColor(p)}0d`,
+                          display: 'inline-flex', alignItems: 'center', gap: 7,
+                          padding: '8px 14px', borderRadius: 10, cursor: connected ? 'pointer' : 'not-allowed',
+                          border: `1.5px solid ${selected ? platformColor(p) : '#e5e7eb'}`,
+                          background: selected ? platformColor(p) : '#f9fafb',
+                          opacity: connected ? 1 : 0.38,
+                          transition: 'all .15s',
+                          boxShadow: selected ? `0 2px 8px ${platformColor(p)}40` : 'none',
                         }}
                       >
-                        <span style={{ fontSize: 16 }}>{platformEmoji(p)}</span>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e' }}>{conn.account_name}</div>
-                          <div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtNum(conn.followers_count)} followers</div>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`Disconnect ${conn.account_name}?`)) return;
-                            await fetch('/api/crm/social/accounts', {
-                              method: 'DELETE',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ connection_id: conn.id }),
-                            });
-                            setConnections(prev => prev.filter(c => c.id !== conn.id));
-                            toast(`Disconnected ${conn.account_name}`);
-                          }}
-                          style={{ background: 'none', border: 'none', fontSize: 10, color: '#9ca3af', cursor: 'pointer', marginLeft: 4 }}
-                          title="Disconnect"
-                        >✕</button>
-                      </div>
+                        <span style={{ fontSize: 15 }}>{platformEmoji(p)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#fff' : '#6b7280' }}>
+                          {platformLabel(p)}
+                        </span>
+                      </button>
                     );
-                  }
-                  return (
+                  })}
+                </div>
+                {composerPlatforms.includes('youtube') && (
+                  <div style={{ fontSize: 11, color: '#d97706', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '6px 12px', marginTop: 10 }}>
+                    ⚠️ YouTube video upload is not yet supported — text posts only
+                  </div>
+                )}
+              </div>
+
+              {/* AI Caption */}
+              <div style={{ marginBottom: 16 }}>
+                <button
+                  onClick={() => setShowAICaption(!showAICaption)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    padding: '8px 16px', borderRadius: 10,
+                    border: '1.5px solid #C9A84C',
+                    background: showAICaption ? '#C9A84C' : 'transparent',
+                    cursor: 'pointer',
+                    fontSize: 12, fontWeight: 700,
+                    color: showAICaption ? '#fff' : '#92400e',
+                    transition: 'all .15s',
+                  }}
+                >
+                  ✨ AI Caption
+                  <span style={{ fontSize: 10, opacity: 0.7 }}>{showAICaption ? '▲' : '▼'}</span>
+                </button>
+
+                {showAICaption && (
+                  <div style={{
+                    marginTop: 12, padding: '16px',
+                    background: '#fffbeb', borderRadius: 12,
+                    border: '1px solid #fde68a',
+                  }}>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: '#92400e', display: 'block', marginBottom: 5 }}>Topic / Property</label>
+                      <input
+                        value={captionTopic}
+                        onChange={e => setCaptionTopic(e.target.value)}
+                        placeholder="e.g. Property listing at 123 Main St"
+                        style={{
+                          width: '100%', padding: '8px 11px', borderRadius: 8,
+                          border: '1.5px solid #fde68a', fontSize: 12,
+                          background: '#fff', boxSizing: 'border-box', outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: '#92400e', display: 'block', marginBottom: 5 }}>Tone</label>
+                      <select
+                        value={captionTone}
+                        onChange={e => setCaptionTone(e.target.value)}
+                        style={{
+                          width: '100%', padding: '8px 11px', borderRadius: 8,
+                          border: '1.5px solid #fde68a', fontSize: 12,
+                          background: '#fff', boxSizing: 'border-box',
+                        }}
+                      >
+                        {['Professional', 'Friendly', 'Exciting', 'Informative'].map(t => (
+                          <option key={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
                     <button
-                      key={p}
-                      onClick={() => window.open(`/api/auth/social/${p === 'instagram' ? 'facebook' : p}?userId=${agentId}`, '_blank')}
+                      onClick={() => generateCaption(captionTopic, captionTone)}
+                      disabled={captionLoading || !captionTopic.trim()}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '7px 12px', borderRadius: 8,
-                        border: '1px dashed #d1d5db',
-                        background: '#f9fafb', cursor: 'pointer',
-                        fontSize: 12, color: '#9ca3af',
+                        padding: '8px 20px', borderRadius: 8, border: 'none',
+                        background: captionLoading || !captionTopic.trim() ? '#d1d5db' : '#C9A84C',
+                        color: '#fff', fontSize: 12, fontWeight: 700,
+                        cursor: captionLoading || !captionTopic.trim() ? 'not-allowed' : 'pointer',
                       }}
                     >
-                      <span style={{ opacity: 0.4 }}>{platformEmoji(p)}</span>
-                      <span>Connect</span>
+                      {captionLoading ? '⏳ Generating…' : '✨ Generate Caption'}
                     </button>
-                  );
-                })}
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Textarea */}
+              <div style={{ marginBottom: 16 }}>
+                <textarea
+                  value={composerContent}
+                  onChange={e => setComposerContent(e.target.value)}
+                  placeholder="Write your post…"
+                  rows={7}
+                  style={{
+                    width: '100%', padding: '13px 14px', borderRadius: 12,
+                    border: '1.5px solid #e5e7eb', fontSize: 13, lineHeight: 1.65,
+                    resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box',
+                    outline: 'none', transition: 'border-color .15s',
+                    color: '#1a1a2e',
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 5 }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600,
+                    color: charsRemaining() < 0 ? '#dc2626' : charsRemaining() < 50 ? '#d97706' : '#9ca3af',
+                  }}>
+                    {charsRemaining() < 0
+                      ? `${Math.abs(charsRemaining())} over limit`
+                      : `${charsRemaining()} chars remaining`}
+                    {composerPlatforms.length > 0 && (
+                      <span style={{ color: '#d1d5db', marginLeft: 5 }}>
+                        · limit {fmtNum(charLimit())} ({composerPlatforms.map(p => platformLabel(p)).join(', ')})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              {/* Media upload */}
+              <div style={{ marginBottom: 16 }}>
+                <div
+                  onClick={() => !uploadingMedia && mediaInputRef.current?.click()}
+                  style={{
+                    border: '2px dashed #e5e7eb', borderRadius: 12, padding: composerMediaUrls.length > 0 ? '12px' : '20px',
+                    textAlign: 'center', cursor: uploadingMedia ? 'default' : 'pointer',
+                    background: composerMediaUrls.length > 0 ? '#f8fff9' : '#fafafa',
+                    opacity: uploadingMedia ? 0.7 : 1,
+                    transition: 'all .15s',
+                  }}
+                >
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={async e => {
+                      const files = Array.from(e.target.files || []);
+                      if (!files.length) return;
+                      e.target.value = '';
+                      setUploadingMedia(true);
+                      try {
+                        const uploaded: string[] = [];
+                        for (const file of files) {
+                          const fd = new FormData();
+                          fd.append('file', file);
+                          const res = await fetch('/api/crm/social/upload', { method: 'POST', body: fd });
+                          const data = await res.json();
+                          if (res.ok && data.url) {
+                            uploaded.push(data.url);
+                          } else {
+                            alert(`Failed to upload ${file.name}: ${data.error ?? 'Unknown error'}`);
+                          }
+                        }
+                        if (uploaded.length) {
+                          setComposerMediaUrls(prev => [...prev, ...uploaded].slice(0, 10));
+                        }
+                      } catch {
+                        alert('Image upload failed. Please try again.');
+                      } finally {
+                        setUploadingMedia(false);
+                      }
+                    }}
+                  />
+                  {uploadingMedia ? (
+                    <div>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>Uploading…</div>
+                    </div>
+                  ) : composerMediaUrls.length === 0 ? (
+                    <div>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>🖼️</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 3 }}>Add Photos or Videos</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af' }}>Click to browse · Max 10 files</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {composerMediaUrls.map((url, i) => (
+                        <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
+                          <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 10, border: '2px solid #e5e7eb', display: 'block' }} />
+                          <button
+                            onClick={e => { e.stopPropagation(); setComposerMediaUrls(prev => prev.filter((_, idx) => idx !== i)); }}
+                            style={{
+                              position: 'absolute', top: -6, right: -6, width: 20, height: 20,
+                              borderRadius: '50%', background: '#1a1a2e', color: '#fff',
+                              border: 'none', cursor: 'pointer', fontSize: 10,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontWeight: 700,
+                            }}
+                          >✕</button>
+                        </div>
+                      ))}
+                      <div style={{
+                        width: 72, height: 72, border: '2px dashed #d1d5db', borderRadius: 10,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 24, color: '#9ca3af', flexShrink: 0,
+                      }}>+</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Link + Hashtags grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', display: 'block', marginBottom: 6 }}>Link URL</label>
+                  <input
+                    value={composerLinkUrl}
+                    onChange={e => setComposerLinkUrl(e.target.value)}
+                    placeholder="https://…"
+                    style={{
+                      width: '100%', padding: '8px 11px', borderRadius: 9,
+                      border: '1.5px solid #e5e7eb', fontSize: 12,
+                      boxSizing: 'border-box', outline: 'none',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af' }}>Hashtags</label>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/crm/social/hashtags', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ content: composerContent, platforms: composerPlatforms }),
+                          });
+                          const data = await res.json();
+                          if (data.hashtags) setComposerHashtags(data.hashtags.join(' '));
+                        } catch {
+                          toast('Failed to suggest hashtags');
+                        }
+                      }}
+                      style={{ fontSize: 10, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      ✨ Suggest
+                    </button>
+                  </div>
+                  <input
+                    value={composerHashtags}
+                    onChange={e => setComposerHashtags(e.target.value)}
+                    placeholder="#realestate #fairoak"
+                    style={{
+                      width: '100%', padding: '8px 11px', borderRadius: 9,
+                      border: '1.5px solid #e5e7eb', fontSize: 12,
+                      boxSizing: 'border-box', outline: 'none',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  />
+                </div>
+              </div>
+
+              {/* First Comment (collapsible) */}
+              <div style={{ marginBottom: 10, borderTop: '1px solid #f5f5f5', paddingTop: 12 }}>
+                <button
+                  onClick={() => setShowFirstComment(!showFirstComment)}
+                  style={{
+                    background: 'none', border: 'none', fontSize: 12, color: '#6b7280',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    fontWeight: 600, padding: 0,
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 18, height: 18, borderRadius: 4, background: '#f3f4f6',
+                    fontSize: 9, color: '#9ca3af', fontWeight: 700,
+                  }}>
+                    {showFirstComment ? '▲' : '▼'}
+                  </span>
+                  💬 First Comment
+                  <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>(Instagram strategy)</span>
+                </button>
+                {showFirstComment && (
+                  <textarea
+                    value={composerFirstComment}
+                    onChange={e => setComposerFirstComment(e.target.value)}
+                    placeholder="Add a first comment to hide hashtags on Instagram…"
+                    rows={3}
+                    style={{
+                      width: '100%', marginTop: 10, padding: '9px 12px', borderRadius: 10,
+                      border: '1.5px solid #e5e7eb', fontSize: 12, resize: 'vertical',
+                      fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  />
+                )}
+              </div>
+
+              {/* Internal Notes (collapsible) */}
+              <div style={{ marginBottom: 20, borderTop: '1px solid #f5f5f5', paddingTop: 12 }}>
+                <button
+                  onClick={() => setShowInternalNotes(!showInternalNotes)}
+                  style={{
+                    background: 'none', border: 'none', fontSize: 12, color: '#6b7280',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                    fontWeight: 600, padding: 0,
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 18, height: 18, borderRadius: 4, background: '#f3f4f6',
+                    fontSize: 9, color: '#9ca3af', fontWeight: 700,
+                  }}>
+                    {showInternalNotes ? '▲' : '▼'}
+                  </span>
+                  📝 Internal Notes
+                  <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 400 }}>(not published)</span>
+                </button>
+                {showInternalNotes && (
+                  <textarea
+                    value={composerNotes}
+                    onChange={e => setComposerNotes(e.target.value)}
+                    placeholder="Private notes for this post…"
+                    rows={2}
+                    style={{
+                      width: '100%', marginTop: 10, padding: '9px 12px', borderRadius: 10,
+                      border: '1.5px solid #e5e7eb', fontSize: 12, resize: 'vertical',
+                      fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  />
+                )}
+              </div>
+
+              {/* Schedule / Post Now toggle */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{
+                  display: 'inline-flex', borderRadius: 10, border: '1.5px solid #e5e7eb',
+                  overflow: 'hidden', marginBottom: 12,
+                }}>
+                  {(['schedule', 'now'] as const).map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setPostMode(m)}
+                      style={{
+                        padding: '8px 18px', border: 'none',
+                        background: postMode === m ? '#1a1a2e' : 'transparent',
+                        fontSize: 12, fontWeight: 700,
+                        color: postMode === m ? '#fff' : '#9ca3af',
+                        cursor: 'pointer', transition: 'all .15s',
+                      }}
+                    >
+                      {m === 'schedule' ? '📅 Schedule' : '⚡ Post Now'}
+                    </button>
+                  ))}
+                </div>
+                {postMode === 'schedule' && (
+                  <input
+                    type="datetime-local"
+                    value={composerScheduledAt}
+                    onChange={e => setComposerScheduledAt(e.target.value)}
+                    style={{
+                      width: '100%', padding: '9px 12px', borderRadius: 10,
+                      border: '1.5px solid #e5e7eb', fontSize: 12,
+                      boxSizing: 'border-box', outline: 'none', color: '#1a1a2e',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  />
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => savePost('draft')}
+                  disabled={composerLoading}
+                  style={{
+                    flex: 1, padding: '11px 0', borderRadius: 10,
+                    border: '1.5px solid #e5e7eb', background: '#f9fafb',
+                    fontSize: 13, fontWeight: 700, color: '#6b7280',
+                    cursor: composerLoading ? 'not-allowed' : 'pointer',
+                    transition: 'all .15s',
+                  }}
+                >
+                  Save Draft
+                </button>
+                {postMode === 'schedule' ? (
+                  <button
+                    onClick={() => savePost('scheduled')}
+                    disabled={composerLoading || !composerScheduledAt || composerPlatforms.length === 0}
+                    style={{
+                      flex: 2, padding: '11px 0', borderRadius: 10, border: 'none',
+                      background: (composerLoading || !composerScheduledAt || composerPlatforms.length === 0)
+                        ? '#d1d5db' : '#1a1a2e',
+                      fontSize: 13, fontWeight: 700, color: '#fff',
+                      cursor: (composerLoading || !composerScheduledAt || composerPlatforms.length === 0) ? 'not-allowed' : 'pointer',
+                      boxShadow: (!composerLoading && composerScheduledAt && composerPlatforms.length > 0)
+                        ? '0 4px 14px rgba(26,26,46,0.3)' : 'none',
+                      transition: 'all .15s',
+                    }}
+                  >
+                    {composerLoading ? '⏳ Saving…' : '📅 Schedule Post'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => savePost('published')}
+                    disabled={composerLoading || composerPlatforms.length === 0}
+                    style={{
+                      flex: 2, padding: '11px 0', borderRadius: 10, border: 'none',
+                      background: (composerLoading || composerPlatforms.length === 0) ? '#d1d5db' : '#C9A84C',
+                      fontSize: 13, fontWeight: 700, color: '#fff',
+                      cursor: (composerLoading || composerPlatforms.length === 0) ? 'not-allowed' : 'pointer',
+                      boxShadow: (!composerLoading && composerPlatforms.length > 0)
+                        ? '0 4px 14px rgba(201,168,76,0.4)' : 'none',
+                      transition: 'all .15s',
+                    }}
+                  >
+                    {composerLoading ? '⏳ Posting…' : '⚡ Post Now'}
+                  </button>
+                )}
+              </div>
+
+            </div>
           </div>
 
-          {/* Composer card */}
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-            {editingPost && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
-                <span style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>✏️ Editing post</span>
-                <button onClick={resetComposer} style={{ background: 'none', border: 'none', fontSize: 11, color: '#92400e', cursor: 'pointer' }}>Cancel Edit</button>
-              </div>
-            )}
+          {/* ── RIGHT: Post Queue ── */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              background: '#fff',
+              borderRadius: 16,
+              border: '1px solid #f0f0f0',
+              overflow: 'hidden',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            }}>
 
-            {/* Platform selector */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>Post To</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {ALL_PLATFORMS.map(p => {
-                  const selected = composerPlatforms.includes(p);
-                  const connected = connections.some(c => c.platform === p);
+              {/* Pill tab bar */}
+              <div style={{
+                display: 'flex', gap: 6, padding: '16px 16px 0',
+                borderBottom: '1px solid #f0f0f0', paddingBottom: 16,
+              }}>
+                {tabConfig.map(({ key, label, icon }) => {
+                  const count = posts.filter(p => {
+                    if (key === 'scheduled') return p.status === 'scheduled';
+                    if (key === 'drafts') return p.status === 'draft';
+                    if (key === 'published') return p.status === 'published';
+                    return p.status === 'failed';
+                  }).length;
+                  const active = postQueueTab === key;
                   return (
                     <button
-                      key={p}
-                      onClick={() => connected && togglePlatform(p)}
-                      title={connected ? platformLabel(p) : `Connect ${platformLabel(p)} first`}
+                      key={key}
+                      onClick={() => setPostQueueTab(key)}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '7px 13px', borderRadius: 8, cursor: connected ? 'pointer' : 'not-allowed',
-                        border: `1.5px solid ${selected ? platformColor(p) : '#e5e7eb'}`,
-                        background: selected ? `${platformColor(p)}15` : '#f9fafb',
-                        opacity: connected ? 1 : 0.4,
-                        transition: 'all .15s',
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '7px 14px', borderRadius: 100, border: 'none',
+                        background: active ? '#1a1a2e' : 'transparent',
+                        fontSize: 12, fontWeight: 700,
+                        color: active ? '#fff' : '#9ca3af',
+                        cursor: 'pointer', transition: 'all .15s',
                       }}
                     >
-                      <span style={{ fontSize: 16 }}>{platformEmoji(p)}</span>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: selected ? platformColor(p) : '#6b7280' }}>
-                        {platformLabel(p)}
+                      <span>{icon}</span>
+                      <span>{label}</span>
+                      <span style={{
+                        padding: '1px 7px', borderRadius: 100, fontSize: 10, fontWeight: 800,
+                        background: active ? 'rgba(255,255,255,0.2)' : '#f3f4f6',
+                        color: active ? '#fff' : '#6b7280',
+                      }}>
+                        {count}
                       </span>
                     </button>
                   );
                 })}
               </div>
-              {composerPlatforms.includes('youtube') && (
-                <div style={{ fontSize: 11, color: '#d97706', background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px', marginTop: 8 }}>
-                  ⚠️ YouTube video upload is not yet supported — text posts only
-                </div>
-              )}
-            </div>
 
-            {/* AI Caption */}
-            <div style={{ marginBottom: 12 }}>
-              <button
-                onClick={() => setShowAICaption(!showAICaption)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '7px 14px', borderRadius: 8,
-                  border: '1.5px solid #C9A84C40',
-                  background: '#fffbeb', cursor: 'pointer',
-                  fontSize: 12, fontWeight: 700, color: '#92400e',
-                }}
-              >
-                ✨ Generate Caption with AI
-              </button>
-              {showAICaption && (
-                <div style={{ marginTop: 10, padding: '14px', background: '#fffbeb', borderRadius: 10, border: '1px solid #fde68a' }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: '#92400e', display: 'block', marginBottom: 4 }}>Topic / Property</label>
-                    <input
-                      value={captionTopic}
-                      onChange={e => setCaptionTopic(e.target.value)}
-                      placeholder="e.g. Property listing at 123 Main St"
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #fde68a', fontSize: 12, background: '#fff', boxSizing: 'border-box' }}
-                    />
+              {/* Queue content */}
+              <div style={{ padding: '16px', maxHeight: 680, overflowY: 'auto' }}>
+                {postsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '48px 24px', color: '#9ca3af' }}>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>⏳</div>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Loading posts…</div>
                   </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: '#92400e', display: 'block', marginBottom: 4 }}>Tone</label>
-                    <select
-                      value={captionTone}
-                      onChange={e => setCaptionTone(e.target.value)}
-                      style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid #fde68a', fontSize: 12, background: '#fff', boxSizing: 'border-box' }}
-                    >
-                      {['Professional', 'Friendly', 'Exciting', 'Informative'].map(t => (
-                        <option key={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    onClick={() => generateCaption(captionTopic, captionTone)}
-                    disabled={captionLoading || !captionTopic.trim()}
-                    style={{
-                      padding: '8px 18px', borderRadius: 8, border: 'none',
-                      background: captionLoading || !captionTopic.trim() ? '#d1d5db' : '#C9A84C',
-                      color: '#fff', fontSize: 12, fontWeight: 700, cursor: captionLoading || !captionTopic.trim() ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {captionLoading ? '⏳ Generating...' : '✨ Generate'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Textarea */}
-            <div style={{ marginBottom: 8 }}>
-              <textarea
-                value={composerContent}
-                onChange={e => setComposerContent(e.target.value)}
-                placeholder="Write your post..."
-                rows={7}
-                style={{
-                  width: '100%', padding: '12px', borderRadius: 10,
-                  border: '1.5px solid #e5e7eb', fontSize: 13, lineHeight: 1.6,
-                  resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box',
-                  outline: 'none',
-                }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-                <span style={{
-                  fontSize: 11, fontWeight: 600,
-                  color: charsRemaining() < 0 ? '#dc2626' : charsRemaining() < 50 ? '#d97706' : '#9ca3af',
-                }}>
-                  {charsRemaining() < 0 ? `${Math.abs(charsRemaining())} over limit` : `${charsRemaining()} chars remaining`}
-                  {composerPlatforms.length > 0 && (
-                    <span style={{ color: '#d1d5db', marginLeft: 4 }}>
-                      (limit: {fmtNum(charLimit())} — {composerPlatforms.map(p => platformLabel(p)).join(', ')})
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            {/* Media upload */}
-            <div style={{ marginBottom: 14 }}>
-              <div
-                onClick={() => mediaInputRef.current?.click()}
-                style={{
-                  border: '2px dashed #e5e7eb', borderRadius: 10, padding: '16px',
-                  textAlign: 'center', cursor: 'pointer',
-                  background: composerMediaUrls.length > 0 ? '#f0fdf4' : '#fafafa',
-                  transition: 'all .15s',
-                }}
-              >
-                <input
-                  ref={mediaInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={e => {
-                    const files = Array.from(e.target.files || []);
-                    const newUrls = files.map(f => URL.createObjectURL(f));
-                    setComposerMediaUrls(prev => [...prev, ...newUrls].slice(0, 10));
-                  }}
-                />
-                {composerMediaUrls.length === 0 ? (
-                  <div>
-                    <div style={{ fontSize: 24, marginBottom: 6 }}>🖼️</div>
-                    <div style={{ fontSize: 12, color: '#6b7280' }}>Click or drag to upload images/videos</div>
-                    <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2 }}>Max 10 files</div>
+                ) : queuePosts.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px 24px' }}>
+                    <div style={{ fontSize: 40, marginBottom: 14 }}>
+                      {postQueueTab === 'scheduled' ? '📅' : postQueueTab === 'drafts' ? '✏️' : postQueueTab === 'published' ? '✅' : '❌'}
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginBottom: 8 }}>
+                      No {postQueueTab} posts yet
+                    </div>
+                    <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.5 }}>
+                      {postQueueTab === 'scheduled'
+                        ? 'Use the composer to schedule your first post.'
+                        : `No ${postQueueTab} posts to show.`}
+                    </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                    {composerMediaUrls.map((url, i) => (
-                      <div key={i} style={{ position: 'relative' }}>
-                        <img src={url} alt="" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '2px solid #e5e7eb' }} />
-                        <button
-                          onClick={e => { e.stopPropagation(); setComposerMediaUrls(prev => prev.filter((_, idx) => idx !== i)); }}
-                          style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#dc2626', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        >✕</button>
-                      </div>
-                    ))}
-                    <div style={{ width: 64, height: 64, border: '2px dashed #d1d5db', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, color: '#9ca3af' }}>+</div>
-                  </div>
-                )}
-              </div>
-            </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {queuePosts.map(post => {
+                      const badge = statusBadge(post.status);
+                      const timeStr = post.scheduled_at
+                        ? new Date(post.scheduled_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                        : post.published_at
+                        ? new Date(post.published_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                        : null;
+                      const isPreviewing = previewPostId === post.id;
+                      const isScheduling = schedulingPostId === post.id;
+                      const thumbUrl = post.media_urls?.[0] || null;
+                      const primaryPlatform: SocialPlatform | null = post.platforms?.[0] || null;
 
-            {/* Link URL */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 5 }}>Add Link</label>
-              <input
-                value={composerLinkUrl}
-                onChange={e => setComposerLinkUrl(e.target.value)}
-                placeholder="https://..."
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 12, boxSizing: 'border-box' }}
-              />
-            </div>
+                      return (
+                        <div
+                          key={post.id}
+                          style={{
+                            borderRadius: 12,
+                            border: `1px solid ${isPreviewing ? '#C9A84C50' : '#f0f0f0'}`,
+                            background: '#fff',
+                            boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                            overflow: 'hidden',
+                            transition: 'border-color .2s, box-shadow .2s',
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#e0e0e0'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 3px 10px rgba(0,0,0,0.08)'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = isPreviewing ? '#C9A84C50' : '#f0f0f0'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 4px rgba(0,0,0,0.04)'; }}
+                        >
+                          {/* Card body */}
+                          <div style={{ padding: '14px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                            {/* Thumbnail */}
+                            {thumbUrl ? (
+                              <img
+                                src={thumbUrl}
+                                alt=""
+                                style={{
+                                  width: 72, height: 72, flexShrink: 0,
+                                  objectFit: 'cover', borderRadius: 10,
+                                  border: '1px solid #f0f0f0',
+                                }}
+                              />
+                            ) : (
+                              <div style={{
+                                width: 72, height: 72, flexShrink: 0, borderRadius: 10,
+                                background: primaryPlatform ? `${platformColor(primaryPlatform)}18` : '#f3f4f6',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: 26,
+                                border: `1px solid ${primaryPlatform ? `${platformColor(primaryPlatform)}30` : '#e5e7eb'}`,
+                              }}>
+                                {primaryPlatform ? platformEmoji(primaryPlatform) : '📄'}
+                              </div>
+                            )}
 
-            {/* Hashtags */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}># Hashtags</label>
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await fetch('/api/crm/social/hashtags', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ content: composerContent, platforms: composerPlatforms }),
-                      });
-                      const data = await res.json();
-                      if (data.hashtags) setComposerHashtags(data.hashtags.join(' '));
-                    } catch {
-                      toast('Failed to suggest hashtags');
-                    }
-                  }}
-                  style={{ fontSize: 11, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
-                >
-                  ✨ Suggest
-                </button>
-              </div>
-              <input
-                value={composerHashtags}
-                onChange={e => setComposerHashtags(e.target.value)}
-                placeholder="#realestate #fairoak #property"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 12, boxSizing: 'border-box' }}
-              />
-            </div>
-
-            {/* First comment (collapsible) */}
-            <div style={{ marginBottom: 12 }}>
-              <button
-                onClick={() => setShowFirstComment(!showFirstComment)}
-                style={{ background: 'none', border: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                <span style={{ fontSize: 10 }}>{showFirstComment ? '▼' : '▶'}</span>
-                💬 First Comment (Instagram strategy)
-              </button>
-              {showFirstComment && (
-                <textarea
-                  value={composerFirstComment}
-                  onChange={e => setComposerFirstComment(e.target.value)}
-                  placeholder="Add a first comment (great for hiding hashtags on Instagram)..."
-                  rows={3}
-                  style={{ width: '100%', marginTop: 8, padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 12, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                />
-              )}
-            </div>
-
-            {/* Internal notes (collapsible) */}
-            <div style={{ marginBottom: 16 }}>
-              <button
-                onClick={() => setShowInternalNotes(!showInternalNotes)}
-                style={{ background: 'none', border: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                <span style={{ fontSize: 10 }}>{showInternalNotes ? '▼' : '▶'}</span>
-                📝 Internal Notes
-              </button>
-              {showInternalNotes && (
-                <textarea
-                  value={composerNotes}
-                  onChange={e => setComposerNotes(e.target.value)}
-                  placeholder="Internal notes (not published)..."
-                  rows={2}
-                  style={{ width: '100%', marginTop: 8, padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 12, resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                />
-              )}
-            </div>
-
-            {/* Schedule / Post Now */}
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                {(['schedule', 'now'] as const).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => setPostMode(m)}
-                    style={{
-                      padding: '6px 14px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-                      border: `1.5px solid ${postMode === m ? '#1a1a2e' : '#e5e7eb'}`,
-                      background: postMode === m ? '#1a1a2e' : '#f9fafb',
-                      color: postMode === m ? '#fff' : '#6b7280',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {m === 'schedule' ? '📅 Schedule' : '⚡ Post Now'}
-                  </button>
-                ))}
-              </div>
-              {postMode === 'schedule' && (
-                <input
-                  type="datetime-local"
-                  value={composerScheduledAt}
-                  onChange={e => setComposerScheduledAt(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid #e5e7eb', fontSize: 12, boxSizing: 'border-box' }}
-                />
-              )}
-            </div>
-
-            {/* Submit buttons */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => savePost('draft')}
-                disabled={composerLoading}
-                style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid #e5e7eb', background: '#f9fafb', fontSize: 13, fontWeight: 700, color: '#6b7280', cursor: composerLoading ? 'not-allowed' : 'pointer' }}
-              >
-                Save Draft
-              </button>
-              {postMode === 'schedule' ? (
-                <button
-                  onClick={() => savePost('scheduled')}
-                  disabled={composerLoading || !composerScheduledAt || composerPlatforms.length === 0}
-                  style={{
-                    flex: 2, padding: '10px', borderRadius: 9, border: 'none',
-                    background: (composerLoading || !composerScheduledAt || composerPlatforms.length === 0) ? '#d1d5db' : '#1a1a2e',
-                    fontSize: 13, fontWeight: 700, color: '#fff',
-                    cursor: (composerLoading || !composerScheduledAt || composerPlatforms.length === 0) ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {composerLoading ? '⏳ Saving...' : '📅 Schedule Post'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => savePost('published')}
-                  disabled={composerLoading || composerPlatforms.length === 0}
-                  style={{
-                    flex: 2, padding: '10px', borderRadius: 9, border: 'none',
-                    background: (composerLoading || composerPlatforms.length === 0) ? '#d1d5db' : '#C9A84C',
-                    fontSize: 13, fontWeight: 700, color: '#fff',
-                    cursor: (composerLoading || composerPlatforms.length === 0) ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {composerLoading ? '⏳ Posting...' : '⚡ Post Now'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Right: Post Queue ── */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-            <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0' }}>
-              {(['scheduled', 'drafts', 'published', 'failed'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setPostQueueTab(tab)}
-                  style={{
-                    flex: 1, padding: '12px 8px', border: 'none',
-                    borderBottom: `2px solid ${postQueueTab === tab ? '#1a1a2e' : 'transparent'}`,
-                    background: 'none', fontSize: 12, fontWeight: 700,
-                    color: postQueueTab === tab ? '#1a1a2e' : '#9ca3af',
-                    cursor: 'pointer', textTransform: 'capitalize',
-                  }}
-                >
-                  {tab === 'scheduled' ? '📅' : tab === 'drafts' ? '✏️' : tab === 'published' ? '✅' : '❌'} {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  <span style={{ marginLeft: 5, background: '#f3f4f6', color: '#6b7280', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                    {posts.filter(p => {
-                      if (tab === 'scheduled') return p.status === 'scheduled';
-                      if (tab === 'drafts') return p.status === 'draft';
-                      if (tab === 'published') return p.status === 'published';
-                      return p.status === 'failed';
-                    }).length}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div style={{ padding: '16px', maxHeight: 600, overflowY: 'auto' }}>
-              {postsLoading ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af', fontSize: 13 }}>Loading posts...</div>
-              ) : queuePosts.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '48px 24px' }}>
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>
-                    {postQueueTab === 'scheduled' ? '📅' : postQueueTab === 'drafts' ? '✏️' : postQueueTab === 'published' ? '✅' : '❌'}
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>
-                    No {postQueueTab} posts yet
-                  </div>
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                    {postQueueTab === 'scheduled' ? 'Create your first post and schedule it →' : `No ${postQueueTab} posts to show.`}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {queuePosts.map(post => {
-                    const badge = statusBadge(post.status);
-                    const timeStr = post.scheduled_at
-                      ? new Date(post.scheduled_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                      : post.published_at
-                      ? new Date(post.published_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                      : null;
-                    const isPreviewing = previewPostId === post.id;
-
-                    return (
-                      <div key={post.id} style={{ borderRadius: 10, border: `1px solid ${isPreviewing ? '#E1306C40' : '#f0f0f0'}`, background: '#fafafa', overflow: 'hidden', transition: 'border-color .2s' }}>
-                        {/* Card header */}
-                        <div style={{ padding: '14px' }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-                            <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
-                              {post.platforms.map(p => renderPlatformBadge(p))}
-                            </div>
+                            {/* Content */}
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ margin: 0, fontSize: 13, color: '#1a1a2e', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                                {post.content}
+                              {/* Text preview */}
+                              <p style={{
+                                margin: '0 0 8px', fontSize: 13, color: '#1a1a2e',
+                                lineHeight: 1.5, overflow: 'hidden',
+                                display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                              }}>
+                                {post.content || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No caption</span>}
                               </p>
+
+                              {/* Platform badges + status + time */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                                <span style={{
+                                  padding: '2px 8px', borderRadius: 100, fontSize: 10, fontWeight: 700,
+                                  background: badge.bg, color: badge.color,
+                                }}>
+                                  {post.status}
+                                </span>
+                                <span style={{ color: '#d1d5db', fontSize: 10 }}>·</span>
+                                {post.platforms.map(p => (
+                                  <span
+                                    key={p}
+                                    title={platformLabel(p)}
+                                    style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                                      padding: '2px 7px', borderRadius: 100, fontSize: 10, fontWeight: 700,
+                                      background: `${platformColor(p)}18`,
+                                      color: platformColor(p),
+                                      border: `1px solid ${platformColor(p)}40`,
+                                    }}
+                                  >
+                                    {platformEmoji(p)} {platformLabel(p)}
+                                  </span>
+                                ))}
+                                {timeStr && (
+                                  <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                                    · {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Engagement for published */}
+                              {post.status === 'published' && (
+                                <div style={{ display: 'flex', gap: 10, marginTop: 7 }}>
+                                  <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
+                                  <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
+                                  <span style={{ fontSize: 11, color: '#6b7280' }}>🔁 {post.engagement?.shares || 0}</span>
+                                </div>
+                              )}
                             </div>
-                            <span style={{ padding: '3px 9px', borderRadius: 12, fontSize: 10, fontWeight: 700, background: badge.bg, color: badge.color, flexShrink: 0 }}>
-                              {post.status}
-                            </span>
                           </div>
 
-                          {timeStr && (
-                            <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
-                              {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
-                            </div>
-                          )}
-
-                          {post.status === 'published' && (
-                            <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
-                              <span style={{ fontSize: 11, color: '#6b7280' }}>🔁 {post.engagement?.shares || 0}</span>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', gap: 8 }}>
+                          {/* Card action row */}
+                          <div style={{
+                            padding: '10px 14px',
+                            borderTop: '1px solid #f5f5f5',
+                            display: 'flex', gap: 6, flexWrap: 'wrap',
+                            background: '#fafafa',
+                          }}>
                             <button
                               onClick={() => setPreviewPostId(isPreviewing ? null : post.id)}
-                              style={{ padding: '4px 12px', borderRadius: 7, border: `1px solid ${isPreviewing ? '#E1306C' : '#e5e7eb'}`, background: isPreviewing ? '#fff0f5' : '#fff', fontSize: 11, color: isPreviewing ? '#E1306C' : '#374151', cursor: 'pointer', fontWeight: 600 }}
+                              style={{
+                                padding: '5px 12px', borderRadius: 8,
+                                border: `1px solid ${isPreviewing ? '#C9A84C' : '#e5e7eb'}`,
+                                background: isPreviewing ? '#fffbeb' : '#fff',
+                                fontSize: 11, fontWeight: 700,
+                                color: isPreviewing ? '#92400e' : '#374151',
+                                cursor: 'pointer',
+                              }}
                             >
-                              {isPreviewing ? '✕ Hide Preview' : '📸 Preview'}
+                              {isPreviewing ? '✕ Hide' : '👁 Preview'}
                             </button>
+                            {post.status === 'draft' && (
+                              <button
+                                onClick={() => {
+                                  setSchedulingPostId(isScheduling ? null : post.id);
+                                  if (!isScheduling) {
+                                    const base = post.scheduled_at
+                                      ? new Date(post.scheduled_at)
+                                      : (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; })();
+                                    setSchedulingDate(base.toISOString().slice(0, 16));
+                                  }
+                                }}
+                                style={{
+                                  padding: '5px 12px', borderRadius: 8,
+                                  border: `1px solid ${isScheduling ? '#1a1a2e' : '#dbeafe'}`,
+                                  background: isScheduling ? '#1a1a2e' : '#eff6ff',
+                                  fontSize: 11, fontWeight: 700,
+                                  color: isScheduling ? '#fff' : '#1d4ed8',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                📅 Schedule
+                              </button>
+                            )}
                             <button
                               onClick={() => openEditPost(post)}
-                              style={{ padding: '4px 12px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', fontSize: 11, color: '#374151', cursor: 'pointer', fontWeight: 600 }}
+                              style={{
+                                padding: '5px 12px', borderRadius: 8,
+                                border: '1px solid #e5e7eb', background: '#fff',
+                                fontSize: 11, fontWeight: 700, color: '#374151',
+                                cursor: 'pointer',
+                              }}
                             >
                               ✏️ Edit
                             </button>
                             <button
                               onClick={() => deletePost(post.id)}
-                              style={{ padding: '4px 12px', borderRadius: 7, border: '1px solid #fee2e2', background: '#fff', fontSize: 11, color: '#dc2626', cursor: 'pointer', fontWeight: 600 }}
+                              style={{
+                                padding: '5px 12px', borderRadius: 8,
+                                border: '1px solid #fee2e2', background: '#fff',
+                                fontSize: 11, fontWeight: 700, color: '#dc2626',
+                                cursor: 'pointer',
+                              }}
                             >
-                              🗑️ Delete
+                              🗑 Delete
                             </button>
                           </div>
-                        </div>
 
-                        {/* Inline Instagram Preview */}
-                        {isPreviewing && (
-                          <div style={{ borderTop: '1px solid #E1306C20', background: '#fff8fa', padding: '16px', display: 'flex', justifyContent: 'center' }}>
+                          {/* Inline scheduler */}
+                          {isScheduling && (
                             <div style={{
-                              width: '100%', maxWidth: 320, background: '#fff', borderRadius: 12,
-                              border: '1px solid #dbdbdb', boxShadow: '0 2px 12px rgba(0,0,0,.07)',
-                              overflow: 'hidden', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                              padding: '12px 14px',
+                              borderTop: '1px solid #dbeafe',
+                              background: '#f0f7ff',
+                              display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
                             }}>
-                              {/* IG header */}
-                              <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', gap: 8 }}>
-                                <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff', flexShrink: 0 }}>FO</div>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: 12, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
-                                  <div style={{ fontSize: 10, color: '#8e8e8e' }}>{timeStr || 'Draft'}</div>
-                                </div>
-                                <span style={{ fontSize: 16, color: '#000' }}>···</span>
-                              </div>
-                              {/* Image area */}
-                              <div style={{ width: '100%', aspectRatio: '1 / 1', background: 'linear-gradient(135deg, #1a1a2e 0%, #C9A84C 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                                <div style={{ fontSize: 30 }}>🏡</div>
-                                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Add photo when editing</div>
-                              </div>
-                              {/* Actions + caption */}
-                              <div style={{ padding: '8px 12px 10px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                                  <div style={{ display: 'flex', gap: 12 }}>
-                                    <span style={{ fontSize: 20 }}>🤍</span>
-                                    <span style={{ fontSize: 20 }}>💬</span>
-                                    <span style={{ fontSize: 20 }}>📤</span>
-                                  </div>
-                                  <span style={{ fontSize: 20 }}>🔖</span>
-                                </div>
-                                <div style={{ fontSize: 11, fontWeight: 700, color: '#000', marginBottom: 4 }}>243 likes</div>
-                                <div style={{ fontSize: 12, color: '#000', lineHeight: 1.5 }}>
-                                  <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
-                                  <span style={{ whiteSpace: 'pre-wrap' }}>
-                                    {post.content.split(' ').map((word, wi) => (
-                                      <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? '#00376b' : 'inherit' }}>{word} </span>
-                                    ))}
-                                  </span>
-                                </div>
-                                {post.hashtags?.length > 0 && (
-                                  <div style={{ fontSize: 12, color: '#00376b', marginTop: 4, lineHeight: 1.5 }}>
-                                    {post.hashtags.join(' ')}
-                                  </div>
-                                )}
-                              </div>
+                              <input
+                                type="datetime-local"
+                                value={schedulingDate}
+                                onChange={e => setSchedulingDate(e.target.value)}
+                                style={{
+                                  flex: 1, minWidth: 180, padding: '7px 10px', borderRadius: 8,
+                                  border: '1.5px solid #93c5fd', fontSize: 12, outline: 'none',
+                                }}
+                                onFocus={e => { e.currentTarget.style.borderColor = '#1a1a2e'; }}
+                                onBlur={e => { e.currentTarget.style.borderColor = '#93c5fd'; }}
+                              />
+                              <button
+                                onClick={() => schedulePost(post.id, new Date(schedulingDate).toISOString())}
+                                disabled={!schedulingDate}
+                                style={{
+                                  padding: '7px 16px', borderRadius: 8, border: 'none',
+                                  background: '#1a1a2e', color: '#fff', fontSize: 12, fontWeight: 700,
+                                  cursor: schedulingDate ? 'pointer' : 'not-allowed',
+                                  opacity: schedulingDate ? 1 : 0.5,
+                                }}
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setSchedulingPostId(null)}
+                                style={{
+                                  padding: '7px 12px', borderRadius: 8,
+                                  border: '1px solid #bfdbfe', background: '#fff',
+                                  fontSize: 12, color: '#6b7280', cursor: 'pointer',
+                                }}
+                              >
+                                Cancel
+                              </button>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
         </div>
       </div>
     );
@@ -1974,6 +2343,133 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       {activeTab === 'calendar' && renderCalendar()}
       {activeTab === 'inbox' && renderInbox()}
       {activeTab === 'analytics' && renderAnalytics()}
+
+      {/* Instagram Post Preview Modal */}
+      {previewPostId && (() => {
+        const post = posts.find(p => p.id === previewPostId);
+        if (!post) return null;
+        const timeStr = post.scheduled_at
+          ? new Date(post.scheduled_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          : post.published_at
+          ? new Date(post.published_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          : 'Draft';
+        return (
+          <div
+            onClick={() => setPreviewPostId(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto',
+                background: '#fff', borderRadius: 16,
+                border: '1px solid #dbdbdb', boxShadow: '0 24px 80px rgba(0,0,0,.4)',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 12, borderBottom: '1px solid #efefef' }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '2px solid transparent', background: 'linear-gradient(white,white) padding-box, linear-gradient(45deg,#f09433,#bc1888) border-box' }}>
+                  <img src="/fair-oaks-logo.png" alt="Fair Oaks Realty Group" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
+                  <div style={{ fontSize: 12, color: '#8e8e8e' }}>{timeStr}</div>
+                </div>
+                <button onClick={() => setPreviewPostId(null)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#8e8e8e', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              </div>
+              {/* Image */}
+              {post.media_urls?.[0] ? (
+                <div style={{ width: '100%', aspectRatio: '1 / 1', overflow: 'hidden' }}>
+                  <img src={post.media_urls[0]} alt="Post image" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </div>
+              ) : (
+                <div style={{ width: '100%', aspectRatio: '1 / 1', background: 'linear-gradient(135deg, #1a1a2e 0%, #C9A84C 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 48 }}>🏡</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>No image uploaded</div>
+                </div>
+              )}
+              {/* Actions */}
+              <div style={{ padding: '12px 16px 4px', display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <span style={{ fontSize: 26 }}>🤍</span>
+                  <span style={{ fontSize: 26 }}>💬</span>
+                  <span style={{ fontSize: 26 }}>📤</span>
+                </div>
+                <span style={{ fontSize: 26 }}>🔖</span>
+              </div>
+              {/* Caption */}
+              <div style={{ padding: '4px 16px 20px' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#000', marginBottom: 6 }}>243 likes</div>
+                <div style={{ fontSize: 14, color: '#000', lineHeight: 1.65 }}>
+                  <span style={{ fontWeight: 700 }}>fairoaksrealtygroup </span>
+                  <span style={{ whiteSpace: 'pre-wrap' }}>
+                    {post.content.split(' ').map((word, wi) => (
+                      <span key={wi} style={{ color: word.startsWith('#') || word.startsWith('@') ? '#00376b' : 'inherit' }}>{word} </span>
+                    ))}
+                  </span>
+                </div>
+                {post.hashtags?.length > 0 && (
+                  <div style={{ fontSize: 14, color: '#00376b', marginTop: 6, lineHeight: 1.65 }}>
+                    {post.hashtags.join(' ')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Manual Instagram connect modal */}
+      {showIgModal && (
+        <div
+          onClick={() => setShowIgModal(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, padding: 32, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+              <span style={{ fontSize: 28 }}>📸</span>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Connect Instagram</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>Enter your Instagram username to link it to your Facebook Page</div>
+              </div>
+            </div>
+
+            <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 12, color: '#92400e' }}>
+              💡 Full Instagram OAuth requires Meta App Review. This manually links your handle using your connected Facebook Page token.
+            </div>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Instagram Username</label>
+            <input
+              autoFocus
+              value={igHandle}
+              onChange={e => setIgHandle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && saveManualInstagram()}
+              placeholder="@fairoaksrealty_group"
+              style={{ width: '100%', padding: '10px 14px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 20 }}
+            />
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowIgModal(false)}
+                style={{ flex: 1, padding: '10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', fontSize: 13, cursor: 'pointer', color: '#6b7280' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveManualInstagram}
+                disabled={igSaving || !igHandle.trim()}
+                style={{ flex: 2, padding: '10px', borderRadius: 8, border: 'none', background: '#E1306C', color: '#fff', fontSize: 13, fontWeight: 700, cursor: igSaving || !igHandle.trim() ? 'not-allowed' : 'pointer', opacity: igSaving || !igHandle.trim() ? 0.6 : 1 }}
+              >
+                {igSaving ? 'Connecting…' : 'Connect Instagram'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

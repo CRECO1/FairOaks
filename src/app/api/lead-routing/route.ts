@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!assign_to_agent_id) return NextResponse.json({ error: 'assign_to_agent_id required' }, { status: 400 });
   const supabase = adminClient();
   const { data, error } = await supabase.from('lead_routing_rules').insert({ business_unit: business_unit ?? 'commercial', source, property_keyword, assign_to_agent_id, priority: priority ?? 0 }).select().single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ rule: data });
 }
 

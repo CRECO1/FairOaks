@@ -2170,6 +2170,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const isAdmin = profile.role === 'admin';
   const isMobile = windowWidth < 768;
+  const isTabletOrMobile = windowWidth < 1024; // sidebar hides on tablet too
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');
   const agentName = (id: string) => { const p = profiles.find(x => x.id === id); return p ? `${p.first_name} ${p.last_name}` : profile.id === id ? `${profile.first_name} ${profile.last_name}` : '—'; };
 
@@ -2191,17 +2192,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
+    <div style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         .crm-input{padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:'DM Sans',sans-serif;width:100%;}
         .crm-input:focus{outline:none;border-color:#c9922c;}
-        .crm-btn{padding:8px 18px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;}
+        .crm-btn{padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;min-height:44px;}
         .crm-btn-gold{background:#c9922c;color:#111;font-weight:600;}
         .crm-btn-ghost{background:transparent;border:1px solid #ccc;color:#6b7280;}
-        .crm-btn-sm{padding:5px 12px;font-size:13px;}
-        .crm-nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.85);font-size:14px;font-weight:500;border:none;background:none;width:100%;font-family:'DM Sans',sans-serif;text-align:left;transition:all .15s;}
+        .crm-btn-sm{padding:7px 12px;font-size:13px;min-height:36px;}
+        .crm-nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:6px;cursor:pointer;color:rgba(255,255,255,.85);font-size:15.5px;font-weight:500;border:none;background:none;width:100%;font-family:'DM Sans',sans-serif;text-align:left;transition:all .15s;}
         .crm-nav:hover{background:rgba(255,255,255,.08);color:#fff;}
         .crm-nav.active{background:rgba(201,168,76,.18);color:#c9922c;font-weight:600;}
         table{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e8e8e8;}
@@ -2211,7 +2212,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         tr:last-child td{border-bottom:none;}
         tr:hover td{background:#fafafa;}
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:36px 20px;overflow-y:auto;}
-        .modal{background:#fff;border-radius:12px;width:760px;max-width:96vw;box-shadow:0 20px 60px rgba(0,0,0,.3);flex-shrink:0;}
+        .modal{background:#fff;border-radius:12px;width:760px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.3);flex-shrink:0;}
         .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:500;}
         @keyframes spin{to{transform:rotate(360deg)}}
         /* ── Contacts redesign ── */
@@ -2244,18 +2245,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         @media(max-width:767px){
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
           .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
-          .crm-btn{padding:10px 18px;font-size:15px;}
-          .crm-btn-sm{padding:8px 14px!important;font-size:14px!important;}
-          .crm-input{padding:10px 12px;font-size:16px;}
+          .crm-btn{padding:12px 18px;font-size:15px;min-height:48px;}
+          .crm-btn-sm{padding:10px 14px!important;font-size:14px!important;min-height:44px!important;}
+          .crm-input{padding:12px 14px;font-size:16px;min-height:48px;}
           .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+          td{padding:10px 12px!important;font-size:13px!important;}
+          th{padding:8px 12px!important;font-size:10px!important;}
+        }
+        @media(max-width:1023px){
+          .contacts-table col.col-asset,.contacts-table col.col-source,.contacts-table col.col-tags,.contacts-table col.col-owner{display:none;}
         }
       `}</style>
 
-      {/* Sidebar — desktop only */}
-      {!isMobile && <nav style={{ width: 248, background: '#111', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
+      {/* Sidebar — desktop only (hidden on tablet & mobile) */}
+      {!isTabletOrMobile && <nav style={{ width: 248, background: '#111', display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
         <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid rgba(201,146,44,.3)' }}>
-          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
-          <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.6)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 12 }}>{brand.tagline}</div>
+          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
+          <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.6)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 4, marginBottom: 12 }}>{brand.tagline}</div>
           {/* Workspace switcher — admin only */}
           {isAdmin && (
             <a
@@ -2268,8 +2274,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             >
               <span style={{ fontSize: 14 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,.9)' }}>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,.55)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
+                <div style={{ fontSize: 14.5, fontWeight: 600, color: 'rgba(255,255,255,.9)' }}>
                   {businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}
                 </div>
               </div>
@@ -2278,21 +2284,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
+          <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
           <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
+          <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
           <button className={`crm-nav${page === 'deals' && !filter ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); }}>📋 &nbsp;All Deals <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span></button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
+          <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>People</div>
           <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); }}>👥 &nbsp;Contacts <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span></button>
           <button className={`crm-nav${page === 'prospects' ? ' active' : ''}`} onClick={() => { setPage('prospects'); loadProspects(); }}>🎯 &nbsp;Prospects {prospects.filter(p => p.client?.prospect_status === 'new').length > 0 && <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{prospects.filter(p => p.client?.prospect_status === 'new').length}</span>}</button>
           {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); }}>🤝 &nbsp;Broker / Agents</button>}
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
-          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
+          <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
           <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); }}>
             ✅ &nbsp;Tasks
@@ -2309,7 +2315,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
-            <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>MLS</div>
+            <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>MLS</div>
             <button
               onClick={async () => {
                 setMlsSyncing(true);
@@ -2396,8 +2402,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* Main */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Mobile top header */}
-        {isMobile && (
+        {/* Mobile/tablet top header */}
+        {isTabletOrMobile && (
           <div style={{ background: '#111', color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.2)' }}>
             <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</div>
             <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,.15)', flexShrink: 0 }} />
@@ -2412,7 +2418,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         )}
 
         {/* Desktop topbar */}
-        {!isMobile && <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '13px 26px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        {!isTabletOrMobile && <div style={{ background: '#fff', borderBottom: '1px solid #e0e0e0', padding: '13px 26px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, flex: 1 }}>
             {pageLabel[page]}
           </h2>
@@ -2608,7 +2614,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>}
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
+        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (

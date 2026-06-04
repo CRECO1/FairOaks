@@ -48,7 +48,7 @@ const SUBDIVISION_SEARCH: Record<string, string> = {
 };
 
 function buildCityFilter(city: string): string | null {
-  const c = city.toUpperCase();
+  const c = city.toUpperCase().trim();
   const enumVal = CITY_ENUM[c];
   if (enumVal) {
     return `City eq ODataService.City_Lkp_1'${enumVal}'`;
@@ -57,9 +57,8 @@ function buildCityFilter(city: string): string | null {
   if (subdivMatch) {
     return `contains(SubdivisionName,'${subdivMatch}')`;
   }
-  // Fallback: try SubdivisionName uppercase for unknown areas
-  const safe = c.replace(/'/g, "''");
-  return `contains(SubdivisionName,'${safe}')`;
+  // Unknown city — reject instead of building a raw filter to prevent OData injection
+  return null;
 }
 
 export async function GET(req: NextRequest) {

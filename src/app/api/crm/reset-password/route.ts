@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
+import { writeAuditLog } from '@/lib/audit';
 
-async function verifyAdmin(req: NextRequest): Promise<boolean> {
+/** Returns the admin user ID if valid, null otherwise. */
+async function getAdminId(req: NextRequest): Promise<string | null> {
   const authHeader = req.headers.get('authorization');
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (token) {
@@ -11,15 +13,17 @@ async function verifyAdmin(req: NextRequest): Promise<boolean> {
     const { data: { user } } = await admin.auth.getUser(token);
     if (user) {
       const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
-      return data?.role === 'admin';
+      return data?.role === 'admin' ? user.id : null;
     }
-    return false;
+    return null;
   }
-  return !!(await getCrmAdmin());
+  const caller = await getCrmAdmin();
+  return caller?.id ?? null;
 }
 
 export async function POST(req: NextRequest) {
-  if (!(await verifyAdmin(req))) return forbidden();
+  const adminId = await getAdminId(req);
+  if (!adminId) return forbidden();
 
   try {
     const { email, firstName } = await req.json();
@@ -54,10 +58,8 @@ export async function POST(req: NextRequest) {
     const linkData = await linkRes.json();
 
     if (!linkRes.ok) {
-      console.error('Generate reset link error:', linkData);
-      return NextResponse.json({
-        error: linkData.msg || linkData.message || JSON.stringify(linkData),
-      }, { status: 400 });
+      console.error('[reset-password] Generate link failed:', linkData);
+      return NextResponse.json({ error: 'Failed to generate reset link. Verify the email exists in the system.' }, { status: 400 });
     }
 
     const resetLink: string = linkData.action_link;
@@ -116,9 +118,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to send reset email' }, { status: 500 });
     }
 
+    await writeAuditLog({
+      actorId: adminId,
+      action: 'reset_password',
+      targetType: 'agent',
+      metadata: { email, firstName },
+      req,
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('Reset password route error:', err);
+    console.error('[reset-password] Unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

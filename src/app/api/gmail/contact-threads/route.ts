@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 async function getValidToken(conn: { id: string; access_token: string; refresh_token: string; expires_at: string }): Promise<string | null> {
-  if (Date.now() < new Date(conn.expires_at).getTime() - 120_000) return conn.access_token;
+  if (Date.now() < new Date(conn.expires_at).getTime() - 120_000) return decryptToken(conn.access_token);
   const r = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!, refresh_token: conn.refresh_token, grant_type: 'refresh_token' }),
+    body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID!, client_secret: process.env.GOOGLE_CLIENT_SECRET!, refresh_token: decryptToken(conn.refresh_token), grant_type: 'refresh_token' }),
   });
   const data = await r.json();
   if (!r.ok || !data.access_token) return null;
   const supabase = adminClient();
-  await supabase.from('gmail_connections').update({ access_token: data.access_token, expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(), updated_at: new Date().toISOString() }).eq('id', conn.id);
+  await supabase.from('gmail_connections').update({ access_token: encryptToken(data.access_token), expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(), updated_at: new Date().toISOString() }).eq('id', conn.id);
   return data.access_token;
 }
 

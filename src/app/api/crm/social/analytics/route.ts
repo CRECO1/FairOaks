@@ -18,7 +18,7 @@ export async function GET() {
     .gte('date', thirtyDaysAgo.toISOString().split('T')[0])
     .order('date', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ analytics: data ?? [] });
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   const caller = await getCrmAdmin();
@@ -44,10 +45,8 @@ export async function POST(req: NextRequest) {
     const linkData = await linkRes.json();
 
     if (!linkRes.ok) {
-      console.error('Generate link error:', linkData);
-      return NextResponse.json({
-        error: linkData.msg || linkData.message || linkData.error_description || JSON.stringify(linkData),
-      }, { status: 400 });
+      console.error('[invite] Generate link error:', linkData);
+      return NextResponse.json({ error: 'Failed to generate invite link. The email may already be registered.' }, { status: 400 });
     }
 
     const inviteLink: string = linkData.action_link;
@@ -104,10 +103,8 @@ export async function POST(req: NextRequest) {
     const emailData = await emailRes.json();
 
     if (!emailRes.ok) {
-      console.error('Resend email error:', emailData);
-      return NextResponse.json({
-        error: 'Invite link created but email failed to send: ' + (emailData.message || JSON.stringify(emailData)),
-      }, { status: 500 });
+      console.error('[invite] Resend email error:', emailData);
+      return NextResponse.json({ error: 'Invite link created but email failed to send.' }, { status: 500 });
     }
 
     // Step 3: Save the agent profile
@@ -133,9 +130,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    await writeAuditLog({
+      actorId: caller.id,
+      action: 'invite_agent',
+      targetType: 'agent',
+      targetId: invitedUserId ?? undefined,
+      metadata: { email, firstName, lastName, business_unit: business_unit ?? 'residential' },
+      req,
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('Invite route error:', err);
+    console.error('[invite] Unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

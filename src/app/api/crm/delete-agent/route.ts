@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function POST(req: NextRequest) {
   const caller = await getCrmAdmin();
@@ -31,8 +32,8 @@ export async function POST(req: NextRequest) {
 
     if (!deleteRes.ok) {
       const data = await deleteRes.json();
-      console.error('Delete user error:', data);
-      return NextResponse.json({ error: data.msg || data.message || JSON.stringify(data) }, { status: 400 });
+      console.error('[delete-agent] Supabase delete error:', data);
+      return NextResponse.json({ error: 'Failed to delete agent. They may have already been removed.' }, { status: 400 });
     }
 
     // Also remove from crm_profiles (in case cascade didn't catch it)
@@ -44,9 +45,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await writeAuditLog({
+      actorId: caller.id,
+      action: 'delete_agent',
+      targetType: 'agent',
+      targetId: userId,
+      metadata: {},
+      req,
+    });
+
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('Delete agent route error:', err);
+    console.error('[delete-agent] Unexpected error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

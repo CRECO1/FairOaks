@@ -42,7 +42,7 @@ export function ListingGallery({ images, title }: Props) {
   return (
     <>
       {/* ── Grid Preview ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-4 md:grid-rows-2 h-[320px] md:h-[480px]">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:grid-rows-2 md:grid-cols-4 md:grid-rows-2 h-[260px] sm:h-[380px] md:h-[480px]">
 
         {/* Main image — spans 2 cols + 2 rows */}
         <div
@@ -60,7 +60,7 @@ export function ListingGallery({ images, title }: Props) {
         {[1, 2, 3, 4].map(i => (
           <div
             key={i}
-            className="relative rounded-xl overflow-hidden bg-background-cream cursor-pointer group hidden md:block"
+            className="relative rounded-xl overflow-hidden bg-background-cream cursor-pointer group hidden sm:block"
             onClick={() => openAt(i)}
           >
             {images[i] ? (

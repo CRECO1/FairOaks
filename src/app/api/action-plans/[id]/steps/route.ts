@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .eq('plan_id', id)
     .order('step_order', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ steps: data ?? [] });
 }
 
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ step: data }, { status: 201 });
 }
 
@@ -107,7 +107,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .insert(rows)
     .select();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   // Return steps sorted by step_order
   const sorted = (data ?? []).sort((a, b) => (a.step_order as number) - (b.step_order as number));
@@ -133,6 +133,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     .eq('id', stepId)
     .eq('plan_id', id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ success: true });
 }

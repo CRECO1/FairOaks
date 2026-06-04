@@ -70,6 +70,6 @@ export async function POST(req: NextRequest) {
     `,
   });
 
-  if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
+  if (result.error) { console.error('[action-plans/test] Send error:', result.error); return NextResponse.json({ error: 'Failed to send test email.' }, { status: 500 }); }
   return NextResponse.json({ sent: true, to: agent.email });
 }

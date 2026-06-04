@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     .select('first_name,last_name,email,phone,type,business_unit,lead_source,tags,created_at,last_touched_at')
     .eq('business_unit', unit)
     .order('last_name');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   const headers = ['First Name','Last Name','Email','Phone','Type','Business Unit','Lead Source','Tags','Created','Last Touched'];
   const rows = (data ?? []).map(c => [
     c.first_name ?? '', c.last_name ?? '', c.email ?? '', c.phone ?? '',

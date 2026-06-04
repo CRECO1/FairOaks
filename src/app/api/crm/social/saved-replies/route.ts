@@ -14,7 +14,7 @@ export async function GET() {
     .eq('agent_id', user.id)
     .order('use_count', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ replies: data ?? [] });
 }
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ reply: data });
 }
@@ -63,7 +63,7 @@ export async function DELETE(req: NextRequest) {
     .eq('id', id)
     .eq('agent_id', user.id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ success: true });
 }

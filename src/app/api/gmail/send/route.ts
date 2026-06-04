@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -23,7 +24,7 @@ async function getValidConnection(
 
   const conn = rows[0];
   const expiresAt = new Date(conn.expires_at).getTime();
-  let accessToken = conn.access_token;
+  let accessToken = decryptToken(conn.access_token);
 
   if (Date.now() >= expiresAt - 120_000) {
     const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -32,7 +33,7 @@ async function getValidConnection(
       body: new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        refresh_token: conn.refresh_token,
+        refresh_token: decryptToken(conn.refresh_token),
         grant_type: 'refresh_token',
       }),
     });
@@ -50,7 +51,7 @@ async function getValidConnection(
         apikey: anonKey,
         Authorization: `Bearer ${serviceRoleKey}`,
       },
-      body: JSON.stringify({ access_token: accessToken, expires_at: newExpiry, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ access_token: encryptToken(accessToken), expires_at: newExpiry, updated_at: new Date().toISOString() }),
     });
   }
 

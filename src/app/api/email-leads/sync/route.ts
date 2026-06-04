@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -381,7 +382,7 @@ function parseLeadEmail(subject: string, body: string, from = '') {
 
 // ── Gmail token refresh ──────────────────────────────────────────────────────
 async function getValidToken(conn: { id: string; access_token: string; refresh_token: string; expires_at: string }): Promise<string | null> {
-  if (Date.now() < new Date(conn.expires_at).getTime() - 120_000) return conn.access_token;
+  if (Date.now() < new Date(conn.expires_at).getTime() - 120_000) return decryptToken(conn.access_token);
 
   const r = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -389,7 +390,7 @@ async function getValidToken(conn: { id: string; access_token: string; refresh_t
     body: new URLSearchParams({
       client_id:     process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: conn.refresh_token,
+      refresh_token: decryptToken(conn.refresh_token),
       grant_type:    'refresh_token',
     }),
   });
@@ -397,7 +398,7 @@ async function getValidToken(conn: { id: string; access_token: string; refresh_t
   if (!r.ok || !data.access_token) return null;
 
   await db().from('gmail_connections').update({
-    access_token: data.access_token,
+    access_token: encryptToken(data.access_token),
     expires_at:   new Date(Date.now() + data.expires_in * 1000).toISOString(),
     updated_at:   new Date().toISOString(),
   }).eq('id', conn.id);

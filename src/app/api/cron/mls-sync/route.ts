@@ -46,13 +46,13 @@ export async function GET(req: NextRequest) {
 
     if (!syncRes.ok) {
       console.error('[MLS cron] sync failed:', data);
-      return NextResponse.json({ error: data.error ?? 'Sync failed' }, { status: 500 });
+      return NextResponse.json({ error: 'MLS sync failed.' }, { status: 500 });
     }
 
     console.log('[MLS cron] delta sync complete (since %s):', since, data);
     return NextResponse.json({ ...data, deltaFilter, since });
   } catch (err: any) {
     console.error('[MLS cron] error:', err);
-    return NextResponse.json({ error: err.message ?? String(err) }, { status: 500 });
+    return NextResponse.json({ error: 'MLS sync failed.' }, { status: 500 });
   }
 }

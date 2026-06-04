@@ -27,8 +27,9 @@ export async function GET(req: NextRequest) {
 
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const nonce = crypto.randomBytes(32).toString('hex');
 
-  // Store verifier in a short-lived cookie
+  // Store verifier + nonce in short-lived cookies
   const cookieStore = await cookies();
   cookieStore.set('twitter_code_verifier', codeVerifier, {
     httpOnly: true,
@@ -37,13 +38,26 @@ export async function GET(req: NextRequest) {
     path: '/',
     sameSite: 'lax',
   });
+  cookieStore.set('twitter_oauth_nonce', nonce, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 600,
+    path: '/',
+    sameSite: 'lax',
+  });
+
+  // HMAC binds userId + nonce together — swapping either one breaks the signature
+  const stateHmac = crypto
+    .createHmac('sha256', process.env.TOKEN_ENCRYPTION_KEY ?? 'dev-fallback-key')
+    .update(`${userId}:${nonce}`)
+    .digest('hex');
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: process.env.TWITTER_CLIENT_ID!,
     redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/twitter/callback`,
     scope: 'tweet.read tweet.write users.read offline.access',
-    state: userId,
+    state: `${userId}:${nonce}:${stateHmac}`,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   });

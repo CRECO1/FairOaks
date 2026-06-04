@@ -46,3 +46,12 @@ export function unauthorized(msg = 'Unauthorized') {
 export function forbidden(msg = 'Forbidden — admin only') {
   return NextResponse.json({ error: msg }, { status: 403 });
 }
+
+/**
+ * Logs a database/server error internally and returns a safe generic 500 response.
+ * Never expose raw Supabase or database error messages to clients.
+ */
+export function dbError(context: string, err: { message?: string } | null | unknown, status = 500) {
+  console.error(`[${context}]`, err);
+  return NextResponse.json({ error: 'An internal server error occurred.' }, { status });
+}

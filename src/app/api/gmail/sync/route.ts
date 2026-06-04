@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, getCrmAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -13,7 +14,7 @@ interface GmailConnection {
 /** Returns a valid access token + agentEmail for a single GmailConnection row, refreshing if needed. */
 async function resolveConnection(conn: GmailConnection, userId: string, anonKey: string, serviceRoleKey: string): Promise<{ accessToken: string; agentEmail: string | null } | null> {
   const expiresAt = new Date(conn.expires_at).getTime();
-  let accessToken = conn.access_token;
+  let accessToken = decryptToken(conn.access_token);
 
   if (Date.now() >= expiresAt - 120_000) {
     const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -22,7 +23,7 @@ async function resolveConnection(conn: GmailConnection, userId: string, anonKey:
       body: new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID!,
         client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        refresh_token: conn.refresh_token,
+        refresh_token: decryptToken(conn.refresh_token),
         grant_type: 'refresh_token',
       }),
     });
@@ -33,7 +34,7 @@ async function resolveConnection(conn: GmailConnection, userId: string, anonKey:
     await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&email=eq.${encodeURIComponent(conn.email ?? '')}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
-      body: JSON.stringify({ access_token: accessToken, expires_at: newExpiry, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ access_token: encryptToken(accessToken), expires_at: newExpiry, updated_at: new Date().toISOString() }),
     });
   }
 

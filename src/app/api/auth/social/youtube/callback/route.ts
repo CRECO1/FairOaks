@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
-const CRM_RETURN = 'https://www.fairoaksrealtygroup.com/crm/residential#social';
+const CRM_BASE = 'https://www.fairoaksrealtygroup.com/crm/residential';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -12,14 +12,14 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateParam) {
     console.error('[youtube/callback] OAuth error:', { error, code: !!code, stateParam });
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=oauth_denied`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=oauth_denied`);
   }
 
   const [userId, stateNonce] = (stateParam ?? '').split(':');
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get('yt_oauth_nonce')?.value;
   if (!storedNonce || storedNonce !== stateNonce) {
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=invalid_state`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=invalid_state`);
   }
   cookieStore.delete('yt_oauth_nonce');
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (!profile) {
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=invalid_user`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=invalid_user`);
   }
 
   // Exchange code for tokens
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   const tokenData = await tokenRes.json();
   if (!tokenData.access_token) {
     console.error('[youtube/callback] Token exchange failed:', tokenData);
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=token_exchange`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=token_exchange`);
   }
 
   // Get YouTube channel info
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
 
   if (!channel) {
     console.error('[youtube/callback] No YouTube channel found:', channelData);
-    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=youtube&reason=no_channel`);
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=no_channel`);
   }
 
   const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString();
@@ -92,5 +92,5 @@ export async function GET(req: NextRequest) {
       { onConflict: 'agent_id,platform,platform_account_id' }
     );
 
-  return NextResponse.redirect(`${CRM_RETURN}?social=connected&platform=youtube`);
+  return NextResponse.redirect(`${CRM_BASE}?social=connected&platform=youtube`);
 }

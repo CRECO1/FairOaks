@@ -41,7 +41,7 @@ export async function PATCH(
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ post: data });
 }
@@ -62,7 +62,7 @@ export async function DELETE(
     .eq('id', id)
     .eq('agent_id', user.id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ success: true });
 }

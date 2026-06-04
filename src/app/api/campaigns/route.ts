@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
       .order('sent_at', { ascending: false }),
   ]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   // Build a map of campaign_id → latest sent_at
   const lastSentMap: Record<string, string> = {};
@@ -90,6 +90,6 @@ export async function POST(req: NextRequest) {
     business_unit: business_unit ?? 'residential',
   }]).select().single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ campaign: data });
 }
