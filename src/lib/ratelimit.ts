@@ -33,6 +33,8 @@ const LIMITS = {
   'agent-apply': { requests: 3, window: '1 h' },
   // OAuth initiation — 30 per IP per hour (prevents redirect-loop abuse)
   oauth:         { requests: 30, window: '1 h' },
+  // AI caption generation — 10 per IP per hour (OpenAI/Anthropic cost control)
+  caption:       { requests: 10, window: '1 h' },
 } as const;
 
 type LimiterKey = keyof typeof LIMITS;
@@ -42,12 +44,15 @@ const limiters = new Map<LimiterKey, Ratelimit>();
 
 function getLimiter(key: LimiterKey): Ratelimit | null {
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    // Fail-open intentionally for local dev — but warn loudly in production
-    // so a misconfigured deployment doesn't silently disable rate limiting.
     if (process.env.NODE_ENV === 'production') {
-      console.warn('[ratelimit] WARNING: KV_REST_API_URL/KV_REST_API_TOKEN not set — rate limiting is DISABLED for:', key);
+      // Error-level log in production so it surfaces in alerts/dashboards
+      console.error(
+        '[ratelimit] CRITICAL: KV_REST_API_URL or KV_REST_API_TOKEN not configured — ' +
+        `rate limiting is DISABLED for endpoint "${key}". ` +
+        'Set these environment variables in Vercel to re-enable protection.'
+      );
     }
-    return null;
+    return null; // fail-open (app still works, but unprotected)
   }
 
   if (!limiters.has(key)) {

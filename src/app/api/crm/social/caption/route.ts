@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return unauthorized();
 
-  const rl = await rateLimit(req, 'quiz'); // reuse quiz limiter (20/hr is reasonable for AI caption generation)
+  const rl = await rateLimit(req, 'caption');
   if (!rl.success) {
     return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
   }

@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   if (unit) query = query.eq('business_unit', unit);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ smart_lists: data ?? [] });
 }
 
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ smart_list: data }, { status: 201 });
 }
 
@@ -72,6 +72,6 @@ export async function DELETE(req: NextRequest) {
   }
 
   const { error } = await supabase.from('crm_smart_lists').delete().eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ success: true });
 }

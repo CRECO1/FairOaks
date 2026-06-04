@@ -1,20 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { rateLimit } from '@/lib/ratelimit';
+import { createClient } from '@supabase/supabase-js';
 
 export async function GET(req: NextRequest) {
-  const user = await getCrmUser();
-  if (!user) return unauthorized();
-
   const rl = await rateLimit(req, 'oauth');
   if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
-  const userId = req.nextUrl.searchParams.get('userId') ?? user.id;
-  if (userId !== user.id) {
-    return NextResponse.json({ error: 'Cannot initiate OAuth for another user' }, { status: 403 });
-  }
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+  const { data: profile } = await supabase
+    .from('crm_profiles')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (!profile) return NextResponse.json({ error: 'Invalid userId' }, { status: 403 });
 
   const nonce = crypto.randomBytes(32).toString('hex');
 

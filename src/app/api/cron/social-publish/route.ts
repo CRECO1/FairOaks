@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     console.error('Social publish cron error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 });
   }
 
   if (!duePosts || duePosts.length === 0) {

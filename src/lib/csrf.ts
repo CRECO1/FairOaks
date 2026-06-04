@@ -88,7 +88,15 @@ export function validateCsrf(req: NextRequest): string | NextResponse | null {
   //  (a) a same-origin server action (Next.js server actions send no origin in some setups)
   //  (b) a curl/tool request without auth
   // We allow it through — the auth layer (Supabase session / Bearer) is the real gate.
-  if (!candidate) return null;
+  if (!candidate) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        `[csrf] No Origin or Referer on ${req.method} ${req.nextUrl.pathname} — ` +
+        'passing through (relying on auth layer). If unexpected, investigate.'
+      );
+    }
+    return null;
+  }
 
   const allowed = getAllowedOrigins();
   if (!allowed.has(candidate)) {

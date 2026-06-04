@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     .eq('deal_id', dealId)
     .order('created_at', { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   // Generate a signed URL for each doc (1-hour expiry)
   const withUrls = await Promise.all(

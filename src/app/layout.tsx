@@ -1,6 +1,13 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
 import './globals.css';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  minimumScale: 1,
+  viewportFit: 'cover', // safe-area support for iPhone notch/Dynamic Island
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://www.fairoaksrealtygroup.com'),

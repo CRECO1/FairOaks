@@ -76,14 +76,20 @@ export async function GET(req: NextRequest) {
   const longLivedData = await longLivedRes.json();
   const userToken = longLivedData.access_token || tokenData.access_token;
 
-  // Get pages managed by this user
+  // Get pages managed by this user — include instagram_business_account in the same call
+  // so we use the user token (which can read the IG link) rather than a separate page-token query
   const pagesRes = await fetch(
-    `https://graph.facebook.com/v18.0/me/accounts?access_token=${userToken}`
+    `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${userToken}`
   );
   const pagesData = await pagesRes.json();
-  const pages: Array<{ id: string; name: string; access_token: string }> = pagesData.data ?? [];
+  const pages: Array<{
+    id: string;
+    name: string;
+    access_token: string;
+    instagram_business_account?: { id: string };
+  }> = pagesData.data ?? [];
 
-  console.log('[facebook/callback] pages found:', pages.length, pages.map(p => p.name));
+  console.log('[facebook/callback] pages found:', pages.length, pages.map(p => ({ name: p.name, igId: p.instagram_business_account?.id })));
 
   if (pages.length === 0) {
     console.error('[facebook/callback] No pages found. pagesData:', JSON.stringify(pagesData));
@@ -113,14 +119,40 @@ export async function GET(req: NextRequest) {
     console.log('[facebook/callback] upsert facebook page', page.name, { error: upsertError });
     connectedCount++;
 
-    // Check for linked Instagram business account
-    const igRes = await fetch(
-      `https://graph.facebook.com/v18.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
-    );
-    const igData = await igRes.json();
-    const igAccountId = igData.instagram_business_account?.id;
+    // Attempt 1: instagram_business_account inline from /me/accounts (user token)
+    let igAccountId = page.instagram_business_account?.id;
 
-    console.log('[facebook/callback] instagram linked to page', page.name, { igAccountId });
+    // Attempt 2: connected_instagram_account field (page token)
+    if (!igAccountId) {
+      const r2 = await fetch(
+        `https://graph.facebook.com/v18.0/${page.id}?fields=connected_instagram_account&access_token=${page.access_token}`
+      );
+      const d2 = await r2.json();
+      igAccountId = d2.connected_instagram_account?.id;
+      console.log('[facebook/callback] attempt2 connected_instagram_account', page.name, JSON.stringify(d2));
+    }
+
+    // Attempt 3: /page/instagram_accounts edge (page token)
+    if (!igAccountId) {
+      const r3 = await fetch(
+        `https://graph.facebook.com/v18.0/${page.id}/instagram_accounts?access_token=${page.access_token}`
+      );
+      const d3 = await r3.json();
+      igAccountId = d3.data?.[0]?.id;
+      console.log('[facebook/callback] attempt3 instagram_accounts edge', page.name, JSON.stringify(d3));
+    }
+
+    // Attempt 4: /me?fields=instagram_business_accounts (user token)
+    if (!igAccountId) {
+      const r4 = await fetch(
+        `https://graph.facebook.com/v18.0/me?fields=instagram_business_accounts&access_token=${userToken}`
+      );
+      const d4 = await r4.json();
+      igAccountId = d4.instagram_business_accounts?.data?.[0]?.id;
+      console.log('[facebook/callback] attempt4 me instagram_business_accounts', JSON.stringify(d4));
+    }
+
+    console.log('[facebook/callback] instagram account id final', { page: page.name, igAccountId });
 
     if (igAccountId) {
       const igInfoRes = await fetch(

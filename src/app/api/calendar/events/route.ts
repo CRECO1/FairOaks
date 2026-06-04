@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 type GmailConn = { id: string; access_token: string; refresh_token: string; expires_at: string; gmail_email: string };
 
@@ -9,7 +10,7 @@ async function getValidAccessToken(conn: GmailConn): Promise<string | null> {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
   const expiresAt = new Date(conn.expires_at).getTime();
-  if (Date.now() < expiresAt - 120_000) return conn.access_token;
+  if (Date.now() < expiresAt - 120_000) return decryptToken(conn.access_token);
 
   const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -17,7 +18,7 @@ async function getValidAccessToken(conn: GmailConn): Promise<string | null> {
     body: new URLSearchParams({
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      refresh_token: conn.refresh_token,
+      refresh_token: decryptToken(conn.refresh_token),
       grant_type: 'refresh_token',
     }),
   });
@@ -29,7 +30,7 @@ async function getValidAccessToken(conn: GmailConn): Promise<string | null> {
   await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${conn.id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
-    body: JSON.stringify({ access_token: refreshed.access_token, expires_at: newExpiry, updated_at: new Date().toISOString() }),
+    body: JSON.stringify({ access_token: encryptToken(refreshed.access_token), expires_at: newExpiry, updated_at: new Date().toISOString() }),
   });
 
   return refreshed.access_token;

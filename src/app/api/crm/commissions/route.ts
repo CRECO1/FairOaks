@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   if (year)    q = q.gte('close_date', `${year}-01-01`).lte('close_date', `${year}-12-31`);
 
   const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ commissions: data ?? [] });
 }
 
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ commission: data });
 }
 

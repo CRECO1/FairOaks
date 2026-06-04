@@ -54,7 +54,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .select(`*, client:crm_clients(id, first_name, last_name, email, phone, cell_phone, type, unsubscribed_at)`)
     .eq('campaign_id', id)
     .order('enrolled_at', { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ enrollments: data ?? [] });
 }
 
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .upsert(rows, { onConflict: 'campaign_id,client_id', ignoreDuplicates: false })
     .select();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ enrolled: data?.length ?? 0 });
 }
 
@@ -104,6 +104,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     .update({ active: false })
     .eq('campaign_id', id)
     .eq('client_id', client_id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ success: true });
 }

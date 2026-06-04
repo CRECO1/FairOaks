@@ -14,12 +14,12 @@ export async function GET(req: NextRequest) {
     .from('social_posts')
     .select('*')
     .eq('agent_id', user.id)
-    .order('scheduled_at', { ascending: false });
+    .order('scheduled_at', { ascending: true, nullsFirst: false });
 
   if (status) q = q.eq('status', status);
 
   const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ posts: data ?? [] });
 }
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   // If publishing immediately, push to each platform
   if (status === 'published') {

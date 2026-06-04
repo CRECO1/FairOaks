@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (type) q = q.eq('type', type);
 
   const { data, error } = await q;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
   return NextResponse.json({ items: data ?? [] });
 }
