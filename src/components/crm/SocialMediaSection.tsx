@@ -279,19 +279,43 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     loadInbox();
     loadAnalytics();
 
-    // Handle OAuth callback result from URL params
+    // Handle OAuth result delivered via postMessage from popup
+    function handleOAuthMessage(e: MessageEvent) {
+      if (!e.data || e.data.type !== 'social_oauth_done') return;
+      const params = new URLSearchParams(e.data.qs ?? '');
+      const socialResult = params.get('social');
+      const platform = params.get('platform');
+      const reason = params.get('reason');
+      if (socialResult === 'connected') {
+        toast(`✅ ${platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account'} connected!`);
+        loadConnections();
+      } else if (socialResult === 'error') {
+        const messages: Record<string, string> = {
+          oauth_denied: 'Connection cancelled.',
+          invalid_state: 'Security check failed — please try again.',
+          token_exchange: 'Failed to get access token.',
+          no_pages: 'No Facebook Pages found. Make sure you manage at least one Page.',
+          no_channel: 'No YouTube channel found on that Google account.',
+          invalid_user: 'User not found — please log in again.',
+        };
+        toast(`❌ ${messages[reason ?? ''] ?? `Connection failed: ${reason}`}`);
+      }
+    }
+    window.addEventListener('message', handleOAuthMessage);
+
+    // Also handle legacy full-page redirect callback (non-popup fallback)
     const params = new URLSearchParams(window.location.search);
     const socialResult = params.get('social');
     const platform = params.get('platform');
     const reason = params.get('reason');
     if (socialResult === 'connected') {
       toast(`✅ ${platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account'} connected successfully!`);
-      // Clean up URL
       const url = new URL(window.location.href);
       url.searchParams.delete('social');
       url.searchParams.delete('platform');
       url.searchParams.delete('count');
       window.history.replaceState({}, '', url);
+      loadConnections();
     } else if (socialResult === 'error') {
       const messages: Record<string, string> = {
         oauth_denied: 'Connection cancelled.',
@@ -307,7 +331,22 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       url.searchParams.delete('reason');
       window.history.replaceState({}, '', url);
     }
+
+    return () => window.removeEventListener('message', handleOAuthMessage);
   }, []);
+
+  // ── OAuth popup helper ────────────────────────────────────────────────────────
+  function openOAuthPopup(platform: string) {
+    const url = `/api/auth/social/${platform}?userId=${agentId}&popup=1`;
+    const w = 600, h = 700;
+    const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+    const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
+    const popup = window.open(url, `connect_${platform}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    if (!popup || popup.closed) {
+      // Popup blocked — fall back to same-tab redirect
+      window.location.href = `/api/auth/social/${platform}?userId=${agentId}`;
+    }
+  }
 
   // ── Load functions ────────────────────────────────────────────────────────────
   async function loadConnections() {
@@ -1627,7 +1666,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     key={p}
                     onClick={() => {
                       if (p === 'instagram') setShowIgModal(true);
-                      else window.open(`/api/auth/social/${p}?userId=${agentId}`, '_blank');
+                      else openOAuthPopup(p);
                     }}
                     title={`Connect ${platformLabel(p)}`}
                     style={{
@@ -1647,7 +1686,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           )}
 
           <button
-            onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
+            onClick={() => openOAuthPopup('facebook')}
             style={{
               marginLeft: 'auto',
               display: 'inline-flex', alignItems: 'center', gap: 5,

@@ -33,12 +33,14 @@ export async function GET(req: NextRequest) {
 
   const nonce = crypto.randomBytes(32).toString('hex');
 
+  const isPopup = req.nextUrl.searchParams.get('popup') === '1';
+
   const params = new URLSearchParams({
     client_id: process.env.FACEBOOK_APP_ID!,
     redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/facebook/callback`,
-    scope: 'pages_show_list,pages_read_engagement,business_management',
+    scope: 'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management',
     response_type: 'code',
-    state: `${userId}:${nonce}`,
+    state: `${userId}:${nonce}${isPopup ? ':popup' : ''}`,
   });
 
   (await cookies()).set('fb_oauth_nonce', nonce, {
