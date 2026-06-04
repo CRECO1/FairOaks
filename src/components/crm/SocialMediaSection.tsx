@@ -424,7 +424,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         content: composerContent,
         platforms: composerPlatforms,
         connection_ids: connections.filter(c => composerPlatforms.includes(c.platform)).map(c => c.id),
-        scheduled_at: status === 'scheduled' ? composerScheduledAt : null,
+        scheduled_at: status === 'scheduled' && composerScheduledAt
+          ? new Date(composerScheduledAt).toISOString()
+          : null,
         status,
         media_urls: composerMediaUrls,
         link_url: composerLinkUrl,
@@ -1412,7 +1414,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                             >
                               {isPreviewing ? '✕ Hide' : '👁 Preview'}
                             </button>
-                            {post.status === 'draft' && (
+                            {(post.status === 'draft' || post.status === 'scheduled') && (
                               <button
                                 onClick={() => {
                                   setSchedulingPostId(isScheduling ? null : post.id);
@@ -1420,7 +1422,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                     const base = post.scheduled_at
                                       ? new Date(post.scheduled_at)
                                       : (() => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; })();
-                                    setSchedulingDate(base.toISOString().slice(0, 16));
+                                    setSchedulingDate(toDatetimeLocal(base.toISOString()));
                                   }
                                 }}
                                 style={{
@@ -1432,7 +1434,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                   cursor: 'pointer',
                                 }}
                               >
-                                📅 Schedule
+                                {post.status === 'scheduled' ? '🕐 Reschedule' : '📅 Schedule'}
                               </button>
                             )}
                             <button
