@@ -94,8 +94,7 @@ const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; emoji: string; co
 };
 
 const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
-// Platforms available in the post composer (YouTube requires video upload API — analytics only)
-const POSTABLE_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram'];
+const POSTABLE_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
 
 // ── New Office Campaign Posts ──────────────────────────────────────────────────
 const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlatform; content: string; hashtags: string; scheduledDaysOut: number; mediaUrls: string[] }> = [
@@ -789,6 +788,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     );
                   })}
                 </div>
+                {composerPlatforms.includes('youtube') && (
+                  <div style={{ fontSize: 11, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '6px 12px', marginTop: 10 }}>
+                    ▶️ YouTube Shorts — upload a short vertical video (≤ 60 sec, 9:16) below
+                  </div>
+                )}
               </div>
 
               {/* AI Caption */}
