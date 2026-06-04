@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import VideoEditorModal from './VideoEditorModal';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type SocialPlatform = 'facebook' | 'instagram' | 'linkedin' | 'twitter' | 'youtube';
@@ -230,6 +231,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [composerLoading, setComposerLoading] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [captionLoading, setCaptionLoading] = useState(false);
+
+  // Video editor
+  const [videoEditorOpen, setVideoEditorOpen] = useState(false);
+  const [videoEditorIndex, setVideoEditorIndex] = useState(0);
 
   // Image editor
   const [imgEditorOpen, setImgEditorOpen] = useState(false);
@@ -982,6 +987,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                             <div style={{ width: 72, height: 72, borderRadius: 10, border: '2px solid #e5e7eb', background: '#000', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <video src={url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }} muted playsInline />
                               <span style={{ position: 'relative', zIndex: 1, fontSize: 20, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.6))' }}>▶️</span>
+                              <button
+                                onClick={e => { e.stopPropagation(); setVideoEditorIndex(i); setVideoEditorOpen(true); }}
+                                title="Edit video"
+                                style={{ position: 'absolute', bottom: -7, left: '50%', transform: 'translateX(-50%)', width: 22, height: 22, borderRadius: '50%', background: '#fff', border: '1.5px solid #d1d5db', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.15)', zIndex: 2 }}
+                              >✂️</button>
                             </div>
                           ) : (
                             <>
@@ -1402,8 +1412,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                                   </span>
                                 ))}
                                 {timeStr && (
-                                  <span style={{ fontSize: 11, color: '#9ca3af' }}>
-                                    · {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
+                                  <span style={{
+                                    fontSize: post.status === 'scheduled' ? 12 : 11,
+                                    fontWeight: post.status === 'scheduled' ? 700 : 400,
+                                    color: post.status === 'scheduled' ? '#1a1a2e' : '#9ca3af',
+                                  }}>
+                                    {post.status === 'scheduled' ? '📅' : '✅'} {timeStr}
                                   </span>
                                 )}
                               </div>
@@ -2567,6 +2581,19 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
         );
       })()}
+
+      {/* ── Video Editor Modal ── */}
+      {videoEditorOpen && composerMediaUrls[videoEditorIndex] && (
+        <VideoEditorModal
+          url={composerMediaUrls[videoEditorIndex]}
+          onSave={newUrl => {
+            setComposerMediaUrls(prev => prev.map((u, i) => i === videoEditorIndex ? newUrl : u));
+            setVideoEditorOpen(false);
+            toast('Video updated!');
+          }}
+          onClose={() => setVideoEditorOpen(false)}
+        />
+      )}
 
       {/* ── Image Editor Modal ── */}
       {imgEditorOpen && (() => {
