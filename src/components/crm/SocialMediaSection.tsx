@@ -279,27 +279,21 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     loadInbox();
     loadAnalytics();
 
-    // Handle OAuth result delivered via postMessage from popup
+    // Handle OAuth result via localStorage (works for both popup and new-tab flows)
+    function handleStorage(e: StorageEvent) {
+      if (e.key !== '_social_oauth' || !e.newValue) return;
+      try {
+        const { qs } = JSON.parse(e.newValue);
+        handleOAuthResult(qs);
+        localStorage.removeItem('_social_oauth');
+      } catch {}
+    }
+    window.addEventListener('storage', handleStorage);
+
+    // Also handle postMessage fallback from popup
     function handleOAuthMessage(e: MessageEvent) {
       if (!e.data || e.data.type !== 'social_oauth_done') return;
-      const params = new URLSearchParams(e.data.qs ?? '');
-      const socialResult = params.get('social');
-      const platform = params.get('platform');
-      const reason = params.get('reason');
-      if (socialResult === 'connected') {
-        toast(`✅ ${platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account'} connected!`);
-        loadConnections();
-      } else if (socialResult === 'error') {
-        const messages: Record<string, string> = {
-          oauth_denied: 'Connection cancelled.',
-          invalid_state: 'Security check failed — please try again.',
-          token_exchange: 'Failed to get access token.',
-          no_pages: 'No Facebook Pages found. Make sure you manage at least one Page.',
-          no_channel: 'No YouTube channel found on that Google account.',
-          invalid_user: 'User not found — please log in again.',
-        };
-        toast(`❌ ${messages[reason ?? ''] ?? `Connection failed: ${reason}`}`);
-      }
+      handleOAuthResult(e.data.qs ?? '');
     }
     window.addEventListener('message', handleOAuthMessage);
 
@@ -332,8 +326,34 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       window.history.replaceState({}, '', url);
     }
 
-    return () => window.removeEventListener('message', handleOAuthMessage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('message', handleOAuthMessage);
+    };
   }, []);
+
+  // ── OAuth result handler (shared between localStorage + postMessage paths) ────
+  function handleOAuthResult(qs: string) {
+    const params = new URLSearchParams(qs);
+    const socialResult = params.get('social');
+    const platform = params.get('platform');
+    const reason = params.get('reason');
+    const label = platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account';
+    if (socialResult === 'connected') {
+      toast(`✅ ${label} connected!`);
+      loadConnections();
+    } else if (socialResult === 'error') {
+      const messages: Record<string, string> = {
+        oauth_denied: 'Connection cancelled.',
+        invalid_state: 'Security check failed — please try again.',
+        token_exchange: 'Failed to get access token.',
+        no_pages: 'No Facebook Pages found. Make sure you manage at least one Page.',
+        no_channel: 'No YouTube channel found on that Google account.',
+        invalid_user: 'User not found — please log in again.',
+      };
+      toast(`❌ ${messages[reason ?? ''] ?? `Connection failed: ${reason}`}`);
+    }
+  }
 
   // ── OAuth popup helper ────────────────────────────────────────────────────────
   function openOAuthPopup(platform: string) {
