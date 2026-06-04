@@ -4,22 +4,32 @@ import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
 const CRM_BASE = 'https://www.fairoaksrealtygroup.com/crm/residential';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
+  const stateParts = (stateParam ?? '').split(':');
+  const userId = stateParts[0];
+  const stateNonce = stateParts[1];
+  const isPopup = stateParts[2] === 'popup';
+
+  const done = (qs: string) =>
+    isPopup
+      ? NextResponse.redirect(`${BASE_URL}/api/auth/social/done?${qs}`)
+      : NextResponse.redirect(`${CRM_BASE}?${qs}`);
+
   if (error || !code || !stateParam) {
     console.error('[youtube/callback] OAuth error:', { error, code: !!code, stateParam });
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=oauth_denied`);
+    return done('social=error&platform=youtube&reason=oauth_denied');
   }
 
-  const [userId, stateNonce] = (stateParam ?? '').split(':');
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get('yt_oauth_nonce')?.value;
   if (!storedNonce || storedNonce !== stateNonce) {
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=invalid_state`);
+    return done('social=error&platform=youtube&reason=invalid_state');
   }
   cookieStore.delete('yt_oauth_nonce');
 
@@ -37,7 +47,7 @@ export async function GET(req: NextRequest) {
     .maybeSingle();
 
   if (!profile) {
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=invalid_user`);
+    return done('social=error&platform=youtube&reason=invalid_user');
   }
 
   // Exchange code for tokens
@@ -48,7 +58,7 @@ export async function GET(req: NextRequest) {
       code,
       client_id: process.env.GOOGLE_CLIENT_ID!,
       client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-      redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/youtube/callback`,
+      redirect_uri: `${BASE_URL}/api/auth/social/youtube/callback`,
       grant_type: 'authorization_code',
     }),
   });
@@ -56,7 +66,7 @@ export async function GET(req: NextRequest) {
   const tokenData = await tokenRes.json();
   if (!tokenData.access_token) {
     console.error('[youtube/callback] Token exchange failed:', tokenData);
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=token_exchange`);
+    return done('social=error&platform=youtube&reason=token_exchange');
   }
 
   // Get YouTube channel info
@@ -69,7 +79,7 @@ export async function GET(req: NextRequest) {
 
   if (!channel) {
     console.error('[youtube/callback] No YouTube channel found:', channelData);
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=youtube&reason=no_channel`);
+    return done('social=error&platform=youtube&reason=no_channel');
   }
 
   const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString();
@@ -92,5 +102,5 @@ export async function GET(req: NextRequest) {
       { onConflict: 'agent_id,platform,platform_account_id' }
     );
 
-  return NextResponse.redirect(`${CRM_BASE}?social=connected&platform=youtube`);
+  return done('social=connected&platform=youtube');
 }

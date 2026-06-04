@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
     response_type: 'code',
     access_type: 'offline',
     prompt: 'consent',
-    state: `${userId}:${nonce}`,
+    state: `${userId}:${nonce}${req.nextUrl.searchParams.get('popup') === '1' ? ':popup' : ''}`,
   });
 
   (await cookies()).set('yt_oauth_nonce', nonce, {

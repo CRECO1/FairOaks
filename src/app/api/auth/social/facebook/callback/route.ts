@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
 const CRM_BASE = 'https://www.fairoaksrealtygroup.com/crm/residential';
-// Query params must come BEFORE the hash — append #social at the end of each redirect
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -13,12 +13,22 @@ export async function GET(req: NextRequest) {
 
   console.log('[facebook/callback] start', { error, hasCode: !!code, hasState: !!stateParam });
 
+  const stateParts = (stateParam ?? '').split(':');
+  const userId = stateParts[0];
+  const stateNonce = stateParts[1];
+  const isPopup = stateParts[2] === 'popup';
+
+  // Helper: redirect appropriately for popup vs full-page flow
+  const done = (qs: string) =>
+    isPopup
+      ? NextResponse.redirect(`${BASE_URL}/api/auth/social/done?${qs}`)
+      : NextResponse.redirect(`${CRM_BASE}?${qs}`);
+
   if (error || !code || !stateParam) {
     console.error('[facebook/callback] OAuth denied or missing params:', { error, hasCode: !!code, hasState: !!stateParam });
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=oauth_denied`);
+    return done('social=error&platform=facebook&reason=oauth_denied');
   }
 
-  const [userId, stateNonce] = (stateParam ?? '').split(':');
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get('fb_oauth_nonce')?.value;
 
@@ -26,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   if (!storedNonce || storedNonce !== stateNonce) {
     console.error('[facebook/callback] Nonce mismatch — stored:', storedNonce?.slice(0,8), 'received:', stateNonce?.slice(0,8));
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=invalid_state`);
+    return done('social=error&platform=facebook&reason=invalid_state');
   }
   cookieStore.delete('fb_oauth_nonce');
 
@@ -46,7 +56,7 @@ export async function GET(req: NextRequest) {
   console.log('[facebook/callback] profile lookup', { userId, found: !!profile });
 
   if (!profile) {
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=invalid_user`);
+    return done('social=error&platform=facebook&reason=invalid_user');
   }
 
   // Exchange code for short-lived token
@@ -56,7 +66,7 @@ export async function GET(req: NextRequest) {
     body: new URLSearchParams({
       client_id: process.env.FACEBOOK_APP_ID!,
       client_secret: process.env.FACEBOOK_APP_SECRET!,
-      redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/facebook/callback`,
+      redirect_uri: `${BASE_URL}/api/auth/social/facebook/callback`,
       code,
     }),
   });
@@ -66,18 +76,21 @@ export async function GET(req: NextRequest) {
 
   if (!tokenData.access_token) {
     console.error('[facebook/callback] Token exchange failed:', tokenData);
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=token_exchange`);
+    return done('social=error&platform=facebook&reason=token_exchange');
   }
 
-  // Exchange for long-lived user token
+  // Exchange for long-lived user token (~60 days)
   const longLivedRes = await fetch(
     `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.FACEBOOK_APP_ID}&client_secret=${process.env.FACEBOOK_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`
   );
   const longLivedData = await longLivedRes.json();
   const userToken = longLivedData.access_token || tokenData.access_token;
+  // Long-lived tokens expire in ~60 days; store expires_at so we can proactively refresh
+  const userTokenExpiresAt = new Date(
+    Date.now() + ((longLivedData.expires_in ?? 5_184_000) * 1000)
+  ).toISOString();
 
   // Get pages managed by this user — include instagram_business_account in the same call
-  // so we use the user token (which can read the IG link) rather than a separate page-token query
   const pagesRes = await fetch(
     `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${userToken}`
   );
@@ -93,7 +106,7 @@ export async function GET(req: NextRequest) {
 
   if (pages.length === 0) {
     console.error('[facebook/callback] No pages found. pagesData:', JSON.stringify(pagesData));
-    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=facebook&reason=no_pages`);
+    return done('social=error&platform=facebook&reason=no_pages');
   }
 
   const now = new Date().toISOString();
@@ -109,6 +122,9 @@ export async function GET(req: NextRequest) {
           platform_account_id: page.id,
           account_name: page.name,
           access_token: encryptToken(page.access_token),
+          // Store the long-lived user token so we can silently re-fetch page tokens before expiry
+          refresh_token: encryptToken(userToken),
+          expires_at: userTokenExpiresAt,
           page_id: page.id,
           is_active: true,
           updated_at: now,
@@ -169,6 +185,8 @@ export async function GET(req: NextRequest) {
             platform_account_id: igAccountId,
             account_name: igInfo.username || igInfo.name || `IG: ${page.name}`,
             access_token: encryptToken(page.access_token),
+            refresh_token: encryptToken(userToken),
+            expires_at: userTokenExpiresAt,
             page_id: page.id,
             is_active: true,
             updated_at: now,
@@ -182,5 +200,5 @@ export async function GET(req: NextRequest) {
   }
 
   console.log('[facebook/callback] done, connectedCount:', connectedCount);
-  return NextResponse.redirect(`${CRM_BASE}?social=connected&platform=facebook&count=${connectedCount}`);
+  return done(`social=connected&platform=facebook&count=${connectedCount}`);
 }
