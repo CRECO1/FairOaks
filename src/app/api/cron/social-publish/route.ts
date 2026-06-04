@@ -1,33 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { adminClient } from '@/lib/supabase-admin';
+import { publishToplatform } from '@/lib/social-publish';
 
 // Called by Vercel Cron every 5 minutes: */5 * * * *
 export async function GET(req: NextRequest) {
-  // Verify cron secret
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const supabase = adminClient();
 
-  // Find posts scheduled for now (within the last 5 minutes and up to now)
+  // Find all posts that are scheduled and due (up to 5 min window to survive missed ticks)
   const now = new Date();
   const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
 
   const { data: duePosts, error } = await supabase
     .from('social_posts')
-    .select('*, social_connections!inner(*)')
+    .select('*')
     .eq('status', 'scheduled')
     .lte('scheduled_at', now.toISOString())
     .gte('scheduled_at', fiveMinutesAgo.toISOString());
 
   if (error) {
-    console.error('Social publish cron error:', error);
-    console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+    console.error('[cron/social-publish] DB error fetching due posts:', error.message);
+    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 
   if (!duePosts || duePosts.length === 0) {
@@ -40,11 +37,15 @@ export async function GET(req: NextRequest) {
     const platformPostIds: Record<string, string> = {};
     const failures: string[] = [];
 
+    // Fetch active connections for this agent — one query per post, avoids broken JOIN
+    const { data: connections } = await supabase
+      .from('social_connections')
+      .select('*')
+      .eq('agent_id', post.agent_id)
+      .eq('is_active', true);
+
     for (const platform of (post.platforms as string[])) {
-      // Find the connection for this platform
-      const connection = (post.social_connections as any[])?.find(
-        (c: any) => c.platform === platform && c.is_active
-      );
+      const connection = connections?.find(c => c.platform === platform);
 
       if (!connection) {
         failures.push(`${platform}: no active connection`);
@@ -52,7 +53,13 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        const result = await publishToPlatform(platform, connection, post);
+        // publishToplatform handles token decryption internally via decryptToken
+        const result = await publishToplatform(platform, connection, {
+          content: post.content,
+          media_urls: post.media_urls || [],
+          link_url: post.link_url || undefined,
+        });
+
         if (result.success && result.platform_post_id) {
           platformPostIds[platform] = result.platform_post_id;
         } else {
@@ -63,20 +70,20 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Update post status
     const allFailed = failures.length === (post.platforms as string[]).length;
     const newStatus = allFailed ? 'failed' : 'published';
     const failNote = failures.length > 0
-      ? `\n[CRON] Partial/full failure: ${failures.join('; ')}`
-      : `\n[CRON] Published successfully at ${new Date().toISOString()}`;
+      ? `\n[CRON] Partial/full failure at ${now.toISOString()}: ${failures.join('; ')}`
+      : `\n[CRON] Published at ${now.toISOString()}`;
+
     await supabase
       .from('social_posts')
       .update({
         status: newStatus,
-        published_at: new Date().toISOString(),
+        published_at: now.toISOString(),
         platform_post_ids: platformPostIds,
         internal_notes: (post.internal_notes ?? '') + failNote,
-        updated_at: new Date().toISOString(),
+        updated_at: now.toISOString(),
       })
       .eq('id', post.id);
 
@@ -88,121 +95,4 @@ export async function GET(req: NextRequest) {
     failed: results.filter(r => r.status === 'failed').length,
     results,
   });
-}
-
-// Platform publish implementations
-async function publishToPlatform(
-  platform: string,
-  connection: any,
-  post: any
-): Promise<{ success: boolean; platform_post_id?: string; error?: string }> {
-  switch (platform) {
-    case 'facebook':
-      return publishToFacebook(connection, post);
-    case 'instagram':
-      return publishToInstagram(connection, post);
-    case 'linkedin':
-      return publishToLinkedIn(connection, post);
-    case 'twitter':
-      return publishToTwitter(connection, post);
-    case 'youtube':
-      return { success: false, error: 'YouTube video upload requires direct upload API' };
-    default:
-      return { success: false, error: 'Unknown platform' };
-  }
-}
-
-async function publishToFacebook(connection: any, post: any): Promise<{ success: boolean; platform_post_id?: string; error?: string }> {
-  const res = await fetch(
-    `https://graph.facebook.com/v18.0/${connection.page_id}/feed`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: post.content,
-        link: post.link_url || undefined,
-        access_token: connection.access_token,
-      }),
-    }
-  );
-  const data = await res.json();
-  if (data.id) return { success: true, platform_post_id: data.id };
-  return { success: false, error: data.error?.message || 'Facebook publish failed' };
-}
-
-async function publishToInstagram(connection: any, post: any): Promise<{ success: boolean; platform_post_id?: string; error?: string }> {
-  if (!post.media_urls?.[0]) {
-    return { success: false, error: 'Instagram requires at least one image URL' };
-  }
-  const containerRes = await fetch(
-    `https://graph.facebook.com/v18.0/${connection.platform_account_id}/media`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url: post.media_urls[0],
-        caption: post.content,
-        access_token: connection.access_token,
-      }),
-    }
-  );
-  const container = await containerRes.json();
-  if (!container.id) return { success: false, error: container.error?.message || 'Container failed' };
-
-  const publishRes = await fetch(
-    `https://graph.facebook.com/v18.0/${connection.platform_account_id}/media_publish`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creation_id: container.id,
-        access_token: connection.access_token,
-      }),
-    }
-  );
-  const published = await publishRes.json();
-  if (published.id) return { success: true, platform_post_id: published.id };
-  return { success: false, error: published.error?.message || 'IG publish failed' };
-}
-
-async function publishToLinkedIn(connection: any, post: any): Promise<{ success: boolean; platform_post_id?: string; error?: string }> {
-  const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${connection.access_token}`,
-      'Content-Type': 'application/json',
-      'X-Restli-Protocol-Version': '2.0.0',
-    },
-    body: JSON.stringify({
-      author: `urn:li:person:${connection.platform_account_id}`,
-      lifecycleState: 'PUBLISHED',
-      specificContent: {
-        'com.linkedin.ugc.ShareContent': {
-          shareCommentary: { text: post.content },
-          shareMediaCategory: post.link_url ? 'ARTICLE' : 'NONE',
-          ...(post.link_url && {
-            media: [{ status: 'READY', originalUrl: post.link_url }],
-          }),
-        },
-      },
-      visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
-    }),
-  });
-  const data = await res.json();
-  if (data.id) return { success: true, platform_post_id: data.id };
-  return { success: false, error: data.message || 'LinkedIn failed' };
-}
-
-async function publishToTwitter(connection: any, post: any): Promise<{ success: boolean; platform_post_id?: string; error?: string }> {
-  const res = await fetch('https://api.twitter.com/2/tweets', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${connection.access_token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text: (post.content as string).substring(0, 280) }),
-  });
-  const data = await res.json();
-  if (data.data?.id) return { success: true, platform_post_id: data.data.id };
-  return { success: false, error: data.detail || 'Twitter failed' };
 }
