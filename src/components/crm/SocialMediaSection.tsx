@@ -229,6 +229,16 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [composerLoading, setComposerLoading] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [captionLoading, setCaptionLoading] = useState(false);
+
+  // Image editor
+  const [imgEditorOpen, setImgEditorOpen] = useState(false);
+  const [imgEditorIndex, setImgEditorIndex] = useState(0);
+  const [imgEditorAspect, setImgEditorAspect] = useState<'1:1'|'4:5'|'16:9'|'9:16'>('1:1');
+  const [imgEditorOffsetX, setImgEditorOffsetX] = useState(0);
+  const [imgEditorOffsetY, setImgEditorOffsetY] = useState(0);
+  const [imgEditorScale, setImgEditorScale] = useState(1);
+  const [imgEditorSaving, setImgEditorSaving] = useState(false);
+  const imgEditorDragRef = useRef<{ startX: number; startY: number; offX: number; offY: number } | null>(null);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [showFirstComment, setShowFirstComment] = useState(false);
   const [showInternalNotes, setShowInternalNotes] = useState(false);
@@ -528,6 +538,83 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     setShowFirstComment(false);
     setShowInternalNotes(false);
     setPublisherView('list');
+  }
+
+  function isVideoUrl(url: string): boolean {
+    return /\.(mp4|mov|webm|avi|mkv)(\?|$)/i.test(url);
+  }
+
+  function openImgEditor(index: number) {
+    setImgEditorIndex(index);
+    setImgEditorAspect('1:1');
+    setImgEditorOffsetX(0);
+    setImgEditorOffsetY(0);
+    setImgEditorScale(1);
+    setImgEditorOpen(true);
+  }
+
+  async function applyImageCrop() {
+    const url = composerMediaUrls[imgEditorIndex];
+    if (!url) return;
+    setImgEditorSaving(true);
+    try {
+      const ASPECT_DIMS: Record<string, [number, number]> = {
+        '1:1':  [1080, 1080],
+        '4:5':  [1080, 1350],
+        '16:9': [1920, 1080],
+        '9:16': [1080, 1920],
+      };
+      const [outW, outH] = ASPECT_DIMS[imgEditorAspect];
+      const aspectRatio = outW / outH;
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = reject; img.src = url; });
+
+      // Preview container dimensions (matches modal preview)
+      const MAX_PREVIEW = 360;
+      let previewW = MAX_PREVIEW;
+      let previewH = MAX_PREVIEW / aspectRatio;
+      if (previewH > MAX_PREVIEW) { previewH = MAX_PREVIEW; previewW = MAX_PREVIEW * aspectRatio; }
+
+      // Image is centered in preview at scale, offset applied on top
+      const imageDisplayW = previewW * imgEditorScale;
+      const imageDisplayH = (previewW / img.naturalWidth * img.naturalHeight) * imgEditorScale;
+      const imgLeft = (previewW - imageDisplayW) / 2 + imgEditorOffsetX;
+      const imgTop  = (previewH - imageDisplayH) / 2 + imgEditorOffsetY;
+
+      // Convert preview coords to natural image coords
+      const scaleX = img.naturalWidth  / imageDisplayW;
+      const scaleY = img.naturalHeight / imageDisplayH;
+      const srcX = Math.max(0, -imgLeft  * scaleX);
+      const srcY = Math.max(0, -imgTop   * scaleY);
+      const srcW = Math.min(img.naturalWidth  - srcX, previewW  * scaleX);
+      const srcH = Math.min(img.naturalHeight - srcY, previewH  * scaleY);
+
+      const canvas = document.createElement('canvas');
+      canvas.width  = outW;
+      canvas.height = outH;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, outW, outH);
+
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      if (!blob) throw new Error('Canvas export failed');
+
+      const fd = new FormData();
+      fd.append('file', new File([blob], 'cropped.jpg', { type: 'image/jpeg' }));
+      const res = await fetch('/api/crm/social/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed');
+
+      setComposerMediaUrls(prev => prev.map((u, i) => i === imgEditorIndex ? data.url : u));
+      setImgEditorOpen(false);
+      toast('Photo updated!');
+    } catch (e) {
+      alert('Failed to save crop. Please try again.');
+      console.error(e);
+    } finally {
+      setImgEditorSaving(false);
+    }
   }
 
   function openDetailPost(post: SocialPost) {
@@ -852,7 +939,28 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {composerMediaUrls.map((url, i) => (
                         <div key={i} style={{ position: 'relative', flexShrink: 0 }}>
-                          <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 10, border: '2px solid #e5e7eb', display: 'block' }} />
+                          {isVideoUrl(url) ? (
+                            <div style={{ width: 72, height: 72, borderRadius: 10, border: '2px solid #e5e7eb', background: '#000', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <video src={url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }} muted playsInline />
+                              <span style={{ position: 'relative', zIndex: 1, fontSize: 20, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,.6))' }}>▶️</span>
+                            </div>
+                          ) : (
+                            <>
+                              <img src={url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 10, border: '2px solid #e5e7eb', display: 'block' }} />
+                              <button
+                                onClick={e => { e.stopPropagation(); openImgEditor(i); }}
+                                title="Edit photo"
+                                style={{
+                                  position: 'absolute', bottom: -7, left: '50%', transform: 'translateX(-50%)',
+                                  width: 22, height: 22, borderRadius: '50%',
+                                  background: '#fff', border: '1.5px solid #d1d5db',
+                                  cursor: 'pointer', fontSize: 11,
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  boxShadow: '0 1px 4px rgba(0,0,0,0.15)', zIndex: 1,
+                                }}
+                              >✏️</button>
+                            </>
+                          )}
                           <button
                             onClick={e => { e.stopPropagation(); setComposerMediaUrls(prev => prev.filter((_, idx) => idx !== i)); }}
                             style={{
@@ -2415,6 +2523,132 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     {post.hashtags.join(' ')}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Image Editor Modal ── */}
+      {imgEditorOpen && (() => {
+        const ASPECT_OPTIONS = [
+          { key: '1:1'  as const, label: 'Square',   sub: '1:1',  pw: 360, ph: 360 },
+          { key: '4:5'  as const, label: 'Portrait',  sub: '4:5',  pw: 288, ph: 360 },
+          { key: '16:9' as const, label: 'Landscape', sub: '16:9', pw: 360, ph: 203 },
+          { key: '9:16' as const, label: 'Story',     sub: '9:16', pw: 203, ph: 360 },
+        ];
+        const chosen = ASPECT_OPTIONS.find(a => a.key === imgEditorAspect) || ASPECT_OPTIONS[0];
+        const url = composerMediaUrls[imgEditorIndex] || '';
+
+        return (
+          <div
+            onClick={() => setImgEditorOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 18, padding: 24, width: 440, maxWidth: '95vw', boxShadow: '0 24px 80px rgba(0,0,0,.5)' }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Edit Photo</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Drag to reposition · Scroll to zoom</div>
+                </div>
+                <button onClick={() => setImgEditorOpen(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, padding: 0 }}>✕</button>
+              </div>
+
+              {/* Aspect ratio selector */}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {ASPECT_OPTIONS.map(a => (
+                  <button
+                    key={a.key}
+                    onClick={() => { setImgEditorAspect(a.key); setImgEditorOffsetX(0); setImgEditorOffsetY(0); }}
+                    style={{
+                      flex: 1, padding: '8px 4px', borderRadius: 9, fontSize: 10, fontWeight: 700,
+                      border: imgEditorAspect === a.key ? '2px solid #1a1a2e' : '1.5px solid #e5e7eb',
+                      background: imgEditorAspect === a.key ? '#1a1a2e' : '#f9fafb',
+                      color: imgEditorAspect === a.key ? '#fff' : '#6b7280',
+                      cursor: 'pointer', lineHeight: 1.4,
+                    }}
+                  >
+                    <div>{a.label}</div>
+                    <div style={{ fontSize: 9, opacity: 0.65 }}>{a.sub}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Preview / drag area */}
+              <div
+                style={{
+                  width: chosen.pw, height: chosen.ph,
+                  overflow: 'hidden', borderRadius: 10,
+                  margin: '0 auto 16px',
+                  position: 'relative',
+                  cursor: 'grab',
+                  background: '#111',
+                  userSelect: 'none',
+                  touchAction: 'none',
+                }}
+                onPointerDown={e => {
+                  (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+                  imgEditorDragRef.current = { startX: e.clientX, startY: e.clientY, offX: imgEditorOffsetX, offY: imgEditorOffsetY };
+                }}
+                onPointerMove={e => {
+                  if (!imgEditorDragRef.current) return;
+                  setImgEditorOffsetX(imgEditorDragRef.current.offX + (e.clientX - imgEditorDragRef.current.startX));
+                  setImgEditorOffsetY(imgEditorDragRef.current.offY + (e.clientY - imgEditorDragRef.current.startY));
+                }}
+                onPointerUp={() => { imgEditorDragRef.current = null; }}
+                onWheel={e => {
+                  e.preventDefault();
+                  setImgEditorScale(prev => Math.min(3, Math.max(0.3, prev - e.deltaY * 0.001)));
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt=""
+                  style={{
+                    position: 'absolute',
+                    width: `${chosen.pw * imgEditorScale}px`,
+                    top: '50%', left: '50%',
+                    transform: `translate(calc(-50% + ${imgEditorOffsetX}px), calc(-50% + ${imgEditorOffsetY}px))`,
+                    pointerEvents: 'none',
+                    maxWidth: 'none',
+                    display: 'block',
+                  }}
+                />
+              </div>
+
+              {/* Zoom slider */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.8 }}>Zoom</label>
+                  <span style={{ fontSize: 11, color: '#6b7280' }}>{Math.round(imgEditorScale * 100)}%</span>
+                </div>
+                <input
+                  type="range" min={30} max={300} value={Math.round(imgEditorScale * 100)}
+                  onChange={e => setImgEditorScale(Number(e.target.value) / 100)}
+                  style={{ width: '100%', accentColor: '#1a1a2e' }}
+                />
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => { setImgEditorOffsetX(0); setImgEditorOffsetY(0); setImgEditorScale(1); }}
+                  style={{ flex: 1, padding: '10px', borderRadius: 9, border: '1.5px solid #e5e7eb', background: '#f9fafb', fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#6b7280' }}
+                >
+                  Reset
+                </button>
+                <button
+                  onClick={applyImageCrop}
+                  disabled={imgEditorSaving}
+                  style={{ flex: 2, padding: '10px', borderRadius: 9, border: 'none', background: '#1a1a2e', color: '#fff', fontSize: 13, fontWeight: 700, cursor: imgEditorSaving ? 'default' : 'pointer', opacity: imgEditorSaving ? 0.7 : 1 }}
+                >
+                  {imgEditorSaving ? 'Saving…' : '✅ Save Changes'}
+                </button>
               </div>
             </div>
           </div>

@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient, SUPABASE_URL } from '@/lib/supabase-admin';
 
+export const config = {
+  api: { bodyParser: false, responseLimit: false },
+};
+
+// Increase body size limit for video uploads
+export const maxDuration = 60; // seconds
+
 const BUCKET = 'images';
-const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime'];
+const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB (accommodates video)
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo'];
 
 export async function POST(req: NextRequest) {
   const user = await getCrmUser();
