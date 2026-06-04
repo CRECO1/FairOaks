@@ -1,4 +1,6 @@
-import { decryptToken } from '@/lib/token-crypto';
+import 'server-only';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { adminClient } from '@/lib/supabase-admin';
 
 export interface SocialConnection {
   id: string;
@@ -40,17 +42,57 @@ export async function publishToplatform(
     case 'twitter':
       return publishToTwitter(connection, post);
     case 'youtube':
-      return { success: false, error: 'YouTube posts require video upload — use YouTube Studio' };
+      return publishToYouTube(connection, post);
     default:
       return { success: false, error: `Unknown platform: ${platform}` };
   }
 }
 
+// ── Token helpers ─────────────────────────────────────────────────────────────
+
+function isExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt) < new Date(Date.now() + 60_000); // 1 min buffer
+}
+
+async function refreshGoogleToken(connection: SocialConnection): Promise<string | null> {
+  if (!connection.refresh_token) return null;
+  try {
+    const refreshToken = decryptToken(connection.refresh_token);
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+    const data = await res.json();
+    if (!data.access_token) return null;
+
+    // Persist refreshed token
+    const supabase = adminClient();
+    await supabase.from('social_connections').update({
+      access_token: encryptToken(data.access_token),
+      expires_at: new Date(Date.now() + (data.expires_in ?? 3600) * 1000).toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', connection.id);
+
+    return data.access_token;
+  } catch (e) {
+    console.error('[social-publish] Google token refresh failed:', e);
+    return null;
+  }
+}
+
+// ── Facebook ──────────────────────────────────────────────────────────────────
+
 async function publishToFacebook(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
   const pageId = connection.page_id || connection.platform_account_id;
   const token = decryptToken(connection.access_token);
 
-  // Multi-photo post: stage each photo unpublished, then attach all in one feed post
   if (post.media_urls && post.media_urls.length > 1) {
     const photoIds: string[] = [];
     for (const url of post.media_urls) {
@@ -63,18 +105,16 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
       if (!d.id) return { success: false, error: d.error?.message || 'Photo staging failed' };
       photoIds.push(d.id);
     }
-    const attached_media = photoIds.map(id => ({ media_fbid: id }));
     const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/feed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: post.content, attached_media, access_token: token }),
+      body: JSON.stringify({ message: post.content, attached_media: photoIds.map(id => ({ media_fbid: id })), access_token: token }),
     });
     const data = await res.json();
     if (data.id) return { success: true, platform_post_id: data.id };
     return { success: false, error: data.error?.message || 'Facebook publish failed' };
   }
 
-  // Single image or text-only post
   const body: Record<string, unknown> = { message: post.content, access_token: token };
   if (post.media_urls?.[0]) body.link = post.media_urls[0];
   if (post.link_url) body.link = post.link_url;
@@ -84,23 +124,20 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-
   const data = await res.json();
   if (data.id) return { success: true, platform_post_id: data.id };
   return { success: false, error: data.error?.message || 'Facebook publish failed' };
 }
 
+// ── Instagram ─────────────────────────────────────────────────────────────────
+
 async function publishToInstagram(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
-  if (!post.media_urls?.[0]) {
-    return { success: false, error: 'Instagram requires at least one image' };
-  }
+  if (!post.media_urls?.[0]) return { success: false, error: 'Instagram requires at least one image' };
 
   const token = decryptToken(connection.access_token);
   const igId = connection.platform_account_id;
 
-  // Carousel post (2–10 images)
   if (post.media_urls.length > 1) {
-    // Step 1: Create a carousel item container for each image
     const childIds: string[] = [];
     for (const url of post.media_urls) {
       const r = await fetch(`https://graph.facebook.com/v18.0/${igId}/media`, {
@@ -109,25 +146,17 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
         body: JSON.stringify({ image_url: url, is_carousel_item: true, access_token: token }),
       });
       const d = await r.json();
-      if (!d.id) return { success: false, error: d.error?.message || 'IG carousel item creation failed' };
+      if (!d.id) return { success: false, error: d.error?.message || 'IG carousel item failed' };
       childIds.push(d.id);
     }
-
-    // Step 2: Create the carousel container
     const carouselRes = await fetch(`https://graph.facebook.com/v18.0/${igId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        media_type: 'CAROUSEL',
-        children: childIds.join(','),
-        caption: post.content,
-        access_token: token,
-      }),
+      body: JSON.stringify({ media_type: 'CAROUSEL', children: childIds.join(','), caption: post.content, access_token: token }),
     });
     const carousel = await carouselRes.json();
-    if (!carousel.id) return { success: false, error: carousel.error?.message || 'IG carousel container creation failed' };
+    if (!carousel.id) return { success: false, error: carousel.error?.message || 'IG carousel container failed' };
 
-    // Step 3: Publish the carousel
     const publishRes = await fetch(`https://graph.facebook.com/v18.0/${igId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -138,7 +167,6 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
     return { success: false, error: published.error?.message || 'IG carousel publish failed' };
   }
 
-  // Single image post
   const containerRes = await fetch(`https://graph.facebook.com/v18.0/${igId}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -157,6 +185,8 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
   return { success: false, error: published.error?.message || 'IG publish failed' };
 }
 
+// ── LinkedIn ──────────────────────────────────────────────────────────────────
+
 async function publishToLinkedIn(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
   const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
     method: 'POST',
@@ -171,17 +201,19 @@ async function publishToLinkedIn(connection: SocialConnection, post: PostPayload
       specificContent: {
         'com.linkedin.ugc.ShareContent': {
           shareCommentary: { text: post.content },
-          shareMediaCategory: 'NONE',
+          shareMediaCategory: post.link_url ? 'ARTICLE' : 'NONE',
+          ...(post.link_url && { media: [{ status: 'READY', originalUrl: post.link_url }] }),
         },
       },
       visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
     }),
   });
-
   const data = await res.json();
   if (data.id) return { success: true, platform_post_id: data.id };
   return { success: false, error: data.message || 'LinkedIn publish failed' };
 }
+
+// ── Twitter ───────────────────────────────────────────────────────────────────
 
 async function publishToTwitter(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
   const res = await fetch('https://api.twitter.com/2/tweets', {
@@ -192,8 +224,97 @@ async function publishToTwitter(connection: SocialConnection, post: PostPayload)
     },
     body: JSON.stringify({ text: post.content.substring(0, 280) }),
   });
-
   const data = await res.json();
   if (data.data?.id) return { success: true, platform_post_id: data.data.id };
   return { success: false, error: data.detail || 'Twitter publish failed' };
+}
+
+// ── YouTube Shorts ────────────────────────────────────────────────────────────
+
+async function publishToYouTube(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
+  const videoUrl = post.media_urls?.[0];
+  if (!videoUrl) {
+    return { success: false, error: 'YouTube Shorts require a video file' };
+  }
+
+  // Refresh token if expired
+  let accessToken = decryptToken(connection.access_token);
+  if (isExpired(connection.expires_at)) {
+    const refreshed = await refreshGoogleToken(connection);
+    if (!refreshed) return { success: false, error: 'YouTube token expired — please reconnect your YouTube account' };
+    accessToken = refreshed;
+  }
+
+  // Fetch the video from Supabase storage
+  let videoBuffer: ArrayBuffer;
+  let contentType: string;
+  try {
+    const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok) return { success: false, error: 'Failed to fetch video from storage' };
+    contentType = videoRes.headers.get('content-type') || 'video/mp4';
+    videoBuffer = await videoRes.arrayBuffer();
+  } catch (e) {
+    return { success: false, error: `Failed to fetch video: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  // Build title: first line of content, max 100 chars, append #Shorts for discoverability
+  const firstLine = post.content.split('\n')[0].trim();
+  const title = (firstLine.length > 90 ? firstLine.substring(0, 90) + '…' : firstLine) + ' #Shorts';
+
+  // Step 1: Initiate resumable upload session
+  const initRes = await fetch(
+    'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'X-Upload-Content-Type': contentType,
+        'X-Upload-Content-Length': String(videoBuffer.byteLength),
+      },
+      body: JSON.stringify({
+        snippet: {
+          title,
+          description: post.content,
+          tags: ['Shorts', 'RealEstate', 'FairOaksRealty', 'FairOaks', 'TexasRealEstate'],
+          categoryId: '22', // People & Blogs
+          defaultLanguage: 'en',
+        },
+        status: {
+          privacyStatus: 'public',
+          selfDeclaredMadeForKids: false,
+          madeForKids: false,
+        },
+      }),
+    }
+  );
+
+  if (!initRes.ok) {
+    const err = await initRes.json().catch(() => ({}));
+    return { success: false, error: err.error?.message || `YouTube session init failed (${initRes.status})` };
+  }
+
+  const sessionUri = initRes.headers.get('Location');
+  if (!sessionUri) return { success: false, error: 'YouTube did not return an upload session URI' };
+
+  // Step 2: Upload video bytes directly to session URI
+  const uploadRes = await fetch(sessionUri, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': contentType,
+      'Content-Length': String(videoBuffer.byteLength),
+    },
+    body: videoBuffer,
+  });
+
+  if (!uploadRes.ok && uploadRes.status !== 200 && uploadRes.status !== 201) {
+    const err = await uploadRes.json().catch(() => ({}));
+    return { success: false, error: err.error?.message || `YouTube upload failed (${uploadRes.status})` };
+  }
+
+  const uploadData = await uploadRes.json().catch(() => ({}));
+  if (uploadData.id) {
+    return { success: true, platform_post_id: uploadData.id };
+  }
+  return { success: false, error: 'YouTube upload failed — no video ID returned' };
 }
