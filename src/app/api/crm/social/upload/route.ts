@@ -2,54 +2,56 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient, SUPABASE_URL } from '@/lib/supabase-admin';
 
-export const config = {
-  api: { bodyParser: false, responseLimit: false },
-};
-
-// Increase body size limit for video uploads
-export const maxDuration = 60; // seconds
-
 const BUCKET = 'images';
-const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB (accommodates video)
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo'];
+const MAX_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB ceiling (enforced client-side too)
+const ALLOWED_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
+];
 
+/**
+ * POST /api/crm/social/upload
+ * Body: JSON { filename, contentType, size }
+ * Returns a Supabase signed upload URL so the browser can PUT the file
+ * directly to storage — bypasses the 4.5 MB Next.js/Vercel body limit.
+ * The client then constructs the public URL from the returned path.
+ */
 export async function POST(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return unauthorized();
 
-  let formData: FormData;
+  let body: { filename?: string; contentType?: string; size?: number };
   try {
-    formData = await req.formData();
+    body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const file = formData.get('file') as File | null;
-  if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+  const { filename, contentType, size } = body;
 
-  if (!ALLOWED_TYPES.includes(file.type)) {
+  if (!filename || !contentType) {
+    return NextResponse.json({ error: 'filename and contentType are required' }, { status: 400 });
+  }
+  if (!ALLOWED_TYPES.includes(contentType)) {
     return NextResponse.json({ error: 'File type not allowed' }, { status: 400 });
   }
-
-  if (file.size > MAX_SIZE_BYTES) {
-    return NextResponse.json({ error: 'File exceeds 20 MB limit' }, { status: 400 });
+  if (size && size > MAX_SIZE_BYTES) {
+    return NextResponse.json({ error: 'File too large (max 500 MB)' }, { status: 400 });
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'bin';
-  const safeName = file.name.replace(/[^a-z0-9._-]/gi, '_').toLowerCase();
+  const safeName = filename.replace(/[^a-z0-9._-]/gi, '_').toLowerCase();
   const path = `social/${user.id}/${Date.now()}_${safeName}`;
 
   const supabase = adminClient();
-  const arrayBuffer = await file.arrayBuffer();
-  const { error } = await supabase.storage
+  const { data, error } = await supabase.storage
     .from(BUCKET)
-    .upload(path, arrayBuffer, { contentType: file.type, upsert: false });
+    .createSignedUploadUrl(path);
 
-  if (error) {
-    console.error('[social/upload] Storage upload failed:', error.message);
+  if (error || !data) {
+    console.error('[social/upload] Failed to create signed URL:', error?.message);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
 
   const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
-  return NextResponse.json({ url: publicUrl });
+  return NextResponse.json({ signedUrl: data.signedUrl, path, publicUrl });
 }
