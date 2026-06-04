@@ -617,114 +617,6 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-        {/* ── Connected Accounts Bar ── */}
-        <div style={{
-          background: '#fff',
-          borderRadius: 16,
-          border: '1px solid #f0f0f0',
-          padding: '14px 20px',
-          marginBottom: 20,
-          boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          flexWrap: 'wrap',
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: '#9ca3af', marginRight: 4, whiteSpace: 'nowrap' }}>
-            Accounts
-          </span>
-
-          {connectionsLoading ? (
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>Loading...</span>
-          ) : (
-            <>
-              {ALL_PLATFORMS.map(p => {
-                const conn = connections.find(c => c.platform === p);
-                if (conn) {
-                  return (
-                    <div
-                      key={p}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 8,
-                        padding: '6px 12px 6px 8px',
-                        borderRadius: 100,
-                        border: `2px solid ${platformColor(p)}`,
-                        background: `${platformColor(p)}0d`,
-                      }}
-                    >
-                      <div style={{
-                        width: 30, height: 30, borderRadius: '50%',
-                        background: platformColor(p),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 15, flexShrink: 0,
-                      }}>
-                        {platformEmoji(p)}
-                      </div>
-                      <div style={{ lineHeight: 1.2 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e' }}>{conn.account_name}</div>
-                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtNum(conn.followers_count)} followers</div>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Disconnect ${conn.account_name}?`)) return;
-                          await fetch('/api/crm/social/accounts', {
-                            method: 'DELETE',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ connection_id: conn.id }),
-                          });
-                          setConnections(prev => prev.filter(c => c.id !== conn.id));
-                          toast(`Disconnected ${conn.account_name}`);
-                        }}
-                        title="Disconnect"
-                        style={{
-                          background: 'none', border: 'none', cursor: 'pointer',
-                          color: '#9ca3af', fontSize: 13, lineHeight: 1,
-                          padding: '0 0 0 4px', display: 'flex', alignItems: 'center',
-                        }}
-                      >✕</button>
-                    </div>
-                  );
-                }
-                return (
-                  <button
-                    key={p}
-                    onClick={() => {
-                      if (p === 'instagram') setShowIgModal(true);
-                      else window.open(`/api/auth/social/${p}?userId=${agentId}`, '_blank');
-                    }}
-                    title={`Connect ${platformLabel(p)}`}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '6px 12px', borderRadius: 100,
-                      border: '1.5px dashed #d1d5db',
-                      background: '#f9fafb', cursor: 'pointer',
-                      fontSize: 12, color: '#9ca3af', fontWeight: 600,
-                    }}
-                  >
-                    <span style={{ opacity: 0.5, fontSize: 14 }}>{platformEmoji(p)}</span>
-                    <span>Connect {platformLabel(p)}</span>
-                  </button>
-                );
-              })}
-            </>
-          )}
-
-          <button
-            onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
-            style={{
-              marginLeft: 'auto',
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '7px 14px', borderRadius: 100,
-              border: '1.5px solid #C9A84C',
-              background: 'transparent', cursor: 'pointer',
-              fontSize: 12, fontWeight: 700, color: '#C9A84C',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            + Connect Account
-          </button>
-        </div>
-
         {/* ── Two-column layout ── */}
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
 
@@ -1500,6 +1392,115 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
 
         </div>
+
+        {/* ── Connected Accounts Bar ── */}
+        <div style={{
+          background: '#fff',
+          borderRadius: 16,
+          border: '1px solid #f0f0f0',
+          padding: '14px 20px',
+          marginTop: 20,
+          boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase', color: '#9ca3af', marginRight: 4, whiteSpace: 'nowrap' }}>
+            Accounts
+          </span>
+
+          {connectionsLoading ? (
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>Loading...</span>
+          ) : (
+            <>
+              {ALL_PLATFORMS.map(p => {
+                const conn = connections.find(c => c.platform === p);
+                if (conn) {
+                  return (
+                    <div
+                      key={p}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 8,
+                        padding: '6px 12px 6px 8px',
+                        borderRadius: 100,
+                        border: `2px solid ${platformColor(p)}`,
+                        background: `${platformColor(p)}0d`,
+                      }}
+                    >
+                      <div style={{
+                        width: 30, height: 30, borderRadius: '50%',
+                        background: platformColor(p),
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 15, flexShrink: 0,
+                      }}>
+                        {platformEmoji(p)}
+                      </div>
+                      <div style={{ lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e' }}>{conn.account_name}</div>
+                        <div style={{ fontSize: 10, color: '#9ca3af' }}>{fmtNum(conn.followers_count)} followers</div>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Disconnect ${conn.account_name}?`)) return;
+                          await fetch('/api/crm/social/accounts', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ connection_id: conn.id }),
+                          });
+                          setConnections(prev => prev.filter(c => c.id !== conn.id));
+                          toast(`Disconnected ${conn.account_name}`);
+                        }}
+                        title="Disconnect"
+                        style={{
+                          background: 'none', border: 'none', cursor: 'pointer',
+                          color: '#9ca3af', fontSize: 13, lineHeight: 1,
+                          padding: '0 0 0 4px', display: 'flex', alignItems: 'center',
+                        }}
+                      >✕</button>
+                    </div>
+                  );
+                }
+                return (
+                  <button
+                    key={p}
+                    onClick={() => {
+                      if (p === 'instagram') setShowIgModal(true);
+                      else window.open(`/api/auth/social/${p}?userId=${agentId}`, '_blank');
+                    }}
+                    title={`Connect ${platformLabel(p)}`}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '6px 12px', borderRadius: 100,
+                      border: '1.5px dashed #d1d5db',
+                      background: '#f9fafb', cursor: 'pointer',
+                      fontSize: 12, color: '#9ca3af', fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ opacity: 0.5, fontSize: 14 }}>{platformEmoji(p)}</span>
+                    <span>Connect {platformLabel(p)}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          <button
+            onClick={() => window.open(`/api/auth/social/facebook?userId=${agentId}`, '_blank')}
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '7px 14px', borderRadius: 100,
+              border: '1.5px solid #C9A84C',
+              background: 'transparent', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, color: '#C9A84C',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            + Connect Account
+          </button>
+        </div>
+
       </div>
     );
   }
