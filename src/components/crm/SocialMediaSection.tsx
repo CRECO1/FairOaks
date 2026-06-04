@@ -355,27 +355,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     }
   }
 
-  // ── OAuth popup helper ────────────────────────────────────────────────────────
+  // ── OAuth connect — simple same-tab redirect, no popup complexity ────────────
   function openOAuthPopup(platform: string) {
-    const url = `/api/auth/social/${platform}?userId=${agentId}&popup=1`;
-    const w = 600, h = 700;
-    const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
-    const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
-    const popup = window.open(url, `connect_${platform}`, `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
-    if (!popup || popup.closed) {
-      // Popup blocked — fall back to same-tab redirect
-      window.location.href = `/api/auth/social/${platform}?userId=${agentId}`;
-      return;
-    }
-    // Poll until popup closes (handles both auto-close and manual close)
-    const poll = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(poll);
-        loadConnections();
-      }
-    }, 600);
-    // Safety: clear poll after 5 minutes
-    setTimeout(() => clearInterval(poll), 300_000);
+    window.location.href = `/api/auth/social/${platform}?userId=${agentId}`;
   }
 
   // ── Load functions ────────────────────────────────────────────────────────────
