@@ -922,8 +922,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       e.target.value = '';
                       setUploadingMedia(true);
                       try {
+                        const MAX_MB = 12;
                         const uploaded: string[] = [];
                         for (const file of files) {
+                          if (file.size > MAX_MB * 1024 * 1024) {
+                            alert(`${file.name} is too large. Maximum file size is ${MAX_MB} MB.`);
+                            continue;
+                          }
                           // Step 1: get a signed upload URL (avoids 4.5 MB Next.js body limit)
                           const signRes = await fetch('/api/crm/social/upload', {
                             method: 'POST',

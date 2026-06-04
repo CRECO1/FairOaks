@@ -3,7 +3,7 @@ import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient, SUPABASE_URL } from '@/lib/supabase-admin';
 
 const BUCKET = 'images';
-const MAX_SIZE_BYTES = 500 * 1024 * 1024; // 500 MB ceiling (enforced client-side too)
+const MAX_SIZE_BYTES = 12 * 1024 * 1024; // 12 MB
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
   'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File type not allowed' }, { status: 400 });
   }
   if (size && size > MAX_SIZE_BYTES) {
-    return NextResponse.json({ error: 'File too large (max 500 MB)' }, { status: 400 });
+    return NextResponse.json({ error: 'File too large (max 12 MB)' }, { status: 400 });
   }
 
   const safeName = filename.replace(/[^a-z0-9._-]/gi, '_').toLowerCase();
