@@ -602,11 +602,17 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
       if (!blob) throw new Error('Canvas export failed');
 
-      const fd = new FormData();
-      fd.append('file', new File([blob], 'cropped.jpg', { type: 'image/jpeg' }));
-      const res = await fetch('/api/crm/social/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed');
+      // Get signed URL then PUT directly to Supabase
+      const signRes = await fetch('/api/crm/social/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'cropped.jpg', contentType: 'image/jpeg', size: blob.size }),
+      });
+      const signData = await signRes.json();
+      if (!signRes.ok || !signData.signedUrl) throw new Error(signData.error || 'Upload failed');
+      const putRes = await fetch(signData.signedUrl, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      if (!putRes.ok) throw new Error('Storage upload failed');
+      const data = { url: signData.publicUrl };
 
       setComposerMediaUrls(prev => prev.map((u, i) => i === imgEditorIndex ? data.url : u));
       setImgEditorOpen(false);
@@ -918,21 +924,34 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       try {
                         const uploaded: string[] = [];
                         for (const file of files) {
-                          const fd = new FormData();
-                          fd.append('file', file);
-                          const res = await fetch('/api/crm/social/upload', { method: 'POST', body: fd });
-                          const data = await res.json();
-                          if (res.ok && data.url) {
-                            uploaded.push(data.url);
-                          } else {
-                            alert(`Failed to upload ${file.name}: ${data.error ?? 'Unknown error'}`);
+                          // Step 1: get a signed upload URL (avoids 4.5 MB Next.js body limit)
+                          const signRes = await fetch('/api/crm/social/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filename: file.name, contentType: file.type, size: file.size }),
+                          });
+                          const signData = await signRes.json();
+                          if (!signRes.ok || !signData.signedUrl) {
+                            alert(`Failed to prepare upload for ${file.name}: ${signData.error ?? 'Unknown error'}`);
+                            continue;
                           }
+                          // Step 2: PUT file directly to Supabase — no size limit through our server
+                          const putRes = await fetch(signData.signedUrl, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': file.type },
+                            body: file,
+                          });
+                          if (!putRes.ok) {
+                            alert(`Failed to upload ${file.name}. Please try again.`);
+                            continue;
+                          }
+                          uploaded.push(signData.publicUrl);
                         }
                         if (uploaded.length) {
                           setComposerMediaUrls(prev => [...prev, ...uploaded].slice(0, 10));
                         }
                       } catch {
-                        alert('Image upload failed. Please try again.');
+                        alert('Upload failed. Please try again.');
                       } finally {
                         setUploadingMedia(false);
                       }
