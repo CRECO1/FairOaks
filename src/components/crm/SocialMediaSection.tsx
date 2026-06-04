@@ -624,23 +624,35 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     setEditingPost(post);
     setComposerContent(post.content);
     setComposerPlatforms(post.platforms);
-    setComposerScheduledAt(post.scheduled_at || '');
+    setComposerScheduledAt(toDatetimeLocal(post.scheduled_at));
+    setPostMode(post.scheduled_at ? 'schedule' : 'now');
     setComposerLinkUrl(post.link_url || '');
     setComposerHashtags(post.hashtags.join(' '));
     setComposerFirstComment(post.first_comment || '');
     setComposerNotes(post.internal_notes || '');
   }
 
+  /** Convert an ISO timestamp to the YYYY-MM-DDTHH:MM format datetime-local inputs require */
+  function toDatetimeLocal(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
   function openEditPost(post: SocialPost) {
     setEditingPost(post);
     setComposerContent(post.content);
     setComposerPlatforms(post.platforms);
-    setComposerScheduledAt(post.scheduled_at || '');
+    setComposerScheduledAt(toDatetimeLocal(post.scheduled_at));
     setComposerLinkUrl(post.link_url || '');
     setComposerHashtags(post.hashtags.join(' '));
     setComposerFirstComment(post.first_comment || '');
     setComposerNotes(post.internal_notes || '');
     setComposerMediaUrls(post.media_urls || []);
+    // Ensure schedule mode is active so the datetime picker is visible
+    setPostMode(post.scheduled_at ? 'schedule' : 'now');
     setComposerOpen(true);
     setPublisherView('builder');
   }
