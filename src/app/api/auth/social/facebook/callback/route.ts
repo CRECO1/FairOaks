@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
 
   if (error || !code || !stateParam) {
     console.error('[facebook/callback] OAuth denied or missing params:', { error, hasCode: !!code, hasState: !!stateParam });
-    return done('social=error&platform=facebook&reason=oauth_denied');
+    const fbError = encodeURIComponent(error ?? 'no_code');
+    return done(`social=error&platform=facebook&reason=oauth_denied&fb_error=${fbError}`);
   }
 
   const cookieStore = await cookies();

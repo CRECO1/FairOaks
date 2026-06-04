@@ -311,8 +311,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       window.history.replaceState({}, '', url);
       loadConnections();
     } else if (socialResult === 'error') {
+      const fbError = params.get('fb_error');
       const messages: Record<string, string> = {
-        oauth_denied: 'Connection cancelled.',
+        oauth_denied: fbError ? `Facebook error: ${fbError}` : 'Connection cancelled.',
         invalid_state: 'Security check failed — please try again.',
         token_exchange: 'Failed to get access token from Facebook.',
         no_pages: 'No Facebook Pages found. Make sure you manage at least one Page.',
@@ -323,6 +324,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       url.searchParams.delete('social');
       url.searchParams.delete('platform');
       url.searchParams.delete('reason');
+      url.searchParams.delete('fb_error');
       window.history.replaceState({}, '', url);
     }
 
