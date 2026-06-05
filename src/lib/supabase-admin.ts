@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+// Trim any accidental whitespace/newline from the env var (common Vercel paste issue)
+export const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 export const REDIRECT_URL = 'https://www.fairoaksrealtygroup.com/crm/setup';
 
 export function adminClient() {
