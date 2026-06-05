@@ -82,7 +82,6 @@ export async function GET(req: NextRequest) {
     return done('social=error&platform=youtube&reason=no_channel');
   }
 
-  const expiresAt = new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString();
   const now = new Date().toISOString();
 
   await supabase
@@ -95,7 +94,9 @@ export async function GET(req: NextRequest) {
         account_name: channel.snippet?.title || channel.id,
         access_token: encryptToken(tokenData.access_token),
         refresh_token: tokenData.refresh_token ? encryptToken(tokenData.refresh_token) : null,
-        expires_at: expiresAt,
+        // Refresh token is permanent — store null so UI never shows as "expired"
+        // The publish function auto-refreshes the access token before every post
+        expires_at: null,
         is_active: true,
         updated_at: now,
       },
