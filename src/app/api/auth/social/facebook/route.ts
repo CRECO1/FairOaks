@@ -35,10 +35,18 @@ export async function GET(req: NextRequest) {
 
   const isPopup = req.nextUrl.searchParams.get('popup') === '1';
 
+  console.log('[facebook/auth] building redirect', {
+    userId,
+    appId: process.env.FACEBOOK_APP_ID,
+    baseUrl: process.env.NEXT_PUBLIC_BASE_URL,
+    isPopup,
+  });
+
   const params = new URLSearchParams({
     client_id: process.env.FACEBOOK_APP_ID!,
     redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/facebook/callback`,
-    scope: 'pages_show_list,pages_read_engagement,pages_manage_posts,business_management',
+    // business_management requires app review — omitting to avoid silent OAuth failure
+    scope: 'pages_show_list,pages_read_engagement,pages_manage_posts',
     response_type: 'code',
     state: `${userId}:${nonce}${isPopup ? ':popup' : ''}`,
   });

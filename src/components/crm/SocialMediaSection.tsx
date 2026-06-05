@@ -1656,7 +1656,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                       </div>
                       <button
                         onClick={async () => {
-                          if (!confirm(`Disconnect ${conn.account_name}?`)) return;
+                          const warning = (p === 'facebook' || p === 'instagram')
+                            ? `Disconnect ${conn.account_name}?\n\nNote: To reconnect Facebook or Instagram, you must use Chrome or Safari (not DuckDuckGo).`
+                            : `Disconnect ${conn.account_name}?`;
+                          if (!confirm(warning)) return;
                           await fetch('/api/crm/social/accounts', {
                             method: 'DELETE',
                             headers: { 'Content-Type': 'application/json' },
