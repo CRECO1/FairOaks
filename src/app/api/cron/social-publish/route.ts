@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
-import { publishToplatform } from '@/lib/social-publish';
+import { publishToplatform, proactiveTokenRefresh } from '@/lib/social-publish';
 
 // Called by Vercel Cron every 5 minutes: */5 * * * *
 export async function GET(req: NextRequest) {
@@ -10,6 +10,9 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = adminClient();
+
+  // Proactively refresh any social tokens nearing expiry (runs every tick, fast no-op if nothing to do)
+  await proactiveTokenRefresh();
 
   // Find all posts that are scheduled and due (up to 5 min window to survive missed ticks)
   const now = new Date();

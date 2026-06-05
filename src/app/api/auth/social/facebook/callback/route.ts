@@ -131,9 +131,10 @@ export async function GET(req: NextRequest) {
           platform_account_id: page.id,
           account_name: page.name,
           access_token: encryptToken(page.access_token),
-          // Store the long-lived user token so we can silently re-fetch page tokens before expiry
+          // Page tokens derived from long-lived user tokens never expire — store null
+          // Keep the user token as refresh_token so we can proactively renew it
           refresh_token: encryptToken(userToken),
-          expires_at: userTokenExpiresAt,
+          expires_at: null,
           page_id: page.id,
           is_active: true,
           updated_at: now,
