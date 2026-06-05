@@ -143,13 +143,35 @@ async function refreshFacebookUserToken(connection: SocialConnection): Promise<v
 
 // ── Facebook ──────────────────────────────────────────────────────────────────
 
+function isVideoUrl(url: string): boolean {
+  const path = url.split('?')[0].toLowerCase();
+  return path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi') || path.endsWith('.mkv');
+}
+
 async function publishToFacebook(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
   const pageId = connection.page_id || connection.platform_account_id;
   const token = decryptToken(connection.access_token);
 
-  // Any images → upload via Photos API (staged), then attach to feed post
-  // This works for both single and multiple images and prevents link_url from overriding the photo
   if (post.media_urls && post.media_urls.length > 0) {
+    const firstUrl = post.media_urls[0];
+
+    // Video → use /videos endpoint
+    if (isVideoUrl(firstUrl)) {
+      const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/videos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file_url: firstUrl,
+          description: post.content,
+          access_token: token,
+        }),
+      });
+      const data = await res.json();
+      if (data.id) return { success: true, platform_post_id: data.id };
+      return { success: false, error: data.error?.message || 'Facebook video publish failed' };
+    }
+
+    // Images → stage via Photos API then attach to feed post
     const photoIds: string[] = [];
     for (const url of post.media_urls) {
       const r = await fetch(`https://graph.facebook.com/v18.0/${pageId}/photos`, {
@@ -175,7 +197,7 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
     return { success: false, error: data.error?.message || 'Facebook publish failed' };
   }
 
-  // Text-only or link post (no images)
+  // Text-only or link post (no media)
   const body: Record<string, unknown> = { message: post.content, access_token: token };
   if (post.link_url) body.link = post.link_url;
 
@@ -297,13 +319,12 @@ async function publishToYouTube(connection: SocialConnection, post: PostPayload)
     return { success: false, error: 'YouTube Shorts require a video file' };
   }
 
-  // Refresh token if expired
-  let accessToken = decryptToken(connection.access_token);
-  if (isExpired(connection.expires_at)) {
-    const refreshed = await refreshGoogleToken(connection);
-    if (!refreshed) return { success: false, error: 'YouTube token expired — please reconnect your YouTube account' };
-    accessToken = refreshed;
-  }
+  // Always refresh the Google access token before uploading — YouTube access tokens
+  // expire in 1 hour and we store expires_at=null (refresh token is permanent).
+  // Attempting to use a stale stored token causes 401 "invalid credentials".
+  const refreshed = await refreshGoogleToken(connection);
+  if (!refreshed) return { success: false, error: 'YouTube token refresh failed — please reconnect your YouTube account' };
+  const accessToken = refreshed;
 
   // Fetch the video from Supabase storage
   let videoBuffer: ArrayBuffer;
