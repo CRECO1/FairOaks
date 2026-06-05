@@ -55,10 +55,10 @@ export async function GET(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Verify user exists
+  // Verify user exists and get org_id for social_connections
   const { data: profile } = await supabase
     .from('crm_profiles')
-    .select('id')
+    .select('id, org_id')
     .eq('id', userId)
     .maybeSingle();
 
@@ -127,6 +127,7 @@ export async function GET(req: NextRequest) {
       .upsert(
         {
           agent_id: userId,
+          org_id: profile.org_id,
           platform: 'facebook',
           platform_account_id: page.id,
           account_name: page.name,
@@ -191,6 +192,7 @@ export async function GET(req: NextRequest) {
         .upsert(
           {
             agent_id: userId,
+            org_id: profile.org_id,
             platform: 'instagram',
             platform_account_id: igAccountId,
             account_name: igInfo.username || igInfo.name || `IG: ${page.name}`,

@@ -39,10 +39,10 @@ export async function GET(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Verify user exists
+  // Verify user exists and get org_id for social_connections
   const { data: profile } = await supabase
     .from('crm_profiles')
-    .select('id')
+    .select('id, org_id')
     .eq('id', userId)
     .maybeSingle();
 
@@ -89,6 +89,7 @@ export async function GET(req: NextRequest) {
     .upsert(
       {
         agent_id: userId,
+        org_id: profile.org_id,
         platform: 'youtube',
         platform_account_id: channel.id,
         account_name: channel.snippet?.title || channel.id,
