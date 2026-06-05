@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
     .select('*')
     .eq('status', 'scheduled')
     .lte('scheduled_at', now.toISOString())
-    .gte('scheduled_at', fiveMinutesAgo.toISOString());
+    .gte('scheduled_at', fiveMinutesAgo.toISOString())
+    .order('scheduled_at', { ascending: true }); // publish in chronological order
 
   if (error) {
     console.error('[cron/social-publish] DB error fetching due posts:', error.message);

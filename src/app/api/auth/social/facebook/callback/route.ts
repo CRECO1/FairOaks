@@ -11,7 +11,9 @@ export async function GET(req: NextRequest) {
   const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
-  console.log('[facebook/callback] start', { error, hasCode: !!code, hasState: !!stateParam });
+  // Log full raw URL so we can diagnose in Vercel logs what Facebook actually sent back
+  console.log('[facebook/callback] raw url:', req.url);
+  console.log('[facebook/callback] start', { error, hasCode: !!code, hasState: !!stateParam, stateSample: stateParam?.slice(0, 16) });
 
   const stateParts = (stateParam ?? '').split(':');
   const userId = stateParts[0];
@@ -25,8 +27,14 @@ export async function GET(req: NextRequest) {
       : NextResponse.redirect(`${CRM_BASE}?${qs}`);
 
   if (error || !code || !stateParam) {
-    console.error('[facebook/callback] OAuth denied or missing params:', { error, hasCode: !!code, hasState: !!stateParam });
-    const fbError = encodeURIComponent(error ?? 'no_code');
+    console.error('[facebook/callback] OAuth denied or missing params:', {
+      error,
+      hasCode: !!code,
+      hasState: !!stateParam,
+      rawUrl: req.url,
+      allParams: Object.fromEntries(req.nextUrl.searchParams.entries()),
+    });
+    const fbError = encodeURIComponent(error ?? (!code ? 'no_code' : 'no_state'));
     return done(`social=error&platform=facebook&reason=oauth_denied&fb_error=${fbError}`);
   }
 
