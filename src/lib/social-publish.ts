@@ -147,7 +147,9 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
   const pageId = connection.page_id || connection.platform_account_id;
   const token = decryptToken(connection.access_token);
 
-  if (post.media_urls && post.media_urls.length > 1) {
+  // Any images → upload via Photos API (staged), then attach to feed post
+  // This works for both single and multiple images and prevents link_url from overriding the photo
+  if (post.media_urls && post.media_urls.length > 0) {
     const photoIds: string[] = [];
     for (const url of post.media_urls) {
       const r = await fetch(`https://graph.facebook.com/v18.0/${pageId}/photos`, {
@@ -162,15 +164,19 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
     const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/feed`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: post.content, attached_media: photoIds.map(id => ({ media_fbid: id })), access_token: token }),
+      body: JSON.stringify({
+        message: post.content,
+        attached_media: photoIds.map(id => ({ media_fbid: id })),
+        access_token: token,
+      }),
     });
     const data = await res.json();
     if (data.id) return { success: true, platform_post_id: data.id };
     return { success: false, error: data.error?.message || 'Facebook publish failed' };
   }
 
+  // Text-only or link post (no images)
   const body: Record<string, unknown> = { message: post.content, access_token: token };
-  if (post.media_urls?.[0]) body.link = post.media_urls[0];
   if (post.link_url) body.link = post.link_url;
 
   const res = await fetch(`https://graph.facebook.com/v18.0/${pageId}/feed`, {
