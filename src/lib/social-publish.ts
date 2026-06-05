@@ -87,6 +87,60 @@ async function refreshGoogleToken(connection: SocialConnection): Promise<string 
   }
 }
 
+// ── Proactive token refresh (called by cron every 5 min) ─────────────────────
+
+export async function proactiveTokenRefresh(): Promise<void> {
+  try {
+    const supabase = adminClient();
+    const tenDaysFromNow = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Find Facebook connections whose user token (refresh_token) expires within 10 days
+    // expires_at is null for page tokens (non-expiring), but some older records may have it set
+    const { data: fbConns } = await supabase
+      .from('social_connections')
+      .select('*')
+      .eq('platform', 'facebook')
+      .eq('is_active', true)
+      .not('refresh_token', 'is', null)
+      .lte('expires_at', tenDaysFromNow);
+
+    if (fbConns?.length) {
+      for (const conn of fbConns) {
+        await refreshFacebookUserToken(conn as SocialConnection);
+      }
+    }
+  } catch (e) {
+    console.error('[social-publish] proactiveTokenRefresh error:', e);
+  }
+}
+
+// ── Facebook token refresh ────────────────────────────────────────────────────
+// Silently extends the long-lived user token another 60 days.
+// Page tokens derived from long-lived user tokens never expire on their own,
+// but we keep the user token fresh so we can generate new page tokens if needed.
+
+async function refreshFacebookUserToken(connection: SocialConnection): Promise<void> {
+  if (!connection.refresh_token) return;
+  try {
+    const userToken = decryptToken(connection.refresh_token);
+    const res = await fetch(
+      `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.FACEBOOK_APP_ID}&client_secret=${process.env.FACEBOOK_APP_SECRET}&fb_exchange_token=${userToken}`
+    );
+    const data = await res.json();
+    if (!data.access_token) return;
+
+    const supabase = adminClient();
+    await supabase.from('social_connections').update({
+      refresh_token: encryptToken(data.access_token),
+      // Page token never expires — keep expires_at null
+      expires_at: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', connection.id);
+  } catch (e) {
+    console.error('[social-publish] Facebook user token refresh failed:', e);
+  }
+}
+
 // ── Facebook ──────────────────────────────────────────────────────────────────
 
 async function publishToFacebook(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
