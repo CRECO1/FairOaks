@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams({
     client_id: process.env.FACEBOOK_APP_ID!,
     redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/facebook/callback`,
-    scope: 'pages_show_list,pages_read_engagement,pages_manage_posts',
+    // instagram_business_* scopes are correct for Facebook Login for Business apps
+    scope: 'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_business_basic,instagram_business_content_publish',
     response_type: 'code',
     state: `${userId}:${nonce}${isPopup ? ':popup' : ''}`,
   });
