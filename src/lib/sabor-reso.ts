@@ -31,9 +31,6 @@ let _tokenExpiry = 0;
 export interface ResoProperty {
   // Primary identifier — SABOR uses ListingId as the unique key
   ListingId: string;
-  // Coordinates (returned by SABOR if available)
-  Latitude?: number;
-  Longitude?: number;
   // Status
   StandardStatus: string;  // enum: 'ACTIVE' | 'ACTIVE_UNDER_CONTRACT' | 'CLOSED' | 'EXPIRED' | 'HOLD' | etc.
   MlsStatus?: string;      // 'ACT' | 'PND' | 'SLD' etc.
@@ -57,9 +54,9 @@ export interface ResoProperty {
   PostalCode?: string;
   CountyOrParish?: string;
   SubdivisionName?: string;
-  // Property details — SABOR-specific field names
-  PropertyType?: string;           // 'RR' = Residential, 'CO' = Condo, 'CM' = Commercial, etc.
-  PropertySubType_RR?: string;     // 'SFDET' = Single Family Detached, etc.
+  // Property details
+  PropertyType?: string;           // 'RE' = Residential, 'CO' = Condo, 'CM' = Commercial, etc.
+  PropertySubType?: string;        // e.g. 'SingleFamilyResidence', 'Condominium', 'Townhouse'
   BedroomsTotal?: number;          // NOTE: not BedsTotal
   BathroomsFull?: number;
   BathroomsHalf?: number;
@@ -213,7 +210,7 @@ const DEFAULT_SELECT = [
   'StreetNumber', 'StreetDirPrefix', 'StreetName',
   'UnitNumber', 'City', 'StateOrProvince', 'PostalCode',
   'CountyOrParish', 'SubdivisionName',
-  'PropertyType', 'PropertySubType_RR',
+  'PropertyType', 'PropertySubType',
   'BedroomsTotal', 'BathroomsFull', 'BathroomsHalf',
   'LivingArea', 'LotSizeAcres', 'YearBuilt',
   'StoriesTotal', 'GarageSpaces',
@@ -223,8 +220,9 @@ const DEFAULT_SELECT = [
   'PhotosCount', 'PublicRemarks',
 ].join(',');
 
-// Extended select used for map queries — includes coordinates for pin placement
-export const MAP_SELECT = DEFAULT_SELECT + ',Latitude,Longitude';
+// Note: SABOR does not expose Latitude/Longitude in the Property entity.
+// Map pins are geocoded client-side from the address.
+export const MAP_SELECT = DEFAULT_SELECT;
 
 export async function searchProperties(opts: PropertySearchOptions = {}): Promise<ResoResponse<ResoProperty>> {
   const params: Record<string, string> = {
@@ -383,7 +381,7 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     lot_size:               p.LotSizeAcres ? `${p.LotSizeAcres} ac` : null,
     lot_size_acres:         p.LotSizeAcres ?? null,
     year_built:             p.YearBuilt ?? null,
-    property_type:          (p.PropertySubType_RR ?? p.PropertyType ?? 'RR').toLowerCase(),
+    property_type:          (p.PropertySubType ?? p.PropertyType ?? 'RE').toLowerCase(),
     subdivision_name:       p.SubdivisionName ?? null,
     garage_spaces:          p.GarageSpaces ?? null,
     hoa_fee:                p.AssociationFee ?? null,
@@ -396,8 +394,8 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     images:                 images.length > 0 ? images : null,
     modification_timestamp: p.ModificationTimestamp ?? null,
     listing_date:           p.OnMarketDate ?? p.ListingContractDate ?? null,
-    latitude:               p.Latitude ?? null,
-    longitude:              p.Longitude ?? null,
+    latitude:               null,   // SABOR does not expose geo coordinates in Property entity
+    longitude:              null,
     source:                 'mls',
     synced_at:              new Date().toISOString(),
   };
