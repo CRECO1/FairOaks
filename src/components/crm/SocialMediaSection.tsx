@@ -2714,24 +2714,47 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 No published posts yet. Start publishing to see your top performers!
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {topPosts.map((post, i) => {
-                  const totalEng = (post.engagement?.likes || 0) + (post.engagement?.comments || 0) + (post.engagement?.shares || 0);
+                  const likes    = post.engagement?.likes    || 0;
+                  const comments = post.engagement?.comments || 0;
+                  const shares   = post.engagement?.shares   || 0;
+                  const totalEng = likes + comments + shares;
+                  const rankColors = ['#C9A84C', '#9ca3af', '#cd7f32'];
+                  const rankColor  = rankColors[i] ?? '#e5e7eb';
                   return (
-                    <div key={post.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: '#fafafa', border: '1px solid #f0f0f0' }}>
-                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#C9A84C' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: i === 0 ? '#fff' : '#9ca3af', flexShrink: 0 }}>
-                        {i + 1}
+                    <div key={post.id} style={{ borderRadius: 10, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+                      {/* Top bar: rank + platforms + total */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: i === 0 ? '#fffbeb' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: '50%', background: rankColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                            {i + 1}
+                          </div>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {post.platforms.slice(0, 3).map(p => renderPlatformBadge(p))}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 20, padding: '2px 10px' }}>
+                          {totalEng} engagements
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                        {post.platforms.slice(0, 2).map(p => renderPlatformBadge(p))}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: '#1a1a2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.content}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
-                        <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e' }}>= {totalEng}</span>
+                      {/* Post preview */}
+                      <div style={{ padding: '10px 12px' }}>
+                        <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {post.content || '(no caption)'}
+                        </div>
+                        {/* Metrics row */}
+                        <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                            <span>👍</span><span style={{ fontWeight: 600 }}>{likes}</span><span>Likes</span>
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                            <span>💬</span><span style={{ fontWeight: 600 }}>{comments}</span><span>Comments</span>
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                            <span>🔁</span><span style={{ fontWeight: 600 }}>{shares}</span><span>Shares</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
