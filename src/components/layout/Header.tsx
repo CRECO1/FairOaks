@@ -3,11 +3,11 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Phone, Sparkles } from 'lucide-react';
+import { Menu, X, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
-import { trackPhoneClick, trackCTA } from '@/lib/analytics';
+import { trackCTA } from '@/lib/analytics';
 
 const navLinks = [
   { href: '/listings', label: 'Listings' },
@@ -20,10 +20,9 @@ const navLinks = [
 
 interface HeaderProps {
   variant?: 'default' | 'minimal' | 'transparent';
-  phone?: string;
 }
 
-export function Header({ variant = 'default', phone = '210-390-9997' }: HeaderProps) {
+export function Header({ variant = 'default' }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [isScrolled, setIsScrolled] = React.useState(false);
   const pathname = usePathname();
@@ -94,35 +93,6 @@ export function Header({ variant = 'default', phone = '210-390-9997' }: HeaderPr
 
           {/* CTA Buttons */}
           <div className="flex items-center gap-2">
-            {/* Phone - Desktop only */}
-            <a
-              href={`tel:${phone.replace(/\D/g, '')}`}
-              onClick={() => trackPhoneClick('header')}
-              className={cn(
-                'hidden lg:flex items-center gap-1.5 text-body-sm font-semibold transition-colors',
-                isTransparent ? 'text-white' : 'text-primary',
-                'hover:text-gold'
-              )}
-              style={textShadowStyle}
-            >
-              <Phone className="h-4 w-4" />
-              <span>{phone}</span>
-            </a>
-
-            {/* Phone icon only — mobile/tablet */}
-            <a
-              href={`tel:${phone.replace(/\D/g, '')}`}
-              onClick={() => trackPhoneClick('header')}
-              className={cn(
-                'lg:hidden p-2 transition-colors',
-                isTransparent ? 'text-white' : 'text-primary',
-                'hover:text-gold'
-              )}
-              aria-label="Call us"
-            >
-              <Phone className="h-5 w-5" />
-            </a>
-
             {/* Find My Home pill — desktop */}
             {variant !== 'minimal' && (
               <Link
@@ -211,12 +181,6 @@ export function Header({ variant = 'default', phone = '210-390-9997' }: HeaderPr
                     <Sparkles className="mr-2 h-5 w-5" />
                     Find My Perfect Home
                   </Link>
-                </Button>
-                <Button variant="primary" size="lg" fullWidth asChild>
-                  <a href={`tel:${phone.replace(/\D/g, '')}`} onClick={() => trackPhoneClick('header')}>
-                    <Phone className="mr-2 h-5 w-5" />
-                    Call Now: {phone}
-                  </a>
                 </Button>
                 <Button variant="outline" size="lg" fullWidth asChild>
                   <Link href="/contact" onClick={() => trackCTA({ text: 'Contact Us', location: 'header', destination: '/contact' })}>
