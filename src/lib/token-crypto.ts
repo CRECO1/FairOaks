@@ -20,7 +20,9 @@ function getKey(): Buffer {
     return crypto.scryptSync('dev-fallback-key', 'dev-salt-2024', 32);
   }
 
-  // Use first 32 bytes of the key (UTF-8)
+  // Key is read as the first 32 UTF-8 bytes of TOKEN_ENCRYPTION_KEY.
+  // NOTE: Do NOT change this derivation — all tokens in the DB were encrypted with
+  // this specific byte sequence. A key-format change requires a full token re-encryption migration.
   return Buffer.from(KEY_ENV.slice(0, 32), 'utf8');
 }
 

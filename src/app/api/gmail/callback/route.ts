@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encryptToken } from '@/lib/token-crypto';
 
-const REDIRECT_URI = 'https://www.fairoaksrealtygroup.com/api/gmail/callback';
-const CRM_URL      = 'https://www.fairoaksrealtygroup.com/crm';
+const REDIRECT_URI = 'https://crm.vultstack.com/api/gmail/callback';
+const CRM_URL      = 'https://crm.vultstack.com/crm';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -37,10 +37,10 @@ export async function GET(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Verify this userId exists in CRM
+  // Verify this userId exists in CRM + resolve their org for tenant isolation
   const { data: profile, error: profileErr } = await supabase
     .from('crm_profiles')
-    .select('id')
+    .select('id, org_id')
     .eq('id', stateUserId)
     .maybeSingle();
 
@@ -142,6 +142,7 @@ export async function GET(req: NextRequest) {
       .from('gmail_connections')
       .insert({
         user_id:       stateUserId,
+        org_id:        profile.org_id,
         gmail_email:   gmailEmail,
         email:         gmailEmail,
         access_token:  encryptToken(tokens.access_token),

@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
-const CRM_RETURN = 'https://www.fairoaksrealtygroup.com/crm/residential#social';
+const CRM_RETURN = 'https://crm.vultstack.com/crm/residential#social';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -29,10 +29,10 @@ export async function GET(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Verify user exists
+  // Verify user exists + resolve their org for tenant isolation
   const { data: profile } = await supabase
     .from('crm_profiles')
-    .select('id')
+    .select('id, org_id')
     .eq('id', userId)
     .maybeSingle();
 
@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
     .upsert(
       {
         agent_id: userId,
+        org_id: profile.org_id,
         platform: 'linkedin',
         platform_account_id: liProfile.id,
         account_name: accountName,

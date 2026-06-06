@@ -650,4 +650,3 @@ export async function POST(req: import('next/server').NextRequest) {
   }
 }
 
-export async function GET(req: import('next/server').NextRequest) { return POST(req); }

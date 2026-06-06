@@ -8,7 +8,8 @@ const ADMIN_SECRET = process.env.INTERNAL_SYNC_SECRET;
  * Clears OAuth rate limit keys from Redis.
  */
 export async function POST(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get('secret');
+  const authHeader = req.headers.get('authorization');
+  const secret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

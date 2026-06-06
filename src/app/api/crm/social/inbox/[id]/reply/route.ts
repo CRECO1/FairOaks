@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { decryptToken } from '@/lib/token-crypto';
 
 async function sendFacebookReply(connection: Record<string, string>, item: Record<string, string>, content: string) {
   // Reply to a comment on a FB page post
@@ -8,7 +9,7 @@ async function sendFacebookReply(connection: Record<string, string>, item: Recor
   const res = await fetch(`https://graph.facebook.com/v18.0/${commentId}/comments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: content, access_token: connection.access_token }),
+    body: JSON.stringify({ message: content, access_token: decryptToken(connection.access_token) }),
   });
   const data = await res.json();
   if (data.id) return { success: true };
@@ -20,7 +21,7 @@ async function sendInstagramReply(connection: Record<string, string>, item: Reco
   const res = await fetch(`https://graph.facebook.com/v18.0/${commentId}/replies`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: content, access_token: connection.access_token }),
+    body: JSON.stringify({ message: content, access_token: decryptToken(connection.access_token) }),
   });
   const data = await res.json();
   if (data.id) return { success: true };
@@ -32,7 +33,7 @@ async function sendLinkedInReply(connection: Record<string, string>, item: Recor
   const res = await fetch(`https://api.linkedin.com/v2/socialActions/${encodeURIComponent(commentUrn)}/comments`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${connection.access_token}`,
+      'Authorization': `Bearer ${decryptToken(connection.access_token)}`,
       'Content-Type': 'application/json',
       'X-Restli-Protocol-Version': '2.0.0',
     },
@@ -51,7 +52,7 @@ async function sendTwitterReply(connection: Record<string, string>, item: Record
   const res = await fetch('https://api.twitter.com/2/tweets', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${connection.access_token}`,
+      'Authorization': `Bearer ${decryptToken(connection.access_token)}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ text: content.substring(0, 280), reply: { in_reply_to_tweet_id: tweetId } }),
