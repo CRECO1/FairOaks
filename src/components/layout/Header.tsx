@@ -16,6 +16,7 @@ const navLinks = [
   { href: '/market-reports', label: 'Market Reports' },
   { href: '/services', label: 'Services' },
   { href: '/team', label: 'About' },
+  { href: '/contact', label: 'Contact' },
 ];
 
 interface HeaderProps {
@@ -111,15 +112,6 @@ export function Header({ variant = 'default' }: HeaderProps) {
               </Link>
             )}
 
-            {/* Contact Button — desktop */}
-            <Button
-              variant="primary"
-              size="sm"
-              className="hidden sm:inline-flex"
-              asChild
-            >
-              <Link href="/contact" onClick={() => trackCTA({ text: 'Contact Us', location: 'header', destination: '/contact' })}>Contact Us</Link>
-            </Button>
 
             {/* Mobile Menu Toggle */}
             {variant !== 'minimal' && (
@@ -161,14 +153,6 @@ export function Header({ variant = 'default' }: HeaderProps) {
                   {link.label}
                 </Link>
               ))}
-              <Link
-                href="/contact"
-                onClick={() => setIsMenuOpen(false)}
-                className="border-b border-border py-4 text-heading font-medium text-primary transition-colors hover:text-gold"
-              >
-                Contact
-              </Link>
-
               <div className="mt-8 space-y-4">
                 {/* Quiz CTA - Highlighted */}
                 <Button
@@ -180,11 +164,6 @@ export function Header({ variant = 'default' }: HeaderProps) {
                   <Link href="/quiz" onClick={() => { setIsMenuOpen(false); trackCTA({ text: 'Find My Home', location: 'header', destination: '/quiz' }); }}>
                     <Sparkles className="mr-2 h-5 w-5" />
                     Find My Perfect Home
-                  </Link>
-                </Button>
-                <Button variant="outline" size="lg" fullWidth asChild>
-                  <Link href="/contact" onClick={() => trackCTA({ text: 'Contact Us', location: 'header', destination: '/contact' })}>
-                    Contact Us
                   </Link>
                 </Button>
               </div>
