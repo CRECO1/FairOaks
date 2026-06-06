@@ -75,7 +75,7 @@ export function Header({ variant = 'default' }: HeaderProps) {
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    'relative whitespace-nowrap text-body-sm font-medium transition-colors',
+                    'relative whitespace-nowrap text-body-sm font-semibold transition-colors',
                     isTransparent
                       ? 'text-white hover:text-gold-light'
                       : 'text-primary hover:text-gold',
