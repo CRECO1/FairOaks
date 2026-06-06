@@ -26,13 +26,15 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
 
-    const city         = sp.get('city');
+    // Truncate string inputs to prevent oversized OData queries
+    const MAX_STR = 100;
+    const city         = sp.get('city')?.slice(0, MAX_STR) ?? null;
     const minPriceRaw  = sp.get('minPrice');
     const maxPriceRaw  = sp.get('maxPrice');
     const minBedsRaw   = sp.get('minBeds');
-    const status       = sp.get('status') ?? 'Active';
-    const propertyType = sp.get('propertyType');
-    const search       = sp.get('search');
+    const status       = (sp.get('status') ?? 'Active').slice(0, 20);
+    const propertyType = sp.get('propertyType')?.slice(0, 30) ?? null;
+    const search       = sp.get('search')?.slice(0, MAX_STR) ?? null;
     const top          = Math.min(Math.max(parseInt(sp.get('top') ?? '50', 10) || 50, 1), 200);
     const skip         = Math.max(parseInt(sp.get('skip') ?? '0', 10) || 0, 0);
 

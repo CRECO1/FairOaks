@@ -402,7 +402,7 @@ export default async function ListingDetailPage({ params }: Props) {
                   <Link
                     key={nearby.listing_key}
                     href={`/listings/${nearby.slug}`}
-                    className="card-luxury group block flex-none w-64 snap-start"
+                    className="card-luxury group block flex-none w-56 sm:w-64 snap-start"
                   >
                     <div className="relative h-44 w-full overflow-hidden rounded-t-xl bg-background-warm">
                       {nearbyImages[0] ? (
