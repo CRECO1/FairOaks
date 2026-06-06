@@ -195,12 +195,15 @@ export async function GET(req: NextRequest) {
       }
 
       // Persist to social_analytics
-      await supabase.from('social_analytics').upsert({
+      const { error: upsertErr } = await supabase.from('social_analytics').upsert({
         connection_id: conn.id,
+        org_id: conn.org_id,
         date: today,
         ...metrics,
-        updated_at: new Date().toISOString(),
       }, { onConflict: 'connection_id,date' });
+      if (upsertErr) {
+        console.error(`[social-analytics] upsert failed for ${conn.platform}:`, upsertErr.message);
+      }
 
       // Keep followers_count on the connection row in sync
       if (metrics.followers) {
