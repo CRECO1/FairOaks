@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
       // Also try postMessage in case this is a popup
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({ type: 'social_oauth_done', qs: qs }, '*');
+          window.opener.postMessage({ type: 'social_oauth_done', qs: qs }, ${JSON.stringify(process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com')});
         }
       } catch(e) {}
 

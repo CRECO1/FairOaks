@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
-const CRM_BASE = 'https://www.fairoaksrealtygroup.com/crm/residential';
+const CRM_BASE = 'https://crm.vultstack.com/crm/residential';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
 
 export async function GET(req: NextRequest) {

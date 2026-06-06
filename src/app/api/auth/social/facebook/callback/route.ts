@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 
-const CRM_BASE = 'https://www.fairoaksrealtygroup.com/crm/residential';
+const CRM_BASE = 'https://crm.vultstack.com/crm/residential';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
 
 export async function GET(req: NextRequest) {
@@ -11,16 +11,11 @@ export async function GET(req: NextRequest) {
   const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
-  // Log full raw URL so we can diagnose in Vercel logs what Facebook actually sent back
-  console.log('[facebook/callback] raw url:', req.url);
-  console.log('[facebook/callback] start', { error, hasCode: !!code, hasState: !!stateParam, stateSample: stateParam?.slice(0, 16) });
-
   const stateParts = (stateParam ?? '').split(':');
   const userId = stateParts[0];
   const stateNonce = stateParts[1];
   const isPopup = stateParts[2] === 'popup';
 
-  // Helper: redirect appropriately for popup vs full-page flow
   const done = (qs: string) =>
     isPopup
       ? NextResponse.redirect(`${BASE_URL}/api/auth/social/done?${qs}`)
@@ -31,8 +26,6 @@ export async function GET(req: NextRequest) {
       error,
       hasCode: !!code,
       hasState: !!stateParam,
-      rawUrl: req.url,
-      allParams: Object.fromEntries(req.nextUrl.searchParams.entries()),
     });
     const fbError = encodeURIComponent(error ?? (!code ? 'no_code' : 'no_state'));
     return done(`social=error&platform=facebook&reason=oauth_denied&fb_error=${fbError}`);
@@ -41,10 +34,8 @@ export async function GET(req: NextRequest) {
   const cookieStore = await cookies();
   const storedNonce = cookieStore.get('fb_oauth_nonce')?.value;
 
-  console.log('[facebook/callback] nonce check', { userId, hasStoredNonce: !!storedNonce, nonceMatch: storedNonce === stateNonce });
-
   if (!storedNonce || storedNonce !== stateNonce) {
-    console.error('[facebook/callback] Nonce mismatch — stored:', storedNonce?.slice(0,8), 'received:', stateNonce?.slice(0,8));
+    console.error('[facebook/callback] Nonce mismatch');
     return done('social=error&platform=facebook&reason=invalid_state');
   }
   cookieStore.delete('fb_oauth_nonce');
@@ -55,14 +46,11 @@ export async function GET(req: NextRequest) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // Verify user exists and get org_id for social_connections
   const { data: profile } = await supabase
     .from('crm_profiles')
     .select('id, org_id')
     .eq('id', userId)
     .maybeSingle();
-
-  console.log('[facebook/callback] profile lookup', { userId, found: !!profile });
 
   if (!profile) {
     return done('social=error&platform=facebook&reason=invalid_user');
@@ -81,20 +69,24 @@ export async function GET(req: NextRequest) {
   });
 
   const tokenData = await tokenRes.json();
-  console.log('[facebook/callback] token exchange', { success: !!tokenData.access_token, error: tokenData.error });
-
   if (!tokenData.access_token) {
-    console.error('[facebook/callback] Token exchange failed:', tokenData);
+    console.error('[facebook/callback] Token exchange failed:', tokenData.error);
     return done('social=error&platform=facebook&reason=token_exchange');
   }
 
-  // Exchange for long-lived user token (~60 days)
-  const longLivedRes = await fetch(
-    `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.FACEBOOK_APP_ID}&client_secret=${process.env.FACEBOOK_APP_SECRET}&fb_exchange_token=${tokenData.access_token}`
-  );
+  // Exchange for long-lived user token (~60 days) — POST keeps secret out of URLs/logs
+  const longLivedRes = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'fb_exchange_token',
+      client_id: process.env.FACEBOOK_APP_ID!,
+      client_secret: process.env.FACEBOOK_APP_SECRET!,
+      fb_exchange_token: tokenData.access_token,
+    }),
+  });
   const longLivedData = await longLivedRes.json();
   const userToken = longLivedData.access_token || tokenData.access_token;
-  // Long-lived tokens expire in ~60 days; store expires_at so we can proactively refresh
   const userTokenExpiresAt = new Date(
     Date.now() + ((longLivedData.expires_in ?? 5_184_000) * 1000)
   ).toISOString();
@@ -111,10 +103,8 @@ export async function GET(req: NextRequest) {
     instagram_business_account?: { id: string };
   }> = pagesData.data ?? [];
 
-  console.log('[facebook/callback] pages found:', pages.length, pages.map(p => ({ name: p.name, igId: p.instagram_business_account?.id })));
-
   if (pages.length === 0) {
-    console.error('[facebook/callback] No pages found. pagesData:', JSON.stringify(pagesData));
+    console.error('[facebook/callback] No pages found');
     return done('social=error&platform=facebook&reason=no_pages');
   }
 
@@ -132,8 +122,6 @@ export async function GET(req: NextRequest) {
           platform_account_id: page.id,
           account_name: page.name,
           access_token: encryptToken(page.access_token),
-          // Page tokens derived from long-lived user tokens never expire — store null
-          // Keep the user token as refresh_token so we can proactively renew it
           refresh_token: encryptToken(userToken),
           expires_at: null,
           page_id: page.id,
@@ -143,7 +131,7 @@ export async function GET(req: NextRequest) {
         { onConflict: 'agent_id,platform,platform_account_id' }
       );
 
-    console.log('[facebook/callback] upsert facebook page', page.name, { error: upsertError });
+    if (upsertError) console.error('[facebook/callback] upsert facebook page error:', upsertError);
     connectedCount++;
 
     // Attempt 1: instagram_business_account inline from /me/accounts (user token)
@@ -156,7 +144,6 @@ export async function GET(req: NextRequest) {
       );
       const d2 = await r2.json();
       igAccountId = d2.connected_instagram_account?.id;
-      console.log('[facebook/callback] attempt2 connected_instagram_account', page.name, JSON.stringify(d2));
     }
 
     // Attempt 3: /page/instagram_accounts edge (page token)
@@ -166,7 +153,6 @@ export async function GET(req: NextRequest) {
       );
       const d3 = await r3.json();
       igAccountId = d3.data?.[0]?.id;
-      console.log('[facebook/callback] attempt3 instagram_accounts edge', page.name, JSON.stringify(d3));
     }
 
     // Attempt 4: /me?fields=instagram_business_accounts (user token)
@@ -176,10 +162,10 @@ export async function GET(req: NextRequest) {
       );
       const d4 = await r4.json();
       igAccountId = d4.instagram_business_accounts?.data?.[0]?.id;
-      console.log('[facebook/callback] attempt4 me instagram_business_accounts', JSON.stringify(d4));
     }
 
-    console.log('[facebook/callback] instagram account id final', { page: page.name, igAccountId });
+    // Skip PBIA — when no real IG account is linked, Facebook returns the page ID itself
+    if (igAccountId && igAccountId === page.id) igAccountId = undefined;
 
     if (igAccountId) {
       const igInfoRes = await fetch(
@@ -206,11 +192,10 @@ export async function GET(req: NextRequest) {
           { onConflict: 'agent_id,platform,platform_account_id' }
         );
 
-      console.log('[facebook/callback] upsert instagram', igInfo.username, { error: igUpsertError });
+      if (igUpsertError) console.error('[facebook/callback] upsert instagram error:', igUpsertError);
       connectedCount++;
     }
   }
 
-  console.log('[facebook/callback] done, connectedCount:', connectedCount);
   return done(`social=connected&platform=facebook&count=${connectedCount}`);
 }

@@ -123,9 +123,16 @@ async function refreshFacebookUserToken(connection: SocialConnection): Promise<v
   if (!connection.refresh_token) return;
   try {
     const userToken = decryptToken(connection.refresh_token);
-    const res = await fetch(
-      `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${process.env.FACEBOOK_APP_ID}&client_secret=${process.env.FACEBOOK_APP_SECRET}&fb_exchange_token=${userToken}`
-    );
+    const res = await fetch('https://graph.facebook.com/v18.0/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'fb_exchange_token',
+        client_id: process.env.FACEBOOK_APP_ID!,
+        client_secret: process.env.FACEBOOK_APP_SECRET!,
+        fb_exchange_token: userToken,
+      }),
+    });
     const data = await res.json();
     if (!data.access_token) return;
 
