@@ -2312,6 +2312,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
           <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => setPage('social')}>📱 &nbsp;Social Media</button>
           {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); }}>💰 &nbsp;Commissions</button>}
+          {/* Billing — links to the CRECO billing surface (crecotx.com),
+              which is a separate Next.js app deployed independently. Opens
+              in a new tab so CRM state isn't lost. Admin-only because
+              /billing requires admin_users membership on the CRECO side;
+              non-admin agents would just hit a 404. rel for the standard
+              new-tab security pair. */}
+          {isAdmin && (
+            <a
+              href="https://www.crecotx.com/billing/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="crm-nav"
+            >
+              🧾 &nbsp;Billing
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                  color: 'rgba(255,255,255,.4)',
+                  textTransform: 'uppercase',
+                }}
+              >
+                ↗ new tab
+              </span>
+            </a>
+          )}
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
