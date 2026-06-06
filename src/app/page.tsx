@@ -177,7 +177,7 @@ export default async function HomePage() {
         )}
         <div className="hero-overlay-luxury absolute inset-0" />
 
-        <Container className="relative z-10 text-center text-white px-5 sm:px-6">
+        <Container className="relative z-10 text-center text-white px-5 sm:px-6 pt-20">
           <h1 className="mb-5 sm:mb-6 animate-fade-in-up font-heading text-display-xl font-bold text-white text-shadow-hero fill-both">
             {s.hero_headline.includes('\n')
               ? s.hero_headline.split('\n').map((line: string, i: number) => (
