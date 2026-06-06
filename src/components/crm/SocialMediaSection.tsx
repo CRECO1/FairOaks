@@ -87,11 +87,11 @@ interface Props {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; emoji: string; color: string; charLimit: number; bgClass: string }> = {
-  facebook:  { label: 'Facebook',  emoji: '📘', color: '#1877F2', charLimit: 63206, bgClass: '' },
-  instagram: { label: 'Instagram', emoji: '📸', color: '#E1306C', charLimit: 2200,  bgClass: '' },
-  linkedin:  { label: 'LinkedIn',  emoji: '💼', color: '#0A66C2', charLimit: 3000,  bgClass: '' },
-  twitter:   { label: 'Twitter/X', emoji: '🐦', color: '#1DA1F2', charLimit: 280,   bgClass: '' },
-  youtube:   { label: 'YouTube',   emoji: '▶️', color: '#FF0000', charLimit: 5000,  bgClass: '' },
+  facebook:  { label: 'Facebook',  emoji: 'facebook',  color: '#1877F2', charLimit: 63206, bgClass: '' },
+  instagram: { label: 'Instagram', emoji: 'instagram', color: '#E1306C', charLimit: 2200,  bgClass: '' },
+  linkedin:  { label: 'LinkedIn',  emoji: 'linkedin',  color: '#0A66C2', charLimit: 3000,  bgClass: '' },
+  twitter:   { label: 'Twitter/X', emoji: 'twitter',   color: '#1DA1F2', charLimit: 280,   bgClass: '' },
+  youtube:   { label: 'YouTube',   emoji: 'youtube',   color: '#FF0000', charLimit: 5000,  bgClass: '' },
 };
 
 const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
@@ -146,7 +146,49 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   },
 ];
 
-function platformEmoji(p: SocialPlatform) { return PLATFORM_CONFIG[p].emoji; }
+function platformEmoji(p: SocialPlatform) {
+  const s = 18;
+  if (p === 'facebook') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="12" fill="#1877F2"/>
+      <path d="M15.5 7H13.5C12.7 7 12 7.7 12 8.5V10H15L14.6 13H12V21H9V13H7V10H9V8.5C9 6.6 10.6 5 12.5 5H15.5V7Z" fill="white"/>
+    </svg>
+  );
+  if (p === 'instagram') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <defs>
+        <linearGradient id="ig" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stopColor="#FFDC80"/>
+          <stop offset="30%" stopColor="#F77737"/>
+          <stop offset="65%" stopColor="#C13584"/>
+          <stop offset="100%" stopColor="#833AB4"/>
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#ig)"/>
+      <circle cx="12" cy="12" r="4.5" fill="none" stroke="white" strokeWidth="1.8"/>
+      <circle cx="17.2" cy="6.8" r="1.2" fill="white"/>
+    </svg>
+  );
+  if (p === 'linkedin') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="24" height="24" rx="4" fill="#0A66C2"/>
+      <path d="M7 9.5H9.5V17H7V9.5ZM8.25 8.5C7.56 8.5 7 7.94 7 7.25C7 6.56 7.56 6 8.25 6C8.94 6 9.5 6.56 9.5 7.25C9.5 7.94 8.94 8.5 8.25 8.5ZM11 9.5H13.4V10.6C13.8 9.9 14.7 9.3 16 9.3C18.2 9.3 18.5 10.9 18.5 12.8V17H16V13.2C16 12.3 15.5 11.5 14.6 11.5C13.7 11.5 13.4 12.2 13.4 13.1V17H11V9.5Z" fill="white"/>
+    </svg>
+  );
+  if (p === 'twitter') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="24" height="24" rx="4" fill="#000"/>
+      <path d="M17.5 5.5H15L11.5 10.2L8 5.5H5.5L10.2 12L5.5 18.5H8L12 13.8L16 18.5H18.5L13.7 12L17.5 5.5Z" fill="white"/>
+    </svg>
+  );
+  if (p === 'youtube') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="24" height="24" rx="4" fill="#FF0000"/>
+      <path d="M10 8.5L17 12L10 15.5V8.5Z" fill="white"/>
+    </svg>
+  );
+  return <span>{(p as string)[0].toUpperCase()}</span>;
+}
 function platformColor(p: SocialPlatform) { return PLATFORM_CONFIG[p].color; }
 function platformLabel(p: SocialPlatform) { return PLATFORM_CONFIG[p].label; }
 
@@ -182,6 +224,61 @@ function statusBadge(status: PostStatus) {
   };
   return map[status] || { bg: '#f3f4f6', color: '#6b7280' };
 }
+
+// ── Unicode text formatting ────────────────────────────────────────────────────
+// Facebook & Instagram APIs only accept plain text — Unicode math blocks are
+// the only way to render bold/italic across all platforms.
+
+const BOLD_MAP: Record<string, string> = Object.fromEntries([
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map((c, i) => {
+    const base = i < 26 ? 0x1D5D4 : 0x1D5EE - 26;
+    return [c, String.fromCodePoint(base + i)];
+  }),
+  ...'0123456789'.split('').map((c, i) => [c, String.fromCodePoint(0x1D7EC + i)]),
+]);
+
+const ITALIC_MAP: Record<string, string> = Object.fromEntries(
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map((c, i) => {
+    const base = i < 26 ? 0x1D608 : 0x1D622 - 26;
+    return [c, String.fromCodePoint(base + i)];
+  })
+);
+
+const BOLD_ITALIC_MAP: Record<string, string> = Object.fromEntries(
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map((c, i) => {
+    const base = i < 26 ? 0x1D63C : 0x1D656 - 26;
+    return [c, String.fromCodePoint(base + i)];
+  })
+);
+
+function applyUnicodeFormat(
+  map: Record<string, string>,
+  value: string,
+  start: number,
+  end: number
+): { newValue: string; newStart: number; newEnd: number } {
+  const selected = value.slice(start, end);
+  const converted = selected.split('').map(c => map[c] ?? c).join('');
+  const newValue = value.slice(0, start) + converted + value.slice(end);
+  // Each converted char may be 2 JS code units (surrogate pair) — recalc end
+  const newEnd = start + converted.length;
+  return { newValue, newStart: start, newEnd };
+}
+
+const EMOJI_LIST = [
+  '🏡','🔑','🏠','🏘️','🏗️','🏢','📍','💰','📈','✅',
+  '⭐','🌟','💛','👋','🤝','🎉','🎊','👀','🔥','💪',
+  '📞','📧','📱','🗓️','✨','🌿','🌳','🌄','🌇','🏙️',
+  '🛋️','🚿','🍳','🚗','🎯','💡','📣','🔔','💬','🙌',
+];
+
+const HASHTAG_GROUPS: Array<{ label: string; tags: string }> = [
+  { label: 'Fair Oaks',   tags: '#FairOaks #FairOaksRealty #FairOaksRealtyGroup #FairOaksTX' },
+  { label: 'Just Listed', tags: '#JustListed #NewListing #ForSale #DreamHome #RealEstate' },
+  { label: 'Luxury',      tags: '#LuxuryHomes #LuxuryRealEstate #HighEnd #PremiumLiving' },
+  { label: 'Community',   tags: '#FairOaksCommunity #TexasRealEstate #DFW #NorthTexas' },
+  { label: 'Market',      tags: '#RealEstateMarket #HomeBuying #HomeSelling #PropertyInvestment' },
+];
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
@@ -272,6 +369,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  // Composer formatting toolbar
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [hashtagPickerOpen, setHashtagPickerOpen] = useState(false);
 
   useEffect(() => {
     loadConnections();
@@ -925,20 +1027,160 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
               {/* Textarea */}
               <div style={{ marginBottom: 16 }}>
+                {/* Formatting toolbar */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 2,
+                  background: '#f9fafb', border: '1.5px solid #e5e7eb',
+                  borderBottom: 'none', borderRadius: '12px 12px 0 0',
+                  padding: '5px 8px',
+                }}>
+                  {/* Bold */}
+                  <button
+                    type="button"
+                    title="Bold (select text first)"
+                    onClick={() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const { newValue, newStart, newEnd } = applyUnicodeFormat(BOLD_MAP, composerContent, el.selectionStart, el.selectionEnd);
+                      setComposerContent(newValue);
+                      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
+                    }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                  >B</button>
+
+                  {/* Italic */}
+                  <button
+                    type="button"
+                    title="Italic (select text first)"
+                    onClick={() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const { newValue, newStart, newEnd } = applyUnicodeFormat(ITALIC_MAP, composerContent, el.selectionStart, el.selectionEnd);
+                      setComposerContent(newValue);
+                      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
+                    }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontStyle: 'italic', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                  >I</button>
+
+                  {/* Bold Italic */}
+                  <button
+                    type="button"
+                    title="Bold italic (select text first)"
+                    onClick={() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const { newValue, newStart, newEnd } = applyUnicodeFormat(BOLD_ITALIC_MAP, composerContent, el.selectionStart, el.selectionEnd);
+                      setComposerContent(newValue);
+                      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
+                    }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontStyle: 'italic', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                  >BI</button>
+
+                  {/* Divider */}
+                  <span style={{ width: 1, height: 18, background: '#e5e7eb', margin: '0 4px', flexShrink: 0 }} />
+
+                  {/* Emoji picker */}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      title="Insert emoji"
+                      onClick={() => { setEmojiPickerOpen(o => !o); setHashtagPickerOpen(false); }}
+                      style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: emojiPickerOpen ? '#fef9ec' : '#fff', fontSize: 14, cursor: 'pointer', lineHeight: 1, borderColor: emojiPickerOpen ? '#C9A84C' : '#e5e7eb' }}
+                    >😊</button>
+                    {emojiPickerOpen && (
+                      <div
+                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 10, width: 232 }}
+                        onMouseDown={e => e.preventDefault()}
+                      >
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2 }}>
+                          {EMOJI_LIST.map(em => (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={() => {
+                                const el = textareaRef.current;
+                                const pos = el ? el.selectionStart : composerContent.length;
+                                const next = composerContent.slice(0, pos) + em + composerContent.slice(pos);
+                                setComposerContent(next);
+                                setEmojiPickerOpen(false);
+                                requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(pos + em.length, pos + em.length); } });
+                              }}
+                              style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', padding: '3px 0', borderRadius: 4, lineHeight: 1 }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef9ec'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+                            >{em}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hashtag groups */}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      title="Add hashtag group"
+                      onClick={() => { setHashtagPickerOpen(o => !o); setEmojiPickerOpen(false); }}
+                      style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: hashtagPickerOpen ? '#fef9ec' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#6b7280', lineHeight: 1, borderColor: hashtagPickerOpen ? '#C9A84C' : '#e5e7eb' }}
+                    >#</button>
+                    {hashtagPickerOpen && (
+                      <div
+                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 6, minWidth: 220 }}
+                        onMouseDown={e => e.preventDefault()}
+                      >
+                        {HASHTAG_GROUPS.map(group => (
+                          <button
+                            key={group.label}
+                            type="button"
+                            onClick={() => {
+                              const sep = composerContent && !composerContent.endsWith('\n') ? '\n\n' : '';
+                              setComposerContent(composerContent + sep + group.tags);
+                              setHashtagPickerOpen(false);
+                              requestAnimationFrame(() => textareaRef.current?.focus());
+                            }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '7px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef9ec'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+                          >
+                            <span style={{ fontWeight: 700, color: '#1a1a2e', marginRight: 6 }}>{group.label}</span>
+                            <span style={{ color: '#9ca3af', fontSize: 11 }}>{group.tags.split(' ').length} tags</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <textarea
+                  ref={textareaRef}
                   value={composerContent}
                   onChange={e => setComposerContent(e.target.value)}
                   placeholder="Write your post…"
                   rows={7}
                   style={{
-                    width: '100%', padding: '13px 14px', borderRadius: 12,
-                    border: '1.5px solid #e5e7eb', fontSize: 13, lineHeight: 1.65,
+                    width: '100%', padding: '13px 14px',
+                    borderRadius: '0 0 12px 12px',
+                    border: '1.5px solid #e5e7eb', borderTop: 'none',
+                    fontSize: 13, lineHeight: 1.65,
                     resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box',
                     outline: 'none', transition: 'border-color .15s',
                     color: '#1a1a2e',
                   }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  onFocus={e => {
+                    e.currentTarget.style.borderColor = '#C9A84C';
+                    (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = '#C9A84C';
+                  }}
+                  onBlur={e => {
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = '#e5e7eb';
+                    setTimeout(() => { setEmojiPickerOpen(false); setHashtagPickerOpen(false); }, 150);
+                  }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 5 }}>
                   <span style={{
