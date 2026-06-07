@@ -366,6 +366,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [showIgModal, setShowIgModal] = useState(false);
   const [igHandle, setIgHandle] = useState('');
   const [igSaving, setIgSaving] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
 
   // Responsive width
   const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -1954,7 +1955,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           )}
 
           <button
-            onClick={() => openOAuthPopup('facebook')}
+            onClick={() => setShowConnectModal(true)}
             style={{
               marginLeft: 'auto',
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -2586,7 +2587,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               <div style={{ fontSize: 11, color: '#a16207' }}>You have {connections.length} of 5 platforms connected.</div>
             </div>
             <button
-              onClick={() => setActiveTab('publisher')}
+              onClick={() => setShowConnectModal(true)}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#C9A84C', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
             >
               Connect Accounts →
@@ -3051,6 +3052,100 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
         );
       })()}
+
+      {/* ── Platform Picker Modal ── */}
+      {showConnectModal && (
+        <>
+          <div onClick={() => setShowConnectModal(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            width: 480, maxWidth: '95vw', background: '#fff', borderRadius: 16,
+            zIndex: 1001, boxShadow: '0 24px 80px rgba(0,0,0,.25)', overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ background: '#1a1a2e', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ color: '#fff', fontFamily: "'Cormorant Garamond', serif", fontSize: 20, fontWeight: 700, margin: 0 }}>Social Accounts</h3>
+                <p style={{ color: 'rgba(255,255,255,.5)', fontSize: 12, margin: '3px 0 0' }}>Connect or disconnect your social platforms</p>
+              </div>
+              <button onClick={() => setShowConnectModal(false)}
+                style={{ background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8, color: 'rgba(255,255,255,.7)', fontSize: 18, cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+            </div>
+            {/* Platform list */}
+            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {ALL_PLATFORMS.map(p => {
+                const conn = connections.find(c => c.platform === p);
+                return (
+                  <div key={p} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 14px', borderRadius: 12,
+                    border: `1.5px solid ${conn ? platformColor(p) + '40' : '#f0f0f0'}`,
+                    background: conn ? platformColor(p) + '08' : '#fafafa',
+                  }}>
+                    <div style={{
+                      width: 42, height: 42, borderRadius: '50%',
+                      background: conn ? platformColor(p) : '#e5e7eb',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, opacity: conn ? 1 : 0.5,
+                    }}>
+                      {platformEmoji(p)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{platformLabel(p)}</div>
+                      {conn ? (
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>● Connected</span>
+                          {' · '}{conn.account_name}
+                          {conn.followers_count > 0 && ` · ${fmtNum(conn.followers_count)} followers`}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>Not connected</div>
+                      )}
+                    </div>
+                    {conn ? (
+                      <button
+                        onClick={async () => {
+                          const warning = (p === 'facebook' || p === 'instagram')
+                            ? `Disconnect ${conn.account_name}?\n\nNote: To reconnect Facebook or Instagram, you must use Chrome or Safari (not DuckDuckGo).`
+                            : `Disconnect ${conn.account_name}?`;
+                          if (!confirm(warning)) return;
+                          await fetch('/api/crm/social/accounts', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ connection_id: conn.id }),
+                          });
+                          setConnections(prev => prev.filter(c => c.id !== conn.id));
+                          toast(`Disconnected ${conn.account_name}`);
+                        }}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                      >
+                        Disconnect
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowConnectModal(false);
+                          if (p === 'instagram') setShowIgModal(true);
+                          else openOAuthPopup(p);
+                        }}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: platformColor(p), color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                      >
+                        Connect
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: '10px 16px 16px', borderTop: '1px solid #f0f0f0' }}>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, textAlign: 'center' }}>
+                Facebook & Instagram require Chrome or Safari to connect
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Manual Instagram connect modal */}
       {showIgModal && (
