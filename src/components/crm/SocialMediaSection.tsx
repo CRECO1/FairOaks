@@ -367,6 +367,15 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [igHandle, setIgHandle] = useState('');
   const [igSaving, setIgSaving] = useState(false);
 
+  // Responsive width
+  const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  useEffect(() => {
+    function handleResize() { setWindowWidth(window.innerWidth); }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const isMobile = windowWidth < 768;
+
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
@@ -886,10 +895,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
         {/* ── Two-column layout ── */}
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
 
           {/* ── LEFT: Composer ── */}
-          <div style={{ flex: '0 0 460px', maxWidth: 460 }}>
+          <div style={{ flex: isMobile ? 'none' : '0 0 460px', maxWidth: isMobile ? '100%' : 460, width: isMobile ? '100%' : undefined }}>
             <div style={{
               background: '#fff',
               borderRadius: 16,
@@ -1328,7 +1337,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               </div>
 
               {/* Link + Hashtags grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 14 }}>
                 <div>
                   <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', display: 'block', marginBottom: 6 }}>Link URL</label>
                   <input
@@ -2309,9 +2318,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 20, alignItems: 'flex-start' }}>
           {/* Left: message list */}
-          <div style={{ flex: '0 0 360px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+          <div style={{ flex: isMobile ? 'none' : '0 0 360px', width: isMobile ? '100%' : undefined, background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
             {/* Filters */}
             <div style={{ padding: '14px 16px', borderBottom: '1px solid #f0f0f0' }}>
               <input
@@ -2559,9 +2568,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       .slice(0, 5);
 
     const statCard = (label: string, value: string, emoji: string, sub: string) => (
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px', flex: 1, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-        <div style={{ fontSize: 24, marginBottom: 8 }}>{emoji}</div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Cormorant Garamond', serif", lineHeight: 1 }}>{value}</div>
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: isMobile ? '14px 16px' : '20px 24px', flex: 1, minWidth: isMobile ? 'calc(50% - 8px)' : 0, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+        <div style={{ fontSize: isMobile ? 20 : 24, marginBottom: 6 }}>{emoji}</div>
+        <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Cormorant Garamond', serif", lineHeight: 1 }}>{value}</div>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', marginTop: 6 }}>{label}</div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{sub}</div>
       </div>
@@ -2571,7 +2580,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       <div>
         {/* CTA for connecting more */}
         {connections.length < 3 && (
-          <div style={{ background: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ background: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Connect more accounts to see richer analytics</div>
               <div style={{ fontSize: 11, color: '#a16207' }}>You have {connections.length} of 5 platforms connected.</div>
@@ -2586,7 +2595,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         )}
 
         {/* Top stats */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 10 : 16, marginBottom: 24 }}>
           {statCard('Total Followers', fmtNum(totalFollowers), '👥', 'Across all accounts')}
           {statCard('Avg Engagement Rate', `${avgEngagement.toFixed(2)}%`, '📊', 'Last 30 days')}
           {statCard('Total Impressions', fmtNum(totalImpressions), '👁️', 'Last 30 days')}
@@ -2658,7 +2667,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? 16 : 24, marginBottom: 24 }}>
           {/* Best time to post heatmap */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -2769,11 +2778,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px 32px', minHeight: '100vh', background: '#f8f8f8' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : '24px 32px', minHeight: '100vh', background: '#f8f8f8' }}>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 32, fontWeight: 700, color: '#1a1a2e', margin: 0, marginBottom: 4 }}>
+          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#1a1a2e', margin: 0, marginBottom: 4 }}>
             Social Media
           </h1>
           <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
@@ -2783,7 +2792,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         {activeTab === 'publisher' && (
           <button
             onClick={() => { resetComposer(); setComposerOpen(true); }}
-            style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#1a1a2e', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{ padding: '10px 16px', borderRadius: 10, border: 'none', background: '#1a1a2e', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
           >
             ✏️ Compose Post
           </button>
@@ -2791,7 +2800,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #f0f0f0', marginBottom: 28, gap: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #f0f0f0', marginBottom: 24, gap: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
         {([
           { id: 'publisher', label: 'Publisher', emoji: '✏️' },
           { id: 'calendar', label: 'Calendar', emoji: '📅' },
@@ -2802,12 +2811,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '12px 20px', border: 'none', background: 'none',
+              padding: isMobile ? '10px 14px' : '12px 20px', border: 'none', background: 'none',
               borderBottom: `2px solid ${activeTab === tab.id ? '#1a1a2e' : 'transparent'}`,
               marginBottom: -2, fontSize: 13, fontWeight: 700, cursor: 'pointer',
               color: activeTab === tab.id ? '#1a1a2e' : '#9ca3af',
-              display: 'flex', alignItems: 'center', gap: 7,
+              display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
               transition: 'color .15s',
+              whiteSpace: 'nowrap',
             }}
           >
             <span>{tab.emoji}</span>
