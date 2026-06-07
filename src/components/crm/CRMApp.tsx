@@ -535,6 +535,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Notification center
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // Mobile full menu sheet
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // Email preview
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
@@ -2174,17 +2177,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');
   const agentName = (id: string) => { const p = profiles.find(x => x.id === id); return p ? `${p.first_name} ${p.last_name}` : profile.id === id ? `${profile.first_name} ${profile.last_name}` : '—'; };
 
-  const mobileNavItems: { id: typeof page; icon: string; label: string }[] = [
-    { id: 'dashboard', icon: '🏠', label: 'Home' },
-    { id: 'prospects' as typeof page, icon: '🎯', label: 'Prospects' },
-    { id: 'deals', icon: '📋', label: 'Deals' },
-    { id: 'contacts', icon: '👥', label: 'Contacts' },
-    { id: 'tasks' as typeof page, icon: '✅', label: 'Tasks' },
-    { id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' },
-    { id: 'action-plans' as typeof page, icon: '⚡', label: 'Plans' },
-    ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
-  ];
-
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media',
@@ -2215,6 +2207,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .modal{background:#fff;border-radius:12px;width:760px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.3);flex-shrink:0;}
         .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:500;}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes slideRight{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         /* ── Contacts redesign ── */
         .contacts-table{border:1px solid #e8edf2!important;border-radius:12px!important;overflow:hidden!important;box-shadow:0 1px 4px rgba(0,0,0,.05)!important;table-layout:fixed!important;}
         .contacts-table thead{background:#f8fafc!important;color:inherit!important;}
@@ -2432,17 +2427,155 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
         {/* Mobile/tablet top header */}
         {isTabletOrMobile && (
-          <div style={{ background: '#111', color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.2)' }}>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</div>
-            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,.15)', flexShrink: 0 }} />
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, fontWeight: 600, color: '#fff', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageLabel[page]}</div>
-            {/* Search */}
-            <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
-              style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 16, padding: '6px 10px', flexShrink: 0, lineHeight: 1 }}>🔍</button>
-            {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 14 }}>+ Add</button>}
-            {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 14 }}>+ Deal</button>}
-            {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 14 }}>+ New</button>}
+          <div style={{ background: '#111', color: '#fff', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.25)' }}>
+            {/* Hamburger → opens full menu sheet */}
+            <button onClick={() => setMobileMenuOpen(true)}
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.8)', cursor: 'pointer', padding: '4px 6px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, lineHeight: 0 }}>
+              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
+              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
+              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
+            </button>
+            {/* Brand + page title */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</span>
+              <span style={{ color: 'rgba(255,255,255,.25)', flexShrink: 0 }}>›</span>
+              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageLabel[page]}</span>
+            </div>
+            {/* Right actions */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+              {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Add</button>}
+              {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Deal</button>}
+              {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
+              <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
+                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: '5px 9px', lineHeight: 1 }}>🔍</button>
+            </div>
           </div>
+        )}
+
+        {/* ── Mobile full-screen nav sheet ── */}
+        {isTabletOrMobile && mobileMenuOpen && (
+          <>
+            {/* Backdrop */}
+            <div onClick={() => setMobileMenuOpen(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9998, animation: 'fadeIn .2s ease' }} />
+            {/* Drawer */}
+            <div style={{
+              position: 'fixed', left: 0, top: 0, bottom: 0, width: 290,
+              background: '#111', zIndex: 9999, display: 'flex', flexDirection: 'column',
+              overflowY: 'auto', boxShadow: '4px 0 24px rgba(0,0,0,.4)',
+              transform: 'translateX(0)', animation: 'slideRight .25s ease',
+            }}>
+              {/* Drawer header */}
+              <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(201,146,44,.3)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 3 }}>{brand.tagline}</div>
+                </div>
+                <button onClick={() => setMobileMenuOpen(false)}
+                  style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, padding: '4px 9px', lineHeight: 1 }}>✕</button>
+              </div>
+
+              {/* Workspace switcher (admin) */}
+              {isAdmin && (
+                <div style={{ padding: '10px 14px 0' }}>
+                  <a href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '8px 12px', textDecoration: 'none' }}>
+                    <span style={{ fontSize: 16 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.9)' }}>{businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>→</span>
+                  </a>
+                </div>
+              )}
+
+              {/* Nav sections */}
+              <div style={{ padding: '16px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Overview</div>
+                <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}>🏠 &nbsp;Dashboard</button>
+              </div>
+
+              <div style={{ padding: '14px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Deal Flow</div>
+                <button className={`crm-nav${page === 'deals' ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); setMobileMenuOpen(false); }}>
+                  📋 &nbsp;All Deals
+                  <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span>
+                </button>
+              </div>
+
+              <div style={{ padding: '14px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>People</div>
+                <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); setMobileMenuOpen(false); }}>
+                  👥 &nbsp;Contacts
+                  <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span>
+                </button>
+                <button className={`crm-nav${page === 'prospects' ? ' active' : ''}`} onClick={() => { setPage('prospects'); loadProspects(); setMobileMenuOpen(false); }}>
+                  🎯 &nbsp;Prospects
+                  {prospects.filter(p => p.client?.prospect_status === 'new').length > 0 && (
+                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{prospects.filter(p => p.client?.prospect_status === 'new').length}</span>
+                  )}
+                </button>
+                {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}>🤝 &nbsp;Broker / Agents</button>}
+              </div>
+
+              <div style={{ padding: '14px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Tools</div>
+                <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); setMobileMenuOpen(false); }}>📅 &nbsp;Calendar</button>
+                <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); setMobileMenuOpen(false); }}>
+                  ✅ &nbsp;Tasks
+                  {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                      {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+                    </span>
+                  )}
+                </button>
+                <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}>📣 &nbsp;Campaigns</button>
+                <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); setMobileMenuOpen(false); }}>⚡ &nbsp;Action Plans</button>
+                <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => { setPage('social'); setMobileMenuOpen(false); }}>📱 &nbsp;Social Media</button>
+                {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); setMobileMenuOpen(false); }}>💰 &nbsp;Commissions</button>}
+                {isAdmin && (
+                  <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
+                    🧾 &nbsp;Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
+                  </a>
+                )}
+              </div>
+
+              {isAdmin && businessUnit === 'residential' && (
+                <div style={{ padding: '10px 12px 4px' }}>
+                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>MLS</div>
+                  <button
+                    onClick={async () => {
+                      setMlsSyncing(true);
+                      try {
+                        const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) } });
+                        const data = await res.json();
+                        if (!res.ok) showToast('MLS sync failed: ' + (data.error ?? res.status));
+                        else showToast(`✅ MLS sync done — ${data.synced} listings updated`);
+                      } catch { showToast('MLS sync error — check console'); }
+                      finally { setMlsSyncing(false); }
+                    }}
+                    disabled={mlsSyncing}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, cursor: mlsSyncing ? 'default' : 'pointer', border: '1px solid rgba(201,146,44,.3)', background: 'rgba(201,146,44,.08)', color: 'rgba(255,255,255,.85)', fontSize: 14, fontFamily: "'DM Sans',sans-serif", width: '100%', opacity: mlsSyncing ? 0.7 : 1 }}>
+                    <span>{mlsSyncing ? '⏳' : '🏠'}</span>
+                    <span>{mlsSyncing ? 'Syncing…' : '↻ Sync MLS Listings'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Profile + sign out */}
+              <div style={{ marginTop: 'auto', padding: '14px 14px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{initials}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
+                  </div>
+                  <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Desktop topbar */}
@@ -6067,19 +6200,56 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
 
         </div>
-        {/* Mobile bottom nav */}
-        {isMobile && (
-          <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.08)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            {mobileNavItems.map(item => (
-              <button key={item.id}
-                onClick={() => { setPage(item.id); if (item.id === 'contacts') loadClients(); if (item.id === 'calendar') loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); if (item.id === 'campaigns') { setCampaignView('list'); loadCampaigns(); } }}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 0 6px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'color .15s', color: page === item.id ? '#c9922c' : 'rgba(255,255,255,.4)' }}>
-                <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
-                <span style={{ fontSize: 11, marginTop: 3, fontWeight: page === item.id ? 700 : 400, letterSpacing: .3 }}>{item.label}</span>
+        {/* ── Mobile bottom tab bar (5 tabs + Menu) ── */}
+        {isMobile && (() => {
+          const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length;
+          const tabs = [
+            { id: 'dashboard' as typeof page, icon: '🏠', label: 'Home' },
+            { id: 'contacts'  as typeof page, icon: '👥', label: 'Contacts' },
+            { id: 'deals'     as typeof page, icon: '📋', label: 'Deals' },
+            { id: 'tasks'     as typeof page, icon: '✅', label: 'Tasks', badge: overdueCt },
+            { id: 'social'    as typeof page, icon: '📱', label: 'Social' },
+          ];
+          return (
+            <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.1)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              {tabs.map(tab => {
+                const active = page === tab.id;
+                return (
+                  <button key={tab.id}
+                    onClick={() => {
+                      setPage(tab.id);
+                      if (tab.id === 'contacts') { loadClients(); loadSmartLists(); }
+                      if (tab.id === 'tasks') { loadTasks(); loadProfiles(); }
+                      if (tab.id === 'deals') setFilter('');
+                    }}
+                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif', position: 'relative", color: active ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ fontSize: 22, lineHeight: 1, display: 'block' }}>{tab.icon}</span>
+                      {(tab as any).badge > 0 && (
+                        <span style={{ position: 'absolute', top: -4, right: -6, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #111' }}>
+                          {(tab as any).badge > 9 ? '9+' : (tab as any).badge}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, marginTop: 3, fontWeight: active ? 700 : 400, letterSpacing: .2 }}>{tab.label}</span>
+                    {active && <span style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 2, background: '#c9922c', borderRadius: '2px 2px 0 0' }} />}
+                  </button>
+                );
+              })}
+              {/* Menu button → opens drawer */}
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: mobileMenuOpen ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center', width: 22, height: 22 }}>
+                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
+                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
+                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
+                </div>
+                <span style={{ fontSize: 11, marginTop: 3, fontWeight: 400, letterSpacing: .2 }}>Menu</span>
               </button>
-            ))}
-          </nav>
-        )}
+            </nav>
+          );
+        })()}
       </div>
 
       {/* ── Deal Modal ── */}
