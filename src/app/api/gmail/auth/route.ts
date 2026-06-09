@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   if (caller.id !== userId) return forbidden('Cannot initiate OAuth for another user');
 
   const clientId    = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = 'https://crm.vultstack.com/api/gmail/callback';
+  const redirectUri = `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com'}/api/gmail/callback`;
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId!);
