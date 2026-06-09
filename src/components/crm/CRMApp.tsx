@@ -28,7 +28,7 @@ interface CalendarEvent { id: string; title: string; description: string | null;
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
 interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
-interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
+interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
@@ -718,14 +718,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!session) return;
     loadProfile();
     // Check Gmail connection status
-    fetch(`/api/gmail/status?userId=${session.user.id}`)
+    const authHeader = { 'Authorization': `Bearer ${session.access_token}` };
+    fetch(`/api/gmail/status?userId=${session.user.id}`, { headers: authHeader })
       .then(r => r.json())
       .then(d => {
         if (d.connected) {
           setGmailConnected(true);
           setGmailAccounts(d.accounts ?? []);
           // Fetch & save Gmail signature in the background
-          fetch(`/api/gmail/signature?userId=${session.user.id}`)
+          fetch(`/api/gmail/signature?userId=${session.user.id}`, { headers: authHeader })
             .then(r => r.json())
             .then(s => {
               if (s.signature !== undefined) {
@@ -739,7 +740,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmail') === 'connected') {
       const connectedAccount = params.get('account');
-      fetch(`/api/gmail/status?userId=${session.user.id}`)
+      fetch(`/api/gmail/status?userId=${session.user.id}`, { headers: authHeader })
         .then(r => r.json())
         .then(d => {
           if (d.connected) {
@@ -753,7 +754,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           }
         });
       // Fetch signature after fresh OAuth connect
-      fetch(`/api/gmail/signature?userId=${session.user.id}`)
+      fetch(`/api/gmail/signature?userId=${session.user.id}`, { headers: authHeader })
         .then(r => r.json())
         .then(s => { if (s.signature !== undefined) setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); })
         .catch(() => {});
@@ -1592,11 +1593,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Disconnect Gmail account ──────────────────────────────────────────────────
   async function disconnectGmailAccount(connectionId: string) {
-    await fetch('/api/gmail/status', {
+    const res = await fetch('/api/gmail/status', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
       body: JSON.stringify({ connectionId, userId: session!.user.id }),
     });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      showToast('Failed to disconnect — please try again');
+      return;
+    }
     const updated = gmailAccounts.filter(a => a.id !== connectionId);
     setGmailAccounts(updated);
     if (updated.length === 0) setGmailConnected(false);
@@ -1803,7 +1809,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const body = { ...newCampaign, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify(body) });
       const j = await res.json();
       if (!res.ok) { showToast('Error: ' + (j.error ?? 'Save failed')); }
       else {
@@ -1832,7 +1838,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function loadCampaignEnrollments(campaignId: string) {
     setCampaignEnrollmentsLoading(true);
-    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`);
+    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, { headers: { 'Authorization': `Bearer ${session!.access_token}` } });
     if (res.ok) { const j = await res.json(); setCampaignEnrollments(j.enrollments ?? []); }
     setCampaignEnrollmentsLoading(false);
   }
@@ -1846,7 +1852,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!selectedEnrollIds.length) { showToast('Select at least one client'); return; }
     const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
       body: JSON.stringify({ client_ids: selectedEnrollIds, enrolled_by: session!.user.id }),
     });
     const j = await res.json();
@@ -1855,7 +1861,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function unenrollClient(campaignId: string, clientId: string) {
-    await fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
+    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify({ client_id: clientId }) });
+    if (!res.ok) { showToast('Failed to remove — please try again'); return; }
     showToast('Client unenrolled');
     loadCampaignEnrollments(campaignId);
   }
@@ -1991,10 +1998,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function bulkUnenrollClients(campaignId: string) {
     if (!selectedUnenrollIds.length) return;
-    await Promise.all(selectedUnenrollIds.map(clientId =>
-      fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) })
+    const results = await Promise.all(selectedUnenrollIds.map(clientId =>
+      fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify({ client_id: clientId }) })
     ));
-    showToast(`Removed ${selectedUnenrollIds.length} client${selectedUnenrollIds.length !== 1 ? 's' : ''}`);
+    const failed = results.filter(r => !r.ok).length;
+    if (failed > 0) { showToast(`${failed} removal(s) failed — please try again`); }
+    else { showToast(`Removed ${selectedUnenrollIds.length} client${selectedUnenrollIds.length !== 1 ? 's' : ''}`); }
     setSelectedUnenrollIds([]);
     loadCampaignEnrollments(campaignId);
   }
@@ -2095,7 +2104,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       closedEnrollCampaignIds.map(campaignId =>
         fetch(`/api/campaigns/${campaignId}/enrollments`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
           body: JSON.stringify({ client_ids: [clientId], enrolled_by: agentId }),
         })
       )
@@ -2373,43 +2382,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={() => disconnectGmailAccount(acct.id)} title="Disconnect" aria-label="Disconnect" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)', cursor: 'pointer', fontSize: 14, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             ))}
-            {showGmailInput ? (
-              <div style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 7, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginBottom: 6 }}>Enter the Gmail address to connect:</div>
-                <input
-                  type="email"
-                  autoFocus
-                  placeholder="you@gmail.com"
-                  value={gmailInputValue}
-                  onChange={e => setGmailInputValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && gmailInputValue.trim()) {
-                      window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}&bu=${businessUnit}`;
-                    }
-                    if (e.key === 'Escape') { setShowGmailInput(false); setGmailInputValue(''); }
-                  }}
-                  style={{ width: '100%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 5, padding: '5px 8px', fontSize: 12, color: '#fff', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <button
-                    disabled={!gmailInputValue.trim()}
-                    onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}&bu=${businessUnit}`; }}
-                    style={{ flex: 1, padding: '5px 0', borderRadius: 5, border: 'none', background: gmailInputValue.trim() ? '#c9922c' : 'rgba(255,255,255,.1)', color: gmailInputValue.trim() ? '#111' : 'rgba(255,255,255,.3)', fontSize: 12, fontWeight: 700, cursor: gmailInputValue.trim() ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
-                    Connect →
-                  </button>
-                  <button onClick={() => { setShowGmailInput(false); setGmailInputValue(''); }}
-                    style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,.15)', background: 'none', color: 'rgba(255,255,255,.4)', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setShowGmailInput(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,.04)', border: '1px dashed rgba(255,255,255,.15)', borderRadius: 7, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
-                <span style={{ fontSize: 13 }}>＋</span>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)', fontWeight: 500 }}>{gmailAccounts.length === 0 ? 'Connect Google Account' : 'Add Another Account'}</span>
-              </button>
-            )}
+            <button
+              onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&bu=${businessUnit}`; }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,.04)', border: '1px dashed rgba(255,255,255,.15)', borderRadius: 7, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+              <span style={{ fontSize: 13 }}>＋</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)', fontWeight: 500 }}>{gmailAccounts.length === 0 ? 'Connect Google Account' : 'Add Another Account'}</span>
+            </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{initials}</div>
@@ -5054,15 +5032,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                       {/* Enrolled list — show all for completed/one-time, active-only for recurring */}
                       {(() => {
-                        const isCompleted = activeCampaign.status === 'completed' || activeCampaign.frequency === 'one-time';
-                        const visibleEnrollments = isCompleted ? campaignEnrollments : campaignEnrollments.filter(e => e.active);
-                        const activeEnrollments = campaignEnrollments.filter(e => e.active);
+                        const isCompleted = activeCampaign.status === 'completed';
+                        const visibleEnrollments = campaignEnrollments.filter(e => e.active);
+                        const activeEnrollments = visibleEnrollments;
                         const allUnenrollChecked = activeEnrollments.length > 0 && selectedUnenrollIds.length === activeEnrollments.length;
                         return (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                               <div style={{ fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>
-                                {isCompleted ? `All Recipients (${visibleEnrollments.length})` : `Currently Enrolled (${activeEnrollments.length})`}
+                                {isCompleted ? `All Recipients (${visibleEnrollments.length})` : `Enrolled (${activeEnrollments.length})`}
                               </div>
                               {selectedUnenrollIds.length > 0 && (
                                 <button onClick={() => bulkUnenrollClients(activeCampaign.id)}
@@ -5077,7 +5055,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 14 }}>No clients enrolled yet</div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {/* Select all row — only show for active recurring campaigns */}
+                                {/* Select all row */}
                                 {!isCompleted && (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px', background: '#f9fafb', borderRadius: 6, border: '1px dashed #e5e7eb' }}>
                                     <input type="checkbox" checked={allUnenrollChecked} style={{ accentColor: '#c9922c', cursor: 'pointer' }}
@@ -5085,21 +5063,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>Select all to remove</span>
                                   </div>
                                 )}
-                                {visibleEnrollments.map(en => (
+                                {visibleEnrollments.map(en => {
+                                  const displayName = [en.client?.first_name, en.client?.last_name].filter(Boolean).join(' ') || en.client?.business_name || en.client?.email || '—';
+                                  const initials = en.client?.first_name?.[0] || en.client?.last_name?.[0] || en.client?.business_name?.[0] || en.client?.email?.[0] || '?';
+                                  return (
                                   <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: selectedUnenrollIds.includes(en.client_id) ? '#fff5f5' : '#fff', border: `1px solid ${selectedUnenrollIds.includes(en.client_id) ? '#fecaca' : '#e5e7eb'}`, borderRadius: 8, transition: 'all .1s' }}>
                                     {!isCompleted && (
                                       <input type="checkbox" checked={selectedUnenrollIds.includes(en.client_id)} style={{ accentColor: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
                                         onChange={e => setSelectedUnenrollIds(prev => e.target.checked ? [...prev, en.client_id] : prev.filter(id => id !== en.client_id))} />
                                     )}
-                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: en.active ? '#c9922c' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                                      {(en.client?.first_name?.[0] ?? '') + (en.client?.last_name?.[0] ?? '')}
+                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: en.active ? '#c9922c' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0, textTransform: 'uppercase' }}>
+                                      {initials}
                                     </div>
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 500 }}>{en.client?.first_name} {en.client?.last_name}</div>
+                                      <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
                                       <div style={{ fontSize: 12, color: '#9ca3af' }}>
                                         {isCompleted
                                           ? <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Sent</span>
-                                          : <>Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}</>
+                                          : <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Enrolled{en.next_send_at ? ` · Sends ${new Date(en.next_send_at).toLocaleDateString()}` : ' · Sends on activation'}</span>
                                         }
                                         {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
                                       </div>
@@ -5108,7 +5089,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 12, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
                                     )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </>
@@ -5121,90 +5103,93 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {campaignTab === 'history' && (
                     <div>
                       {campaignSends.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No sends yet — activate the campaign to start sending.</div>
+                        <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', fontSize: 14 }}>No sends yet — activate the campaign to start sending.</div>
                       ) : (() => {
                         const sentEmails = campaignSends.filter(s => s.status === 'sent' && s.type === 'email');
                         const openedCount = sentEmails.filter(s => s.opened_at).length;
                         const trackedCount = sentEmails.filter(s => s.tracking_id).length;
+                        const failedCount = campaignSends.filter(s => s.status === 'failed').length;
                         const openRate = trackedCount > 0 ? Math.round((openedCount / trackedCount) * 100) : null;
+                        const barColor = openRate == null ? '#e5e7eb' : openRate >= 40 ? '#16a34a' : openRate >= 20 ? '#c9922c' : '#ef4444';
                         return (
                           <div>
-                            {/* Open rate summary bar */}
+                            {/* Stats cards */}
                             {trackedCount > 0 && (
-                              <div style={{ display: 'flex', gap: 16, padding: '12px 16px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                                <div style={{ textAlign: 'center', minWidth: 60 }}>
-                                  <div style={{ fontSize: 22, fontWeight: 700, color: '#111', fontFamily: "'Cormorant Garamond',serif" }}>{openRate}%</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Open Rate</div>
-                                </div>
-                                <div style={{ width: 1, background: '#e5e7eb', alignSelf: 'stretch' }} />
-                                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#16a34a' }}>{openedCount}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Opened</div>
-                                </div>
-                                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#6b7280' }}>{trackedCount - openedCount}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Unopened</div>
-                                </div>
-                                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#374151' }}>{trackedCount}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Tracked</div>
-                                </div>
-                                {/* Open rate bar */}
-                                <div style={{ flex: 1, minWidth: 120 }}>
-                                  <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: `${openRate}%`, background: openRate! >= 40 ? '#16a34a' : openRate! >= 20 ? '#c9922c' : '#ef4444', borderRadius: 4, transition: 'width .4s' }} />
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, marginBottom: 20 }}>
+                                {/* Open rate card */}
+                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center', gridColumn: 'span 2' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Open Rate</div>
+                                  <div style={{ fontSize: 32, fontWeight: 700, color: barColor, fontFamily: "'Cormorant Garamond',serif", lineHeight: 1 }}>{openRate}%</div>
+                                  <div style={{ height: 4, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', margin: '10px 0 4px' }}>
+                                    <div style={{ height: '100%', width: `${openRate}%`, background: barColor, borderRadius: 4, transition: 'width .5s' }} />
                                   </div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Industry avg: ~20–25%</div>
+                                  <div style={{ fontSize: 11, color: '#d1d5db' }}>avg 20–25%</div>
                                 </div>
+                                {/* Delivered */}
+                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Sent</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#111' }}>{trackedCount}</div>
+                                </div>
+                                {/* Opened */}
+                                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Opened</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#15803d' }}>{openedCount}</div>
+                                </div>
+                                {/* Unopened */}
+                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Unopened</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#6b7280' }}>{trackedCount - openedCount}</div>
+                                </div>
+                                {failedCount > 0 && (
+                                  <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: 11, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Failed</div>
+                                    <div style={{ fontSize: 26, fontWeight: 700, color: '#dc2626' }}>{failedCount}</div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
                             {/* Send rows */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {campaignSends.map(s => {
                                 const client = clients.find(c => c.id === s.client_id);
+                                const displayName = client ? ([client.first_name, client.last_name].filter(Boolean).join(' ') || client.business_name || client.email || 'Unknown') : 'Unknown';
+                                const subName = client?.business_name && (client.first_name || client.last_name) ? client.business_name : null;
+                                const initial = displayName[0]?.toUpperCase() || '?';
                                 const isOpened = !!s.opened_at;
                                 const isTracked = !!s.tracking_id;
+                                const isFailed = s.status === 'failed';
                                 return (
-                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isOpened ? '#f0fdf4' : '#fff', border: `1px solid ${isOpened ? '#bbf7d0' : '#e5e7eb'}`, borderRadius: 8 }}>
-                                    {/* Send status */}
-                                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, flexShrink: 0, background: s.status === 'sent' ? '#dcfce7' : s.status === 'failed' ? '#fee2e2' : '#f3f4f6', color: s.status === 'sent' ? '#166534' : s.status === 'failed' ? '#991b1b' : '#6b7280' }}>
-                                      {s.status.toUpperCase()}
-                                    </span>
-
-                                    {/* Client name + subject */}
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{client ? `${client.first_name} ${client.last_name}` : 'Unknown'}</div>
-                                      {s.subject && <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.subject}</div>}
+                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? '#f0fdf4' : isFailed ? '#fff5f5' : '#fff', borderRadius: 10, borderLeft: `3px solid ${isOpened ? '#22c55e' : isFailed ? '#ef4444' : '#e5e7eb'}` }}>
+                                    {/* Avatar */}
+                                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOpened ? '#dcfce7' : '#f3f4f6', color: isOpened ? '#16a34a' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                                      {initial}
                                     </div>
 
-                                    {/* Open badge */}
+                                    {/* Name + sub */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+                                      {subName && <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subName}</div>}
+                                      {isFailed && s.error_message && <div style={{ fontSize: 11, color: '#ef4444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.error_message}</div>}
+                                    </div>
+
+                                    {/* Open status */}
                                     {s.status === 'sent' && s.type === 'email' && (
                                       isOpened ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>
-                                          👁 Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}
-                                        </span>
+                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                          <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}</div>
+                                          {s.opened_at && <div style={{ fontSize: 11, color: '#86efac' }}>{new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>}
+                                        </div>
                                       ) : isTracked ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#9ca3af', background: '#f3f4f6', border: '1px solid #e5e7eb', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>
-                                          ○ Unopened
-                                        </span>
+                                        <div style={{ fontSize: 12, color: '#d1d5db', flexShrink: 0 }}>Not opened</div>
                                       ) : null
                                     )}
+                                    {isFailed && <div style={{ fontSize: 12, fontWeight: 600, color: '#ef4444', flexShrink: 0 }}>Failed</div>}
 
-                                    {/* Date */}
-                                    <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0 }}>
+                                    {/* Sent date */}
+                                    <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, textAlign: 'right', minWidth: 48 }}>
                                       {new Date(s.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                      {isOpened && s.opened_at && (
-                                        <div style={{ fontSize: 11, color: '#16a34a' }}>
-                                          opened {new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                        </div>
-                                      )}
                                     </div>
-
-                                    {/* Type pill */}
-                                    <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 8, flexShrink: 0, background: s.type === 'email' ? '#dbeafe' : '#d1fae5', color: s.type === 'email' ? '#1e40af' : '#065f46' }}>
-                                      {s.type.toUpperCase()}
-                                    </span>
                                   </div>
                                 );
                               })}
