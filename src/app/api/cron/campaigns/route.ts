@@ -152,17 +152,18 @@ export async function GET(req: NextRequest) {
           const brandDomain = isCommercial ? 'crecotx.com' : 'fairoaksrealtygroup.com';
           const fallbackEmail = isCommercial ? `info@crecotx.com` : `info@fairoaksrealtygroup.com`;
 
-          // Use sender agent's email as reply-to if they have one
-          const replyTo = agent.email && agent.email !== fallbackEmail
+          // reply_to: use sender agent's email if set, otherwise fall back to the info inbox
+          // This ensures tenant replies never bounce back from noreply@
+          const replyTo = (agent.email && agent.email !== fallbackEmail)
             ? `${agent.first_name} ${agent.last_name} <${agent.email}>`
-            : undefined;
+            : `${brandName} <${fallbackEmail}>`;
 
           const emailResult = await resend.emails.send({
             from: `${brandName} <noreply@${brandDomain}>`,
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,
-            ...(replyTo ? { reply_to: replyTo } : {}),
+            reply_to: replyTo,
           });
           if (emailResult.error) {
             throw new Error(`Resend: ${emailResult.error.message ?? JSON.stringify(emailResult.error)}`);
