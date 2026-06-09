@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
       : agentMap[client.agent_id];
     const isCommercialCampaign = campaign.business_unit === 'commercial';
     const resend = new Resend(((isCommercialCampaign ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) ?? '').replace(/[\r\n\s]+$/, ''));
-    const fallbackAgentEmail = isCommercialCampaign ? 'info@crecotx.com' : 'info@fairoaksrealtygroup.com';
+    const fallbackAgentEmail = isCommercialCampaign ? 'zack@crecotx.com' : 'info@fairoaksrealtygroup.com';
     const fallbackAgentPhone = isCommercialCampaign ? '210-817-3443' : '210-390-9997';
     const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
     const brokerageName = isCommercialCampaign ? 'CRECO' : 'Fair Oaks Realty Group';
@@ -150,7 +150,7 @@ export async function GET(req: NextRequest) {
           const isCommercial = campaign.business_unit === 'commercial';
           const brandName = isCommercial ? 'CRECO' : 'Fair Oaks Realty Group';
           const brandDomain = isCommercial ? 'crecotx.com' : 'fairoaksrealtygroup.com';
-          const fallbackEmail = isCommercial ? `info@crecotx.com` : `info@fairoaksrealtygroup.com`;
+          const fallbackEmail = isCommercial ? `zack@crecotx.com` : `info@fairoaksrealtygroup.com`;
 
           // reply_to: use sender agent's email if set, otherwise fall back to the info inbox
           // This ensures tenant replies never bounce back from noreply@
