@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,
-            reply_to: replyTo,
+            replyTo: replyTo,
           });
           if (emailResult.error) {
             throw new Error(`Resend: ${emailResult.error.message ?? JSON.stringify(emailResult.error)}`);
