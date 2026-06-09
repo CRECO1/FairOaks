@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = adminClient();
-  const resend = new Resend(process.env.RESEND_API_KEY!);
+  // Resend client is picked per-enrollment based on business unit (see below)
 
   // Get all due active enrollments (limit 50 per run to stay within Vercel timeout)
   // next_send_at is set to the exact send datetime (CT converted to UTC) at enrollment time,
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit, org_id),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
       ? agentMap[campaign.sender_agent_id]
       : agentMap[client.agent_id];
     const isCommercialCampaign = campaign.business_unit === 'commercial';
+    const resend = new Resend(((isCommercialCampaign ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) ?? '').replace(/[\r\n\s]+$/, ''));
     const fallbackAgentEmail = isCommercialCampaign ? 'info@crecotx.com' : 'info@fairoaksrealtygroup.com';
     const fallbackAgentPhone = isCommercialCampaign ? '210-817-3443' : '210-390-9997';
     const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
@@ -163,6 +164,9 @@ export async function GET(req: NextRequest) {
             html: renderedBody,
             ...(replyTo ? { reply_to: replyTo } : {}),
           });
+          if (emailResult.error) {
+            throw new Error(`Resend: ${emailResult.error.message ?? JSON.stringify(emailResult.error)}`);
+          }
           providerId = emailResult.data?.id ?? null;
         }
       } else if (campaign.type === 'sms') {
@@ -196,6 +200,7 @@ export async function GET(req: NextRequest) {
       subject: subjectRendered || null,
       body_preview: bodyPreview || null,
       tracking_id: trackingId,
+      org_id: campaign.org_id,
     }]);
 
     // Stamp last_touched_at on the client so the contact shows as recently touched

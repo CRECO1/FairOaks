@@ -26,7 +26,7 @@ interface DealEmail { id: string; deal_id: string | null; client_id?: string | n
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
@@ -473,8 +473,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
+  // Campaign projects (folders)
+  const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(['__ungrouped__']));
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [newProjectColor, setNewProjectColor] = useState('#c9922c');
+  const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string; color: string } | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<{ year: number; month: number }>(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
-  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string; project_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
   const [enrollTypeFilter, setEnrollTypeFilter] = useState('');
@@ -801,6 +809,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
+      loadCampaignProjects();
       setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
@@ -823,6 +832,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
+      loadCampaignProjects();
       setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
     }
     setLoading(false);
@@ -1800,6 +1810,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
+  async function loadCampaignProjects() {
+    const { data } = await supabase.from('crm_campaign_projects').select('*').order('created_at', { ascending: true });
+    setCampaignProjects(data ?? []);
+    // Auto-expand all projects on first load
+    if (data?.length) setExpandedProjects(prev => new Set([...prev, ...data.map((p: any) => p.id)]));
+  }
+
+  async function createCampaignProject() {
+    if (!newProjectName.trim()) return;
+    const { data } = await supabase.from('crm_campaign_projects').insert({ name: newProjectName.trim(), description: newProjectDesc.trim(), color: newProjectColor, created_by: session!.user.id }).select().single();
+    if (data) {
+      setCampaignProjects(prev => [...prev, data]);
+      setExpandedProjects(prev => new Set([...prev, data.id]));
+    }
+    setNewProjectName(''); setNewProjectDesc(''); setNewProjectColor('#c9922c'); setShowAddProject(false);
+  }
+
+  async function updateCampaignProject() {
+    if (!editingProject) return;
+    await supabase.from('crm_campaign_projects').update({ name: editingProject.name, description: editingProject.description, color: editingProject.color }).eq('id', editingProject.id);
+    setCampaignProjects(prev => prev.map(p => p.id === editingProject.id ? editingProject : p));
+    setEditingProject(null);
+  }
+
+  async function deleteCampaignProject(id: string) {
+    if (!confirm('Delete this project? Campaigns inside will become ungrouped.')) return;
+    await supabase.from('crm_campaign_projects').delete().eq('id', id);
+    setCampaignProjects(prev => prev.filter(p => p.id !== id));
+    setCampaigns(prev => prev.map(c => c.project_id === id ? { ...c, project_id: null } : c));
+  }
+
+  async function assignCampaignToProject(campaignId: string, projectId: string | null) {
+    await fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify({ project_id: projectId }) });
+    setCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, project_id: projectId } : c));
+  }
+
   async function saveCampaign() {
     // Always grab the freshest content — editor ref if mounted, otherwise state
     const latestEmailBody = (emailEditorMode === 'rich' && emailEditorRef.current?.innerHTML)
@@ -1817,7 +1863,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setEmailEditorMode('rich');
         setCampaignView('list');
         setActiveCampaign(null);
-        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
         loadCampaigns();
       }
     } catch (err) {
@@ -2312,7 +2358,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </span>
             )}
           </button>
-          <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
+          <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
           <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => setPage('social')}>📱 &nbsp;Social Media</button>
           {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); }}>💰 &nbsp;Commissions</button>}
@@ -2423,7 +2469,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
               {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Add</button>}
               {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Deal</button>}
-              {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
+              {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
               <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
                 style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: '5px 9px', lineHeight: 1 }}>🔍</button>
             </div>
@@ -4775,124 +4821,189 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* List view */}
               {campaignView === 'list' && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                     <div>
                       <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
-                      <p style={{ fontSize: 14, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
+                      <p style={{ fontSize: 14, color: '#6b7280' }}>Organized by project — campaigns auto-send to enrolled contacts</p>
                     </div>
-                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>
-                      + New Campaign
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setShowAddProject(true)} style={{ fontSize: 13 }}>📁 New Project</button>}
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: '' }); setCampaignView('builder'); }}>+ New Campaign</button>
+                    </div>
                   </div>
 
-                  {/* Agent filter row — admin only */}
-                  {isAdmin && profiles.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginRight: 4 }}>Agent:</span>
-                      <button onClick={() => setCampaignAgentFilter(null)}
-                        style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignAgentFilter === null ? '#1a1a1a' : '#fff', color: campaignAgentFilter === null ? '#fff' : '#6b7280', borderColor: campaignAgentFilter === null ? '#1a1a1a' : '#e5e7eb' }}>
-                        All
-                      </button>
-                      {profiles.map(p => {
-                        const name = `${p.first_name} ${p.last_name}`.trim() || p.email;
-                        const count = campaigns.filter(c => c.created_by === p.id).length;
-                        if (count === 0) return null;
-                        const active = campaignAgentFilter === p.id;
-                        return (
-                          <button key={p.id} onClick={() => setCampaignAgentFilter(active ? null : p.id)}
-                            style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: active ? '#c9922c' : '#fff', color: active ? '#fff' : '#6b7280', borderColor: active ? '#c9922c' : '#e5e7eb' }}>
-                            {name} <span style={{ opacity: .7 }}>({count})</span>
-                          </button>
-                        );
-                      })}
+                  {/* New project modal */}
+                  {showAddProject && (
+                    <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>New Project</div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <input className="crm-input" placeholder="Project name *" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} style={{ flex: 2, minWidth: 160 }} />
+                        <input className="crm-input" placeholder="Description (optional)" value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} style={{ flex: 3, minWidth: 180 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
+                            <button key={col} onClick={() => setNewProjectColor(col)} style={{ width: 22, height: 22, borderRadius: '50%', background: col, border: newProjectColor === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+                          ))}
+                        </div>
+                        <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={createCampaignProject} disabled={!newProjectName.trim()}>Create</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setShowAddProject(false); setNewProjectName(''); setNewProjectDesc(''); }}>Cancel</button>
+                      </div>
                     </div>
                   )}
 
-                  {/* Status filter tabs */}
-                  {campaigns.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-                      {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => {
-                        const filtered = campaigns.filter(c => campaignAgentFilter ? c.created_by === campaignAgentFilter : true);
-                        return (
-                          <button key={f} onClick={() => setCampaignFilter(f)}
-                            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
-                            {f === 'all' ? `All (${filtered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${filtered.filter(c => c.status === f).length})`}
-                          </button>
-                        );
-                      })}
+                  {/* Edit project inline */}
+                  {editingProject && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Edit Project</div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <input className="crm-input" placeholder="Project name *" value={editingProject.name} onChange={e => setEditingProject({ ...editingProject, name: e.target.value })} style={{ flex: 2, minWidth: 160 }} />
+                        <input className="crm-input" placeholder="Description" value={editingProject.description} onChange={e => setEditingProject({ ...editingProject, description: e.target.value })} style={{ flex: 3, minWidth: 180 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
+                            <button key={col} onClick={() => setEditingProject({ ...editingProject, color: col })} style={{ width: 22, height: 22, borderRadius: '50%', background: col, border: editingProject.color === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+                          ))}
+                        </div>
+                        <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={updateCampaignProject}>Save</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setEditingProject(null)}>Cancel</button>
+                      </div>
                     </div>
                   )}
 
                   {campaignLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading campaigns…</div>
-                  ) : campaigns.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
-                      <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
-                      <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
-                      <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 12 }}>
-                      {campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter)).map(camp => (
-                        <div key={camp.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-                            {camp.type === 'email' ? '✉️' : '💬'}
+                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading…</div>
+                  ) : (() => {
+                    const visibleCampaigns = campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter));
+
+                    // Helper: render a single campaign row
+                    const renderCampaignRow = (camp: Campaign) => (
+                      <div key={camp.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#fff', borderRadius: 10, border: '1px solid #f0f0f0' }}>
+                        <div style={{ width: 38, height: 38, borderRadius: 9, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>
+                          {camp.type === 'email' ? '✉️' : '💬'}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 2 }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{camp.name}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{camp.name}</span>
-                              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', color: camp.type === 'email' ? '#1e40af' : '#065f46' }}>{camp.type.toUpperCase()}</span>
-                            </div>
-                            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                              <span>{camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)} · {camp.enrollment_count ?? 0} enrolled</span>
-                              {camp.last_sent_at
-                                ? <span style={{ color: '#16a34a', fontWeight: 500 }}> · Last sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                : <span style={{ color: '#9ca3af' }}> · Never sent</span>
-                              }
-                              {isAdmin && (
-                                inlineOwnerCampaignId === camp.id ? (
-                                  <select
-                                    autoFocus
-                                    value={camp.created_by ?? ''}
-                                    onBlur={() => setInlineOwnerCampaignId(null)}
-                                    onChange={async e => {
-                                      const newOwner = e.target.value;
-                                      await fetch(`/api/campaigns/${camp.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ created_by: newOwner }) });
-                                      setCampaigns(prev => prev.map(c => c.id === camp.id ? { ...c, created_by: newOwner } : c));
-                                      if (activeCampaign?.id === camp.id) setActiveCampaign(ac => ac ? { ...ac, created_by: newOwner } : ac);
-                                      setInlineOwnerCampaignId(null);
-                                      showToast('Owner updated ✓');
-                                    }}
-                                    style={{ fontSize: 13, fontFamily: "'DM Sans',sans-serif", border: '1px solid #c9922c', borderRadius: 6, padding: '2px 6px', color: '#c9922c', fontWeight: 600, background: '#fff', cursor: 'pointer' }}
-                                  >
-                                    {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                                  </select>
-                                ) : (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setInlineOwnerCampaignId(camp.id); }}
-                                    title="Click to change owner"
-                                    style={{ background: 'none', border: 'none', padding: '1px 0', cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 13, fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                                  >
-                                    · {(() => { const o = profiles.find(p => p.id === camp.created_by); return o ? `${o.first_name} ${o.last_name}` : '—'; })()}
-                                    <span style={{ fontSize: 10, color: '#d1a054', marginLeft: 1 }}>▾</span>
-                                  </button>
-                                )
-                              )}
-                              {!isAdmin && (() => { const owner = profiles.find(p => p.id === camp.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
-                              {camp.description && <span> · {camp.description}</span>}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
+                          <div style={{ fontSize: 12, color: '#9ca3af', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <span>{camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
+                            <span>·</span>
+                            <span>{camp.enrollment_count ?? 0} enrolled</span>
+                            {camp.last_sent_at ? <><span>·</span><span style={{ color: '#16a34a' }}>Sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></> : <><span>·</span><span>Never sent</span></>}
+                            {camp.description && <><span>·</span><span>{camp.description}</span></>}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        {/* Move to project dropdown */}
+                        {isAdmin && campaignProjects.length > 0 && (
+                          <select
+                            value={camp.project_id ?? ''}
+                            onChange={e => assignCampaignToProject(camp.id, e.target.value || null)}
+                            title="Move to project"
+                            style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', maxWidth: 130 }}
+                          >
+                            <option value="">No project</option>
+                            {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        )}
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
+                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
+                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
+                        </div>
+                      </div>
+                    );
+
+                    if (visibleCampaigns.length === 0) return (
+                      <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+                        <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
+                        <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
+                        <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>Create a project first, then add campaigns inside it</div>
+                        <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
+                      </div>
+                    );
+
+                    // Status filter pills
+                    const allFiltered = campaigns.filter(c => !campaignAgentFilter || c.created_by === campaignAgentFilter);
+                    return (
+                      <div>
+                        {/* Filter pills */}
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+                          {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
+                            <button key={f} onClick={() => setCampaignFilter(f)}
+                              style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
+                              {f === 'all' ? `All (${allFiltered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${allFiltered.filter(c => c.status === f).length})`}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Project sections */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          {campaignProjects.map(project => {
+                            const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id);
+                            const isExpanded = expandedProjects.has(project.id);
+                            return (
+                              <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
+                                {/* Project header */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                  onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has(project.id) ? n.delete(project.id) : n.add(project.id); return n; })}>
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flex: 1 }}>
+                                    {project.name}
+                                    <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
+                                    {project.description && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>· {project.description}</span>}
+                                  </div>
+                                  {isAdmin && (
+                                    <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                                        onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: project.id }); setCampaignView('builder'); }}>+ Campaign</button>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setEditingProject(project)}>Edit</button>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px', color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaignProject(project.id)}>🗑</button>
+                                    </div>
+                                  )}
+                                  <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 4 }}>{isExpanded ? '▾' : '▸'}</span>
+                                </div>
+                                {/* Campaigns inside project */}
+                                {isExpanded && (
+                                  <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {projectCampaigns.length === 0 ? (
+                                      <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>No campaigns in this project yet — click "+ Campaign" above</div>
+                                    ) : projectCampaigns.map(renderCampaignRow)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Ungrouped campaigns */}
+                          {(() => {
+                            const ungrouped = visibleCampaigns.filter(c => !c.project_id);
+                            if (ungrouped.length === 0 && campaignProjects.length > 0) return null;
+                            const isExpanded = expandedProjects.has('__ungrouped__');
+                            return (
+                              <div style={{ border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                  onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has('__ungrouped__') ? n.delete('__ungrouped__') : n.add('__ungrouped__'); return n; })}>
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', flex: 1 }}>
+                                    Ungrouped
+                                    <span style={{ fontWeight: 400, marginLeft: 8 }}>{ungrouped.length} campaign{ungrouped.length !== 1 ? 's' : ''}</span>
+                                  </div>
+                                  <span style={{ fontSize: 13, color: '#9ca3af' }}>{isExpanded ? '▾' : '▸'}</span>
+                                </div>
+                                {isExpanded && (
+                                  <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {ungrouped.length === 0 ? (
+                                      <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>All campaigns are organized into projects</div>
+                                    ) : ungrouped.map(renderCampaignRow)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -4907,7 +5018,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '', project_id: activeCampaign.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
                         {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated ✓'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
@@ -5367,6 +5478,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Campaign Name *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Monthly Market Update" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Brief description of the campaign purpose" value={newCampaign.description} onChange={e => setNewCampaign({ ...newCampaign, description: e.target.value })} /></div>
+                      {campaignProjects.length > 0 && (
+                        <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Project</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.project_id} onChange={e => setNewCampaign({ ...newCampaign, project_id: e.target.value })}>
+                            <option value="">— No project (ungrouped) —</option>
+                            {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Channel</label>

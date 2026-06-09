@@ -6,7 +6,7 @@ import { adminClient } from '@/lib/supabase-admin';
 const ALLOWED_PATCH_FIELDS = new Set([
   'name', 'description', 'type', 'frequency', 'send_date', 'send_time',
   'send_day_of_month', 'status', 'email_subject', 'email_body',
-  'sms_body', 'sender_agent_id', 'created_by',
+  'sms_body', 'sender_agent_id', 'created_by', 'project_id',
 ]);
 
 function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body.email_subject === 'string' && body.email_subject.length > 500) {
     return NextResponse.json({ error: 'email_subject must be 500 characters or fewer' }, { status: 400 });
   }
-  if (body.send_day_of_month !== undefined && body.send_day_of_month !== null) {
+  if (body.send_day_of_month !== undefined && body.send_day_of_month !== null && body.send_day_of_month !== '') {
     const day = parseInt(body.send_day_of_month, 10);
     if (!Number.isInteger(day) || day < 1 || day > 31) {
       return NextResponse.json({ error: 'send_day_of_month must be 1–31' }, { status: 400 });
@@ -70,12 +70,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Fetch current campaign to detect activation
   const { data: existing } = await supabase.from('crm_campaigns').select('status, frequency, send_date, send_time').eq('id', id).single();
 
-  // Coerce send_day_of_month to integer if provided as a string
+  // Coerce empty strings to null for date/numeric fields before hitting Postgres
   const patchPayload = { ...safeBody, updated_at: new Date().toISOString() };
   if ('send_day_of_month' in patchPayload) {
-    patchPayload.send_day_of_month = patchPayload.send_day_of_month
-      ? parseInt(patchPayload.send_day_of_month as string, 10)
-      : null;
+    const raw = patchPayload.send_day_of_month;
+    const parsed = raw !== null && raw !== undefined && raw !== '' ? parseInt(raw as string, 10) : null;
+    patchPayload.send_day_of_month = (parsed !== null && !isNaN(parsed)) ? parsed : null;
+  }
+  if ('send_date' in patchPayload && (patchPayload.send_date === '' || patchPayload.send_date === undefined)) {
+    patchPayload.send_date = null;
+  }
+  if ('send_time' in patchPayload && (patchPayload.send_time === '' || patchPayload.send_time === undefined)) {
+    patchPayload.send_time = null;
   }
 
   const { data, error } = await supabase
@@ -86,15 +92,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .single();
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
-  // If campaign just became active, schedule any enrollments that have no next_send_at
-  if (existing?.status !== 'active' && body.status === 'active' && data) {
+  // Reschedule enrollments when:
+  // (a) campaign just became active, OR
+  // (b) campaign is already active and send_date / send_time changed
+  const justActivated = existing?.status !== 'active' && data?.status === 'active';
+  const dateChanged = data?.status === 'active' && (
+    'send_date' in body || 'send_time' in body
+  );
+  if ((justActivated || dateChanged) && data) {
     const next_send_at = computeNextSend(data.frequency, data.send_date, data.send_time);
-    await supabase
-      .from('crm_campaign_enrollments')
-      .update({ next_send_at })
-      .eq('campaign_id', id)
-      .eq('active', true)
-      .is('next_send_at', null);
+    if (next_send_at) {
+      await supabase
+        .from('crm_campaign_enrollments')
+        .update({ next_send_at })
+        .eq('campaign_id', id)
+        .eq('active', true);
+    }
   }
 
   return NextResponse.json({ campaign: data });

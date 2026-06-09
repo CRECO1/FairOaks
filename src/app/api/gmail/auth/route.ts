@@ -22,7 +22,8 @@ export async function GET(req: NextRequest) {
   if (caller.id !== userId) return forbidden('Cannot initiate OAuth for another user');
 
   const clientId    = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com'}/api/gmail/callback`;
+  const baseUrl     = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com').replace(/[\r\n\s]+$/, '');
+  const redirectUri = `${baseUrl}/api/gmail/callback`;
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId!);
@@ -30,10 +31,9 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', SCOPES);
   url.searchParams.set('access_type', 'offline');
-  // When a hint is provided (adding a second account), force account picker + full consent
-  // so Google always issues a fresh refresh_token for the new account.
-  // Without select_account, Google may silently pick the already-signed-in account.
-  url.searchParams.set('prompt', hint ? 'select_account consent' : 'consent');
+  // Always force the account picker so the user can choose which Gmail to connect.
+  // 'select_account consent' shows the chooser AND ensures a refresh_token is issued.
+  url.searchParams.set('prompt', 'select_account consent');
   // Encode userId + business unit + retry flag into state
   const state = bu ? `${userId}|${bu}${retry ? '|retry' : ''}` : userId;
   url.searchParams.set('state', state);

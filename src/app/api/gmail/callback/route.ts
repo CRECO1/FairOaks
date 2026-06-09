@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encryptToken } from '@/lib/token-crypto';
 
-const BASE_URL     = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com';
+const BASE_URL     = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com').replace(/[\r\n\s]+$/, '');
 const REDIRECT_URI = `${BASE_URL}/api/gmail/callback`;
 const CRM_URL      = `${BASE_URL}/crm`;
 

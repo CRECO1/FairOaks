@@ -220,12 +220,61 @@ async function publishToFacebook(connection: SocialConnection, post: PostPayload
 
 // ── Instagram ─────────────────────────────────────────────────────────────────
 
+// Poll until the IG media container finishes processing (video encoding takes time).
+// Returns true when status_code === 'FINISHED', false on error or timeout.
+async function waitForIgContainer(containerId: string, token: string, maxMs = 60_000): Promise<boolean> {
+  const start = Date.now();
+  const delays = [3000, 5000, 7000, 10000, 10000, 10000, 15000]; // ~60s total
+  for (const delay of delays) {
+    if (Date.now() - start > maxMs) break;
+    await new Promise(r => setTimeout(r, delay));
+    const r = await fetch(
+      `https://graph.facebook.com/v18.0/${containerId}?fields=status_code,status&access_token=${token}`
+    );
+    const d = await r.json();
+    if (d.status_code === 'FINISHED') return true;
+    if (d.status_code === 'ERROR') return false;
+    // IN_PROGRESS or PUBLISHED — keep waiting
+  }
+  return false;
+}
+
 async function publishToInstagram(connection: SocialConnection, post: PostPayload): Promise<PublishResult> {
-  if (!post.media_urls?.[0]) return { success: false, error: 'Instagram requires at least one image' };
+  if (!post.media_urls?.[0]) return { success: false, error: 'Instagram requires at least one image or video' };
 
   const token = decryptToken(connection.access_token);
   const igId = connection.platform_account_id;
+  const firstUrl = post.media_urls[0];
 
+  // ── Video (Reel) ──────────────────────────────────────────────────────────
+  if (isVideoUrl(firstUrl)) {
+    const containerRes = await fetch(`https://graph.facebook.com/v18.0/${igId}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        media_type: 'REELS',
+        video_url: firstUrl,
+        caption: post.content,
+        access_token: token,
+      }),
+    });
+    const container = await containerRes.json();
+    if (!container.id) return { success: false, error: container.error?.message || 'IG video container creation failed' };
+
+    const ready = await waitForIgContainer(container.id, token);
+    if (!ready) return { success: false, error: 'IG video processing timed out or failed — check the video format (MP4, H.264, max 15 min)' };
+
+    const publishRes = await fetch(`https://graph.facebook.com/v18.0/${igId}/media_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creation_id: container.id, access_token: token }),
+    });
+    const published = await publishRes.json();
+    if (published.id) return { success: true, platform_post_id: published.id };
+    return { success: false, error: published.error?.message || 'IG reel publish failed' };
+  }
+
+  // ── Carousel (multiple images) ────────────────────────────────────────────
   if (post.media_urls.length > 1) {
     const childIds: string[] = [];
     for (const url of post.media_urls) {
@@ -256,10 +305,11 @@ async function publishToInstagram(connection: SocialConnection, post: PostPayloa
     return { success: false, error: published.error?.message || 'IG carousel publish failed' };
   }
 
+  // ── Single image ──────────────────────────────────────────────────────────
   const containerRes = await fetch(`https://graph.facebook.com/v18.0/${igId}/media`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image_url: post.media_urls[0], caption: post.content, access_token: token }),
+    body: JSON.stringify({ image_url: firstUrl, caption: post.content, access_token: token }),
   });
   const container = await containerRes.json();
   if (!container.id) return { success: false, error: container.error?.message || 'IG container creation failed' };
