@@ -428,6 +428,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [expandedContactThreads, setExpandedContactThreads] = useState<Set<string>>(new Set());
+  const [replyingToThreadKey, setReplyingToThreadKey] = useState<string | null>(null);
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const contactAttachInputRef = useRef<HTMLInputElement>(null);
@@ -649,6 +650,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setNewActivity({ type: 'call', note: '' });
       setShowContactCompose(false);
       setReplyToContactEmail(null);
+      setReplyingToThreadKey(null);
     } else {
       setClientActivities([]);
       setClientCampaignSends([]);
@@ -1717,6 +1719,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         showToast('Email sent');
         setShowContactCompose(false);
         setReplyToContactEmail(null);
+        setReplyingToThreadKey(null);
         clearContactComposeBody();
         setComposeSubject('');
         setComposeAttachments([]);
@@ -8158,11 +8161,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           setComposeSubject('');
                           setReplyToContactEmail(null);
                           setComposeAttachments([]);
+                          setReplyingToThreadKey(null);
                         }
                         setShowContactCompose(v => !v);
                       }}
                         style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                        ✉️ Compose
+                        ✉️ New Email
                       </button>
                     </div>
 
@@ -8411,21 +8415,99 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       })()}
                                     </div>
                                   ))}
-                                  {/* Reply button */}
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', background: '#fff' }}>
-                                    <button
-                                      onClick={() => {
-                                        const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
-                                        setReplyToContactEmail(lastEmail);
-                                        setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                        clearContactComposeBody();
-                                        setComposeAttachments([]);
-                                        setShowContactCompose(true);
-                                      }}
-                                      style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                      ↩ Reply
-                                    </button>
-                                  </div>
+                                  {/* Inline reply compose */}
+                                  {replyingToThreadKey === threadKey ? (
+                                    <div style={{ borderTop: '2px solid #c9922c', background: '#fff' }}>
+                                      {/* Reply header */}
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <span style={{ fontSize: 13, fontWeight: 600 }}>↩ Reply to {emailDisplayName(replyToContactEmail?.from_email ?? c.email)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <button onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced'); } })}
+                                            style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>↻ Sig</button>
+                                          <button onClick={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                                        </div>
+                                      </div>
+                                      {/* Subject (read-only for replies) */}
+                                      <div style={{ padding: '6px 12px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#6b7280', display: 'flex', gap: 8 }}>
+                                        <span style={{ color: '#9ca3af' }}>Subject:</span>
+                                        <span style={{ fontWeight: 600, color: '#374151' }}>{composeSubject}</span>
+                                      </div>
+                                      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        {/* Toolbar */}
+                                        <div style={{ border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: '#fafafa', borderBottom: '1px solid #e9ecef' }}>
+                                            <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmdContact('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
+                                              {['Arial','Georgia','Times New Roman','Courier New','Verdana'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f}</option>)}
+                                            </select>
+                                            <select className="rtb-select" aria-label="Font size" defaultValue="3" onChange={e => richCmdContact('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
+                                              {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                                            </select>
+                                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 4px' }} />
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('bold'); }} style={{ fontWeight: 700, fontSize: 14 }}>B</button>
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('italic'); }} style={{ fontStyle: 'italic', fontSize: 14 }}>I</button>
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('underline'); }} style={{ textDecoration: 'underline', fontSize: 14 }}>U</button>
+                                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 4px' }} />
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('insertUnorderedList'); }} title="Bullets">•≡</button>
+                                          </div>
+                                          <div
+                                            ref={contactComposeBodyRef}
+                                            contentEditable suppressContentEditableWarning
+                                            role="textbox" aria-multiline="true" aria-label="Reply body"
+                                            style={{ minHeight: 140, maxHeight: 280, overflowY: 'auto', padding: '12px 14px', fontSize: 14, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: '#111' }}
+                                            data-placeholder="Write your reply…"
+                                          />
+                                        </div>
+                                        {profile?.email_signature && (
+                                          <div style={{ fontSize: 12, color: '#9ca3af', borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+                                            <div style={{ padding: '6px 10px', background: '#f9fafb', borderRadius: 5, fontSize: 13, color: '#374151' }}
+                                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(profile.email_signature) }} />
+                                          </div>
+                                        )}
+                                        {/* Attachments */}
+                                        <input ref={contactAttachInputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []); setComposeAttachments(prev => [...prev, ...files]); e.target.value = ''; }} />
+                                        {composeAttachments.length > 0 && (
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            {composeAttachments.map((file, i) => (
+                                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, color: '#374151' }}>
+                                                <span>📎</span><span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                                                <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <button onClick={() => contactAttachInputRef.current?.click()} style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>📎 Attach</button>
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <button onClick={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); setComposeAttachments([]); clearContactComposeBody(); }}
+                                              style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                                            <button onClick={() => sendGmailEmailToContact(c)} disabled={composeSending}
+                                              style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
+                                              {composeSending ? 'Sending…' : '↩ Send Reply'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
+                                      <button
+                                        onClick={() => {
+                                          const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
+                                          const replyTo = lastEmail.direction === 'received' ? lastEmail : (threadEmails.find(e => e.direction === 'received') ?? lastEmail);
+                                          setReplyToContactEmail(replyTo);
+                                          setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                          clearContactComposeBody();
+                                          setComposeAttachments([]);
+                                          setShowContactCompose(false);
+                                          setReplyingToThreadKey(threadKey);
+                                        }}
+                                        style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                                        ↩ Reply
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
