@@ -473,6 +473,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
+  // Campaign quick preview modal
+  const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(null);
   // Campaign projects (folders)
   const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(['__ungrouped__']));
@@ -4906,6 +4908,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </select>
                         )}
                         <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(camp)} title="Preview email">👁 Preview</button>
                           <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
                           {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
                           {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
@@ -5008,6 +5011,58 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
 
               {/* Detail view */}
+              {/* Campaign quick preview modal */}
+              {previewCampaign && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setPreviewCampaign(null)}>
+                  <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                    {/* Modal header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{previewCampaign.name}</div>
+                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Email preview — sample data</div>
+                      </div>
+                      <button onClick={() => setPreviewCampaign(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
+                    </div>
+                    {/* Subject */}
+                    <div style={{ padding: '12px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                      <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
+                        {(previewCampaign.email_subject ?? '(no subject)')
+                          .replace(/\{\{first_name\}\}/g, 'Jane')
+                          .replace(/\{\{last_name\}\}/g, 'Smith')
+                          .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())}
+                      </span>
+                    </div>
+                    {/* Email body */}
+                    <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                      {previewCampaign.email_body ? (
+                        <iframe
+                          srcDoc={previewCampaign.email_body
+                            .replace(/\{\{first_name\}\}/g, 'Jane')
+                            .replace(/\{\{last_name\}\}/g, 'Smith')
+                            .replace(/\{\{full_name\}\}/g, 'Jane Smith')
+                            .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                            .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@example.com')
+                            .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
+                            .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
+                            .replace(/\{\{unsubscribe_url\}\}/g, '#')}
+                          style={{ width: '100%', border: 'none', display: 'block' }}
+                          height={600}
+                          title="Email preview"
+                          sandbox="allow-same-origin"
+                        />
+                      ) : (
+                        <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No email body yet.</div>
+                      )}
+                    </div>
+                    <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafafa' }}>
+                      <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(null)}>Close</button>
+                      <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setActiveCampaign(previewCampaign); loadCampaignEnrollments(previewCampaign.id); loadCampaignSends(previewCampaign.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); setPreviewCampaign(null); }}>Manage →</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {campaignView === 'detail' && activeCampaign && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
