@@ -475,6 +475,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignActivating, setCampaignActivating] = useState(false);
   // Campaign quick preview modal
   const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(null);
+  // View sent campaign email modal (from contact activity feed)
+  const [viewCampaignSendModal, setViewCampaignSendModal] = useState<{ send: CampaignSend & { campaign_name?: string }; contact: Client } | null>(null);
   // Campaign projects (folders)
   const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(['__ungrouped__']));
@@ -878,7 +880,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadContactEmails = useCallback(async (clientId: string) => {
     setContactEmailsLoading(true);
     const { data } = await supabase.from('crm_deal_emails').select('*').eq('client_id', clientId).order('email_date', { ascending: false });
-    setContactEmails((data ?? []) as DealEmail[]);
+    const emails = (data ?? []) as DealEmail[];
+    setContactEmails(emails);
+    // Auto-expand the most recent thread
+    if (emails.length > 0) {
+      const mostRecent = emails[0];
+      const firstThreadKey = mostRecent.gmail_thread_id ?? `solo_${mostRecent.id}`;
+      setExpandedContactThreads(new Set([firstThreadKey]));
+    } else {
+      setExpandedContactThreads(new Set());
+    }
     setContactEmailsLoading(false);
   }, []);
 
@@ -5063,6 +5074,67 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               )}
 
+              {/* View Sent Campaign Email Modal */}
+              {viewCampaignSendModal && (() => {
+                const { send, contact } = viewCampaignSendModal;
+                const camp = campaigns.find(c => c.id === send.campaign_id);
+                const renderedBody = camp?.email_body
+                  ? camp.email_body
+                    .replaceAll('{{first_name}}', contact.first_name ?? '')
+                    .replaceAll('{{last_name}}', contact.last_name ?? '')
+                    .replaceAll('{{full_name}}', [contact.first_name, contact.last_name].filter(Boolean).join(' '))
+                    .replaceAll('{{email}}', contact.email ?? '')
+                    .replaceAll('{{client_type}}', contact.type ?? '')
+                    .replaceAll('{{agent_name}}', `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim())
+                    .replaceAll('{{agent_email}}', profile?.email ?? '')
+                    .replaceAll('{{agent_phone}}', profile?.phone ?? '')
+                    .replaceAll('{{brokerage}}', businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
+                    .replaceAll('{{unsubscribe_url}}', '#preview')
+                  : null;
+                return (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setViewCampaignSendModal(null)}>
+                    <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 700, boxShadow: '0 24px 80px rgba(0,0,0,.35)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#111' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{send.campaign_name}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                            Sent to {[contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email} · {new Date(send.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {send.opened_at && <span style={{ marginLeft: 8, color: '#86efac', fontWeight: 600 }}>· 👁 Opened</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => setViewCampaignSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
+                      </div>
+                      {/* Subject */}
+                      <div style={{ padding: '10px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{send.subject ?? camp?.email_subject ?? '(no subject)'}</span>
+                      </div>
+                      {/* Email body */}
+                      <div style={{ maxHeight: '65vh', overflowY: 'auto', background: '#fff' }}>
+                        {renderedBody ? (
+                          <iframe
+                            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${renderedBody}</body></html>`}
+                            style={{ width: '100%', border: 'none', display: 'block', minHeight: 500 }}
+                            title="Sent email"
+                            sandbox="allow-same-origin"
+                            onLoad={(e) => { try { const doc = (e.currentTarget as HTMLIFrameElement).contentDocument; if (doc) e.currentTarget.style.height = (doc.body.scrollHeight + 40) + 'px'; } catch {} }}
+                          />
+                        ) : (
+                          <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>📧</div>
+                            <div>Email template not available for preview.</div>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', background: '#fafafa' }}>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setViewCampaignSendModal(null)}>Close</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {campaignView === 'detail' && activeCampaign && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -7951,7 +8023,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Activity Log */}
                 <div>
-                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Activity Log</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Activity Log</div>
+                    <button onClick={() => { loadClientActivities(c.id); loadClientCampaignSends(c.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, padding: '2px 6px', borderRadius: 4 }} title="Refresh">⟳ Refresh</button>
+                  </div>
 
                   {/* Log new activity */}
                   <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
@@ -8050,11 +8125,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: statusColor.bg, color: statusColor.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.status}</span>
                                     <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
                                   </div>
-                                  <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 2 }}>{s.campaign_name}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                                    <div style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>{s.campaign_name}</div>
+                                    {s.status === 'sent' && s.type === 'email' && (
+                                      <button onClick={() => setViewCampaignSendModal({ send: s, contact: c })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 8px', fontSize: 11, color: '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>👁 View</button>
+                                    )}
+                                  </div>
                                   {s.subject && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>Subject: {s.subject}</div>}
-                                  {s.body_preview && (
-                                    <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.4, background: '#f9fafb', borderRadius: 6, padding: '5px 8px', whiteSpace: 'pre-wrap', overflow: 'hidden', maxHeight: 48, textOverflow: 'ellipsis' }}>{s.body_preview}</div>
-                                  )}
+                                  {s.opened_at ? (
+                                    <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>👁 Opened {new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                                  ) : (s.tracking_id && s.status === 'sent') ? (
+                                    <div style={{ fontSize: 11, color: '#9ca3af' }}>Not opened yet</div>
+                                  ) : null}
                                 </div>
                               </div>
                             );
@@ -8220,9 +8302,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Sync bar */}
                     <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 13, color: '#166534' }}>✉️ Gmail — direct thread with {c.email}</span>
+                        <div>
+                          <div style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>✉️ Email Thread with {c.email}</div>
+                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Searches all {gmailAccounts.length > 1 ? `${gmailAccounts.length} connected accounts` : 'connected Gmail accounts'} for replies</div>
+                        </div>
                         <button onClick={() => syncGmailForContact(c)} disabled={syncing}
-                          style={{ padding: '4px 12px', fontSize: 13, fontWeight: 600, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
+                          style={{ padding: '4px 12px', fontSize: 13, fontWeight: 600, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1, whiteSpace: 'nowrap' }}>
                           {syncing ? 'Syncing…' : '↻ Sync'}
                         </button>
                       </div>
@@ -8313,7 +8398,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>to {emailDisplayName(e.to_email)}</div>
                                         </div>
                                       </div>
-                                      <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap', paddingLeft: 42 }}>{cleanEmailBody(e.body)}</div>
+                                      {(() => {
+                                        const bodyText = cleanEmailBody(e.body ?? '');
+                                        if (!bodyText.trim()) return null;
+                                        return (
+                                          <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
+                                            {bodyText.split('\n').map((line, i) => (
+                                              <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{line || ' '}</p>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
                                   ))}
                                   {/* Reply button */}
