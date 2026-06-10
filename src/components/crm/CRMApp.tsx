@@ -1697,7 +1697,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       );
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: client.email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
       });
       const json = await res.json();
@@ -1747,7 +1747,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
       });
       let j: any = {};
