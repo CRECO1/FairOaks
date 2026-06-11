@@ -81,8 +81,29 @@ function emailAvatarColor(addr: string): string {
   return colors[Math.abs(h) % colors.length];
 }
 
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&hellip;/gi, '…')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+}
+
 function cleanEmailBody(raw: string): string {
-  const lines = raw.split('\n');
+  // If HTML email, convert to plain text first
+  const text = /<[a-z][\s\S]*>/i.test(raw) ? htmlToPlainText(raw) : raw;
+  const lines = text.split('\n');
   const result: string[] = [];
   for (const line of lines) {
     const t = line.trim();
@@ -6948,7 +6969,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>to {emailDisplayName(e.to_email)}</div>
                                       </div>
                                     </div>
-                                    <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap', paddingLeft: 42 }}>{cleanEmailBody(e.body)}</div>
+                                    {(() => {
+                                      const bodyText = cleanEmailBody(e.body ?? '');
+                                      if (!bodyText.trim()) return null;
+                                      return (
+                                        <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
+                                          {bodyText.split('\n').map((line, i) => (
+                                            <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{line || ' '}</p>
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 );})}
 
