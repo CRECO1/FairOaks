@@ -29,3 +29,4 @@ media/
 
 # Claude local files
 .claude/
+tsconfig.tsbuildinfo
