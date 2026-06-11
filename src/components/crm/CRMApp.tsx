@@ -100,18 +100,33 @@ function htmlToPlainText(html: string): string {
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 }
 
+// Patterns that mark the start of boilerplate we want to cut off
+const CUTOFF_PATTERNS = [
+  /CONFIDENTIALITY NOTICE/i,
+  /CONFIDENTIALITY AND DISCLAIMER/i,
+  /This e-?mail( message)? (is intended|may contain)/i,
+  /This message (is intended|may contain)/i,
+  /Texas Real Estate Commission Information About Brokerage/i,
+  /Information About Brokerage Services/i,
+  /^On .{5,200} wrote:/,
+  /^[-_]{3,}/,
+];
+
 function cleanEmailBody(raw: string): string {
   // If HTML email, convert to plain text first
-  const text = /<[a-z][\s\S]*>/i.test(raw) ? htmlToPlainText(raw) : raw;
+  let text = /<[a-z][\s\S]*>/i.test(raw) ? htmlToPlainText(raw) : raw;
+
+  // Inline cut — truncate at any boilerplate marker even if it's mid-paragraph
+  for (const pat of CUTOFF_PATTERNS) {
+    const m = pat.exec(text);
+    if (m && m.index !== undefined) text = text.slice(0, m.index);
+  }
+
   const lines = text.split('\n');
   const result: string[] = [];
   for (const line of lines) {
     const t = line.trim();
     if (t.startsWith('>')) continue;
-    if (/^On .{5,120} wrote:$/.test(t)) break;
-    if (/^[-_]{3,}/.test(t)) break;
-    if (/^CONFIDENTIALITY NOTICE/i.test(t)) break;
-    if (/^This (e-?mail|message) (message |communication )?(is intended|may contain)/i.test(t)) break;
     if (/^(Thanks,?|Thank you,?|Best,?|Regards,?|Sincerely,?|Cheers,?)$/i.test(t)) { result.push(line); break; }
     result.push(line);
   }
