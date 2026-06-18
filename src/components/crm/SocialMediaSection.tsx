@@ -144,6 +144,69 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
     hashtags: '#FairOaksRealty #DreamHome #TexasRealEstate #BuyingAHome #SellingYourHome #FairOaksCommunity #RealEstateTips',
     mediaUrls: ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1080&h=1080&fit=crop'],
   },
+  {
+    label: 'Post 6 — Market Update',
+    emoji: '📊',
+    platform: 'facebook',
+    scheduledDaysOut: 10,
+    content: `The Fair Oaks Ranch market is moving. 📊\n\nHere's what buyers and sellers need to know right now:\n\n📈 Homes are still selling above list in the right price bands\n⏱️ Days on market is ticking up — buyers have a little more breathing room\n🏡 Inventory is thin, but serious sellers are still winning\n\nThinking about making a move this year? Let's talk strategy before you list — or before you make an offer.\n\n📍 8000 Fair Oaks Pkwy | fairoaksrealtygroup.com`,
+    hashtags: '#FairOaksRealEstate #MarketUpdate #TexasRealEstate #FairOaksRanch #HomeSelling #HomeBuying',
+    mediaUrls: ['https://images.unsplash.com/photo-1460472178825-e5240623afd5?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 7 — Neighborhood Love',
+    emoji: '🌿',
+    platform: 'instagram',
+    scheduledDaysOut: 12,
+    content: `Fair Oaks Ranch isn't just a zip code. It's a lifestyle. 🌿\n\nHill Country views. Top-rated schools. Neighbors who actually know your name.\n\nWe're proud to call this community home — and even prouder to help families find their place in it.\n\nIf you've been thinking about making the move to Fair Oaks Ranch, let's talk. We know every street.\n\n🔗 Link in bio.`,
+    hashtags: '#FairOaksRanch #HillCountry #TexasLiving #CommunityFirst #FairOaksRealty #FamilyFriendly',
+    mediaUrls: ['https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 8 — Seller Tip',
+    emoji: '💡',
+    platform: 'instagram',
+    scheduledDaysOut: 14,
+    content: `The #1 mistake sellers make? Skipping the prep. 💡\n\nHomes that are properly staged and priced from Day 1 sell faster and for more money — every time.\n\nHere's what we do before your sign hits the yard:\n✅ Pricing strategy based on real comps\n✅ Professional photography\n✅ Pre-market exposure to our buyer network\n✅ Targeted digital marketing\n\nYour home gets one first impression. Let's make it count.\n\n📞 (210) 817-3443`,
+    hashtags: '#SellerTips #ListingAgent #SellYourHome #FairOaksRealty #RealEstateTips #HomeSelling',
+    mediaUrls: ['https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 9 — Client Love',
+    emoji: '🙌',
+    platform: 'instagram',
+    scheduledDaysOut: 17,
+    content: `Nothing means more to us than this. 💛\n\nWhen a client calls us after closing — not to ask about something, just to say thank you — that's the whole reason we do this.\n\nWe don't measure success by transactions. We measure it by relationships.\n\nIf you've worked with Fair Oaks Realty Group, we'd love to hear from you. Drop a comment or send us a message — your story might just help another family make their move.`,
+    hashtags: '#ClientLove #RealEstateFamily #FairOaksRealty #Testimonial #RealtorLife #ThankYou',
+    mediaUrls: ['https://images.unsplash.com/photo-1531496730074-83b0f27f6338?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 10 — Buyer Tip',
+    emoji: '🔑',
+    platform: 'facebook',
+    scheduledDaysOut: 19,
+    content: `Thinking about buying in Fair Oaks Ranch? Here's what most buyers don't do — but should. 🔑\n\n1️⃣ Get pre-approved before you start touring (not pre-qualified — pre-approved)\n2️⃣ Know your non-negotiables vs. your nice-to-haves\n3️⃣ Work with a local agent who knows the neighborhood — not just the MLS\n\nThe right home is out there. The right strategy gets you in it.\n\nWe're here when you're ready. 🤝\n\n📍 8000 Fair Oaks Pkwy`,
+    hashtags: '#BuyerTips #FirstTimeHomeBuyer #FairOaksRanch #HomeSearch #RealEstate #FairOaksRealty',
+    mediaUrls: ['https://images.unsplash.com/photo-1560184897-ae75f418493e?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 11 — Agent Spotlight',
+    emoji: '⭐',
+    platform: 'instagram',
+    scheduledDaysOut: 21,
+    content: `Behind every great real estate experience is a great agent. 💛\n\nOur team has called Fair Oaks Ranch home for years — and it shows. From school districts to street-by-street comps, they know this market inside and out.\n\nReady to be matched with the right agent for your situation?\n\n📞 (210) 817-3443\n🌐 fairoaksrealtygroup.com`,
+    hashtags: '#MeetTheTeam #FairOaksRealty #RealEstateAgent #AgentSpotlight #SanAntonioRealtor',
+    mediaUrls: ['https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 12 — CRECO Cross-Promo',
+    emoji: '🏗️',
+    platform: 'facebook',
+    scheduledDaysOut: 24,
+    content: `Big things are happening on Dietz Elkhorn. 👀\n\nOur commercial team at CRECO is pre-leasing a brand-new 20,000 SF retail center right here in Fair Oaks Ranch — and the trade area demographics are unlike anything else in the corridor.\n\nMedian household income over $168K. Hill Country lifestyle. A community that shops local.\n\nIf you're a local business owner looking for a Fair Oaks Ranch address, now is the time.\n\n🔗 crecotx.com/8979-dietz-elkhorn`,
+    hashtags: '#FairOaksRanch #DietzElkhorn #CRECO #RetailSpace #LocalBusiness #CommercialRealEstate',
+    mediaUrls: ['https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1080&h=1080&fit=crop'],
+  },
 ];
 
 function platformEmoji(p: SocialPlatform) {
@@ -552,7 +615,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           }),
         });
       }
-      if (!silent) toast('📢 5 campaign posts saved to Drafts!');
+      if (!silent) toast('📢 12 campaign posts saved to Drafts!');
       setPostQueueTab('drafts');
       const res = await fetch('/api/crm/social/posts');
       const data = await res.json();
