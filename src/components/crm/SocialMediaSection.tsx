@@ -98,11 +98,11 @@ const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
 const POSTABLE_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
 
 // ── New Office Campaign Posts ──────────────────────────────────────────────────
-const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlatform; content: string; hashtags: string; scheduledDaysOut: number; mediaUrls: string[] }> = [
+const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platforms: SocialPlatform[]; content: string; hashtags: string; scheduledDaysOut: number; mediaUrls: string[] }> = [
   {
     label: 'Post 1 — Teaser',
     emoji: '👀',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 0,
     content: `Something big is coming to Fair Oaks. 👀\n\nWe've been building something special for our clients, our agents, and our community — and we can't wait to share it with you.\n\nStay tuned. 🗝️`,
     hashtags: '#FairOaksRealty #ComingSoon #FairOaks #RealEstateTexas #NewBeginnings',
@@ -111,7 +111,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 2 — Grand Announcement',
     emoji: '🎉',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 3,
     content: `🎉 WE'VE MOVED — and we love our new home.\n\nFair Oaks Realty Group has officially opened its doors at our brand-new location:\n\n📍 8000 Fair Oaks Pkwy\n\nThis move is more than a new address — it's a reflection of how far we've come and our commitment to serving you at the highest level. Bigger space. Better tools. Same team that's always had your back.\n\nCome see us. We'd love to have you stop by. 🤝`,
     hashtags: '#FairOaksRealtyGroup #NewOffice #FairOaksPkwy #RealEstate #SanAntonio #GrandOpening #WeveMovedHome',
@@ -120,7 +120,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 3 — Inside Look',
     emoji: '🏠',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 4,
     content: `Take a look inside our new home. 🏠✨\n\nWe designed this space with one goal in mind — giving our clients and agents the best possible experience. Swipe to see where the magic happens. ➡️\n\nWhether you're buying, selling, or just curious about the market — our door is always open.\n\n📍 8000 Fair Oaks Pkwy\n🌐 fairoaksrealtygroup.com`,
     hashtags: '#OfficeTour #FairOaksRealty #RealEstateLife #NewSpace #RealEstateAgents #FairOaksTexas',
@@ -129,7 +129,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 4 — Meet the Team',
     emoji: '💛',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 5,
     content: `The people make the place. 💛\n\nMeet the team behind Fair Oaks Realty Group — now settled into our new office at 8000 Fair Oaks Pkwy and ready to help you make your next move.\n\nBuying? Selling? Relocating? We've got an expert for every situation.\n\nDrop a 👋 in the comments and we'll make sure you're connected with the right agent.`,
     hashtags: '#MeetTheTeam #FairOaksRealtyGroup #RealEstateAgents #FairOaks #NewOffice #YourRealtors',
@@ -138,7 +138,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 5 — Community CTA',
     emoji: '🏡',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 7,
     content: `Home isn't just where you live — it's where you belong. 🏡\n\nAt Fair Oaks Realty Group, we've planted our roots right here in the community we love. Our new office at 8000 Fair Oaks Pkwy is our home base, but your dream home is what drives us.\n\nIf you're thinking about buying or selling in 2025 — let's talk. No pressure, just a conversation.\n\n🔗 Link in bio to connect with an agent.`,
     hashtags: '#FairOaksRealty #DreamHome #TexasRealEstate #BuyingAHome #SellingYourHome #FairOaksCommunity #RealEstateTips',
@@ -147,7 +147,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 6 — Market Update',
     emoji: '📊',
-    platform: 'facebook',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 10,
     content: `The Fair Oaks Ranch market is moving. 📊\n\nHere's what buyers and sellers need to know right now:\n\n📈 Homes are still selling above list in the right price bands\n⏱️ Days on market is ticking up — buyers have a little more breathing room\n🏡 Inventory is thin, but serious sellers are still winning\n\nThinking about making a move this year? Let's talk strategy before you list — or before you make an offer.\n\n📍 8000 Fair Oaks Pkwy | fairoaksrealtygroup.com`,
     hashtags: '#FairOaksRealEstate #MarketUpdate #TexasRealEstate #FairOaksRanch #HomeSelling #HomeBuying',
@@ -156,7 +156,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 7 — Neighborhood Love',
     emoji: '🌿',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 12,
     content: `Fair Oaks Ranch isn't just a zip code. It's a lifestyle. 🌿\n\nHill Country views. Top-rated schools. Neighbors who actually know your name.\n\nWe're proud to call this community home — and even prouder to help families find their place in it.\n\nIf you've been thinking about making the move to Fair Oaks Ranch, let's talk. We know every street.\n\n🔗 Link in bio.`,
     hashtags: '#FairOaksRanch #HillCountry #TexasLiving #CommunityFirst #FairOaksRealty #FamilyFriendly',
@@ -165,7 +165,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 8 — Seller Tip',
     emoji: '💡',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 14,
     content: `The #1 mistake sellers make? Skipping the prep. 💡\n\nHomes that are properly staged and priced from Day 1 sell faster and for more money — every time.\n\nHere's what we do before your sign hits the yard:\n✅ Pricing strategy based on real comps\n✅ Professional photography\n✅ Pre-market exposure to our buyer network\n✅ Targeted digital marketing\n\nYour home gets one first impression. Let's make it count.\n\n📞 (210) 817-3443`,
     hashtags: '#SellerTips #ListingAgent #SellYourHome #FairOaksRealty #RealEstateTips #HomeSelling',
@@ -174,7 +174,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 9 — Client Love',
     emoji: '🙌',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 17,
     content: `Nothing means more to us than this. 💛\n\nWhen a client calls us after closing — not to ask about something, just to say thank you — that's the whole reason we do this.\n\nWe don't measure success by transactions. We measure it by relationships.\n\nIf you've worked with Fair Oaks Realty Group, we'd love to hear from you. Drop a comment or send us a message — your story might just help another family make their move.`,
     hashtags: '#ClientLove #RealEstateFamily #FairOaksRealty #Testimonial #RealtorLife #ThankYou',
@@ -183,7 +183,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 10 — Buyer Tip',
     emoji: '🔑',
-    platform: 'facebook',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 19,
     content: `Thinking about buying in Fair Oaks Ranch? Here's what most buyers don't do — but should. 🔑\n\n1️⃣ Get pre-approved before you start touring (not pre-qualified — pre-approved)\n2️⃣ Know your non-negotiables vs. your nice-to-haves\n3️⃣ Work with a local agent who knows the neighborhood — not just the MLS\n\nThe right home is out there. The right strategy gets you in it.\n\nWe're here when you're ready. 🤝\n\n📍 8000 Fair Oaks Pkwy`,
     hashtags: '#BuyerTips #FirstTimeHomeBuyer #FairOaksRanch #HomeSearch #RealEstate #FairOaksRealty',
@@ -192,7 +192,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 11 — Agent Spotlight',
     emoji: '⭐',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 21,
     content: `Behind every great real estate experience is a great agent. 💛\n\nOur team has called Fair Oaks Ranch home for years — and it shows. From school districts to street-by-street comps, they know this market inside and out.\n\nReady to be matched with the right agent for your situation?\n\n📞 (210) 817-3443\n🌐 fairoaksrealtygroup.com`,
     hashtags: '#MeetTheTeam #FairOaksRealty #RealEstateAgent #AgentSpotlight #SanAntonioRealtor',
@@ -201,7 +201,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 12 — CRECO Cross-Promo',
     emoji: '🏗️',
-    platform: 'facebook',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 24,
     content: `Big things are happening on Dietz Elkhorn. 👀\n\nOur commercial team at CRECO is pre-leasing a brand-new 20,000 SF retail center right here in Fair Oaks Ranch — and the trade area demographics are unlike anything else in the corridor.\n\nMedian household income over $168K. Hill Country lifestyle. A community that shops local.\n\nIf you're a local business owner looking for a Fair Oaks Ranch address, now is the time.\n\n🔗 crecotx.com/8979-dietz-elkhorn`,
     hashtags: '#FairOaksRanch #DietzElkhorn #CRECO #RetailSpace #LocalBusiness #CommercialRealEstate',
@@ -603,7 +603,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             content: cp.content,
-            platforms: [cp.platform],
+            platforms: cp.platforms,
             connection_ids: [],
             scheduled_at: scheduledDate.toISOString(),
             status: 'draft',
@@ -1634,7 +1634,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               <div style={{
                 display: 'flex', gap: 6, padding: '16px 16px 0',
                 borderBottom: '1px solid #f0f0f0', paddingBottom: 16,
+                alignItems: 'center', justifyContent: 'space-between',
               }}>
+                <div style={{ display: 'flex', gap: 6 }}>
                 {tabConfig.map(({ key, label, icon }) => {
                   const count = posts.filter(p => {
                     if (key === 'scheduled') return p.status === 'scheduled';
@@ -1668,6 +1670,20 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                     </button>
                   );
                 })}
+                </div>
+                <button
+                  onClick={() => importCampaignAsDrafts(false)}
+                  disabled={campaignImporting}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', borderRadius: 100, border: '1px solid #e5e7eb',
+                    background: '#fff', fontSize: 12, fontWeight: 700,
+                    color: '#1a1a2e', cursor: campaignImporting ? 'not-allowed' : 'pointer',
+                    opacity: campaignImporting ? 0.6 : 1, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {campaignImporting ? '⏳ Importing…' : '📥 Load Campaign Drafts'}
+                </button>
               </div>
 
               {/* Queue content */}
