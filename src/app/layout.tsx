@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
+import StickyCTA from '@/components/ui/StickyCTA';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -112,6 +113,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AnalyticsScripts />
+        <StickyCTA />
         {/* JSON-LD Structured Data — LocalBusiness + RealEstateAgent */}
         <script
           type="application/ld+json"

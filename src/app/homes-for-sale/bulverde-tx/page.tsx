@@ -9,6 +9,7 @@ import {
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CITY = 'Bulverde';
@@ -268,21 +269,43 @@ export default function BulverdeTxPage() {
 
         <section className="section-compact bg-background-cream">
           <Container>
-            <div className="rounded-2xl bg-primary px-8 py-14 text-center text-white">
-              <p className="overline mb-3 text-gold">Let&apos;s Get Started</p>
-              <h2 className="mb-4 font-heading text-display-sm font-bold text-white">
-                Ready to find your home in Bulverde?
-              </h2>
-              <p className="mb-8 mx-auto max-w-xl text-body-lg text-white/70">
-                Contact our local experts for honest guidance on Bulverde real estate — new construction, resale, or acreage.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Button size="lg" asChild>
-                  <Link href="/contact?area=Bulverde">Contact Our Bulverde Experts</Link>
-                </Button>
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <Link href="/listings?city=Bulverde">Browse Listings <ArrowRight className="ml-2 h-4 w-4" /></Link>
-                </Button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+              <div>
+                <p className="overline mb-3 text-gold">Free · No Obligation</p>
+                <h2 className="font-heading text-display-sm font-bold text-primary mb-4">
+                  Thinking about Bulverde?<br />Let&apos;s talk.
+                </h2>
+                <p className="text-body text-foreground-muted leading-relaxed mb-6">
+                  Whether you&apos;re buying your first home, upsizing, or relocating from out of state —
+                  our Bulverde specialists know every community, builder, and price band in the corridor.
+                  Get honest answers, no pressure.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <a
+                    href="tel:+12103909997"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary px-5 py-3 text-body-sm font-semibold text-primary hover:bg-primary hover:text-white transition-colors"
+                  >
+                    <Phone className="h-4 w-4" /> 210-390-9997
+                  </a>
+                  <Button asChild>
+                    <Link href="/listings?city=Bulverde">Browse Bulverde Listings <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                  </Button>
+                </div>
+                {/* Social proof */}
+                <div className="mt-6 rounded-xl border border-border bg-white p-5">
+                  <div className="mb-2 flex gap-0.5">
+                    {[1,2,3,4,5].map(i => <span key={i} className="text-gold text-lg leading-none">★</span>)}
+                  </div>
+                  <p className="text-body-sm italic text-foreground-muted leading-relaxed">
+                    &ldquo;We were relocating from out of state and had no idea where to start. Fair Oaks Realty Group showed us every option in Bulverde and we closed in 45 days.&rdquo;
+                  </p>
+                  <p className="mt-2 text-caption font-semibold text-primary">— The Martínez Family · Bulverde, TX</p>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border bg-white p-6 sm:p-8 shadow-card">
+                <h3 className="font-heading text-heading-sm font-bold text-primary mb-1">Get a Free Home Valuation</h3>
+                <p className="text-body-sm text-foreground-muted mb-5">Selling in Bulverde? Find out what your home is worth today.</p>
+                <HomeValuationForm />
               </div>
             </div>
           </Container>

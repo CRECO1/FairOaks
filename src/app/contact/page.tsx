@@ -12,10 +12,7 @@ const CONTACT_REASONS = [
   'Home Valuation',
   'Buyer Consultation',
   'Seller Consultation',
-  'General Question',
-  'Investment Inquiry',
   'Relocation Help',
-  'Apply to Join The Team',
 ];
 
 export default function ContactPage() {
@@ -164,7 +161,8 @@ export default function ContactPage() {
                     </div>
                   ) : (
                     <>
-                      <h2 className="mb-6 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
+                      <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
+                      <p className="mb-6 text-body-sm text-foreground-muted">We respond within 1 business day — usually same day.</p>
                       <form onSubmit={handleSubmit} className="space-y-5">
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                           <div>
@@ -172,13 +170,13 @@ export default function ContactPage() {
                             <input name="name" required placeholder="Jane Smith" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                           </div>
                           <div>
-                            <label className="label-readable">Phone</label>
-                            <input name="phone" type="tel" placeholder="210-555-0000" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
+                            <label className="label-readable">Phone *</label>
+                            <input name="phone" type="tel" required placeholder="210-555-0000" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                           </div>
                         </div>
                         <div>
-                          <label className="label-readable">Email Address *</label>
-                          <input name="email" type="email" required placeholder="you@example.com" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
+                          <label className="label-readable">Email Address</label>
+                          <input name="email" type="email" placeholder="you@example.com" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                         </div>
                         <div>
                           <label className="label-readable">How can we help?</label>
@@ -187,10 +185,18 @@ export default function ContactPage() {
                             {CONTACT_REASONS.map(r => <option key={r}>{r}</option>)}
                           </select>
                         </div>
-                        <div>
-                          <label className="label-readable">Message</label>
-                          <textarea name="message" rows={5} placeholder="Tell us more about what you're looking for…" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold resize-none" />
+
+                        {/* Social proof */}
+                        <div className="rounded-xl border border-border bg-background-cream p-5">
+                          <div className="mb-2 flex gap-0.5">
+                            {[1,2,3,4,5].map(i => <span key={i} className="text-gold text-lg leading-none">★</span>)}
+                          </div>
+                          <p className="text-body-sm italic text-foreground-muted leading-relaxed">
+                            &ldquo;Zach and his team made our move from Dallas completely seamless. We were under contract in two weeks and closed on time — without ever feeling rushed.&rdquo;
+                          </p>
+                          <p className="mt-2 text-caption font-semibold text-primary">— The Rodriguez Family · Fair Oaks Ranch</p>
                         </div>
+
                         <p className="text-caption text-foreground-muted">
                           By submitting, you agree to be contacted by Fair Oaks Realty Group regarding your inquiry.
                         </p>
