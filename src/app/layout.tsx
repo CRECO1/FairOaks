@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
 import StickyCTA from '@/components/ui/StickyCTA';
+import ExitIntentModal from '@/components/ui/ExitIntentModal';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -114,6 +115,7 @@ export default function RootLayout({
       <body suppressHydrationWarning>
         <AnalyticsScripts />
         <StickyCTA />
+        <ExitIntentModal />
         {/* JSON-LD Structured Data — LocalBusiness + RealEstateAgent */}
         <script
           type="application/ld+json"

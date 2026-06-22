@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Phone, Mail, MapPin, Clock, CheckCircle, Calendar } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { trackLead, trackPhoneClick, trackEmailClick } from '@/lib/analytics';
@@ -16,6 +17,7 @@ const CONTACT_REASONS = [
 ];
 
 export default function ContactPage() {
+  const router = useRouter();
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -39,8 +41,8 @@ export default function ContactPage() {
         }),
       });
       if (!res.ok) throw new Error('Server error');
-      setSubmitted(true);
       trackLead({ form_type: 'contact' });
+      router.push('/thank-you');
     } catch {
       setSubmitError('Something went wrong. Please try again or call us directly.');
     } finally {

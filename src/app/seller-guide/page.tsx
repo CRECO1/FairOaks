@@ -140,16 +140,50 @@ const MARKETING_CHANNELS = [
 
 const jsonLd = {
   '@context': 'https://schema.org',
-  '@type': 'HowTo',
-  name: 'How to Sell Your Home in the Texas Hill Country',
-  description:
-    'Step-by-step guide to selling your home in Fair Oaks Ranch, Boerne, and the Texas Hill Country for maximum price.',
-  step: SELLING_STEPS.map(step => ({
-    '@type': 'HowToStep',
-    name: step.title,
-    text: step.description,
-    position: parseInt(step.number),
-  })),
+  '@graph': [
+    {
+      '@type': 'HowTo',
+      name: 'How to Sell Your Home in the Texas Hill Country',
+      description:
+        'Step-by-step guide to selling your home in Fair Oaks Ranch, Boerne, and the Texas Hill Country for maximum price.',
+      step: SELLING_STEPS.map(step => ({
+        '@type': 'HowToStep',
+        name: step.title,
+        text: step.description,
+        position: parseInt(step.number),
+      })),
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'How long does it take to sell a home in Fair Oaks Ranch?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Well-priced homes in Fair Oaks Ranch typically go under contract in 14–30 days. Overpriced homes can sit 60–90+ days and often sell below list. The most important factor is an accurate price from day one.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'What is the average commission to sell a home in Texas?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Listing agent commissions in Texas typically range from 2.5–3% of the sale price. Buyer agent commissions are negotiable but commonly run 2.5–3% as well. Your net proceeds depend on final sale price, commission structure, and closing costs.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'Should I renovate before selling my home?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Minor updates — fresh paint, landscaping, deep cleaning, and light staging — almost always pay off. Major renovations (kitchen, baths) rarely return full cost at resale. Ask your agent for a pre-listing walkthrough before spending money on repairs.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'What are closing costs for sellers in Texas?',
+          acceptedAnswer: { '@type': 'Answer', text: 'Sellers in Texas typically pay 1–2% of the sale price in closing costs, not including commissions. This includes title insurance (customary for sellers in Texas), prorated property taxes, and any negotiated credits to the buyer.' },
+        },
+        {
+          '@type': 'Question',
+          name: 'What is a comparative market analysis (CMA)?',
+          acceptedAnswer: { '@type': 'Answer', text: 'A CMA is a report prepared by your listing agent that compares your home to recently sold, active, and expired listings in your area. It is the primary tool for pricing your home correctly and is provided free by Fair Oaks Realty Group before you list.' },
+        },
+      ],
+    },
+  ],
 };
 
 export default function SellerGuidePage() {

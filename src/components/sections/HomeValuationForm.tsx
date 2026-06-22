@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Home, ArrowRight, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { trackLead } from '@/lib/analytics';
 
 export function HomeValuationForm() {
+  const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', phone: '', address: '' });
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -37,8 +39,8 @@ export function HomeValuationForm() {
         }),
       });
       if (!res.ok) throw new Error();
-      setSubmitted(true);
       trackLead({ form_type: 'valuation' });
+      router.push('/thank-you');
     } catch {
       setError('Something went wrong. Please try again or call us directly.');
     } finally {
