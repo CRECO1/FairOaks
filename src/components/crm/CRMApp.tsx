@@ -6,6 +6,7 @@ import { Session } from '@supabase/supabase-js';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
+import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -392,7 +393,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -2286,7 +2287,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2442,6 +2443,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </span>
             </a>
           )}
+          <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}>🏢 &nbsp;Properties</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -2615,6 +2617,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     🧾 &nbsp;Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
                   </a>
                 )}
+                <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}>🏢 &nbsp;Properties</button>
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -6466,6 +6469,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               agentId={profile?.id ?? ''}
               isAdmin={isAdmin}
               toast={(msg: string) => showToast(msg)}
+            />
+          )}
+
+          {/* ── Properties Page ── */}
+          {page === 'properties' && (
+            <PropertiesFloorPlan
+              businessUnit={businessUnit}
+              isAdmin={isAdmin}
+              authToken={session?.access_token}
+              onToast={(msg: string) => showToast(msg)}
             />
           )}
 
