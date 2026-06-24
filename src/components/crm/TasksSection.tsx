@@ -2,6 +2,109 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 
+// ── Searchable contact picker ────────────────────────────────────────────────
+function ContactSearch({
+  clients, value, onChange,
+}: {
+  clients: { id: string; first_name: string; last_name: string; business_name?: string; email?: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const selected = clients.find(c => c.id === value);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false); setQ('');
+      }
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  // Focus input when dropdown opens
+  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 30); }, [open]);
+
+  const filtered = q.trim()
+    ? clients.filter(c => {
+        const s = `${c.first_name} ${c.last_name} ${c.business_name ?? ''} ${c.email ?? ''}`.toLowerCase();
+        return s.includes(q.toLowerCase());
+      })
+    : clients.slice(0, 40); // show first 40 when no query
+
+  const PILL: React.CSSProperties = {
+    padding: '8px 12px', border: '1px solid #e5e7eb', borderRadius: 8,
+    fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif",
+    width: '100%', boxSizing: 'border-box', background: '#fafafa',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      {/* Trigger */}
+      <button type="button" onClick={() => { setOpen(o => !o); setQ(''); }} style={PILL}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left', color: selected ? '#111' : '#9ca3af' }}>
+          {selected ? `${selected.first_name} ${selected.last_name}${selected.business_name ? ` — ${selected.business_name}` : ''}` : 'None'}
+        </span>
+        {selected && (
+          <span onClick={e => { e.stopPropagation(); onChange(''); }} title="Clear"
+            style={{ flexShrink: 0, color: '#9ca3af', fontSize: 14, lineHeight: 1, cursor: 'pointer' }}>✕</span>
+        )}
+        <span style={{ flexShrink: 0, color: '#9ca3af', fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 400,
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
+          boxShadow: '0 8px 32px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+          {/* Search input */}
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid #f3f4f6' }}>
+            <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search contacts…"
+              style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px',
+                fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: '#111', outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          {/* Results */}
+          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {/* None option */}
+            <button type="button" onClick={() => { onChange(''); setOpen(false); setQ(''); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 'none',
+                background: !value ? '#fef9ee' : 'transparent', color: !value ? '#c9922c' : '#6b7280',
+                fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontStyle: 'italic' }}>
+              None
+            </button>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '12px 14px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>No contacts found</div>
+            ) : filtered.map(c => (
+              <button type="button" key={c.id} onClick={() => { onChange(c.id); setOpen(false); setQ(''); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', border: 'none',
+                  background: c.id === value ? '#fef9ee' : 'transparent',
+                  cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+                onMouseEnter={e => { if (c.id !== value) e.currentTarget.style.background = '#f9fafb'; }}
+                onMouseLeave={e => { if (c.id !== value) e.currentTarget.style.background = 'transparent'; }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: c.id === value ? '#c9922c' : '#111' }}>
+                  {c.first_name} {c.last_name}
+                </div>
+                {(c.business_name || c.email) && (
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                    {c.business_name ?? c.email}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Task {
   id: string; title: string; description?: string; due_date?: string;
@@ -209,11 +312,7 @@ function TaskDetailPanel({
           {/* Linked contact */}
           <div>
             <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Linked Contact</div>
-            <select value={form.client_id ?? ''} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
-              style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', background: '#fafafa' }}>
-              <option value="">None</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}{c.business_name ? ` — ${c.business_name}` : ''}</option>)}
-            </select>
+            <ContactSearch clients={clients} value={form.client_id ?? ''} onChange={id => setForm(f => ({ ...f, client_id: id }))} />
           </div>
 
           {/* Notes */}
@@ -657,10 +756,7 @@ export default function TasksSection({
                 </select>
               </div>}
               <div>{LABEL('Linked Contact')}
-                <select value={newForm.client_id} onChange={e => setNewForm(f => ({ ...f, client_id: e.target.value }))} style={INPUT_STYLE}>
-                  <option value="">None</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}{c.business_name ? ` — ${c.business_name}` : ''}</option>)}
-                </select>
+                <ContactSearch clients={clients} value={newForm.client_id} onChange={id => setNewForm(f => ({ ...f, client_id: id }))} />
               </div>
               <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
                 <button onClick={() => setShowNewModal(false)}
