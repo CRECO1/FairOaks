@@ -8,6 +8,7 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
 import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
 import TasksSection from '@/components/crm/TasksSection';
+import ActivitySection from '@/components/crm/ActivitySection';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -394,7 +395,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'activity'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -2295,7 +2296,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2419,6 +2420,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </span>
             )}
           </button>
+          <button className={`crm-nav${page === 'activity' ? ' active' : ''}`} onClick={() => setPage('activity')}>📊 &nbsp;Activity Log</button>
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
           <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => setPage('social')}>📱 &nbsp;Social Media</button>
@@ -2616,6 +2618,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </span>
                   )}
                 </button>
+                <button className={`crm-nav${page === 'activity' ? ' active' : ''}`} onClick={() => { setPage('activity'); setMobileMenuOpen(false); }}>📊 &nbsp;Activity Log</button>
                 <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}>📣 &nbsp;Campaigns</button>
                 <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); setMobileMenuOpen(false); }}>⚡ &nbsp;Action Plans</button>
                 <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => { setPage('social'); setMobileMenuOpen(false); }}>📱 &nbsp;Social Media</button>
@@ -6282,6 +6285,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
 
           {/* ── Social Media Page ── */}
+          {/* ── Activity Log Page ── */}
+          {page === 'activity' && (
+            <ActivitySection
+              businessUnit={businessUnit}
+              profileId={profile?.id ?? ''}
+              isAdmin={isAdmin}
+              authHeaders={session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}}
+              showToast={showToast}
+            />
+          )}
+
           {page === 'social' && (
             <SocialMediaSection
               agentId={profile?.id ?? ''}
