@@ -518,7 +518,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [viewCampaignSendModal, setViewCampaignSendModal] = useState<{ send: CampaignSend & { campaign_name?: string }; contact: Client } | null>(null);
   // Campaign projects (folders)
   const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(['__ungrouped__']));
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [showAddProject, setShowAddProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
@@ -1876,8 +1876,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function loadCampaignProjects() {
     const { data } = await supabase.from('crm_campaign_projects').select('*').order('created_at', { ascending: true });
     setCampaignProjects(data ?? []);
-    // Auto-expand all projects on first load
-    if (data?.length) setExpandedProjects(prev => new Set([...prev, ...data.map((p: any) => p.id)]));
   }
 
   async function createCampaignProject() {
