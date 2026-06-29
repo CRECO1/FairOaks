@@ -1055,6 +1055,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setCalendarLoading(false);
   }, [session, gmailConnected]);
 
+  // Auto-load calendar events when Gmail becomes connected while on the calendar page
+  // (covers direct URL navigation to #calendar before the async status check returns)
+  useEffect(() => {
+    if (gmailConnected && page === 'calendar' && calendarEvents.length === 0 && !calendarLoading) {
+      loadCalendarEvents(90);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmailConnected, page]);
+
   async function signOut() {
     await supabase.auth.signOut();
     setSession(null); setProfile(null);
