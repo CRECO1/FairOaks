@@ -716,11 +716,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); setShowNotifications(false); }
       // Quick nav shortcuts — only when no input/modal is focused
       const tag = (document.activeElement as HTMLElement)?.tagName;
-      if (!e.metaKey && !e.ctrlKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      const isEditable = (document.activeElement as HTMLElement)?.isContentEditable;
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !isEditable) {
         if (e.key === '/') { e.preventDefault(); setShowSearch(true); setSearchQuery(''); }
-        const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
-        if (e.key === 'n' && hash === 'contacts') { e.preventDefault(); setShowAddClient(true); }
-        if (e.key === 'c' && hash === 'deals') { e.preventDefault(); setShowAddDeal(true); }
       }
     }
     window.addEventListener('keydown', handleKey);
@@ -2794,7 +2792,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                       </div>
                       <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: '#9ca3af' }}>Keyboard shortcut: N (contacts) · C (deals) · / (search)</span>
+                        <span style={{ fontSize: 11, color: '#9ca3af' }}>Keyboard shortcut: / (search)</span>
                         <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>
                       </div>
                     </div>
