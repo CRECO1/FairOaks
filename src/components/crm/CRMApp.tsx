@@ -545,6 +545,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showSaveList, setShowSaveList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
+  const [tagFocused, setTagFocused] = useState(false); // controls suggestion dropdown visibility
 
   // Follow-Up Report
   const [followUpDays, setFollowUpDays] = useState(30);
@@ -7518,18 +7519,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div>
                     <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tags</label>
-                    <div style={{ marginTop: 4, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
-                      onClick={() => document.getElementById('nc-tag-input')?.focus()}>
-                      {nc.tags.map(tag => (
-                        <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                          {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
-                        </span>
-                      ))}
-                      <input id="nc-tag-input" placeholder={nc.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
-                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!nc.tags.includes(tag)) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
-                        style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ marginTop: 4, border: `1px solid ${tagFocused ? '#c9922c' : '#e5e7eb'}`, borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
+                        onClick={() => document.getElementById('nc-tag-input')?.focus()}>
+                        {nc.tags.map(tag => (
+                          <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                          </span>
+                        ))}
+                        <input id="nc-tag-input" placeholder={nc.tags.length === 0 ? 'Add tags…' : ''} value={tagInput}
+                          onChange={e => setTagInput(e.target.value)}
+                          onFocus={() => setTagFocused(true)}
+                          onBlur={() => setTimeout(() => setTagFocused(false), 150)}
+                          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!nc.tags.includes(tag)) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
+                          style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                      </div>
+                      {(() => {
+                        const allTags = [...new Set(clients.flatMap(c => c.tags ?? []))].sort();
+                        const suggestions = tagInput.length > 0
+                          ? allTags.filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !nc.tags.includes(t)).slice(0, 8)
+                          : tagFocused ? allTags.filter(t => !nc.tags.includes(t)).slice(0, 8) : [];
+                        if (!suggestions.length || !tagFocused) return null;
+                        return (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', marginTop: 2, overflow: 'hidden' }}>
+                            <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+                              {tagInput ? 'Matching tags' : 'Existing tags'}
+                            </div>
+                            {suggestions.map(s => (
+                              <button key={s} onMouseDown={() => { if (!nc.tags.includes(s)) setNc({ ...nc, tags: [...nc.tags, s] }); setTagInput(''); }}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: '#1e293b' }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                                🏷 {s}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Press Enter or comma to add</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Type to search existing tags or press Enter to create new</div>
                   </div>
                 </div>
 
@@ -8815,18 +8843,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
                 <div>
                   <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tags</label>
-                  <div style={{ marginTop: 4, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
-                    onClick={() => document.getElementById('ec-tag-input')?.focus()}>
-                    {ec.tags.map(tag => (
-                      <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                        {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
-                      </span>
-                    ))}
-                    <input id="ec-tag-input" placeholder={ec.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
-                      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!ec.tags.includes(tag)) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
-                      style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ marginTop: 4, border: `1px solid ${tagFocused ? '#c9922c' : '#e5e7eb'}`, borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
+                      onClick={() => document.getElementById('ec-tag-input')?.focus()}>
+                      {ec.tags.map(tag => (
+                        <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                          {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                        </span>
+                      ))}
+                      <input id="ec-tag-input" placeholder={ec.tags.length === 0 ? 'Add tags…' : ''} value={tagInput}
+                        onChange={e => setTagInput(e.target.value)}
+                        onFocus={() => setTagFocused(true)}
+                        onBlur={() => setTimeout(() => setTagFocused(false), 150)}
+                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!ec.tags.includes(tag)) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
+                        style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                    </div>
+                    {(() => {
+                      const allTags = [...new Set(clients.flatMap(c => c.tags ?? []))].sort();
+                      const suggestions = tagInput.length > 0
+                        ? allTags.filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !ec.tags.includes(t)).slice(0, 8)
+                        : tagFocused ? allTags.filter(t => !ec.tags.includes(t)).slice(0, 8) : [];
+                      if (!suggestions.length || !tagFocused) return null;
+                      return (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', marginTop: 2, overflow: 'hidden' }}>
+                          <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+                            {tagInput ? 'Matching tags' : 'Existing tags'}
+                          </div>
+                          {suggestions.map(s => (
+                            <button key={s} onMouseDown={() => { if (!ec.tags.includes(s)) setEc({ ...ec, tags: [...ec.tags, s] }); setTagInput(''); }}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: '#1e293b' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                              🏷 {s}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Press Enter or comma to add</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Type to search existing tags or press Enter to create new</div>
                 </div>
               </div>
 
