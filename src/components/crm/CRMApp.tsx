@@ -885,7 +885,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const loadDeals = useCallback(async (p: Profile) => {
     let q = supabase.from('crm_deals').select('*').eq('business_unit', businessUnit).order('last_touch', { ascending: false });
-    if (p.role === 'agent') q = q.eq('agent_id', p.id);
+    if (p.role === 'agent') q = q.or(`agent_id.eq.${p.id},assigned_agent_ids.cs.{${p.id}}`);
     const { data } = await q;
     const loaded = (data ?? []) as Deal[];
     setDeals(loaded);
