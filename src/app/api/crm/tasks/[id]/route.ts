@@ -7,9 +7,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!caller) return unauthorized();
   const { id } = await params;
   const body = await req.json();
-  const allowed = ['title','description','due_date','assigned_to','status','priority'];
+  const allowed = ['title','description','due_date','assigned_to','status','priority','client_id','deal_id'];
   const update: Record<string,unknown> = { updated_at: new Date().toISOString() };
-  for (const k of allowed) if (k in body) update[k] = body[k] ?? null;
+  for (const k of allowed) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_tasks').update(update).eq('id', id).select().single();
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }

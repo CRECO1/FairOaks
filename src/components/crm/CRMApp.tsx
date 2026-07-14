@@ -7,8 +7,10 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
 import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
+import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import ActivitySection from '@/components/crm/ActivitySection';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -24,12 +26,12 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
@@ -297,11 +299,9 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                     {deal.value > 0 && (
                       <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>
                     )}
-                    {deal.value > 0 && (() => {
-                      const gci = deal.value * 0.03;
-                      const gciStr = gci >= 1000000 ? `$${(gci/1000000).toFixed(2)}M` : gci >= 1000 ? `$${Math.round(gci/1000)}k` : `$${Math.round(gci)}`;
-                      return <span style={{ fontSize: 11, color: '#c9922c', fontWeight: 700 }}>{gciStr} GCI</span>;
-                    })()}
+                    {deal.earned_commission != null && deal.earned_commission > 0 && (
+                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
+                    )}
                   </div>
                   {isAdmin && (
                     <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>👤 {agentName(deal.agent_id)}</div>
@@ -455,6 +455,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [saving, setSaving] = useState(false);
   // Tasks
   const [allTasks, setAllTasks] = useState<CRMTask[]>([]);
+  const [clientCardTasks, setClientCardTasks] = useState<Task[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskClientId, setTaskClientId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
@@ -557,6 +558,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
   const [tagFocused, setTagFocused] = useState(false); // controls suggestion dropdown visibility
+  const [mentionedIds, setMentionedIds] = useState<string[]>([]); // profile IDs mentioned in current note
+  const [mentions, setMentions] = useState<any[]>([]); // crm_notifications for current user
+  const [mentionsLoaded, setMentionsLoaded] = useState(false);
+  const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
+  const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
   // Follow-Up Report
   const [followUpDays, setFollowUpDays] = useState(30);
@@ -657,6 +663,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // Task Manager (full Tasks page)
+  const [propertiesTab, setPropertiesTab] = useState<'listings' | 'floorplan'>('listings');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'done'>('open');
@@ -671,6 +678,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showBulkEnrollModal, setShowBulkEnrollModal] = useState(false);
   const [bulkEnrollCampaignId, setBulkEnrollCampaignId] = useState('');
   const [bulkEnrolling, setBulkEnrolling] = useState(false);
+
+  // Bulk tag contacts
+  const [showBulkTag, setShowBulkTag] = useState(false);
+  const [bulkTagValue, setBulkTagValue] = useState('');
+
+  // Contacts pagination
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [contactsPage, setContactsPage] = useState(0);
+  const CONTACTS_PAGE_SIZE = 100;
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
@@ -698,6 +714,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadClientActivities(activeClient.id);
       loadClientCampaignSends(activeClient.id);
       loadContactEmails(activeClient.id);
+      loadClientTasks(activeClient.id);
       setNewActivity({ type: 'call', note: '' });
       setShowContactCompose(false);
       setReplyToContactEmail(null);
@@ -706,6 +723,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setClientActivities([]);
       setClientCampaignSends([]);
       setContactEmails([]);
+      setClientCardTasks([]);
     }
   }, [activeClient?.id]); // eslint-disable-line
 
@@ -950,7 +968,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDealDocs((json.docs ?? []) as DealDoc[]);
   }, []);
 
-  const loadDealCommission = useCallback(async (dealId: string) => {
+  const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
     try {
       const res = await fetch(`/api/crm/commissions?business_unit=${businessUnit}&deal_id=${dealId}`, {
@@ -972,6 +990,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           paid_date: c.paid_date ?? '',
           notes: c.notes ?? '',
         });
+      } else {
+        // No commission yet — pre-fill sale price from deal's Billable Value
+        setCommissionForm(prev => ({
+          ...prev,
+          sale_price: billableValue != null && billableValue > 0 ? String(billableValue) : '',
+        }));
       }
     } catch { /* ignore */ }
     finally { setCommissionLoading(false); }
@@ -1041,17 +1065,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     else showToast('Delete failed');
   }
 
-  const loadClients = useCallback(async (p?: Profile) => {
+  const loadClients = useCallback(async (p?: Profile, page = 0) => {
     const prof = p ?? profile;
     if (!prof) return;
-    const { data, error } = await supabase
+    const from = page * CONTACTS_PAGE_SIZE;
+    const to = from + CONTACTS_PAGE_SIZE - 1;
+    const { data, count, error } = await supabase
       .from('crm_clients')
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('business_unit', businessUnit)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(from, to);
     if (error) { console.error('loadClients error:', error.message); return; }
-    setClients((data ?? []) as Client[]);
-  }, [profile, businessUnit]);
+    if (page === 0) setClients((data ?? []) as Client[]);
+    else setClients(prev => [...prev, ...(data ?? []) as Client[]]);
+    setContactsTotal(count ?? 0);
+    setContactsPage(page);
+  }, [profile, businessUnit]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const loadCalendarEvents = useCallback(async (days = 30) => {
@@ -1109,6 +1139,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
+      if (mentionedIds.length) {
+        // We don't have the new client's ID from this insert, so use a generic message
+        await createMentionNotifications(mentionedIds, `@${profile?.first_name} mentioned you in notes for ${nc.first_name} ${nc.last_name}`, 'contact');
+        setMentionedIds([]);
+      }
       setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null, birthday: '' });
       setShowAddClient(false);
       loadClients(profile!);
@@ -1163,6 +1198,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       birthday: c.birthday ?? '',
     });
     setEditClient(c);
+    setLinkedNoteIds(new Set());
+    setMentionedIds([]);
     setActiveClient(null); // close profile modal when opening edit
   }
 
@@ -1199,7 +1236,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (error) {
       showToast('Error: ' + error.message);
     } else {
-      showToast(`${ec.first_name} ${ec.last_name} updated`);
+      const linkedCount = linkedNoteIds.size;
+      // Propagate notes to linked contacts (same company)
+      if (linkedCount > 0 && ec.notes) {
+        const linkedArr = [...linkedNoteIds];
+        await supabase.from('crm_clients').update({ notes: ec.notes }).in('id', linkedArr);
+        setClients(prev => prev.map(c => linkedArr.includes(c.id) ? { ...c, notes: ec.notes } : c));
+        setLinkedNoteIds(new Set());
+      }
+      if (mentionedIds.length) {
+        await createMentionNotifications(mentionedIds, `@${profile?.first_name} mentioned you in notes for ${ec.first_name} ${ec.last_name}`, 'contact', editClient.id);
+        setMentionedIds([]);
+      }
+      showToast(`${ec.first_name} ${ec.last_name} updated${linkedCount > 0 ? ` · notes synced to ${linkedCount} contact${linkedCount !== 1 ? 's' : ''}` : ''}`);
       setClients(prev => prev.map(c => c.id === editClient.id ? { ...c, ...ec } : c));
       setEditClient(null);
     }
@@ -1273,6 +1322,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     else showToast('Error enrolling contacts');
   }
 
+  async function bulkTagContacts(mode: 'add' | 'remove') {
+    const tag = bulkTagValue.trim().toLowerCase();
+    if (!tag || selectedClientIds.size === 0) return;
+    const toUpdate = clients.filter(c => selectedClientIds.has(c.id));
+    // Update each contact's tags array
+    for (const c of toUpdate) {
+      const current = c.tags ?? [];
+      const updated = mode === 'add'
+        ? [...new Set([...current, tag])]
+        : current.filter(t => t !== tag);
+      await supabase.from('crm_clients').update({ tags: updated }).eq('id', c.id);
+    }
+    // Reflect in local state immediately
+    setClients(prev => prev.map(c => {
+      if (!selectedClientIds.has(c.id)) return c;
+      const current = c.tags ?? [];
+      const updated = mode === 'add'
+        ? [...new Set([...current, tag])]
+        : current.filter(t => t !== tag);
+      return { ...c, tags: updated };
+    }));
+    showToast(`Tag "${tag}" ${mode === 'add' ? 'added to' : 'removed from'} ${toUpdate.length} contact${toUpdate.length !== 1 ? 's' : ''}`);
+    setShowBulkTag(false);
+    setBulkTagValue('');
+  }
+
   // ── Task Management ───────────────────────────────────────────────────────────
   async function loadAllTasks() {
     const { data } = await supabase
@@ -1324,10 +1399,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function completeTask(taskId: string) {
+    const task = allTasks.find(t => t.id === taskId);
     const now = new Date().toISOString();
     await supabase.from('crm_tasks').update({ completed_at: now }).eq('id', taskId);
     setAllTasks(prev => prev.filter(t => t.id !== taskId));
     showToast('Task completed ✓');
+    // Log a touch on the linked contact
+    if (task?.client_id) {
+      logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
+      if (activeClient?.id === task.client_id) loadClientTasks(task.client_id);
+    }
+  }
+
+  async function loadClientTasks(clientId: string) {
+    const headers: Record<string,string> = session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+    const res = await fetch(`/api/crm/tasks?unit=${businessUnit}&status=all&client_id=${clientId}`, { headers });
+    if (!res.ok) return;
+    const json = await res.json();
+    setClientCardTasks((json.tasks ?? []) as Task[]);
   }
 
   // ── Activity Tracking ─────────────────────────────────────────────────────────
@@ -1389,6 +1478,46 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const agentP = profiles.find(p => p.id === agentId);
     const agentLabel = agentP ? `${agentP.first_name} ${agentP.last_name}` : 'Agent';
     showToast(updated.includes(agentId) ? `${agentLabel} tagged on client` : `${agentLabel} removed from client`);
+  }
+
+  // ── @mention notifications ────────────────────────────────────────────────
+  async function loadMentions() {
+    if (mentionsLoaded) return;
+    const { data } = await supabase
+      .from('crm_notifications')
+      .select('*')
+      .eq('recipient_id', profile!.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setMentions(data ?? []);
+    setMentionsLoaded(true);
+  }
+
+  async function createMentionNotifications(ids: string[], message: string, entityType?: string, entityId?: string) {
+    if (!ids.length || !profile) return;
+    const rows = ids
+      .filter(id => id !== profile.id) // don't notify yourself
+      .map(id => ({
+        recipient_id: id,
+        sender_id: profile.id,
+        type: 'mention',
+        message,
+        entity_type: entityType ?? null,
+        entity_id: entityId ?? null,
+      }));
+    if (rows.length) await supabase.from('crm_notifications').insert(rows);
+  }
+
+  async function markMentionRead(id: string) {
+    await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
+    setMentions(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+  }
+
+  async function markAllMentionsRead() {
+    const unread = mentions.filter(n => !n.read_at).map(n => n.id);
+    if (!unread.length) return;
+    await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).in('id', unread);
+    setMentions(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
   }
 
   async function saveClientTags(clientId: string, newTags: string[]) {
@@ -2265,12 +2394,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Open deal modal ───────────────────────────────────────────────────────────
   function openDeal(deal: Deal) {
     setActiveDeal(deal);
+    setDealNotesText(deal.notes ?? '');
     setDealTab('overview');
     setShowDealAgentPicker(false);
     setDealCommission(null);
     loadDealEmails(deal.id);
     loadDealDocs(deal.id);
-    loadDealCommission(deal.id);
+    loadDealCommission(deal.id, deal.earned_commission);
     if (typeof window !== 'undefined') sessionStorage.setItem('activeDealId', deal.id);
   }
 
@@ -2365,17 +2495,51 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .cf-tag-input:focus{border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
         .cf-tag-input.active{border-color:#c9922c;background:#fffbf2;}
         @media(max-width:767px){
+          /* Modals → bottom sheet */
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
-          .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
+          .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;padding-bottom:env(safe-area-inset-bottom);}
+          .modal-body{overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;flex:1!important;min-height:0!important;}
+          /* Touch-friendly controls */
           .crm-btn{padding:12px 18px;font-size:15px;min-height:48px;}
           .crm-btn-sm{padding:10px 14px!important;font-size:14px!important;min-height:44px!important;}
-          .crm-input{padding:12px 14px;font-size:16px;min-height:48px;}
-          .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+          .crm-input{padding:12px 14px;font-size:16px!important;min-height:48px;}
+          .crm-input:focus{font-size:16px!important;}
+          /* Prevent iOS zoom on focus */
+          input,select,textarea{font-size:16px!important;}
+          .cf-select{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
+          .cf-tag-input{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
+          /* Table helpers */
+          .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;}
+          .mobile-table-scroll::-webkit-scrollbar{display:none;}
+          .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;border-radius:10px;}
           td{padding:10px 12px!important;font-size:13px!important;}
           th{padding:8px 12px!important;font-size:10px!important;}
+          /* Commission/contacts table - hide non-essential cols on mobile */
+          .commission-table td:nth-child(4),.commission-table td:nth-child(7),.commission-table td:nth-child(8){display:none!important;}
+          .commission-table th:nth-child(4),.commission-table th:nth-child(7),.commission-table th:nth-child(8){display:none!important;}
+          /* Utility classes */
+          .mobile-full-width{width:100%!important;margin-left:0!important;}
+          .mobile-stack{flex-direction:column!important;}
+          .mobile-hide{display:none!important;}
+          /* 3-col stat grids → 2-col on small phones */
+          .stats-3col{grid-template-columns:1fr 1fr!important;}
+          /* 2-col form grids → 1-col on small phones for readability */
+          .form-grid-2{grid-template-columns:1fr!important;}
+          /* Panel drawers fill screen */
+          .crm-panel{max-width:100%!important;border-radius:0!important;}
         }
+        /* Intermediate small tablet / large phone */
+        @media(min-width:480px) and (max-width:767px){
+          .stats-3col{grid-template-columns:repeat(3,1fr)!important;}
+          .form-grid-2{grid-template-columns:1fr 1fr!important;}
+        }
+        /* Tablet */
         @media(max-width:1023px){
           .contacts-table col.col-asset,.contacts-table col.col-source,.contacts-table col.col-tags,.contacts-table col.col-owner{display:none;}
+          /* Contacts table on tablet - allow horizontal scroll */
+          .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+          /* Commission stats 4-col → 2-col on tablet */
+          .stats-4col{grid-template-columns:1fr 1fr!important;}
         }
       `}</style>
 
@@ -2558,7 +2722,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9998, animation: 'fadeIn .2s ease' }} />
             {/* Drawer */}
             <div style={{
-              position: 'fixed', left: 0, top: 0, bottom: 0, width: 290,
+              position: 'fixed', left: 0, top: 0, bottom: 0, width: Math.min(290, windowWidth - 40),
               background: '#111', zIndex: 9999, display: 'flex', flexDirection: 'column',
               overflowY: 'auto', boxShadow: '4px 0 24px rgba(0,0,0,.4)',
               transform: 'translateX(0)', animation: 'slideRight .25s ease',
@@ -2711,10 +2875,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               const d = Math.ceil((new Date(c.lease_expiration_date).getTime() - now) / 86400000);
               return d >= 0 && d <= 30;
             });
-            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length;
+            const unreadMentions = mentions.filter(n => !n.read_at);
+            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length + unreadMentions.length;
             return (
               <div style={{ position: 'relative' }}>
-                <button onClick={() => setShowNotifications(n => !n)} title="Notifications"
+                <button onClick={() => { setShowNotifications(n => !n); loadMentions(); }} title="Notifications"
                   style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, border: `1px solid ${totalAlerts > 0 ? '#fde68a' : '#e5e7eb'}`, background: showNotifications ? '#fef9f0' : totalAlerts > 0 ? '#fffbeb' : '#f9fafb', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
                   🔔
                   {totalAlerts > 0 && (
@@ -2726,7 +2891,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {showNotifications && (
                   <>
                     <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={() => setShowNotifications(false)} />
-                    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 9000, marginTop: 6, width: 340, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 9000, marginTop: 6, width: Math.min(340, windowWidth - 32), background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
                       <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>🔔 Smart Alerts</span>
                         {totalAlerts > 0 && <span style={{ fontSize: 12, color: '#6b7280' }}>{totalAlerts} item{totalAlerts !== 1 ? 's' : ''}</span>}
@@ -2787,7 +2952,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         )}
                         {lxpUrgent.length > 0 && (
-                          <div style={{ padding: '10px 16px' }}>
+                          <div style={{ padding: '10px 16px', borderBottom: mentions.length > 0 ? '1px solid #f9fafb' : 'none' }}>
                             <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#c2410c', fontWeight: 700, marginBottom: 8 }}>🗓 LXP Expiring Within 30 Days ({lxpUrgent.length})</div>
                             {lxpUrgent.slice(0, 3).map(c => {
                               const daysLeft = Math.ceil((new Date(c.lease_expiration_date!).getTime() - now) / 86400000);
@@ -2800,6 +2965,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </button>
                               );
                             })}
+                          </div>
+                        )}
+                        {mentions.length > 0 && (
+                          <div style={{ padding: '10px 16px' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6d28d9', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span>💬 Mentions ({mentions.length})</span>
+                              {unreadMentions.length > 0 && (
+                                <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: '#6d28d9', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
+                              )}
+                            </div>
+                            {mentions.slice(0, 5).map(n => (
+                              <button key={n.id} onClick={() => {
+                                markMentionRead(n.id);
+                                if (n.entity_type === 'contact' && n.entity_id) {
+                                  const c = clients.find(cl => cl.id === n.entity_id);
+                                  if (c) { setPage('contacts'); setActiveClient(c); }
+                                }
+                                setShowNotifications(false);
+                              }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? '#d1d5db' : '#6d28d9', flexShrink: 0, marginTop: 4 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, color: n.read_at ? '#6b7280' : '#111', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
+                                </div>
+                              </button>
+                            ))}
+                            {mentions.length > 5 && <div style={{ fontSize: 12, color: '#9ca3af', paddingTop: 4 }}>+{mentions.length - 5} more</div>}
                           </div>
                         )}
                       </div>
@@ -2881,7 +3074,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'dashboard' && (
             <div>
               {/* Deal stat cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
+              <div className="stats-4col" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
                 {[
                   { label: 'Active Deals', val: deals.filter(d => d.stage === 'Active').length, sub: 'in pipeline' },
                   { label: 'In Contract', val: deals.filter(d => d.stage === 'In Contract').length, sub: 'pending close' },
@@ -2895,6 +3088,90 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 ))}
               </div>
+
+              {/* ── Pipeline by Stage chart ── */}
+              {deals.length > 0 && (() => {
+                const STAGE_COLORS_CHART: Record<string, string> = {
+                  Prospect: '#9ca3af', Active: '#3b82f6', LOI: '#a855f7',
+                  'In Contract': '#f59e0b', Closed: '#22c55e', Lost: '#ef4444',
+                };
+                const fmtV = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
+                const stageCounts = STAGES.map(s => ({
+                  stage: s,
+                  count: deals.filter(d => d.stage === s).length,
+                  value: deals.filter(d => d.stage === s).reduce((sum, d) => sum + (Number(d.value) || 0), 0),
+                })).filter(s => s.count > 0);
+                const maxCount = Math.max(...stageCounts.map(s => s.count), 1);
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>📊 Pipeline by Stage</div>
+                      <button onClick={() => setPage('deals')} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                        View Pipeline →
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      {stageCounts.map(({ stage, count, value }) => (
+                        <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: isMobile ? 72 : 88, fontSize: 12, color: '#374151', fontWeight: 500, flexShrink: 0, textAlign: 'right' }}>{stage}</div>
+                          <div style={{ flex: 1, height: 24, background: '#f3f4f6', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
+                            <div style={{
+                              width: `${Math.round(count / maxCount * 100)}%`,
+                              height: '100%',
+                              background: STAGE_COLORS_CHART[stage] ?? '#c9922c',
+                              borderRadius: 5,
+                              transition: 'width .5s ease',
+                              display: 'flex', alignItems: 'center', paddingLeft: 8,
+                              minWidth: count > 0 ? 28 : 0,
+                            }}>
+                              <span style={{ color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1 }}>{count}</span>
+                            </div>
+                          </div>
+                          {value > 0 && (
+                            <div style={{ fontSize: 12, color: '#6b7280', flexShrink: 0, minWidth: isMobile ? 48 : 64, textAlign: 'right' }}>{fmtV(value)}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Monthly GCI Trend (last 6 months) ── */}
+              {allCommissions.length > 0 && (() => {
+                const months: { key: string; label: string; gci: number }[] = [];
+                for (let i = 5; i >= 0; i--) {
+                  const d = new Date();
+                  d.setDate(1);
+                  d.setMonth(d.getMonth() - i);
+                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                  const label = d.toLocaleDateString('en-US', { month: 'short' });
+                  const gci = allCommissions.filter(c => c.close_date?.startsWith(key)).reduce((s, c) => s + (c.gross_commission ?? 0), 0);
+                  months.push({ key, label, gci });
+                }
+                if (months.every(m => m.gci === 0)) return null;
+                const maxGci = Math.max(...months.map(m => m.gci), 1);
+                const curKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+                const fmtG = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, marginBottom: 16 }}>📈 Monthly GCI — Last 6 Months</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 6 : 10, height: 90 }}>
+                      {months.map(({ key, label, gci }) => {
+                        const barH = gci > 0 ? Math.max(Math.round(gci / maxGci * 72), 8) : 4;
+                        const isCur = key === curKey;
+                        return (
+                          <div key={key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}>
+                            {gci > 0 && <div style={{ fontSize: isMobile ? 9 : 10, color: isCur ? '#c9922c' : '#9ca3af', textAlign: 'center', lineHeight: 1 }}>{fmtG(gci)}</div>}
+                            <div style={{ width: '70%', height: barH, background: isCur ? '#c9922c' : '#d1d5db', borderRadius: '3px 3px 0 0', transition: 'height .5s ease' }} title={`${label}: ${fmtG(gci)}`} />
+                            <div style={{ fontSize: isMobile ? 10 : 11, color: isCur ? '#c9922c' : '#9ca3af', fontWeight: isCur ? 700 : 400 }}>{label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* YTD Commission widget */}
               {allCommissions.length > 0 && (() => {
@@ -3189,7 +3466,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {t || 'All'}
                   </button>
                 ))}
-                <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginLeft: 'auto', width: 200 }} />
+                <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ width: isMobile ? '100%' : 200, ...(isMobile ? {} : { marginLeft: 'auto' }) }} />
               </div>
               <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} onAddDeal={() => setShowAddDeal(true)} />
             </div>
@@ -3356,7 +3633,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </select>
                     {/* Tag filter */}
                     <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
-                      className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: 140 }} />
+                      className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: isMobile ? '100%' : 140 }} />
                     {/* Clear */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && (
                       <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); }}
@@ -3491,15 +3768,58 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       👤 Reassign
                     </button>
                     <button
+                      onClick={() => { setShowBulkTag(v => !v); setBulkTagValue(''); }}
+                      style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                      🏷 Tag
+                    </button>
+                    <button
                       onClick={massDeleteClients}
                       style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                      🗑 Delete Selected
+                      🗑 Delete
                     </button>
                     <button
                       onClick={() => setSelectedClientIds(new Set())}
                       style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                      Clear selection
+                      Clear
                     </button>
+                  </div>
+                )}
+                {/* Bulk tag inline form */}
+                {isAdmin && showBulkTag && selectedClientIds.size > 0 && (
+                  <div style={{ marginBottom: 10, padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>
+                      Tag {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input
+                        className="crm-input"
+                        placeholder="Tag name (e.g. hot-lead, q1-follow-up)…"
+                        value={bulkTagValue}
+                        onChange={e => setBulkTagValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') bulkTagContacts('add'); }}
+                        style={{ flex: 1, minWidth: 200, fontSize: 14 }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => bulkTagContacts('add')}
+                        disabled={!bulkTagValue.trim()}
+                        className="crm-btn"
+                        style={{ background: '#166534', color: '#fff', border: 'none', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>
+                        + Add Tag
+                      </button>
+                      <button
+                        onClick={() => bulkTagContacts('remove')}
+                        disabled={!bulkTagValue.trim()}
+                        className="crm-btn crm-btn-ghost"
+                        style={{ color: '#dc2626', borderColor: '#fecaca', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>
+                        − Remove Tag
+                      </button>
+                      <button
+                        onClick={() => { setShowBulkTag(false); setBulkTagValue(''); }}
+                        className="crm-btn crm-btn-ghost">
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div style={{ overflowX: 'auto' }}>
@@ -3737,6 +4057,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </> // end desktop view (bulk bar + table)
                 ); // end desktop table return
               })() /* end filteredContacts IIFE */}
+
+              {/* ── Load More contacts ��─ */}
+              {clients.length > 0 && clients.length < contactsTotal && (
+                <div style={{ textAlign: 'center', marginTop: 16, marginBottom: 8 }}>
+                  <button
+                    className="crm-btn crm-btn-ghost"
+                    onClick={() => loadClients(profile!, contactsPage + 1)}
+                    style={{ fontSize: 13, padding: '8px 22px' }}>
+                    Load more contacts ({clients.length} of {contactsTotal} loaded)
+                  </button>
+                </div>
+              )}
+              {clients.length > 0 && clients.length >= contactsTotal && contactsTotal > CONTACTS_PAGE_SIZE && (
+                <div style={{ textAlign: 'center', marginTop: 8, marginBottom: 4, fontSize: 12, color: '#9ca3af' }}>
+                  All {contactsTotal} contacts loaded
+                </div>
+              )}
 
               {/* ── Follow-Up Report ── */}
               {clients.length > 0 && (() => {
@@ -4139,6 +4476,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 onTasksChange={setTasks}
                 showToast={showToast}
                 onRefresh={loadTasks}
+                currentUserId={profile?.id}
+                onTaskComplete={task => {
+                  if (task.client_id) {
+                    logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
+                    if (activeClient?.id === task.client_id) loadClientTasks(task.client_id);
+                  }
+                }}
               />
             );
           })()}
@@ -4498,7 +4842,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     ) : (
                       <>
                         {/* Summary banner */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
+                        <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
                           {[
                             { label: 'Agents Paid', val: String(agentTotals.length), note: 'received commission' },
                             { label: 'Must File 1099', val: String(needsFiling.length), note: '≥ $600 threshold' },
@@ -4625,7 +4969,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Summary stat row */}
                 {filtered.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
+                  <div className="stats-4col" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
                     {[
                       { label: 'Deals', val: String(filtered.length), color: '#111' },
                       { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c' },
@@ -4650,7 +4994,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ) : (
                   <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
                     <div className="mobile-table-scroll">
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <table className="commission-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ background: '#f9f5ef', borderBottom: '2px solid #e8dcc8' }}>
                             {['Client / Property', 'Agent', 'Close Date', 'Sale Price', 'Gross GCI', 'Agent Net', 'Broker Net', 'Status'].map(h => (
@@ -4771,11 +5115,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{camp.name}</span>
                             <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
-                          <div style={{ fontSize: 12, color: '#9ca3af', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: 12, color: '#9ca3af', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             <span>{camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
                             <span>·</span>
                             <span>{camp.enrollment_count ?? 0} enrolled</span>
                             {camp.last_sent_at ? <><span>·</span><span style={{ color: '#16a34a' }}>Sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></> : <><span>·</span><span>Never sent</span></>}
+                            {(camp.send_count ?? 0) > 0 && <>
+                              <span>·</span>
+                              <span>{camp.send_count} sent</span>
+                              {camp.open_rate != null && <>
+                                <span>·</span>
+                                <span style={{
+                                  fontWeight: 700,
+                                  color: camp.open_rate >= 40 ? '#16a34a' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444',
+                                }}>
+                                  {camp.open_rate}% opened
+                                </span>
+                              </>}
+                            </>}
                             {camp.description && <><span>·</span><span>{camp.description}</span></>}
                           </div>
                         </div>
@@ -6316,12 +6673,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Properties Page ── */}
           {page === 'properties' && (
-            <PropertiesFloorPlan
-              businessUnit={businessUnit}
-              isAdmin={isAdmin}
-              authToken={session?.access_token}
-              onToast={(msg: string) => showToast(msg)}
-            />
+            <div>
+              {/* Sub-tabs */}
+              <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 24 }}>
+                {[{ k: 'listings', label: '🏢 Listings' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
+                  <button key={t.k} onClick={() => setPropertiesTab(t.k as 'listings' | 'floorplan')}
+                    style={{ padding: '10px 22px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {propertiesTab === 'listings' && (
+                <ListingsSection
+                  businessUnit={businessUnit}
+                  isAdmin={isAdmin}
+                  authToken={session?.access_token}
+                  profiles={profiles}
+                  onToast={showToast}
+                />
+              )}
+              {propertiesTab === 'floorplan' && (
+                <PropertiesFloorPlan
+                  businessUnit={businessUnit}
+                  isAdmin={isAdmin}
+                  authToken={session?.access_token}
+                  onToast={(msg: string) => showToast(msg)}
+                />
+              )}
+            </div>
           )}
 
         </div>
@@ -6408,9 +6788,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Overview tab */}
               {dealTab === 'overview' && (
                 <div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Property</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.property} onBlur={e => updateDeal(activeDeal.id, { property: e.target.value })} /></div>
-                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} /></div>
+                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Gross Lease Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} /></div>
+                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Billable Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.earned_commission ?? ''} placeholder="e.g. 15000" onBlur={e => { const v = e.target.value !== '' ? +e.target.value : null; updateDeal(activeDeal.id, { earned_commission: v }); setActiveDeal(prev => prev ? { ...prev, earned_commission: v } : prev); if (!dealCommission) setCommissionForm(prev => ({ ...prev, sale_price: v != null ? String(v) : '' })); }} /></div>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Stage</label>
                       <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.stage} onChange={e => setStage(activeDeal, e.target.value)}>
                         {STAGES.map(s => <option key={s}>{s}</option>)}
@@ -6423,7 +6804,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </select>
                       </div>
                     )}
-                    <div style={{ gridColumn: '1/-1' }}><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Notes</label><textarea className="crm-input" style={{ marginTop: 4, minHeight: 80, resize: 'vertical' }} defaultValue={activeDeal.notes} onBlur={e => updateDeal(activeDeal.id, { notes: e.target.value })} /></div>
+                    <div style={{ gridColumn: '1/-1' }}>
+                      <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Notes</label>
+                      <div style={{ marginTop: 4 }}>
+                        <MentionTextarea
+                          className="crm-input"
+                          style={{ minHeight: 80, resize: 'vertical', width: '100%' }}
+                          placeholder="Deal notes… (type @ to tag a teammate)"
+                          profiles={profiles}
+                          value={dealNotesText}
+                          onChange={v => setDealNotesText(v)}
+                          onMentionedIds={ids => {
+                            if (ids.length) createMentionNotifications(ids, `@${profile?.first_name} mentioned you in notes for deal: ${activeDeal.property || activeDeal.client}`, 'deal', activeDeal.id);
+                          }}
+                        />
+                        {dealNotesText !== (activeDeal.notes ?? '') && (
+                          <button onClick={() => { updateDeal(activeDeal.id, { notes: dealNotesText }); setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText } : prev); showToast('Notes saved ✓'); }}
+                            style={{ marginTop: 6, padding: '4px 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                            Save Notes
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* ── Loss Reason Banner ── */}
@@ -6531,7 +6933,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
               {/* Client tab */}
               {dealTab === 'client' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Client Name</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client} onBlur={e => updateDeal(activeDeal.id, { client: e.target.value })} /></div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label><input className="crm-input" type="email" style={{ marginTop: 4 }} defaultValue={activeDeal.client_email} onBlur={e => updateDeal(activeDeal.id, { client_email: e.target.value })} /></div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client_phone} onBlur={e => updateDeal(activeDeal.id, { client_phone: e.target.value })} /></div>
@@ -7016,7 +7418,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 16 }}>
                         <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Property Details</div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 12 }}>{d.address?.oneLine}</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                        <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                           {[
                             { label: 'Type', val: d.summary?.proptype ?? d.summary?.propLandUse ?? '—' },
                             { label: 'Year Built', val: d.summary?.yearbuilt ?? '—' },
@@ -7285,12 +7687,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
 
             {/* Scrollable body */}
-            <div style={{ padding: '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
+            <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
 
               {/* ── Section: Contact Type ── */}
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Contact Type *</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 8 }}>
                   {CLIENT_TYPES.map(t => (
                     <button key={t} type="button" onClick={() => setNc({ ...nc, type: t })}
                       style={{
@@ -7576,9 +7978,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <textarea className="crm-input" style={{ minHeight: 70, resize: 'vertical' }}
-                  placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, relationship notes…' : 'Pre-approval status, timeline, special requirements…'}
-                  value={nc.notes} onChange={e => setNc({ ...nc, notes: e.target.value })} />
+                <MentionTextarea
+                  className="crm-input"
+                  style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
+                  placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, relationship notes… (type @ to tag a teammate)' : 'Pre-approval status, timeline, special requirements… (type @ to tag a teammate)'}
+                  profiles={profiles} value={nc.notes}
+                  onChange={v => setNc({ ...nc, notes: v })}
+                  onMentionedIds={setMentionedIds} />
               </div>
             </div>
 
@@ -7711,7 +8117,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return null;
               })()}
 
-              <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
+              <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
                 {/* Contact Info */}
                 <div>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>
@@ -7904,53 +8310,110 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* Tasks */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tasks</div>
-                    <button
-                      onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
-                      style={{ background: 'none', border: '1px dashed #c9922c', borderRadius: 6, color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 10px', fontFamily: "'DM Sans',sans-serif" }}>
-                      + Add Task
-                    </button>
-                  </div>
-                  {(() => {
-                    const clientTasks = allTasks.filter(t => t.client_id === c.id);
-                    if (clientTasks.length === 0) return (
-                      <div style={{ fontSize: 14, color: '#9ca3af', fontStyle: 'italic' }}>No pending tasks</div>
-                    );
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {clientTasks.map(t => {
-                          const due = new Date(t.due_date + 'T00:00:00');
-                          const today = new Date(); today.setHours(0,0,0,0);
-                          const isOverdue = due < today;
-                          const isToday = due.getTime() === today.getTime();
-                          const dueBg = isOverdue ? '#fee2e2' : isToday ? '#fef3c7' : '#f0fdf4';
-                          const dueColor = isOverdue ? '#dc2626' : isToday ? '#92400e' : '#15803d';
-                          const typeLabel = t.type === 'follow_up' ? '📋 Follow Up' : t.type === 'call' ? '📞 Call' : '✉️ Email';
-                          return (
-                            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
-                              <button onClick={() => completeTask(t.id)}
-                                style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #d1d5db', background: '#fff', cursor: 'pointer', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
-                                title="Mark complete">
-                              </button>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 2 }}>{t.title}</div>
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                                  <span style={{ fontSize: 12, color: '#6b7280' }}>{typeLabel}</span>
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: dueColor, background: dueBg, padding: '1px 7px', borderRadius: 10 }}>
-                                    {isOverdue ? `Overdue · ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : isToday ? 'Due today' : due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}
-                                  </span>
-                                </div>
-                                {t.notes && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{t.notes}</div>}
-                              </div>
-                            </div>
-                          );
-                        })}
+                {(() => {
+                  const oldPending = allTasks.filter(t => t.client_id === c.id);
+                  const newPending = clientCardTasks.filter(t => t.status !== 'done');
+                  const newDone    = clientCardTasks.filter(t => t.status === 'done');
+                  const todayD = new Date(); todayD.setHours(0,0,0,0);
+                  function dueBadge(dateStr?: string) {
+                    if (!dateStr) return null;
+                    const due = new Date(dateStr + 'T00:00:00');
+                    const isOverdue = due < todayD;
+                    const isToday   = due.getTime() === todayD.getTime();
+                    const bg    = isOverdue ? '#fee2e2' : isToday ? '#fef3c7' : '#f0fdf4';
+                    const color = isOverdue ? '#dc2626' : isToday ? '#92400e' : '#15803d';
+                    const label = isOverdue ? `Overdue · ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : isToday ? 'Due today' : due.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+                    return <span style={{ fontSize: 11, fontWeight: 700, color, background: bg, padding: '1px 7px', borderRadius: 10 }}>{label}</span>;
+                  }
+                  const PRIORITY_DOT: Record<string,string> = { urgent:'#dc2626', high:'#c2410c', normal:'#3b82f6', low:'#94a3b8' };
+                  return (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tasks</div>
+                        <button
+                          onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
+                          style={{ background: 'none', border: '1px dashed #c9922c', borderRadius: 6, color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 10px', fontFamily: "'DM Sans',sans-serif" }}>
+                          + Add Task
+                        </button>
                       </div>
-                    );
-                  })()}
-                </div>
+
+                      {/* Old-style pending tasks */}
+                      {oldPending.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+                          {oldPending.map(t => {
+                            const typeLabel = t.type === 'follow_up' ? '📋' : t.type === 'call' ? '📞' : '✉️';
+                            return (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
+                                <button onClick={() => completeTask(t.id)}
+                                  style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #d1d5db', background: '#fff', cursor: 'pointer', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Mark complete" />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 3 }}>{typeLabel} {t.title}</div>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    {dueBadge(t.due_date)}
+                                  </div>
+                                  {t.notes && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{t.notes}</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* New-style pending tasks */}
+                      {newPending.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+                          {newPending.map(t => {
+                            const STATUS_COLORS: Record<string,{bg:string;color:string}> = { open:{bg:'#dbeafe',color:'#1d4ed8'}, in_progress:{bg:'#fef3c7',color:'#b45309'} };
+                            const sc = STATUS_COLORS[t.status] ?? {bg:'#f1f5f9',color:'#475569'};
+                            return (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
+                                <div style={{ width: 18, height: 18, flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: PRIORITY_DOT[t.priority] ?? '#94a3b8', display: 'inline-block' }} />
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 3 }}>{t.title}</div>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ ...sc, padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 } as React.CSSProperties}>{t.status.replace('_',' ')}</span>
+                                    {dueBadge(t.due_date)}
+                                  </div>
+                                  {t.description && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{t.description}</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Empty state */}
+                      {oldPending.length === 0 && newPending.length === 0 && (
+                        <div style={{ fontSize: 13, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6 }}>No pending tasks</div>
+                      )}
+
+                      {/* History — completed tasks */}
+                      {newDone.length > 0 && (
+                        <details style={{ marginTop: 4 }}>
+                          <summary style={{ fontSize: 11, color: '#9ca3af', cursor: 'pointer', userSelect: 'none', letterSpacing: 0.5, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>▸</span>
+                            <span style={{ fontWeight: 600 }}>{newDone.length} completed task{newDone.length !== 1 ? 's' : ''}</span>
+                          </summary>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+                            {newDone.map(t => (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', opacity: 0.75 }}>
+                                <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>✅</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: '#6b7280', textDecoration: 'line-through', marginBottom: 2 }}>{t.title}</div>
+                                  {t.due_date && <div style={{ fontSize: 11, color: '#9ca3af' }}>Due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>}
+                                  {t.description && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{t.description}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Activity Log */}
                 <div>
@@ -8548,12 +9011,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
 
             {/* Scrollable body */}
-            <div style={{ padding: '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
+            <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
 
               {/* ── Contact Type ── */}
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Contact Type *</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 8 }}>
                   {CLIENT_TYPES.map(t => (
                     <button key={t} type="button" onClick={() => setEc({ ...ec, type: t })}
                       style={{
@@ -8902,9 +9365,48 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <textarea className="crm-input" style={{ minHeight: 70, resize: 'vertical' }}
-                  placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, relationship notes…' : 'Pre-approval status, timeline, special requirements…'}
-                  value={ec.notes} onChange={e => setEc({ ...ec, notes: e.target.value })} />
+                <MentionTextarea
+                  className="crm-input"
+                  style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
+                  placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, relationship notes… (type @ to tag a teammate)' : 'Pre-approval status, timeline, special requirements… (type @ to tag a teammate)'}
+                  profiles={profiles} value={ec.notes}
+                  onChange={v => setEc({ ...ec, notes: v })}
+                  onMentionedIds={setMentionedIds} />
+                {/* Also apply note to other contacts in the same company */}
+                {(() => {
+                  const companyContacts = ec.business_name.trim()
+                    ? clients.filter(c => c.id !== editClient?.id && c.business_name?.toLowerCase() === ec.business_name.trim().toLowerCase())
+                    : [];
+                  if (!companyContacts.length) return null;
+                  return (
+                    <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 }}>
+                        Also update notes for ({companyContacts.length} contact{companyContacts.length !== 1 ? 's' : ''} at {ec.business_name})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {companyContacts.map(c => {
+                          const checked = linkedNoteIds.has(c.id);
+                          return (
+                            <button key={c.id} type="button" onClick={() => {
+                              setLinkedNoteIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+                                return next;
+                              });
+                            }} style={{
+                              display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                              background: checked ? '#c9922c' : '#fff', color: checked ? '#fff' : '#374151',
+                              border: `1px solid ${checked ? '#c9922c' : '#d1d5db'}`, borderRadius: 20,
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
+                            }}>
+                              {checked ? '✓ ' : ''}{c.first_name} {c.last_name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -9030,9 +9532,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         ).slice(0, 3) : [];
         const hasResults = contactResults.length + dealResults.length + campaignResults.length > 0;
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'flex-start', justifyContent: 'center', paddingTop: isMobile ? 0 : 80, paddingBottom: isMobile ? 0 : 0 }}
             onClick={() => { setShowSearch(false); setSearchQuery(''); }}>
-            <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 580, margin: '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}
+            <div style={{ background: '#fff', borderRadius: isMobile ? '20px 20px 0 0' : 14, width: '100%', maxWidth: isMobile ? '100%' : 580, margin: isMobile ? 0 : '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden', paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0, maxHeight: isMobile ? '80vh' : undefined, display: 'flex', flexDirection: 'column' }}
               onClick={e => e.stopPropagation()}>
               {/* Search input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #f0f0f0' }}>
@@ -9047,7 +9549,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <kbd style={{ fontSize: 11, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 4, padding: '2px 6px', color: '#6b7280', fontFamily: 'monospace' }}>ESC</kbd>
               </div>
               {/* Results */}
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              <div style={{ maxHeight: isMobile ? '60vh' : 420, overflowY: 'auto', flex: 1 }}>
                 {!q && (
                   <div style={{ padding: '20px 18px', color: '#9ca3af', fontSize: 14, textAlign: 'center' }}>
                     Start typing to search contacts, deals, and campaigns

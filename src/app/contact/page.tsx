@@ -187,6 +187,15 @@ export default function ContactPage() {
                             {CONTACT_REASONS.map(r => <option key={r}>{r}</option>)}
                           </select>
                         </div>
+                        <div>
+                          <label className="label-readable">Message</label>
+                          <textarea
+                            name="message"
+                            rows={4}
+                            placeholder="Tell us a bit about what you're looking for, your timeline, or any questions you have…"
+                            className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold resize-none"
+                          />
+                        </div>
 
                         {/* Social proof */}
                         <div className="rounded-xl border border-border bg-background-cream p-5">

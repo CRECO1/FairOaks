@@ -116,7 +116,7 @@ interface Task {
   assignee?: { id: string; first_name: string; last_name: string };
 }
 interface Profile { id: string; first_name: string; last_name: string; role?: string; }
-interface Client { id: string; first_name: string; last_name: string; business_name?: string; email?: string; }
+interface Client { id: string; first_name: string; last_name: string; business_name?: string; email?: string; phone?: string; cell_phone?: string; type?: string; }
 interface Props {
   tasks: Task[];
   tasksLoading: boolean;
@@ -129,6 +129,8 @@ interface Props {
   onTasksChange: (tasks: Task[]) => void;
   showToast: (msg: string) => void;
   onRefresh: () => void;
+  currentUserId?: string;
+  onTaskComplete?: (task: Task) => void;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -249,6 +251,99 @@ function Avatar({ profile }: { profile?: Profile }) {
   );
 }
 
+// ── Client Contact Card ───────────────────────────────────────────────────────
+function ClientContactCard({ client }: { client: Client }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  function copy(val: string, label: string) {
+    navigator.clipboard.writeText(val).then(() => {
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  }
+  const typeColors: Record<string, { bg: string; color: string }> = {
+    Buyer: { bg: '#dbeafe', color: '#1d4ed8' },
+    Seller: { bg: '#dcfce7', color: '#15803d' },
+    Tenant: { bg: '#fef3c7', color: '#b45309' },
+    'Landlord/Investor': { bg: '#f3e8ff', color: '#7e22ce' },
+    Agent: { bg: '#f1f5f9', color: '#475569' },
+    Broker: { bg: '#f1f5f9', color: '#475569' },
+  };
+  const tc = client.type ? (typeColors[client.type] ?? { bg: '#f1f5f9', color: '#475569' }) : null;
+  return (
+    <div style={{ marginTop: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#c9922c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
+          {(client.first_name[0] ?? '').toUpperCase()}{(client.last_name[0] ?? '').toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {client.first_name} {client.last_name}
+          </div>
+          {client.business_name && (
+            <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.business_name}</div>
+          )}
+        </div>
+        {tc && client.type && (
+          <span style={{ ...tc, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" } as React.CSSProperties}>
+            {client.type}
+          </span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {client.email && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13 }}>✉️</span>
+            <a href={`mailto:${client.email}`} style={{ fontSize: 12, color: '#2563eb', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+              onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>
+              {client.email}
+            </a>
+            <button onClick={() => copy(client.email!, 'email')} title="Copy email"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'email' ? '#16a34a' : '#9ca3af', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+              {copied === 'email' ? '✓ Copied' : '📋'}
+            </button>
+          </div>
+        )}
+        {(client.phone || client.cell_phone) && (
+          <>
+            {client.phone && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13 }}>📞</span>
+                <a href={`tel:${client.phone}`} style={{ fontSize: 12, color: '#111', flex: 1, textDecoration: 'none' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#c9922c')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#111')}>
+                  {client.phone}
+                </a>
+                <button onClick={() => copy(client.phone!, 'phone')} title="Copy phone"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'phone' ? '#16a34a' : '#9ca3af', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+                  {copied === 'phone' ? '✓ Copied' : '📋'}
+                </button>
+              </div>
+            )}
+            {client.cell_phone && client.cell_phone !== client.phone && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13 }}>📱</span>
+                <a href={`tel:${client.cell_phone}`} style={{ fontSize: 12, color: '#111', flex: 1, textDecoration: 'none' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#c9922c')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#111')}>
+                  {client.cell_phone}
+                </a>
+                <button onClick={() => copy(client.cell_phone!, 'cell')} title="Copy cell"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: copied === 'cell' ? '#16a34a' : '#9ca3af', flexShrink: 0, fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+                  {copied === 'cell' ? '✓ Copied' : '📋'}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+        {!client.email && !client.phone && !client.cell_phone && (
+          <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>No contact info on file</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Task Detail Panel ────────────────────────────────────────────────────────
 function TaskDetailPanel({
   task, profiles, clients, isAdmin, onClose, onSave, onDelete,
@@ -313,6 +408,10 @@ function TaskDetailPanel({
           <div>
             <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Linked Contact</div>
             <ContactSearch clients={clients} value={form.client_id ?? ''} onChange={id => setForm(f => ({ ...f, client_id: id }))} />
+            {(() => {
+              const linked = clients.find(c => c.id === (form.client_id ?? ''));
+              return linked ? <ClientContactCard client={linked} /> : null;
+            })()}
           </div>
 
           {/* Notes */}
@@ -347,7 +446,7 @@ function TaskDetailPanel({
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function TasksSection({
   tasks, tasksLoading, profiles, clients, isAdmin, isMobile,
-  businessUnit, authHeaders, onTasksChange, showToast, onRefresh,
+  businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete,
 }: Props) {
   const [view, setView] = useState<ViewMode>('table');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
@@ -355,10 +454,11 @@ export default function TasksSection({
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [quickAddGroup, setQuickAddGroup] = useState<string | null>(null);
+  const [contactPopup, setContactPopup] = useState<Client | null>(null);
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [newForm, setNewForm] = useState({ title: '', description: '', due_date: '', assigned_to: '', client_id: '', priority: 'normal' as PriorityKey, status: 'open' as StatusKey });
+  const [newForm, setNewForm] = useState({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal' as PriorityKey, status: 'open' as StatusKey });
   const quickAddRef = useRef<HTMLInputElement>(null);
 
   const todayStr = today();
@@ -396,6 +496,10 @@ export default function TasksSection({
     if (updated) {
       onTasksChange(tasks.map(t => t.id === id ? updated : t));
       showToast('Saved ✓');
+      // Log a touch on the linked contact when a task is marked done
+      if (updates.status === 'done' && updated.client_id && onTaskComplete) {
+        onTaskComplete(updated);
+      }
     }
   }
 
@@ -425,7 +529,7 @@ export default function TasksSection({
       showToast('Task created ✓');
     }
     setShowNewModal(false);
-    setNewForm({ title: '', description: '', due_date: '', assigned_to: '', client_id: '', priority: 'normal', status: 'open' });
+    setNewForm({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal', status: 'open' });
   }
 
   // ── Filtering ────────────────────────────────────────────────────────────
@@ -476,10 +580,16 @@ export default function TasksSection({
             <PriorityPill value={t.priority} onChange={v => handleUpdateTask(t.id, { priority: v })} />
           </div>
         )}
-        {/* Due date */}
+        {/* Due date + contact */}
         {!isMobile && (
           <div style={{ padding: '10px 12px', fontSize: 12, color: isOverdue ? '#dc2626' : '#6b7280', fontWeight: isOverdue ? 700 : 400 }}>
-            {contact ? <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>👤 {contact.first_name} {contact.last_name}</div> : null}
+            {contact ? (
+              <button onClick={e => { e.stopPropagation(); const full = clients.find(c => c.id === t.client_id); setContactPopup(full ?? null); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f1f5f9', border: 'none', borderRadius: 6, padding: '2px 7px', marginBottom: 4, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: '100%' }}>
+                <span style={{ fontSize: 11 }}>👤</span>
+                <span style={{ fontSize: 11, color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
+              </button>
+            ) : null}
             {t.due_date ? <span>📅 {fmtDate(t.due_date)}</span> : <span style={{ color: '#d1d5db' }}>No date</span>}
           </div>
         )}
@@ -713,6 +823,21 @@ export default function TasksSection({
           Loading tasks…
         </div>
       ) : view === 'table' ? <TableView /> : <BoardView />}
+
+      {/* Contact quick-view popup */}
+      {contactPopup && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setContactPopup(null)}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 14, padding: 24, width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Contact Info</span>
+              <button onClick={() => setContactPopup(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 18, lineHeight: 1 }}>✕</button>
+            </div>
+            <ClientContactCard client={contactPopup} />
+          </div>
+        </div>
+      )}
 
       {/* Task Detail Panel */}
       {detailTask && (
