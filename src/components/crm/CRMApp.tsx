@@ -6,6 +6,7 @@ import { Session } from '@supabase/supabase-js';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
+import { getBrand, type BusinessUnit } from '@/lib/branding';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -278,7 +279,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
 }
 
 // ── Login Screen ──────────────────────────────────────────────────────────────
-function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; brandName: string }) {
+function LoginScreen({ onLogin, brandName, emailPlaceholder }: { onLogin: (s: Session) => void; brandName: string; emailPlaceholder: string }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -327,7 +328,7 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
         {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{error}</div>}
         <form onSubmit={handleLogin}>
           <label style={labelStyle}>Email</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@fairoaksrealtygroup.com" required style={inputStyle} />
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={emailPlaceholder} required style={inputStyle} />
           <label style={labelStyle}>Password</label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required style={{ ...inputStyle, marginBottom: 20 }} />
           <button type="submit" disabled={loading}
@@ -341,15 +342,10 @@ function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; br
 }
 
 // ── Main CRM ──────────────────────────────────────────────────────────────────
-type BusinessUnit = 'residential' | 'commercial';
-
-const BRANDING: Record<BusinessUnit, { name: string; shortName: string; tagline: string }> = {
-  residential: { name: 'Fair Oaks Realty Group', shortName: 'Fair Oaks', tagline: 'Residential CRM' },
-  commercial:  { name: 'CRECO',                  shortName: 'CRECO',      tagline: 'Commercial CRM'  },
-};
+// BusinessUnit type and BRANDING map now live in '@/lib/branding' (shared with API routes).
 
 export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit }) {
-  const brand = BRANDING[businessUnit];
+  const brand = getBrand(businessUnit);
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -2152,7 +2148,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   });
 
   function getDefaultEmailBody(): string {
-    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015</small></p>`;
+    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · ${brand.address}</small></p>`;
   }
 
   // ── Render guards ─────────────────────────────────────────────────────────────
@@ -2165,7 +2161,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
-  if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} />;
+  if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} emailPlaceholder={`you@${brand.fromEmail.split('@')[1]}`} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
   const isAdmin = profile.role === 'admin';
@@ -4383,7 +4379,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               }).filter(r => r.total > 0).sort((a, b) => b.total - a.total);
               const totalPaid = agentTotals.reduce((s, r) => s + r.total, 0);
               const needsFiling = agentTotals.filter(r => r.total >= 600);
-              const buName = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
+              const buName = brand.name;
 
               return (
                 <div>
@@ -5096,8 +5092,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 .replace(/\{\{last_name\}\}/g, 'Smith')
                                 .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                                 .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
+                                .replace(/\{\{brokerage\}\}/g, brand.legalName)
                                 || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No SMS body set.</span>}
                             </div>
                           </div>
@@ -5115,7 +5111,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 .replace(/\{\{last_name\}\}/g, 'Smith')
                                 .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                                 .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')}
+                                .replace(/\{\{brokerage\}\}/g, brand.legalName)}
                             </span>
                           </div>
 
@@ -5128,7 +5124,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e' }} />
                                 <div style={{ flex: 1, marginLeft: 12, background: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, color: '#9ca3af' }}>
-                                  From: Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;
+                                  From: {brand.fromName} &lt;{brand.fromEmail}&gt;
                                 </div>
                               </div>
                               <iframe
@@ -5141,9 +5137,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     .replace(/\{\{email\}\}/g, 'jane@example.com')
                                     .replace(/\{\{client_type\}\}/g, 'Buyer')
                                     .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                    .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                                    .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                                    .replace(/\{\{agent_email\}\}/g, profile?.email ?? `agent@${brand.fromEmail.split('@')[1]}`)
+                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
+                                    .replace(/\{\{brokerage\}\}/g, brand.legalName)
                                     .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
                                   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${body}</body></html>`;
                                 })()}
@@ -5769,19 +5765,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Preview tab */}
                   {actionPlanTab === 'preview' && (() => {
-                    const fromLine = businessUnit === 'commercial'
-                      ? 'CRECO <info@crecotx.com>'
-                      : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
+                    const fromLine = `${brand.fromName} <${brand.fromEmail}>`;
                     const applyPreview = (t: string) => (t ?? '')
                       .replace(/\{\{first_name\}\}/g, 'Jane')
                       .replace(/\{\{last_name\}\}/g, 'Smith')
                       .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                       .replace(/\{\{email\}\}/g, 'jane@example.com')
-                      .replace(/\{\{client_type\}\}/g, 'Tenant')
+                      .replace(/\{\{client_type\}\}/g, businessUnit === 'commercial' ? 'Tenant' : 'Buyer')
                       .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                      .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                      .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                      .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                      .replace(/\{\{agent_email\}\}/g, profile?.email ?? `agent@${brand.fromEmail.split('@')[1]}`)
+                      .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
+                      .replace(/\{\{brokerage\}\}/g, brand.legalName)
                       .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
 
                     if (detailSteps.length === 0) return (
@@ -5989,10 +5983,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               .replaceAll('{{full_name}}', 'John Smith')
                               .replaceAll('{{email}}', 'john.smith@email.com')
                               .replaceAll('{{client_type}}', 'Buyer')
-                              .replaceAll('{{agent_name}}', 'Zachary Stovall')
-                              .replaceAll('{{agent_email}}', 'info@fairoaksrealtygroup.com')
-                              .replaceAll('{{agent_phone}}', '210-390-9997')
-                              .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
+                              .replaceAll('{{agent_name}}', `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                              .replaceAll('{{agent_email}}', profile?.email ?? brand.fromEmail)
+                              .replaceAll('{{agent_phone}}', profile?.phone ?? brand.phone)
+                              .replaceAll('{{brokerage}}', brand.legalName)
                               .replaceAll('{{unsubscribe_url}}', '#');
                             return (
                               <div>
@@ -6020,9 +6014,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', minHeight: 200, overflow: 'hidden' }}>
                                     {/* Email chrome */}
                                     <div style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', padding: '8px 14px', fontSize: 13, color: '#6b7280' }}>
-                                      <div><strong>From:</strong> Fair Oaks Realty Group &lt;info@fairoaksrealtygroup.com&gt;</div>
+                                      <div><strong>From:</strong> {brand.fromName} &lt;{brand.fromEmail}&gt;</div>
                                       <div><strong>To:</strong> john.smith@email.com</div>
-                                      <div><strong>Subject:</strong> {(step.subject || '(no subject)').replaceAll('{{first_name}}', 'John').replaceAll('{{agent_name}}', 'Zachary Stovall')}</div>
+                                      <div><strong>Subject:</strong> {(step.subject || '(no subject)').replaceAll('{{first_name}}', 'John').replaceAll('{{agent_name}}', `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())}</div>
                                     </div>
                                     <iframe
                                       srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:20px;font-family:Arial,sans-serif;font-size:15px;color:#222;line-height:1.6}a{color:#c9922c}</style></head><body>${preview || '<p style="color:#9ca3af">Nothing to preview yet — add some HTML in the Code tab.</p>'}</body></html>`}
@@ -6063,6 +6057,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               agentId={profile?.id ?? ''}
               isAdmin={isAdmin}
               toast={(msg: string) => showToast(msg)}
+              businessUnit={businessUnit}
             />
           )}
 
@@ -8483,7 +8478,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Email meta bar */}
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 13, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <span><strong>To:</strong> Jane Smith &lt;jane@example.com&gt;</span>
-              <span><strong>From:</strong> Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;</span>
+              <span><strong>From:</strong> {brand.fromName} &lt;{brand.fromEmail}&gt;</span>
               <span style={{ marginLeft: 'auto', color: '#9ca3af', fontStyle: 'italic' }}>Test sends to: {profile?.email ?? session?.user?.email}</span>
             </div>
             <div style={{ fontSize: 11, background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '6px 20px', color: '#92400e', fontWeight: 500 }}>
@@ -8497,9 +8492,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   .replace(/\{\{full_name\}\}/g, 'Jane Smith').replace(/\{\{email\}\}/g, 'jane@example.com')
                   .replace(/\{\{client_type\}\}/g, 'Buyer')
                   .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`)
-                  .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                  .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                  .replace(/\{\{agent_email\}\}/g, profile?.email ?? `agent@${brand.fromEmail.split('@')[1]}`)
+                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
+                  .replace(/\{\{brokerage\}\}/g, brand.legalName)
                   .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview'))
               }}
             />

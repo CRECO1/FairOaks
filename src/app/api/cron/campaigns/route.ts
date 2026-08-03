@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { getBrand, fromLine } from '@/lib/branding';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -12,9 +13,9 @@ function applyMergeFields(template: string, ctx: {
   agent: { first_name: string; last_name: string; email: string; phone?: string };
   brokerage: string;
   defaultPhone: string;
+  unsubscribeBaseUrl: string;
 }): string {
-  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
-  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+  const unsubscribeUrl = `${ctx.unsubscribeBaseUrl}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
   return template
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -94,11 +95,11 @@ export async function GET(req: NextRequest) {
     const senderAgent = campaign.sender_agent_id
       ? agentMap[campaign.sender_agent_id]
       : agentMap[client.agent_id];
-    const isCommercialCampaign = campaign.business_unit === 'commercial';
-    const fallbackAgentEmail = isCommercialCampaign ? 'info@crecotx.com' : 'info@fairoaksrealtygroup.com';
-    const fallbackAgentPhone = isCommercialCampaign ? '210-817-3443' : '210-390-9997';
+    const campaignBrand = getBrand(campaign.business_unit);
+    const fallbackAgentEmail = campaignBrand.fromEmail;
+    const fallbackAgentPhone = campaignBrand.phone;
     const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
-    const brokerageName = isCommercialCampaign ? 'CRECO' : 'Fair Oaks Realty Group';
+    const brokerageName = campaignBrand.legalName;
 
     const ctx = {
       client: {
@@ -116,6 +117,7 @@ export async function GET(req: NextRequest) {
       },
       brokerage: brokerageName,
       defaultPhone: fallbackAgentPhone,
+      unsubscribeBaseUrl: campaignBrand.unsubscribeBaseUrl,
     };
 
     // Generate a unique tracking ID for this send
@@ -145,11 +147,8 @@ export async function GET(req: NextRequest) {
             ? renderedBody.replace('</body>', `${pixel}</body>`)
             : renderedBody + pixel;
 
-          // Brand based on business unit
-          const isCommercial = campaign.business_unit === 'commercial';
-          const brandName = isCommercial ? 'CRECO' : 'Fair Oaks Realty Group';
-          const brandDomain = isCommercial ? 'crecotx.com' : 'fairoaksrealtygroup.com';
-          const fallbackEmail = isCommercial ? `info@crecotx.com` : `info@fairoaksrealtygroup.com`;
+          // Brand based on business unit (sourced from the shared branding module)
+          const fallbackEmail = campaignBrand.fromEmail;
 
           // Use sender agent's email as reply-to if they have one
           const replyTo = agent.email && agent.email !== fallbackEmail
@@ -157,7 +156,7 @@ export async function GET(req: NextRequest) {
             : undefined;
 
           const emailResult = await resend.emails.send({
-            from: `${brandName} <noreply@${brandDomain}>`,
+            from: fromLine(campaign.business_unit),
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,

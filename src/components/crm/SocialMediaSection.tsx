@@ -83,6 +83,7 @@ interface Props {
   agentId: string;
   isAdmin: boolean;
   toast: (msg: string) => void;
+  businessUnit?: 'residential' | 'commercial';
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -184,7 +185,10 @@ function statusBadge(status: PostStatus) {
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
-export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
+export default function SocialMediaSection({ agentId, isAdmin, toast, businessUnit = 'residential' }: Props) {
+  // The "We've Moved" / New Office campaign preset is Fair Oaks-specific.
+  // Only offer/auto-seed it in the residential workspace.
+  const showFairOaksCampaign = businessUnit === 'residential';
   const [activeTab, setActiveTab] = useState<'publisher' | 'calendar' | 'inbox' | 'analytics'>('publisher');
 
   // Connections
@@ -383,8 +387,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       const data = await res.json();
       const loaded: SocialPost[] = data.posts || [];
       setPosts(loaded);
-      // Auto-seed campaign drafts on first load if the queue is empty
-      if (seedIfEmpty && loaded.length === 0) {
+      // Auto-seed campaign drafts on first load if the queue is empty.
+      // Gated to residential — the preset is Fair Oaks-branded.
+      if (seedIfEmpty && loaded.length === 0 && showFairOaksCampaign) {
         await importCampaignAsDrafts(true);
       }
     } catch {
@@ -415,6 +420,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   }
 
   async function importCampaignAsDrafts(silent = false) {
+    // The New Office / "We've Moved" preset is Fair Oaks-specific; never seed it outside residential.
+    if (!showFairOaksCampaign) {
+      if (!silent) toast('This campaign preset is only available in the Fair Oaks (residential) workspace.');
+      return;
+    }
     setCampaignImporting(true);
     try {
       const today = new Date();
