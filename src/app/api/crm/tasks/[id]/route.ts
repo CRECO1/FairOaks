@@ -11,6 +11,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const update: Record<string,unknown> = { updated_at: new Date().toISOString() };
   for (const k of allowed) if (k in body) update[k] = body[k] ?? null;
   const supabase = adminClient();
+  // Keep status and completed_at consistent: stamp completed_at when a task
+  // becomes 'done' (preserving an existing timestamp), clear it otherwise.
+  if ('status' in body) {
+    if (body.status === 'done') {
+      const { data: existing } = await supabase.from('crm_tasks').select('completed_at').eq('id', id).single();
+      if (!existing?.completed_at) update.completed_at = new Date().toISOString();
+    } else {
+      update.completed_at = null;
+    }
+  }
   const { data, error } = await supabase.from('crm_tasks').update(update).eq('id', id).select().single();
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ task: data });

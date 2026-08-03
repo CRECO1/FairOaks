@@ -1202,6 +1202,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       title: taskForm.title.trim(),
       due_date: taskForm.due_date,
       notes: taskForm.notes.trim(),
+      business_unit: businessUnit,
+      status: 'open',
     }]).select().single();
     if (error) { showToast('Error saving task'); return; }
     setAllTasks(prev => [...prev, data as CRMTask].sort((a, b) => a.due_date.localeCompare(b.due_date)));
@@ -1234,7 +1236,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function completeTask(taskId: string) {
     const now = new Date().toISOString();
-    await supabase.from('crm_tasks').update({ completed_at: now }).eq('id', taskId);
+    await supabase.from('crm_tasks').update({ completed_at: now, status: 'done' }).eq('id', taskId);
     setAllTasks(prev => prev.filter(t => t.id !== taskId));
     showToast('Task completed ✓');
   }
