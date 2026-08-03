@@ -8,6 +8,7 @@ import { ArrowLeft, Calendar, Tag, Phone } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Container } from '@/components/ui/Container';
 import { RichTextRenderer } from '@/components/blog/RichTextRenderer';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -356,7 +357,7 @@ export default async function BlogPostPage({ params }: Props) {
               {/* Demo HTML body (for seed posts) */}
               {post.demoBody && !post.content && (
                 <div className="prose-article"
-                  dangerouslySetInnerHTML={{ __html: post.demoBody }} />
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(post.demoBody) }} />
               )}
 
               {/* Back to blog */}

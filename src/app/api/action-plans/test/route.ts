@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
+import { getBrand, fromLine } from '@/lib/branding';
 
 export async function POST(req: NextRequest) {
   const caller = await getCrmUser();
@@ -33,12 +34,13 @@ export async function POST(req: NextRequest) {
   if (!agent?.email) return NextResponse.json({ error: 'Agent email not found' }, { status: 400 });
 
   // Fill merge fields with the agent's own info as sample data
-  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+  const brand = getBrand(plan.business_unit);
+  const BASE_URL = brand.unsubscribeBaseUrl;
   const isCommercial = plan.business_unit === 'commercial';
-  const agentEmail = isCommercial ? 'info@crecotx.com' : (agent.email || 'info@fairoaksrealtygroup.com');
-  const agentPhone = isCommercial ? '210-817-3443' : (agent.phone || '210-390-9997');
-  const brokerage  = isCommercial ? 'CRECO Commercial Real Estate Company' : 'Fair Oaks Realty Group';
-  const fromAddr   = isCommercial ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
+  const agentEmail = isCommercial ? brand.fromEmail : (agent.email || brand.fromEmail);
+  const agentPhone = isCommercial ? brand.phone : (agent.phone || brand.phone);
+  const brokerage  = brand.legalName;
+  const fromAddr   = fromLine(plan.business_unit);
 
   function fill(template: string) {
     return template
