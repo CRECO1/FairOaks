@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { searchParams } = req.nextUrl;
-  const businessUnit = searchParams.get('business_unit') ?? 'commercial';
+  const requestedUnit = searchParams.get('business_unit') ?? 'commercial';
+  // Agents are locked to their own workspace; only admins may query across units.
+  const businessUnit = isAdminRole(ctx.role) ? requestedUnit : (ctx.businessUnit ?? requestedUnit);
   const agentId      = searchParams.get('agent_id');
   const status       = searchParams.get('status');
   const year         = searchParams.get('year');
-
-  const dealId = searchParams.get('deal_id');
+  const dealId       = searchParams.get('deal_id');
 
   const supabase = adminClient();
   let q = supabase
@@ -32,8 +33,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const body = await req.json();
   const {
@@ -44,6 +45,9 @@ export async function POST(req: NextRequest) {
 
   if (!deal_id) return NextResponse.json({ error: 'deal_id required' }, { status: 400 });
   if (!sale_price || isNaN(Number(sale_price))) return NextResponse.json({ error: 'valid sale_price required' }, { status: 400 });
+
+  // Non-admins can only write into their own workspace.
+  const unit = isAdminRole(ctx.role) ? (business_unit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
 
   // Compute derived commission fields server-side — never trust client-supplied values
   const sp   = Number(sale_price);
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
     .upsert({
       deal_id,
       agent_id:        agent_id    ?? null,
-      business_unit:   business_unit ?? 'commercial',
+      business_unit:   unit,
       sale_price:      sp,
       deal_type:       deal_type   ?? null,
       commission_rate: rate,
@@ -76,7 +80,7 @@ export async function POST(req: NextRequest) {
       close_date:      close_date   ?? null,
       paid_date:       paid_date    ?? null,
       notes:           notes        ?? null,
-      created_by:      caller.id,
+      created_by:      ctx.userId,
     }, { onConflict: 'deal_id', ignoreDuplicates: false })
     .select()
     .single();
@@ -84,4 +88,3 @@ export async function POST(req: NextRequest) {
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ commission: data });
 }
-

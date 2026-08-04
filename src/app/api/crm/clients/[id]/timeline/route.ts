@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
   const supabase = adminClient();
+
+  // Only expose a client's timeline to admins or to agents in the same workspace.
+  const { data: client } = await supabase.from('crm_clients').select('business_unit').eq('id', id).single();
+  if (!client) return notFound();
+  if (!isAdminRole(ctx.role) && client.business_unit !== ctx.businessUnit) return notFound();
 
   const [activity, campaigns, plans, deals, imports] = await Promise.all([
     supabase.from('crm_activity').select('id,type,notes,created_at,agent:crm_profiles(first_name,last_name)').eq('client_id', id).order('created_at', { ascending: false }).limit(50),

@@ -27,14 +27,33 @@ export async function getCrmUser(req?: NextRequest) {
   return user;
 }
 
-/** Returns the authenticated user only if they have role='admin' in crm_profiles. */
-export async function getCrmAdmin(req?: NextRequest) {
+/** Role tiers, most-privileged first. `super_admin` ⊃ `admin` ⊃ `agent`. */
+export const ADMIN_ROLES = ['admin', 'super_admin'] as const;
+
+/** Fetch the caller's crm_profiles.role (or null). */
+async function getCrmRole(req?: NextRequest): Promise<{ userId: string; role: string | null } | null> {
   const user = await getCrmUser(req);
   if (!user) return null;
   const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
-  if (data?.role !== 'admin') return null;
-  return user;
+  return { userId: user.id, role: (data?.role as string | undefined) ?? null };
+}
+
+/**
+ * Returns the authenticated user only if they are an admin OR super_admin.
+ * (super_admin is a strict superset of admin, so it passes every admin gate.)
+ */
+export async function getCrmAdmin(req?: NextRequest) {
+  const r = await getCrmRole(req);
+  if (!r || !r.role || !ADMIN_ROLES.includes(r.role as (typeof ADMIN_ROLES)[number])) return null;
+  return await getCrmUser(req);
+}
+
+/** Returns the authenticated user only if they have role='super_admin'. */
+export async function getCrmSuperAdmin(req?: NextRequest) {
+  const r = await getCrmRole(req);
+  if (!r || r.role !== 'super_admin') return null;
+  return await getCrmUser(req);
 }
 
 /** Convenience: return 401 JSON response. */
@@ -54,4 +73,35 @@ export function forbidden(msg = 'Forbidden — admin only') {
 export function dbError(context: string, err: { message?: string } | null | unknown, status = 500) {
   console.error(`[${context}]`, err);
   return NextResponse.json({ error: 'An internal server error occurred.' }, { status });
+}
+
+/**
+ * Full caller context in one place: the user id plus their crm_profiles role and
+ * business_unit. Prefer this over getCrmUser() in any route that must scope data to
+ * the caller's workspace, so authorization no longer depends on RLS alone.
+ */
+export async function getCrmContext(req?: NextRequest): Promise<{ userId: string; role: string | null; businessUnit: string | null } | null> {
+  const user = await getCrmUser(req);
+  if (!user) return null;
+  const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+  const { data } = await admin.from('crm_profiles').select('role, business_unit').eq('id', user.id).single();
+  return {
+    userId: user.id,
+    role: (data?.role as string | undefined) ?? null,
+    businessUnit: (data?.business_unit as string | undefined) ?? null,
+  };
+}
+
+/** True when the role is an admin tier (admin or super_admin). */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return !!role && (ADMIN_ROLES as readonly string[]).includes(role);
+}
+
+/**
+ * 404 for cross-tenant / unauthorized-object access. We deliberately return "not found"
+ * rather than 403 so the status code can't be used to confirm a record exists in another
+ * workspace.
+ */
+export function notFound(msg = 'Not found') {
+  return NextResponse.json({ error: msg }, { status: 404 });
 }

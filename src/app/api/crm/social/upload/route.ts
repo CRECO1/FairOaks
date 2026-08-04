@@ -35,7 +35,12 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_TYPES.includes(contentType)) {
     return NextResponse.json({ error: 'File type not allowed' }, { status: 400 });
   }
-  if (size && size > MAX_SIZE_BYTES) {
+  // Require a real, positive size and enforce the cap — do not let clients skip the
+  // check by omitting size.
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+    return NextResponse.json({ error: 'size (bytes) is required' }, { status: 400 });
+  }
+  if (size > MAX_SIZE_BYTES) {
     return NextResponse.json({ error: 'File too large (max 12 MB)' }, { status: 400 });
   }
 

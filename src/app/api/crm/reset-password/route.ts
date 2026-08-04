@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
+import { getCrmAdmin, forbidden, isAdminRole } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
@@ -13,7 +13,7 @@ async function getAdminId(req: NextRequest): Promise<string | null> {
     const { data: { user } } = await admin.auth.getUser(token);
     if (user) {
       const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
-      return data?.role === 'admin' ? user.id : null;
+      return isAdminRole(data?.role) ? user.id : null;
     }
     return null;
   }

@@ -17,12 +17,17 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
   // Only the authenticated agent can initiate their own OAuth flow
-  const caller = await getCrmUser();
+  const caller = await getCrmUser(req);
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot initiate OAuth for another user');
 
   const clientId    = process.env.GOOGLE_CLIENT_ID;
   const redirectUri = 'https://crm.vultstack.com/api/gmail/callback';
+
+  // CSRF defense: bind this flow to a one-time nonce kept in an httpOnly cookie and
+  // echoed in `state`. The callback rejects any mismatch, so an attacker can't feed the
+  // victim a forged callback that links the attacker's Google account.
+  const nonce = crypto.randomUUID();
 
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId!);
@@ -32,13 +37,15 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('access_type', 'offline');
   // When a hint is provided (adding a second account), force account picker + full consent
   // so Google always issues a fresh refresh_token for the new account.
-  // Without select_account, Google may silently pick the already-signed-in account.
   url.searchParams.set('prompt', hint ? 'select_account consent' : 'consent');
-  // Encode userId + business unit + retry flag into state
-  const state = bu ? `${userId}|${bu}${retry ? '|retry' : ''}` : userId;
-  url.searchParams.set('state', state);
+  // state: userId | businessUnit | retry-flag | nonce
+  url.searchParams.set('state', `${userId}|${bu}|${retry ? 'retry' : ''}|${nonce}`);
   // login_hint pre-selects the target account in the picker
   if (hint) url.searchParams.set('login_hint', hint);
 
-  return NextResponse.redirect(url.toString());
+  const res = NextResponse.redirect(url.toString());
+  res.cookies.set('gmail_oauth_nonce', nonce, {
+    httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 600,
+  });
+  return res;
 }

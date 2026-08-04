@@ -1,16 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
+/** Returns the task's business_unit if the caller may act on it, else null. */
+async function assertTaskAccess(
+  supabase: ReturnType<typeof adminClient>,
+  id: string,
+  ctx: { role: string | null; businessUnit: string | null },
+): Promise<boolean> {
+  const { data } = await supabase.from('crm_tasks').select('business_unit').eq('id', id).single();
+  if (!data) return false;
+  if (isAdminRole(ctx.role)) return true;
+  return data.business_unit === ctx.businessUnit;
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
   const body = await req.json();
+  const supabase = adminClient();
+  if (!(await assertTaskAccess(supabase, id, ctx))) return notFound();
+
   const allowed = ['title','description','due_date','assigned_to','status','priority'];
   const update: Record<string,unknown> = { updated_at: new Date().toISOString() };
   for (const k of allowed) if (k in body) update[k] = body[k] ?? null;
-  const supabase = adminClient();
+
   // Keep status and completed_at consistent: stamp completed_at when a task
   // becomes 'done' (preserving an existing timestamp), clear it otherwise.
   if ('status' in body) {
@@ -26,11 +41,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ task: data });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
   const supabase = adminClient();
+  if (!(await assertTaskAccess(supabase, id, ctx))) return notFound();
+
   const { error } = await supabase.from('crm_tasks').delete().eq('id', id);
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ deleted: true });

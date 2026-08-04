@@ -4,8 +4,8 @@
  * Sends a test/preview email for a campaign to the requesting agent's
  * own email address so they can see how it renders in a real inbox.
  *
- * Body: { subject, body, campaignName?, recipientEmail? }
- *   recipientEmail — optional override; defaults to the agent's profile email
+ * Body: { subject, body, campaignName? }  (preview always sends to the caller only)
+ *   (test sends always go to the requesting agent's own profile email)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
-  const { subject, body, campaignName, recipientEmail, businessUnit } = await req.json();
+  const { subject, body, campaignName, businessUnit } = await req.json();
   const isCommercial = businessUnit === 'commercial';
 
   if (!subject && !body) {
@@ -77,7 +77,9 @@ export async function POST(req: NextRequest) {
   `;
   renderedBody = previewBanner + renderedBody;
 
-  const toEmail = recipientEmail || agentEmail;
+  // Preview sends go ONLY to the requesting agent's own address — never a client-supplied
+  // recipient (prevents using this endpoint as an open relay to spoof the brokerage domain).
+  const toEmail = agentEmail;
   if (!toEmail) {
     return NextResponse.json({ error: 'No recipient email — add an email to your profile first' }, { status: 400 });
   }

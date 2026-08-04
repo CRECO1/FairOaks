@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Fields an agent is allowed to set on a campaign (prevents mass-assignment)
 const ALLOWED_PATCH_FIELDS = new Set([
   'name', 'description', 'type', 'frequency', 'send_date', 'send_time',
   'send_day_of_month', 'status', 'email_subject', 'email_body',
-  'sms_body', 'sender_agent_id', 'created_by',
-]);
+  'sms_body',
+]);  // NOTE: 'created_by' / 'sender_agent_id' are intentionally NOT settable via PATCH (no ownership reassignment)
 
 function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
   if (frequency === 'one-time' && sendDate) {
@@ -24,9 +24,9 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
   return now.toISOString();
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
   const supabase = adminClient();
@@ -39,8 +39,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
   const body = await req.json();
@@ -67,8 +67,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const supabase = adminClient();
 
-  // Fetch current campaign to detect activation
-  const { data: existing } = await supabase.from('crm_campaigns').select('status, frequency, send_date, send_time').eq('id', id).single();
+  // Fetch current campaign to detect activation + enforce workspace isolation
+  const { data: existing } = await supabase.from('crm_campaigns').select('status, frequency, send_date, send_time, business_unit').eq('id', id).single();
+  if (!existing) return notFound();
+  if (!isAdminRole(ctx.role) && existing.business_unit !== ctx.businessUnit) return notFound();
 
   // Coerce send_day_of_month to integer if provided as a string
   const patchPayload = { ...safeBody, updated_at: new Date().toISOString() };

@@ -5,12 +5,19 @@ import { NextRequest, NextResponse } from 'next/server';
  *
  * Final landing page after OAuth. Broadcasts the result to the originating tab
  * via localStorage (works for both popup and new-tab flows), then closes itself.
+ *
+ * SECURITY: `platform` is validated against a fixed allowlist before it is placed
+ * into HTML — never interpolate raw query params into markup (reflected XSS).
  */
+const ALLOWED_PLATFORMS = new Set(['facebook', 'linkedin', 'twitter', 'youtube', 'instagram', 'tiktok']);
+
 export async function GET(req: NextRequest) {
   const qs = req.nextUrl.searchParams.toString();
   const isError = req.nextUrl.searchParams.get('social') === 'error';
-  const platform = req.nextUrl.searchParams.get('platform') ?? '';
-  const label = platform.charAt(0).toUpperCase() + platform.slice(1);
+  const rawPlatform = (req.nextUrl.searchParams.get('platform') ?? '').toLowerCase();
+  const platform = ALLOWED_PLATFORMS.has(rawPlatform) ? rawPlatform : '';
+  // label is derived only from the allowlisted value, so it is safe to embed in HTML.
+  const label = platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account';
 
   const html = `<!DOCTYPE html>
 <html>

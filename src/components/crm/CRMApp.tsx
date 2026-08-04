@@ -13,10 +13,10 @@ import { getBrand, type BusinessUnit } from '@/lib/branding';
 const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Role = 'admin' | 'agent';
+type Role = 'super_admin' | 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
-interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
+interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; client?: { id: string; first_name: string; last_name: string; business_name?: string; phone?: string; cell_phone?: string } | null; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
@@ -1030,7 +1030,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteClient(id: string, name: string) {
-    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
+    if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     if (!confirm(`Remove ${name}? This cannot be undone.`)) return;
     await supabase.from('crm_clients').delete().eq('id', id);
     setClients(prev => prev.filter(c => c.id !== id));
@@ -1038,7 +1038,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function massDeleteClients() {
-    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
+    if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     const count = selectedClientIds.size;
     if (count === 0) return;
     if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
@@ -1190,7 +1190,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function loadAllTasks() {
     const { data } = await supabase
       .from('crm_tasks')
-      .select('*')
+      .select('*, client:crm_clients(id,first_name,last_name,business_name,phone,cell_phone)')
       .eq('agent_id', profile!.id)
       .is('completed_at', null)
       .order('due_date', { ascending: true });
@@ -1376,19 +1376,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ? clients.filter(c => selectedClientIds.has(c.id))
       : clients;
 
-    // Notify admin whenever any agent (non-admin) exports
-    if (!isAdmin && profile) {
-      fetch('/api/crm/export-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_name: `${profile.first_name} ${profile.last_name}`,
-          agent_email: profile.email ?? '',
-          count: toExport.length,
-          business_unit: businessUnit,
-          selected: selectedClientIds.size > 0,
-        }),
-      }).catch(() => {});
+    // Contact export is restricted to the super admin. Everyone else (incl.
+    // admins like Brian) is blocked, and the attempt is logged so the super
+    // admin has an audit trail if someone tries to take the contact list.
+    if (!isSuperAdmin) {
+      if (profile) {
+        fetch('/api/crm/export-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent_name: `${profile.first_name} ${profile.last_name}`,
+            agent_email: profile.email ?? '',
+            count: toExport.length,
+            business_unit: businessUnit,
+            selected: selectedClientIds.size > 0,
+            blocked: true,
+          }),
+        }).catch(() => {});
+      }
+      showToast('Only a super admin can export contacts.');
+      return;
     }
 
     const headers = ['First Name', 'Last Name', 'Business Name', 'Type', 'Email', 'Phone', 'Cell Phone', 'Budget', 'Size Range', 'Asset Types', 'Address', 'City', 'State', 'ZIP', 'Brokerage', 'License', 'Notes', 'Date Added'];
@@ -1594,6 +1601,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Delete agent ──────────────────────────────────────────────────────────────
   async function updateAgentRole(userId: string, firstName: string, newRole: 'admin' | 'agent') {
+    // Granting/revoking admin is a super-admin-only power. This stops an admin
+    // (e.g. Brian) from promoting himself/others or demoting the super admin.
+    if (!isSuperAdmin) { showToast('Only a super admin can change admin access.'); return; }
     const action = newRole === 'admin' ? `Make ${firstName} an admin?` : `Remove admin access from ${firstName}?`;
     if (!confirm(action)) return;
     const { error } = await supabase.from('crm_profiles').update({ role: newRole }).eq('id', userId);
@@ -2212,7 +2222,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} emailPlaceholder={`you@${brand.fromEmail.split('@')[1]}`} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
-  const isAdmin = profile.role === 'admin';
+  // super_admin is a strict superset of admin — it passes every admin gate,
+  // plus the super-admin-only ones (delete/export contacts, manage admins).
+  const isSuperAdmin = profile.role === 'super_admin';
+  const isAdmin = profile.role === 'admin' || isSuperAdmin;
   const isMobile = windowWidth < 768;
   const isTabletOrMobile = windowWidth < 1024; // sidebar hides on tablet too
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');
@@ -2641,9 +2654,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {selectedClientIds.size} selected
                 </span>
               )}
-              <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={exportClients} title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'} style={{ fontSize: 13 }}>
-                ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
-              </button>
+              {isSuperAdmin && (
+                <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={exportClients} title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'} style={{ fontSize: 13 }}>
+                  ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
+                </button>
+              )}
               <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => importFileRef.current?.click()} title="Import from XLSX or CSV" style={{ fontSize: 13 }}>⬆ Import</button>
               <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add Client</button>
             </div>
@@ -3309,11 +3324,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       👤 Reassign
                     </button>
-                    <button
-                      onClick={massDeleteClients}
-                      style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                      🗑 Delete Selected
-                    </button>
+                    {isSuperAdmin && (
+                      <button
+                        onClick={massDeleteClients}
+                        style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        🗑 Delete Selected
+                      </button>
+                    )}
                     <button
                       onClick={() => setSelectedClientIds(new Set())}
                       style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
@@ -3539,10 +3556,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Edit contact">
                                       ✏️
                                     </button>
-                                    <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
-                                      style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove client (admin only)">
-                                      🗑
-                                    </button>
+                                    {isSuperAdmin && (
+                                      <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
+                                        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove contact (super admin only)">
+                                        🗑
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -3944,7 +3963,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             const doneCt = callsDoneThisSession;
             const totalCt = doneCt + queue.length;
             const pct = totalCt > 0 ? Math.round((doneCt / totalCt) * 100) : 100;
-            const clientFor = (t: CRMTask) => clients.find(c => c.id === t.client_id) ?? null;
+            const clientFor = (t: CRMTask) => ((t.client as unknown as Client | null) ?? clients.find(c => c.id === t.client_id) ?? null);
             const nameFor = (c: Client | null) => c ? (c.business_name ? `${c.first_name} ${c.last_name} — ${c.business_name}` : `${c.first_name} ${c.last_name}`) : 'Unknown contact';
             const phoneFor = (c: Client | null) => c ? (c.phone || c.cell_phone || '') : '';
 
@@ -4369,8 +4388,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* Role toggle — only for other users */}
-                      {a.id !== profile.id && (
+                      {/* Role toggle — super admin only (granting/revoking admin) */}
+                      {isSuperAdmin && a.id !== profile.id && a.role !== 'super_admin' && (
                         <button
                           onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
                           style={{ width: '100%', padding: '7px 0', fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#f0fdf4', color: a.role === 'admin' ? '#92400e' : '#166534', border: `1px solid ${a.role === 'admin' ? '#fde68a' : '#bbf7d0'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -4383,7 +4402,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ flex: 1, padding: '7px 0', fontSize: 13, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           🔑 Reset Password
                         </button>
-                        {a.id !== profile.id && a.role !== 'admin' && (
+                        {a.id !== profile.id && a.role !== 'admin' && a.role !== 'super_admin' && (
                           <button
                             onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
                             style={{ padding: '7px 10px', fontSize: 13, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -8248,7 +8267,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {c.review_requested_at ? `⭐ Sent ${new Date(c.review_requested_at).toLocaleDateString()}` : '⭐ Request Review'}
                     </button>
                   )}
-                  {isAdmin && (
+                  {isSuperAdmin && (
                     <button onClick={() => { setActiveClient(null); deleteClient(c.id, `${c.first_name} ${c.last_name}`); }}
                       style={{ padding: '7px 16px', fontSize: 13, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                       🗑 Remove

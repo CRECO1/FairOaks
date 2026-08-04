@@ -1,23 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, forbidden, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+
+// Fields a user may change on their OWN profile.
+const SELF_FIELDS  = ['first_name', 'last_name', 'phone', 'license'];
+// Additional fields only an admin may change (identity + workspace assignment).
+const ADMIN_FIELDS = [...SELF_FIELDS, 'email', 'business_unit'];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const caller = await getCrmUser();
-  if (!caller) return forbidden('Not authenticated');
+  const ctx = await getCrmContext(req);
+  if (!ctx) return forbidden('Not authenticated');
 
-  // Allow user to update their own profile; admin can update any
-  if (caller.id !== id) {
-    const { data: callerProfile } = await adminClient().from('crm_profiles').select('role').eq('id', caller.id).single();
-    if (callerProfile?.role !== 'admin') return forbidden('Cannot update another agent\'s profile');
+  const callerIsAdmin = isAdminRole(ctx.role);
+  // A user may edit their own profile; only admins/super-admins may edit anyone else's.
+  if (ctx.userId !== id && !callerIsAdmin) {
+    return forbidden('Cannot update another agent\'s profile');
   }
 
   const body = await req.json();
 
-  // Only allow safe profile fields — never role, never id
-  const allowed = ['first_name', 'last_name', 'phone', 'license', 'email', 'business_unit'];
+  // Non-admins editing their own profile cannot change email or business_unit
+  // (business_unit controls workspace access; email is the login identity).
+  const allowed = callerIsAdmin ? ADMIN_FIELDS : SELF_FIELDS;
   const update: Record<string, string> = {};
   for (const key of allowed) {
     if (key in body && body[key] !== undefined) {

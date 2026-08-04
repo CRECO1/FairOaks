@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
   const supabase = adminClient();
@@ -25,14 +25,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
   const body = await req.json();
-  const { name, description, trigger_type, trigger_value, status, completion_campaign_id, created_by } = body;
+  // created_by is intentionally NOT destructured — ownership cannot be reassigned via PATCH.
+  const { name, description, trigger_type, trigger_value, status, completion_campaign_id } = body;
 
   const supabase = adminClient();
+
+  // Enforce workspace isolation.
+  const { data: existing } = await supabase.from('crm_action_plans').select('business_unit').eq('id', id).single();
+  if (!existing) return notFound();
+  if (!isAdminRole(ctx.role) && existing.business_unit !== ctx.businessUnit) return notFound();
   const { data, error } = await supabase
     .from('crm_action_plans')
     .update({
@@ -42,7 +48,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(trigger_value !== undefined && { trigger_value }),
       ...(status !== undefined && { status }),
       ...(completion_campaign_id !== undefined && { completion_campaign_id: completion_campaign_id || null }),
-      ...(created_by !== undefined && { created_by }),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)

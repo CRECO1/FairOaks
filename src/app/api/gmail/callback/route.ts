@@ -23,11 +23,19 @@ export async function GET(req: NextRequest) {
   const stateUserId = stateParts[0];
   const stateBu     = stateParts[1] ?? '';
   const isRetry     = stateParts[2] === 'retry';
+  const stateNonce  = stateParts[3] ?? '';
   const returnBase  = stateBu ? `${CRM_URL}/${stateBu}` : CRM_URL;
 
   if (error || !code || !stateUserId) {
     console.error('[gmail/callback] Missing params or error:', { error, code: !!code, stateUserId });
     return NextResponse.redirect(`${returnBase}?gmail=error&reason=oauth_denied`);
+  }
+
+  // CSRF: the state nonce must match the httpOnly cookie set when the flow began.
+  const cookieNonce = req.cookies.get('gmail_oauth_nonce')?.value ?? '';
+  if (!stateNonce || !cookieNonce || stateNonce !== cookieNonce) {
+    console.error('[gmail/callback] OAuth state nonce mismatch');
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=invalid_state`);
   }
 
   // Service-role client — no SSR session cookie needed
@@ -125,6 +133,7 @@ export async function GET(req: NextRequest) {
 
       // Auto-retry: go directly to Google OAuth (skip auth route to avoid session-cookie dependency).
       // After revocation, Google MUST issue a new refresh_token on the next consent.
+      const retryNonce = crypto.randomUUID();
       const googleUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       googleUrl.searchParams.set('client_id',     process.env.GOOGLE_CLIENT_ID!);
       googleUrl.searchParams.set('redirect_uri',  REDIRECT_URI);
@@ -133,9 +142,13 @@ export async function GET(req: NextRequest) {
       googleUrl.searchParams.set('access_type',   'offline');
       googleUrl.searchParams.set('prompt',        'consent');
       googleUrl.searchParams.set('login_hint',    gmailEmail);
-      // Encode retry flag into state so we don't loop indefinitely
-      googleUrl.searchParams.set('state', stateBu ? `${stateUserId}|${stateBu}|retry` : `${stateUserId}||retry`);
-      return NextResponse.redirect(googleUrl.toString());
+      // Encode retry flag + a fresh nonce into state so we don't loop indefinitely
+      googleUrl.searchParams.set('state', `${stateUserId}|${stateBu}|retry|${retryNonce}`);
+      const retryRes = NextResponse.redirect(googleUrl.toString());
+      retryRes.cookies.set('gmail_oauth_nonce', retryNonce, {
+        httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 600,
+      });
+      return retryRes;
     }
 
     const { error: insertErr } = await supabase
