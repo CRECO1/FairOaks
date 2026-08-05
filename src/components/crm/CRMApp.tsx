@@ -797,7 +797,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
-      setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
+      setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -819,7 +819,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
-      setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
+      setTimeout(() => { loadAllTasks(newProfile); loadAllCommissions(); }, 500);
     }
     setLoading(false);
   }, [session]);
@@ -1187,11 +1187,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Task Management ───────────────────────────────────────────────────────────
-  async function loadAllTasks() {
+  async function loadAllTasks(p?: Profile) {
+    const agent = p ?? profile;
+    if (!agent) return; // profile may still be null when called from loadProfile's setTimeout (stale closure)
     const { data } = await supabase
       .from('crm_tasks')
       .select('*, client:crm_clients(id,first_name,last_name,business_name,phone,cell_phone)')
-      .eq('agent_id', profile!.id)
+      .eq('agent_id', agent.id)
       .is('completed_at', null)
       .order('due_date', { ascending: true });
     setAllTasks((data ?? []) as CRMTask[]);
@@ -1851,7 +1853,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       || newCampaign.email_body;
     setSaving(true);
     try {
-      const body = { ...newCampaign, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
+      const body = { ...newCampaign, type: newCampaign.type || 'email', frequency: newCampaign.frequency || 'monthly', email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
