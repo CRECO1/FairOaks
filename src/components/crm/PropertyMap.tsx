@@ -25,12 +25,14 @@ export default function PropertyMap({
 }) {
   const elRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const L = (await import('leaflet')).default;
-      if (cancelled || !elRef.current) return;
+      const el = elRef.current;
+      if (cancelled || !el) return;
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
 
       const pts = properties.filter(
@@ -38,7 +40,7 @@ export default function PropertyMap({
           && Number.isFinite(p.latitude) && Number.isFinite(p.longitude),
       );
 
-      const map = L.map(elRef.current, { scrollWheelZoom: true }).setView([29.55, -98.5], 9);
+      const map = L.map(el, { scrollWheelZoom: true }).setView([29.55, -98.5], 9);
       mapRef.current = map;
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
@@ -58,15 +60,22 @@ export default function PropertyMap({
         m.on('click', () => onSelect(p));
         markers.push(m);
       }
-      if (markers.length) {
-        map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
-      }
-      // tiles sometimes need a nudge after layout settles
-      setTimeout(() => { if (!cancelled) map.invalidateSize(); }, 200);
+      const fit = () => { if (markers.length) map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2)); };
+      fit();
+      // The container is inside a flex/conditional region, so its final size may
+      // arrive after init — re-measure and re-fit a couple times, and on resize,
+      // so tiles fill the whole map instead of loading only a corner.
+      const nudge = () => { if (!cancelled) { map.invalidateSize(); fit(); } };
+      setTimeout(nudge, 120);
+      setTimeout(nudge, 500);
+      const ro = new ResizeObserver(() => { if (!cancelled) map.invalidateSize(); });
+      ro.observe(el);
+      roRef.current = ro;
     })();
 
     return () => {
       cancelled = true;
+      if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
     };
   }, [properties, onSelect]);
