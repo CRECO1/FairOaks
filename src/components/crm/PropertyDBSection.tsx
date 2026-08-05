@@ -92,6 +92,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
   const [assetFilter, setAssetFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [active, setActive]     = useState<Property | null>(null);
+  const [view, setView]         = useState<'rows' | 'cards'>('rows');
 
   const authHeaders = useMemo<Record<string, string>>(
     () => {
@@ -159,6 +160,14 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
           <option value="">All Statuses</option>
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+          {(['rows', 'cards'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{ padding: '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : '#fff', color: view === v ? '#fff' : '#6b7280' }}>
+              {v === 'rows' ? '☰ Rows' : '▦ Cards'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14, fontWeight: 600 }}>
@@ -173,6 +182,45 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
         </div>
       )}
 
+      {view === 'rows' && !loading && filtered.length > 0 && (
+        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
+            <thead>
+              <tr style={{ background: '#fafafa', textAlign: 'left', color: '#9ca3af', fontSize: 11, letterSpacing: .5, textTransform: 'uppercase' }}>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Property</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Location</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Type</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Size</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Rate / Price</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Broker</th>
+                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(p => {
+                const as = assetStyle(p.asset_type);
+                const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
+                return (
+                  <tr key={p.id} onClick={() => setActive(p)}
+                    style={{ borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fafaf8')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding: '11px 14px', fontWeight: 600, color: '#1a1a1a' }}>{p.name || p.address || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#6b7280' }}>{[p.address, cityLine(p)].filter(Boolean).join(' · ') || '—'}</td>
+                    <td style={{ padding: '11px 14px' }}>{p.asset_type ? <span style={{ fontSize: 12, fontWeight: 600, background: as.bg, color: as.color, padding: '2px 8px', borderRadius: 5, whiteSpace: 'nowrap' }}>{p.asset_type}</span> : '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#374151', whiteSpace: 'nowrap' }}>{fmtSf(p.size_sf) || '—'}</td>
+                    <td style={{ padding: '11px 14px', fontWeight: 700, color: '#c9922c', whiteSpace: 'nowrap' }}>{price || '—'}</td>
+                    <td style={{ padding: '11px 14px', color: '#6b7280' }}>{[p.listing_agent_name, p.listing_company].filter(Boolean).join(' · ') || '—'}</td>
+                    <td style={{ padding: '11px 14px' }}>{p.vacancy_status ? <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#15803d', whiteSpace: 'nowrap' }}>{p.vacancy_status}</span> : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {view === 'cards' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
         {filtered.map(p => {
           const as = assetStyle(p.asset_type);
@@ -224,6 +272,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
           );
         })}
       </div>
+      )}
 
       {active && <DetailModal p={active} onClose={() => setActive(null)} />}
     </div>
