@@ -17,5 +17,12 @@ export async function GET(req: NextRequest) {
     console.error('[api/forms] db error:', error);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
-  return NextResponse.json({ forms: data ?? [] });
+  // Attach a short-lived signed URL for each form's blank PDF so the client can
+  // open it directly (top-level, not framed — avoids the frame-src CSP).
+  const forms = await Promise.all((data ?? []).map(async f => {
+    const { data: signed } = await supabase.storage
+      .from('transaction-forms').createSignedUrl(f.storage_path, 3600);
+    return { ...f, url: signed?.signedUrl ?? null };
+  }));
+  return NextResponse.json({ forms });
 }

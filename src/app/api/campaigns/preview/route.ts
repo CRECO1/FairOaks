@@ -17,7 +17,7 @@ const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 // Lazy init so build doesn't fail when RESEND_API_KEY isn't set at compile time
 const getResend = () => new Resend(process.env.RESEND_API_KEY);
 
-function applyMergeFields(template: string, agentFirstName: string, agentLastName: string, agentEmail: string, agentPhone: string): string {
+function applyMergeFields(template: string, agentFirstName: string, agentLastName: string, agentEmail: string, agentPhone: string, brokerage: string): string {
   return template
     .replaceAll('{{first_name}}',    'Jane')
     .replaceAll('{{last_name}}',     'Smith')
@@ -27,7 +27,7 @@ function applyMergeFields(template: string, agentFirstName: string, agentLastNam
     .replaceAll('{{agent_name}}',    `${agentFirstName} ${agentLastName}`.trim())
     .replaceAll('{{agent_email}}',   agentEmail)
     .replaceAll('{{agent_phone}}',   agentPhone)
-    .replaceAll('{{brokerage}}',     'Fair Oaks Realty Group')
+    .replaceAll('{{brokerage}}',     brokerage)
     .replaceAll('{{unsubscribe_url}}', '#preview-unsubscribe');
 }
 
@@ -62,11 +62,12 @@ export async function POST(req: NextRequest) {
 
   const agentFirst = profile.first_name ?? 'Agent';
   const agentLast  = profile.last_name ?? '';
-  const agentEmail = isCommercial ? 'info@crecotx.com' : (profile.email ?? user.email ?? '');
+  const agentEmail = isCommercial ? 'zack@crecotx.com' : (profile.email ?? user.email ?? '');
   const agentPhone = isCommercial ? '210-817-3443' : (profile.phone ?? '210-390-9997');
+  const brokerage  = isCommercial ? 'CRECO' : 'Fair Oaks Realty Group';
 
-  const renderedSubject = applyMergeFields(subject ?? '(no subject)', agentFirst, agentLast, agentEmail, agentPhone);
-  let renderedBody      = applyMergeFields(body ?? '', agentFirst, agentLast, agentEmail, agentPhone);
+  const renderedSubject = applyMergeFields(subject ?? '(no subject)', agentFirst, agentLast, agentEmail, agentPhone, brokerage);
+  let renderedBody      = applyMergeFields(body ?? '', agentFirst, agentLast, agentEmail, agentPhone, brokerage);
 
   // Wrap in a preview banner so it's obvious this is a test
   const previewBanner = `
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
 
   try {
     await getResend().emails.send({
-      from:     'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
+      from:     isCommercial ? 'CRECO <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
       to:       toEmail,
       subject:  `[TEST] ${renderedSubject}`,
       html:     renderedBody,

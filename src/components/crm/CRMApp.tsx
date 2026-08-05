@@ -5932,7 +5932,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 .replace(/\{\{last_name\}\}/g, 'Smith')
                                 .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                                 .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')}
+                                .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')}
                             </span>
                           </div>
 
@@ -5945,7 +5945,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e' }} />
                                 <div style={{ flex: 1, marginLeft: 12, background: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, color: '#9ca3af' }}>
-                                  From: Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;
+                                  From: {businessUnit === 'commercial' ? 'CRECO <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>'}
                                 </div>
                               </div>
                               <iframe
@@ -5958,9 +5958,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     .replace(/\{\{email\}\}/g, 'jane@example.com')
                                     .replace(/\{\{client_type\}\}/g, 'Buyer')
                                     .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                    .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                                    .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                                    .replace(/\{\{agent_email\}\}/g, businessUnit === 'commercial' ? 'zack@crecotx.com' : (profile?.email ?? 'info@fairoaksrealtygroup.com'))
+                                    .replace(/\{\{agent_phone\}\}/g, businessUnit === 'commercial' ? '210-817-3443' : (profile?.phone ?? '210-390-9997'))
+                                    .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
                                     .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
                                   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${body}</body></html>`;
                                 })()}

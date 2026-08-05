@@ -9,6 +9,7 @@ interface Form {
   category?: string;
   page_count?: number;
   storage_path: string;
+  url?: string | null;
   created_at?: string;
 }
 
@@ -23,7 +24,6 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [viewing, setViewing] = useState<{ form: Form; url: string } | null>(null);
 
   const authHeaders = useMemo<Record<string, string>>(() => {
     const h: Record<string, string> = {};
@@ -42,15 +42,6 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
   }, [businessUnit, authHeaders, onToast]);
 
   useEffect(() => { load(); }, [load]);
-
-  const openView = useCallback(async (form: Form) => {
-    try {
-      const res = await fetch(`/api/crm/forms/${form.id}/url`, { headers: authHeaders });
-      const json = await res.json();
-      if (json.url) setViewing({ form, url: json.url });
-      else onToast('Could not open the PDF');
-    } catch { onToast('Could not open the PDF'); }
-  }, [authHeaders, onToast]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -99,30 +90,15 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button onClick={() => openView(f)}
-                style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                Open
-              </button>
+              <a href={f.url ?? undefined} target="_blank" rel="noopener noreferrer"
+                style={{ flex: 1, textAlign: 'center', textDecoration: 'none', padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                Open ↗
+              </a>
             </div>
           </div>
         ))}
       </div>
 
-      {viewing && (
-        <div onClick={() => setViewing(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', padding: '3vh 3vw' }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid #eef0f2' }}>
-              <div style={{ fontWeight: 600, color: '#1a1a1a' }}>{viewing.form.name}</div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <a href={viewing.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, fontWeight: 600, color: '#c9922c', textDecoration: 'none' }}>Download ↗</a>
-                <button onClick={() => setViewing(null)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>
-              </div>
-            </div>
-            <iframe src={viewing.url} title={viewing.form.name} style={{ flex: 1, border: 'none', width: '100%' }} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
