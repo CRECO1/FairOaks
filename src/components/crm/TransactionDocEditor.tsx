@@ -24,10 +24,13 @@ let _idc = 0;
 const nextId = () => `f${++_idc}`;
 
 export default function TransactionDocEditor({
-  form, url, onClose, onSave,
+  form, url, authToken, isAdmin, onToast, onClose, onSave,
 }: {
   form: { id: string; name: string };
   url: string;
+  authToken?: string;
+  isAdmin?: boolean;
+  onToast?: (msg: string) => void;
   onClose: () => void;
   onSave?: (bytes: Uint8Array, fields: Field[]) => void;
 }) {
@@ -74,6 +77,25 @@ export default function TransactionDocEditor({
     })();
     return () => { cancelled = true; };
   }, [url]);
+
+  // ── Load the saved field template (preset fields) ───────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const h: Record<string, string> = {};
+        if (authToken) h.Authorization = `Bearer ${authToken}`;
+        const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
+        const json = await res.json();
+        if (cancelled || !Array.isArray(json.fields)) return;
+        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string }) => ({
+          id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
+          value: '', size: 11, type: r.type === 'check' ? 'check' : 'text',
+        })));
+      } catch { /* no template yet */ }
+    })();
+    return () => { cancelled = true; };
+  }, [form.id, authToken]);
 
   // ── Add a field on click ────────────────────────────────────────────────────
   const onPageClick = useCallback((e: React.MouseEvent, pd: PageDim) => {
@@ -139,6 +161,18 @@ export default function TransactionDocEditor({
     } finally { setBusy(false); }
   }, [build, form.name]);
 
+  const saveTemplate = useCallback(async () => {
+    setBusy(true);
+    try {
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) h.Authorization = `Bearer ${authToken}`;
+      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type })) };
+      const res = await fetch(`/api/crm/forms/${form.id}/fields`, { method: 'PUT', headers: h, body: JSON.stringify(payload) });
+      onToast?.(res.ok ? '✓ Field layout saved for this form' : 'Could not save the layout');
+    } catch { onToast?.('Could not save the layout'); }
+    finally { setBusy(false); }
+  }, [fields, authToken, form.id, onToast]);
+
   const save = useCallback(async () => {
     if (!onSave) return;
     setBusy(true);
@@ -165,7 +199,8 @@ export default function TransactionDocEditor({
         </div>
         <div style={{ fontSize: 12, color: '#9ca3af' }}>{fields.length} field{fields.length === 1 ? '' : 's'} · {tool !== 'select' ? 'click a page to place' : 'drag to move, click ✕ to delete'}</div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {onSave && <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer' }}>Save</button>}
+          {isAdmin && <button onClick={saveTemplate} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer' }}>💾 Save field layout</button>}
+          {onSave && <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Save</button>}
           <button onClick={download} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>{busy ? 'Working…' : '⬇ Download filled PDF'}</button>
           <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>
         </div>

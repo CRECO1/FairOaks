@@ -23,7 +23,7 @@ interface Props {
   onToast: (msg: string) => void;
 }
 
-export default function TransactionDocsSection({ businessUnit, authToken, onToast }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, onToast }: Props) {
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -108,7 +108,14 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
       </div>
 
       {editing && editing.url && (
-        <TransactionDocEditor form={{ id: editing.id, name: editing.name }} url={editing.url} onClose={() => setEditing(null)} />
+        <TransactionDocEditor
+          form={{ id: editing.id, name: editing.name }}
+          url={editing.url}
+          authToken={authToken}
+          isAdmin={isAdmin}
+          onToast={onToast}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
