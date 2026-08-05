@@ -30,3 +30,4 @@ media/
 # Claude local files
 .claude/
 tsconfig.tsbuildinfo
+forms_src/

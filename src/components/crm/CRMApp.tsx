@@ -8,6 +8,7 @@ import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
 import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
 import PropertyDBSection from '@/components/crm/PropertyDBSection';
+import TransactionDocsSection from '@/components/crm/TransactionDocsSection';
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -407,7 +408,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'activity'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'activity'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -2511,7 +2512,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2700,6 +2701,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </a>
           )}
           <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}>🏢 &nbsp;Properties</button>
+          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -2872,6 +2874,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </a>
                 )}
                 <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}>🏢 &nbsp;Properties</button>
+                <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -6938,6 +6941,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 />
               )}
             </div>
+          )}
+
+          {page === 'transaction-docs' && (
+            <TransactionDocsSection
+              businessUnit={businessUnit}
+              isAdmin={isAdmin}
+              authToken={session?.access_token}
+              onToast={showToast}
+            />
           )}
 
         </div>
