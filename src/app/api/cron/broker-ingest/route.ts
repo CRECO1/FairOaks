@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runPipeline } from '@/lib/broker-ingest';
+import { geocodeMissing } from '@/lib/broker-ingest/geocode';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -38,6 +39,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const r = await runPipeline({ query, limit, commit: true });
+    // Geocode any newly-ingested (or previously un-geocoded) properties so they
+    // show on the Property DB map. Bounded per run to stay within cron time.
+    const geo = await geocodeMissing(25);
     return NextResponse.json({
       scanned: r.scanned,
       listings: r.listings,
@@ -45,6 +49,7 @@ export async function GET(req: NextRequest) {
       extractErrors: r.extractErrors,
       inserted: r.inserted,
       dupSkipped: r.dupSkipped,
+      geocoded: geo.geocoded,
       model: r.model,
     });
   } catch (err) {
