@@ -17,7 +17,7 @@ import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextar
 const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Role = 'admin' | 'agent';
+type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
@@ -406,7 +406,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'today-calls', 'commissions', 'social', 'properties', 'activity'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'activity'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -459,10 +459,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskClientId, setTaskClientId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
-  // Today's Calls work-queue
+  // Today's Calls work-queue (now a sub-tab inside the Tasks page)
   const [callSkippedIds, setCallSkippedIds] = useState<Set<string>>(new Set());
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
+  const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls'>('tasks');
 
   // Kanban drag state
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
@@ -874,7 +875,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const updated = { ...data, last_sign_in_at: authLastSignIn } as Profile;
 
       // Access control: non-admins are locked to their assigned business_unit
-      if (updated.role !== 'admin' && updated.business_unit && updated.business_unit !== businessUnit) {
+      // (super_admin is a superset of admin, so it must never be locked out of a unit)
+      if (updated.role !== 'admin' && updated.role !== 'super_admin' && updated.business_unit && updated.business_unit !== businessUnit) {
         router.replace(`/crm/${updated.business_unit}`);
         return;
       }
@@ -1069,22 +1071,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     else showToast('Delete failed');
   }
 
-  const loadClients = useCallback(async (p?: Profile, page = 0) => {
+  // Loads ALL contacts for the current business unit. The API caps each request at a
+  // fixed number of rows (per-role max-rows), so we page through in BATCH-sized chunks
+  // and accumulate until the full set is loaded. Enrollment pickers and smart-list
+  // segments rely on `clients` holding every contact — not just the first page — so
+  // this always returns the complete list. The `_page` arg is retained for call-site
+  // compatibility (e.g. the legacy "Load more" button) but no longer limits results.
+  const loadClients = useCallback(async (p?: Profile, _page = 0) => {
     const prof = p ?? profile;
     if (!prof) return;
-    const from = page * CONTACTS_PAGE_SIZE;
-    const to = from + CONTACTS_PAGE_SIZE - 1;
-    const { data, count, error } = await supabase
-      .from('crm_clients')
-      .select('*', { count: 'exact' })
-      .eq('business_unit', businessUnit)
-      .order('created_at', { ascending: false })
-      .range(from, to);
-    if (error) { console.error('loadClients error:', error.message); return; }
-    if (page === 0) setClients((data ?? []) as Client[]);
-    else setClients(prev => [...prev, ...(data ?? []) as Client[]]);
-    setContactsTotal(count ?? 0);
-    setContactsPage(page);
+    const BATCH = 1000;
+    let from = 0;
+    let all: Client[] = [];
+    let total = 0;
+    for (;;) {
+      const { data, count, error } = await supabase
+        .from('crm_clients')
+        .select('*', { count: 'exact' })
+        .eq('business_unit', businessUnit)
+        .order('created_at', { ascending: false })
+        .range(from, from + BATCH - 1);
+      if (error) { console.error('loadClients error:', error.message); return; }
+      all = all.concat((data ?? []) as Client[]);
+      total = count ?? all.length;
+      if (!data || data.length < BATCH || all.length >= total) break;
+      from += BATCH;
+    }
+    setClients(all);
+    setContactsTotal(total);
+    setContactsPage(0);
   }, [profile, businessUnit]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
@@ -1156,7 +1171,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteClient(id: string, name: string) {
-    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
+    if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     if (!confirm(`Remove ${name}? This cannot be undone.`)) return;
     await supabase.from('crm_clients').delete().eq('id', id);
     setClients(prev => prev.filter(c => c.id !== id));
@@ -1164,7 +1179,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function massDeleteClients() {
-    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
+    if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     const count = selectedClientIds.size;
     if (count === 0) return;
     if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
@@ -1594,19 +1609,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ? clients.filter(c => selectedClientIds.has(c.id))
       : clients;
 
-    // Notify admin whenever any agent (non-admin) exports
-    if (!isAdmin && profile) {
-      fetch('/api/crm/export-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_name: `${profile.first_name} ${profile.last_name}`,
-          agent_email: profile.email ?? '',
-          count: toExport.length,
-          business_unit: businessUnit,
-          selected: selectedClientIds.size > 0,
-        }),
-      }).catch(() => {});
+    // Contact export is restricted to the super admin. Everyone else (incl.
+    // admins like Brian) is blocked, and the attempt is logged so the super
+    // admin has an audit trail if someone tries to take the contact list.
+    if (!isSuperAdmin) {
+      if (profile) {
+        fetch('/api/crm/export-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent_name: `${profile.first_name} ${profile.last_name}`,
+            agent_email: profile.email ?? '',
+            count: toExport.length,
+            business_unit: businessUnit,
+            selected: selectedClientIds.size > 0,
+            blocked: true,
+          }),
+        }).catch(() => {});
+      }
+      showToast('Only a super admin can export contacts.');
+      return;
     }
 
     const headers = ['First Name', 'Last Name', 'Business Name', 'Type', 'Email', 'Phone', 'Cell Phone', 'Budget', 'Size Range', 'Asset Types', 'Address', 'City', 'State', 'ZIP', 'Brokerage', 'License', 'Notes', 'Date Added'];
@@ -1812,6 +1834,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Delete agent ──────────────────────────────────────────────────────────────
   async function updateAgentRole(userId: string, firstName: string, newRole: 'admin' | 'agent') {
+    // Granting/revoking admin is super-admin-only — stops an admin (e.g. Brian)
+    // from promoting himself/others or demoting the super admin.
+    if (!isSuperAdmin) { showToast('Only a super admin can change admin access.'); return; }
     const action = newRole === 'admin' ? `Make ${firstName} an admin?` : `Remove admin access from ${firstName}?`;
     if (!confirm(action)) return;
     const { error } = await supabase.from('crm_profiles').update({ role: newRole }).eq('id', userId);
@@ -2474,7 +2499,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
-  const isAdmin = profile.role === 'admin';
+  // super_admin is a strict superset of admin — passes every admin gate, plus
+  // the super-admin-only ones (delete/export contacts, manage admins).
+  const isSuperAdmin = profile.role === 'super_admin';
+  const isAdmin = profile.role === 'admin' || isSuperAdmin;
   const isMobile = windowWidth < 768;
   const isTabletOrMobile = windowWidth < 1024; // sidebar hides on tablet too
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');
@@ -2482,7 +2510,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', 'today-calls': "Today's Calls", commissions: 'Commissions', social: 'Social Media', properties: 'Properties', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2618,6 +2646,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
           <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
+          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); loadAllTasks(); loadClients(); }}>
+            ✅ &nbsp;Tasks
+            {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+              </span>
+            )}
+          </button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
@@ -2632,23 +2668,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
-          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); }}>
-            ✅ &nbsp;Tasks
-            {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
-              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
-              </span>
-            )}
-          </button>
           <button className={`crm-nav${page === 'activity' ? ' active' : ''}`} onClick={() => setPage('activity')}>📊 &nbsp;Activity Log</button>
-          <button className={`crm-nav${page === 'today-calls' ? ' active' : ''}`} onClick={() => { setPage('today-calls'); loadAllTasks(); loadClients(); }}>
-            📞 &nbsp;Today's Calls
-            {allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length > 0 && (
-              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                {allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length}
-              </span>
-            )}
-          </button>
           <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
           <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
           <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => setPage('social')}>📱 &nbsp;Social Media</button>
@@ -2810,6 +2830,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Overview</div>
                 <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}>🏠 &nbsp;Dashboard</button>
+                <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); loadAllTasks(); loadClients(); setMobileMenuOpen(false); }}>
+                  ✅ &nbsp;Tasks
+                  {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                      {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+                    </span>
+                  )}
+                </button>
               </div>
 
               <div style={{ padding: '14px 12px 4px' }}>
@@ -2838,14 +2866,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '14px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Tools</div>
                 <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); setMobileMenuOpen(false); }}>📅 &nbsp;Calendar</button>
-                <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); setMobileMenuOpen(false); }}>
-                  ✅ &nbsp;Tasks
-                  {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
-                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                      {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
-                    </span>
-                  )}
-                </button>
                 <button className={`crm-nav${page === 'activity' ? ' active' : ''}`} onClick={() => { setPage('activity'); setMobileMenuOpen(false); }}>📊 &nbsp;Activity Log</button>
                 <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}>📣 &nbsp;Campaigns</button>
                 <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); setMobileMenuOpen(false); }}>⚡ &nbsp;Action Plans</button>
@@ -3069,9 +3089,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {selectedClientIds.size} selected
                 </span>
               )}
-              <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={exportClients} title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'} style={{ fontSize: 13 }}>
-                ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
-              </button>
+              {isSuperAdmin && (
+                <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={exportClients} title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'} style={{ fontSize: 13 }}>
+                  ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
+                </button>
+              )}
               <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => importFileRef.current?.click()} title="Import from XLSX or CSV" style={{ fontSize: 13 }}>⬆ Import</button>
               <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add Client</button>
             </div>
@@ -3483,7 +3505,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>
                         ⚠️ Overdue Tasks — {overdue.length}
                       </div>
-                      <button onClick={() => { setPage('tasks'); loadTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View All Tasks →</button>
+                      <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View All Tasks →</button>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {overdue.slice(0, 5).map(t => {
@@ -3826,11 +3848,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       🏷 Tag
                     </button>
-                    <button
-                      onClick={massDeleteClients}
-                      style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                      🗑 Delete
-                    </button>
+                    {isSuperAdmin && (
+                      <button
+                        onClick={massDeleteClients}
+                        style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        🗑 Delete
+                      </button>
+                    )}
                     <button
                       onClick={() => setSelectedClientIds(new Set())}
                       style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
@@ -4094,10 +4118,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Edit contact">
                                       ✏️
                                     </button>
-                                    <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
-                                      style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove client (admin only)">
-                                      🗑
-                                    </button>
+                                    {isSuperAdmin && (
+                                      <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
+                                        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove contact (super admin only)">
+                                        🗑
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -4504,8 +4530,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
           )}
 
-          {/* ── Today's Calls Page ── */}
-          {page === 'today-calls' && (() => {
+          {/* ── Tasks tab: sub-tab toggle (Tasks | Call Queue) ── */}
+          {page === 'tasks' && (() => {
+            const callDue = allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length;
+            return (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 18, borderBottom: '1px solid #eee' }}>
+                <button onClick={() => setTasksSubTab('tasks')}
+                  style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'tasks' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'tasks' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  📋 &nbsp;Tasks
+                </button>
+                <button onClick={() => { setTasksSubTab('calls'); loadAllTasks(); loadClients(); }}
+                  style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'calls' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'calls' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  📞 &nbsp;Call Queue
+                  {callDue > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{callDue}</span>}
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* ── Tasks tab → Call Queue sub-view (was the standalone Today's Calls page) ── */}
+          {page === 'tasks' && tasksSubTab === 'calls' && (() => {
             const t0 = today();
             // Queue: agent-scoped call/follow-up tasks (allTasks is already .eq(agent_id)/.is(completed_at,null)),
             // due today or earlier (overdue included), oldest due first, skipped removed.
@@ -4626,7 +4670,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           })()}
 
           {/* ── Tasks Page ── */}
-          {page === 'tasks' && (() => {
+          {page === 'tasks' && tasksSubTab === 'tasks' && (() => {
             // Legacy vars kept to avoid breaking any remaining references
             const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
               urgent: { bg: '#fee2e2', color: '#dc2626' },
@@ -4758,8 +4802,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* Role toggle — only for other users */}
-                      {a.id !== profile.id && (
+                      {/* Role toggle — super admin only; can't target another super admin */}
+                      {isSuperAdmin && a.id !== profile.id && a.role !== 'super_admin' && (
                         <button
                           onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
                           style={{ width: '100%', padding: '7px 0', fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#f0fdf4', color: a.role === 'admin' ? '#92400e' : '#166534', border: `1px solid ${a.role === 'admin' ? '#fde68a' : '#bbf7d0'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -4772,7 +4816,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ flex: 1, padding: '7px 0', fontSize: 13, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           🔑 Reset Password
                         </button>
-                        {a.id !== profile.id && a.role !== 'admin' && (
+                        {a.id !== profile.id && a.role !== 'admin' && a.role !== 'super_admin' && (
                           <button
                             onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
                             style={{ padding: '7px 10px', fontSize: 13, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -5639,7 +5683,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
 
                               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                {filtered.slice(0, 50).map(c => (
+                                {filtered.slice(0, 1000).map(c => (
                                   <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
                                     <input type="checkbox" checked={selectedEnrollIds.includes(c.id)} onChange={() => setSelectedEnrollIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -5660,7 +5704,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </label>
                                 ))}
                                 {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 13 }}>No contacts match these filters</div>}
-                                {filtered.length > 50 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 50 of {filtered.length} — refine filters to narrow down</div>}
+                                {filtered.length > 1000 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 1000 of {filtered.length} — refine filters to narrow down</div>}
                               </div>
                             </>
                           );
@@ -6486,7 +6530,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
 
                               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                {filtered.slice(0, 50).map(c => (
+                                {filtered.slice(0, 1000).map(c => (
                                   <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
                                     <input type="checkbox" checked={selectedPlanEnrollIds.includes(c.id)} onChange={e => setSelectedPlanEnrollIds(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -6507,7 +6551,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </label>
                                 ))}
                                 {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 13 }}>No contacts match these filters</div>}
-                                {filtered.length > 50 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 50 of {filtered.length} — refine filters to narrow down</div>}
+                                {filtered.length > 1000 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 1000 of {filtered.length} — refine filters to narrow down</div>}
                               </div>
                             </>
                           );
@@ -9148,7 +9192,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {c.review_requested_at ? `⭐ Sent ${new Date(c.review_requested_at).toLocaleDateString()}` : '⭐ Request Review'}
                     </button>
                   )}
-                  {isAdmin && (
+                  {isSuperAdmin && (
                     <button onClick={() => { setActiveClient(null); deleteClient(c.id, `${c.first_name} ${c.last_name}`); }}
                       style={{ padding: '7px 16px', fontSize: 13, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                       🗑 Remove

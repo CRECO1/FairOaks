@@ -78,9 +78,13 @@ create trigger crm_profiles_role_guard
   before update or delete on public.crm_profiles
   for each row execute function public.crm_guard_profile_change();
 
--- 4. Promote Zack to super_admin. (Safe to run now — the app code treats
---    super_admin as a superset of admin, so nothing is lost.)
---    Run this AFTER the updated app is deployed so the UI recognizes the tier.
+-- 4a. Widen the role CHECK constraint to allow the new super_admin tier.
+alter table public.crm_profiles drop constraint if exists crm_profiles_role_check;
+alter table public.crm_profiles add constraint crm_profiles_role_check
+  check (role = any (array['admin', 'agent', 'super_admin']));
+
+-- 4b. Promote Zack to super_admin. (Safe now — the app treats super_admin as a
+--     superset of admin, and the updated frontend is deployed.)
 update public.crm_profiles
   set role = 'super_admin'
   where email = 'info@fairoaksrealtygroup.com';

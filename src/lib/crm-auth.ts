@@ -27,14 +27,33 @@ export async function getCrmUser(req?: NextRequest) {
   return user;
 }
 
-/** Returns the authenticated user only if they have role='admin' in crm_profiles. */
-export async function getCrmAdmin(req?: NextRequest) {
+/** Role tiers, most-privileged first. super_admin ⊃ admin ⊃ agent. */
+export const ADMIN_ROLES = ['admin', 'super_admin'] as const;
+
+/** Fetch the caller's crm_profiles.role (or null). */
+async function getCrmRole(req?: NextRequest): Promise<string | null> {
   const user = await getCrmUser(req);
   if (!user) return null;
   const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
-  if (data?.role !== 'admin') return null;
-  return user;
+  return (data?.role as string | undefined) ?? null;
+}
+
+/**
+ * Returns the authenticated user only if they are admin OR super_admin.
+ * (super_admin is a strict superset of admin, so it passes every admin gate.)
+ */
+export async function getCrmAdmin(req?: NextRequest) {
+  const role = await getCrmRole(req);
+  if (!role || !ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) return null;
+  return await getCrmUser(req);
+}
+
+/** Returns the authenticated user only if they have role='super_admin'. */
+export async function getCrmSuperAdmin(req?: NextRequest) {
+  const role = await getCrmRole(req);
+  if (role !== 'super_admin') return null;
+  return await getCrmUser(req);
 }
 
 /** Convenience: return 401 JSON response. */

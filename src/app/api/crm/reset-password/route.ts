@@ -13,7 +13,7 @@ async function getAdminId(req: NextRequest): Promise<string | null> {
     const { data: { user } } = await admin.auth.getUser(token);
     if (user) {
       const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
-      return data?.role === 'admin' ? user.id : null;
+      return (data?.role === 'admin' || data?.role === 'super_admin') ? user.id : null;
     }
     return null;
   }
