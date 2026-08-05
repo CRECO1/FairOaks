@@ -1,6 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+
+const PropertyMap = dynamic(() => import('./PropertyMap'), {
+  ssr: false,
+  loading: () => <div style={{ padding: 60, textAlign: 'center', color: '#9ca3af' }}>Loading map…</div>,
+});
 
 // ── Types ────────────────────────────────────────────────────────────────────
 // Mirrors crm_prospective_properties (the broker-ingested Property DB). Only the
@@ -47,6 +53,8 @@ interface Property {
   virtual_tour_url?: string;
   source?: string;
   tags?: string[] | string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at?: string;
   [k: string]: unknown;
 }
@@ -92,7 +100,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
   const [assetFilter, setAssetFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [active, setActive]     = useState<Property | null>(null);
-  const [view, setView]         = useState<'rows' | 'cards'>('rows');
+  const [view, setView]         = useState<'rows' | 'cards' | 'map'>('rows');
 
   const authHeaders = useMemo<Record<string, string>>(
     () => {
@@ -161,10 +169,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
-          {(['rows', 'cards'] as const).map(v => (
+          {(['rows', 'cards', 'map'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               style={{ padding: '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : '#fff', color: view === v ? '#fff' : '#6b7280' }}>
-              {v === 'rows' ? '☰ Rows' : '▦ Cards'}
+              {v === 'rows' ? '☰ Rows' : v === 'cards' ? '▦ Cards' : '📍 Map'}
             </button>
           ))}
         </div>
@@ -272,6 +280,15 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
           );
         })}
       </div>
+      )}
+
+      {view === 'map' && !loading && (
+        <div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10 }}>
+            {filtered.filter(p => p.latitude != null && p.longitude != null).length} of {filtered.length} shown — properties without a geocoded address aren’t on the map yet. Click a pin for details.
+          </div>
+          <PropertyMap properties={filtered} onSelect={(p) => setActive(p as Property)} />
+        </div>
       )}
 
       {active && <DetailModal p={active} onClose={() => setActive(null)} />}
