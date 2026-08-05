@@ -2189,7 +2189,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Smart Lists ───────────────────────────────────────────────────────────────
   async function loadSmartLists() {
     const res = await fetch(`/api/smart-lists?unit=${businessUnit}`);
-    if (res.ok) { const j = await res.json(); setSmartLists(j.smartLists ?? []); }
+    if (res.ok) { const j = await res.json(); setSmartLists(j.smart_lists ?? j.smartLists ?? []); }
   }
 
   async function saveSmartList() {
