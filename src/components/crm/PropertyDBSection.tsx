@@ -243,9 +243,18 @@ function Field({ label, value }: { label: string; value: unknown }) {
   );
 }
 
+function fieldHasValue(node: React.ReactNode): boolean {
+  if (!React.isValidElement(node)) return false;
+  if (node.type === Field) {
+    const v = (node.props as { value?: unknown }).value;
+    return !(v == null || v === '' || (Array.isArray(v) && v.length === 0));
+  }
+  const ch = (node.props as { children?: React.ReactNode })?.children;
+  return React.Children.toArray(ch).some(fieldHasValue);
+}
+
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  const kids = React.Children.toArray(children).filter(Boolean);
-  if (kids.every(k => k === null)) return null;
+  if (!React.Children.toArray(children).some(fieldHasValue)) return null;
   return (
     <div style={{ marginBottom: 22 }}>
       <div style={{ fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>{title}</div>
