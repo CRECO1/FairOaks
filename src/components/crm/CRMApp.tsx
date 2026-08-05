@@ -6188,9 +6188,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send As (Agent)</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.sender_agent_id} onChange={e => setNewCampaign({ ...newCampaign, sender_agent_id: e.target.value })}>
                             <option value="">— Contact&apos;s assigned agent (default) —</option>
-                            {profiles.map(a => (
-                              <option key={a.id} value={a.id}>{a.first_name} {a.last_name}{a.email ? ` (${a.email})` : ''}</option>
-                            ))}
+                            {profiles.map(a => {
+                              // Show the workspace-correct sender email (mirrors the send logic):
+                              // an agent whose profile email is on the other brand's domain presents
+                              // as this workspace's address (e.g. CRECO → zack@crecotx.com).
+                              const domain = businessUnit === 'commercial' ? '@crecotx.com' : '@fairoaksrealtygroup.com';
+                              const unitDefault = businessUnit === 'commercial' ? 'zack@crecotx.com' : 'info@fairoaksrealtygroup.com';
+                              const shownEmail = a.email && a.email.endsWith(domain) ? a.email : unitDefault;
+                              return <option key={a.id} value={a.id}>{a.first_name} {a.last_name} ({shownEmail})</option>;
+                            })}
                           </select>
                           <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Override whose name &amp; reply-to appear on every email in this campaign.</div>
                         </div>

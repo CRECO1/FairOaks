@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+
+const TransactionDocEditor = dynamic(() => import('./TransactionDocEditor'), { ssr: false });
 
 interface Form {
   id: string;
@@ -24,6 +27,7 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [editing, setEditing] = useState<Form | null>(null);
 
   const authHeaders = useMemo<Record<string, string>>(() => {
     const h: Record<string, string> = {};
@@ -90,8 +94,12 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setEditing(f)}
+                style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                ✍️ Fill out
+              </button>
               <a href={f.url ?? undefined} target="_blank" rel="noopener noreferrer"
-                style={{ flex: 1, textAlign: 'center', textDecoration: 'none', padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                style={{ textAlign: 'center', textDecoration: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}>
                 Open ↗
               </a>
             </div>
@@ -99,6 +107,9 @@ export default function TransactionDocsSection({ businessUnit, authToken, onToas
         ))}
       </div>
 
+      {editing && editing.url && (
+        <TransactionDocEditor form={{ id: editing.id, name: editing.name }} url={editing.url} onClose={() => setEditing(null)} />
+      )}
     </div>
   );
 }
