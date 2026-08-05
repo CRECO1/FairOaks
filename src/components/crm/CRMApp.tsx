@@ -7,6 +7,7 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
 import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
+import PropertyDBSection from '@/components/crm/PropertyDBSection';
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -668,7 +669,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // Task Manager (full Tasks page)
-  const [propertiesTab, setPropertiesTab] = useState<'listings' | 'floorplan'>('listings');
+  const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan'>('propertydb');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'done'>('open');
@@ -6895,14 +6896,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div>
               {/* Sub-tabs */}
               <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 24 }}>
-                {[{ k: 'listings', label: '🏢 Listings' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
-                  <button key={t.k} onClick={() => setPropertiesTab(t.k as 'listings' | 'floorplan')}
+                {[{ k: 'propertydb', label: '🗂️ Property DB' }, { k: 'listings', label: '🏢 Listings' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
+                  <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan')}
                     style={{ padding: '10px 22px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
                     {t.label}
                   </button>
                 ))}
               </div>
 
+              {propertiesTab === 'propertydb' && (
+                <PropertyDBSection
+                  businessUnit={businessUnit}
+                  isAdmin={isAdmin}
+                  authToken={session?.access_token}
+                  onToast={showToast}
+                />
+              )}
               {propertiesTab === 'listings' && (
                 <ListingsSection
                   businessUnit={businessUnit}
