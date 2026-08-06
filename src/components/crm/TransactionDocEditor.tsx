@@ -23,6 +23,21 @@ const RENDER_W = 850;
 let _idc = 0;
 const nextId = () => `f${++_idc}`;
 
+// pdf-lib's StandardFonts.Helvetica can only draw WinAnsi (Latin-1) glyphs;
+// any smart quote / dash / check mark / emoji throws mid-render. Map the common
+// typographic characters to ASCII and drop anything else so a save never crashes.
+const winAnsi = (s: string): string =>
+  (s || '')
+    .replace(/[‘’‚′]/g, "'")
+    .replace(/[“”„″]/g, '"')
+    .replace(/[–—−]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[•●]/g, '*')
+    .replace(/[✓✔✅]/g, 'X')
+    .replace(/ /g, ' ')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
+
 interface DealLite { id: string; client?: string; property?: string; type?: string; }
 
 export default function TransactionDocEditor({
@@ -43,7 +58,7 @@ export default function TransactionDocEditor({
   const [pages, setPages] = useState<PageDim[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [tool, setTool] = useState<'text' | 'check' | 'select'>('text');
+  const [tool, setTool] = useState<'text' | 'check' | 'select'>('select');
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
@@ -160,7 +175,8 @@ export default function TransactionDocEditor({
       const { width, height } = pg.getSize();
       const x = f.fx * width;
       const y = height - f.fy * height - f.size;
-      pg.drawText(f.value || '', { x, y, size: f.size, font, color: rgb(0.06, 0.06, 0.1) });
+      const text = winAnsi(f.type === 'check' ? (f.value ? 'X' : '') : (f.value || ''));
+      if (text) pg.drawText(text, { x, y, size: f.size, font, color: rgb(0.06, 0.06, 0.1) });
     }
     return doc.save();
   }, [fields]);
@@ -213,8 +229,16 @@ export default function TransactionDocEditor({
         if (j.submission?.id) subIdRef.current = j.submission.id;
         onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
         onSaved?.();
-      } else onToast?.('Could not save');
-    } catch { onToast?.('Could not save'); }
+      } else {
+        let detail = '';
+        try { detail = (await res.json())?.error || ''; } catch { /* non-JSON */ }
+        console.error('[saveToDeal] server', res.status, detail);
+        onToast?.(detail ? `Could not save — ${detail}` : `Could not save (${res.status})`);
+      }
+    } catch (e) {
+      console.error('[saveToDeal]', e);
+      onToast?.('Could not save');
+    }
     finally { setBusy(false); }
   }, [build, fields, dealSel, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
 
