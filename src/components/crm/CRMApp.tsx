@@ -2145,6 +2145,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function loadCampaignProjects() {
     const { data } = await supabase.from('crm_campaign_projects').select('*').order('created_at', { ascending: true });
     setCampaignProjects(data ?? []);
+    // Expand every project (and the ungrouped bucket) by default so campaigns are
+    // visible at a glance without a click; users can still collapse individually.
+    setExpandedProjects(new Set([...(data ?? []).map((p: any) => p.id), '__ungrouped__']));
   }
 
   async function createCampaignProject() {
@@ -5472,14 +5475,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const allFiltered = campaigns.filter(c => !campaignAgentFilter || c.created_by === campaignAgentFilter);
                     return (
                       <div>
-                        {/* Filter pills */}
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+                        {/* Filter pills + summary */}
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
                           {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
                             <button key={f} onClick={() => setCampaignFilter(f)}
                               style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
                               {f === 'all' ? `All (${allFiltered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${allFiltered.filter(c => c.status === f).length})`}
                             </button>
                           ))}
+                          {(() => {
+                            const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
+                            if (!rated.length) return null;
+                            const avg = Math.round(rated.reduce((s, c) => s + (c.open_rate ?? 0), 0) / rated.length);
+                            return <span style={{ marginLeft: 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif" }}>Avg open rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
+                          })()}
                         </div>
 
                         {/* Project sections */}
