@@ -167,7 +167,9 @@ export default function TransactionDocEditor({
   // ── Generate filled PDF ─────────────────────────────────────────────────────
   const build = useCallback(async (): Promise<Uint8Array | null> => {
     if (!bytesRef.current) return null;
-    const doc = await PDFDocument.load(bytesRef.current);
+    // Texas REALTORS PDFs ship with permission encryption; pdf-lib refuses to
+    // load them for editing unless we explicitly ignore it.
+    const doc = await PDFDocument.load(bytesRef.current, { ignoreEncryption: true });
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const pgs = doc.getPages();
     for (const f of fields) {
