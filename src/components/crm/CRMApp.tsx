@@ -6483,17 +6483,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
-                      {actionPlans.filter(plan => !actionPlanAgentFilter || plan.created_by === actionPlanAgentFilter).map(plan => (
-                        <div key={plan.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>⚡</div>
+                      {actionPlans.filter(plan => !actionPlanAgentFilter || plan.created_by === actionPlanAgentFilter).map(plan => {
+                        const triggerLabel = plan.trigger_type === 'manual' ? 'Manual'
+                          : plan.trigger_type === 'new_contact' ? 'On new contact'
+                          : plan.trigger_type === 'stage_change' ? `On stage change${plan.trigger_value ? ` → ${plan.trigger_value}` : ''}`
+                          : `On tag added${plan.trigger_value ? ` → ${plan.trigger_value}` : ''}`;
+                        return (
+                        <div key={plan.id} title={plan.description || undefined} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+                          <div style={{ width: 42, height: 42, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>⚡</div>
+                          {/* Name + status + trigger + owner */}
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{plan.name}</span>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#ede9fe', color: '#6d28d9' }}>{plan.trigger_type.replace('_', ' ')}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.name}</span>
+                              <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
                             </div>
-                            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                              <span>{plan.step_count ?? 0} steps · {plan.enrollment_count ?? 0} enrolled</span>
+                            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#ede9fe', color: '#6d28d9' }}>{triggerLabel}</span>
                               {isAdmin && (
                                 inlineOwnerPlanId === plan.id ? (
                                   <select
@@ -6524,8 +6529,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 )
                               )}
                               {!isAdmin && (() => { const owner = profiles.find(p => p.id === plan.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
-                              {plan.description && <span> · {plan.description}</span>}
                             </div>
+                          </div>
+                          {/* Steps column */}
+                          <div style={{ width: 60, textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{plan.step_count ?? 0}</div>
+                            <div style={{ fontSize: 11, color: '#9ca3af' }}>steps</div>
+                          </div>
+                          {/* Enrolled column */}
+                          <div style={{ width: 66, textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{plan.enrollment_count ?? 0}</div>
+                            <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setSelectedPlanEnrollIds([]); setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); setPreviewStepIdx(0); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setDetailSteps(j.plan?.steps ?? [])); setActionPlanView('detail'); }}>Manage</button>
@@ -6533,7 +6547,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteActionPlan(plan.id)}>🗑</button>}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
