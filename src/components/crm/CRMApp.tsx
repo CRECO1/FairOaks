@@ -5394,36 +5394,48 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const visibleCampaigns = campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter));
 
                     // Helper: render a single campaign row
-                    const renderCampaignRow = (camp: Campaign) => (
-                      <div key={camp.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#fff', borderRadius: 10, border: '1px solid #f0f0f0' }}>
-                        <div style={{ width: 38, height: 38, borderRadius: 9, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>
+                    const renderCampaignRow = (camp: Campaign) => {
+                      const rateColor = camp.open_rate == null ? '#9ca3af' : camp.open_rate >= 40 ? '#16a34a' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444';
+                      const schedule = camp.last_sent_at
+                        ? `Sent ${new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                        : camp.send_date
+                          ? `Sends ${new Date(camp.send_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                          : 'Not scheduled';
+                      const sent = camp.send_count ?? 0;
+                      return (
+                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 9, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
                           {camp.type === 'email' ? '✉️' : '💬'}
                         </div>
+                        {/* Name + status + schedule */}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 2 }}>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{camp.name}</span>
-                            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{camp.name}</span>
+                            <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
-                          <div style={{ fontSize: 12, color: '#9ca3af', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <span>{camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
-                            <span>·</span>
-                            <span>{camp.enrollment_count ?? 0} enrolled</span>
-                            {camp.last_sent_at ? <><span>·</span><span style={{ color: '#16a34a' }}>Sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span></> : <><span>·</span><span>Never sent</span></>}
-                            {(camp.send_count ?? 0) > 0 && <>
-                              <span>·</span>
-                              <span>{camp.send_count} sent</span>
-                              {camp.open_rate != null && <>
-                                <span>·</span>
-                                <span style={{
-                                  fontWeight: 700,
-                                  color: camp.open_rate >= 40 ? '#16a34a' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444',
-                                }}>
-                                  {camp.open_rate}% opened
-                                </span>
-                              </>}
-                            </>}
-                            {camp.description && <><span>·</span><span>{camp.description}</span></>}
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                            <span style={{ color: camp.last_sent_at ? '#16a34a' : '#9ca3af' }}>{schedule}</span>
+                            <span> · {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
                           </div>
+                        </div>
+                        {/* Enrolled column */}
+                        <div style={{ width: 66, textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: '#374151', fontWeight: 600 }}>{camp.enrollment_count ?? 0}</div>
+                          <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
+                        </div>
+                        {/* Performance column */}
+                        <div style={{ width: 116, flexShrink: 0 }}>
+                          {sent > 0 && camp.open_rate != null ? (
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: rateColor, textAlign: 'right' }}>{camp.open_rate}% open</div>
+                              <div style={{ height: 4, borderRadius: 2, background: '#f0f0f0', marginTop: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(100, Math.max(0, camp.open_rate))}%`, height: '100%', background: rateColor }} />
+                              </div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'right', marginTop: 2 }}>{sent} sent</div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: '#c4c4c4', textAlign: 'right' }}>Not sent yet</div>
+                          )}
                         </div>
                         {/* Move to project dropdown */}
                         {isAdmin && campaignProjects.length > 0 && (
@@ -5431,7 +5443,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             value={camp.project_id ?? ''}
                             onChange={e => assignCampaignToProject(camp.id, e.target.value || null)}
                             title="Move to project"
-                            style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', maxWidth: 130 }}
+                            style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', maxWidth: 120, flexShrink: 0 }}
                           >
                             <option value="">No project</option>
                             {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -5445,6 +5457,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                       </div>
                     );
+                    };
 
                     if (visibleCampaigns.length === 0) return (
                       <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
