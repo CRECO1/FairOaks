@@ -195,7 +195,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
   return (
     <div>
       {/* Toolbar */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 10 }}>
         <input
           placeholder="🔍  Search address, city, submarket, broker…"
           value={search}
@@ -400,8 +400,21 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
+function StatTile({ label, value, accent }: { label: string; value?: string | null; accent?: boolean }) {
+  if (!value) return null;
+  return (
+    <div style={{ background: accent ? '#fdf6e9' : '#f8fafc', borderRadius: 10, padding: '12px 14px', border: `1px solid ${accent ? '#f0e2c4' : '#eef0f2'}` }}>
+      <div style={{ fontSize: 19, fontWeight: 700, color: accent ? '#a06a12' : '#1a1a1a', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={value}>{value}</div>
+      <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginTop: 5 }}>{label}</div>
+    </div>
+  );
+}
+
 function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
   const as = assetStyle(p.asset_type);
+  const st = statusPill(p.vacancy_status);
+  const isSale = p.listing_type === 'Sale' || p.sale_price != null;
+  const priceVal = isSale ? (p.sale_price ? fmt$(p.sale_price) : null) : (fmtRate(p.asking_rate) || null);
   const links: [string, unknown][] = [
     ['Brochure', p.brochure_url], ['Flyer', p.flyer_url], ['Listing', p.listing_url],
     ['Floor plan', p.floorplan_url], ['Virtual tour', p.virtual_tour_url],
@@ -413,12 +426,13 @@ function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 16, maxWidth: 760, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }}
+        style={{ background: '#fff', borderRadius: 16, maxWidth: 800, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif" }}
       >
         <div style={{ height: 6, background: as.color, borderTopLeftRadius: 16, borderTopRightRadius: 16 }} />
         <div style={{ padding: 28 }}>
+          {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.1 }}>
                 {p.name || p.address || 'Property'}
               </div>
@@ -429,39 +443,50 @@ function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
             <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 24px' }}>
-            {p.asset_type && <span style={{ fontSize: 13, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 11px', borderRadius: 6 }}>{p.asset_type}{p.property_subtype ? ` · ${p.property_subtype}` : ''}</span>}
-            {p.vacancy_status && <span style={{ fontSize: 13, fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '3px 11px', borderRadius: 6 }}>{p.vacancy_status}</span>}
-            {p.building_class && <span style={{ fontSize: 13, fontWeight: 600, background: '#eef2ff', color: '#4338ca', padding: '3px 11px', borderRadius: 6 }}>Class {p.building_class}</span>}
+          {/* Badges */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 20px' }}>
+            {p.asset_type && <span style={{ fontSize: 13, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 11px', borderRadius: 20 }}>{p.asset_type}{p.property_subtype ? ` · ${p.property_subtype}` : ''}</span>}
+            {p.vacancy_status && <span style={{ fontSize: 13, fontWeight: 600, background: st.bg, color: st.color, padding: '3px 11px', borderRadius: 20 }}>{p.vacancy_status}</span>}
+            {p.building_class && <span style={{ fontSize: 13, fontWeight: 600, background: '#eef2ff', color: '#4338ca', padding: '3px 11px', borderRadius: 20 }}>Class {p.building_class}</span>}
           </div>
 
-          <Group title="Size & Space">
-            <Field label="Building SF" value={p.size_sf ? Number(p.size_sf).toLocaleString() : null} />
-            <Field label="Available SF" value={p.available_sf ? Number(p.available_sf).toLocaleString() : null} />
-            <Field label="Year built" value={p.year_built} />
-          </Group>
-          <Group title="Pricing">
-            <Field label="Listing type" value={p.listing_type} />
-            <Field label="Asking rate" value={fmtRate(p.asking_rate) || null} />
-            <Field label="Sale price" value={p.sale_price ? fmt$(p.sale_price) : null} />
-            <Field label="Price / SF" value={p.price_per_sf ? `$${p.price_per_sf}` : null} />
-            <Field label="Cap rate" value={p.cap_rate ? `${p.cap_rate}%` : null} />
-          </Group>
-          <Group title="Industrial / Building Specs">
+          {/* Hero stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))', gap: 10, marginBottom: 22 }}>
+            <StatTile label={isSale ? 'Sale Price' : 'Asking Rate'} value={priceVal} accent />
+            <StatTile label="Building SF" value={p.size_sf ? `${Number(p.size_sf).toLocaleString()} SF` : null} />
+            <StatTile label="Available" value={p.available_sf ? `${Number(p.available_sf).toLocaleString()} SF` : null} />
+            <StatTile label="Price / SF" value={p.price_per_sf ? `$${p.price_per_sf}` : null} />
+            <StatTile label="Cap Rate" value={p.cap_rate ? `${p.cap_rate}%` : null} />
+            <StatTile label="Year Built" value={p.year_built ? String(p.year_built) : null} />
+          </div>
+
+          {/* Broker card */}
+          {(p.listing_company || p.listing_agent_name) && (
+            <div style={{ background: '#fbfbfa', border: '1px solid #eef0f2', borderRadius: 12, padding: '14px 16px', marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700 }}>Listing Broker</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginTop: 3 }}>{p.listing_agent_name || p.listing_company}</div>
+                {p.listing_agent_name && p.listing_company && <div style={{ fontSize: 13, color: '#6b7280' }}>{p.listing_company}</div>}
+              </div>
+              {p.listing_agent_phone && (
+                <a href={`tel:${p.listing_agent_phone}`} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap' }}>📞 {p.listing_agent_phone}</a>
+              )}
+            </div>
+          )}
+
+          <Group title="Building & Specs">
+            <Field label="Subtype" value={p.property_subtype} />
+            <Field label="Building class" value={p.building_class} />
             <Field label="Clear height" value={p.clear_height_ft ? `${p.clear_height_ft} ft` : null} />
             <Field label="Dock doors" value={p.dock_doors} />
             <Field label="Grade doors" value={p.grade_doors} />
             <Field label="Parking" value={p.parking_spaces} />
             <Field label="Zoning" value={p.zoning} />
+            <Field label="Lease type" value={p.lease_type} />
           </Group>
           <Group title="Location">
             <Field label="Submarket" value={p.submarket} />
             <Field label="County" value={p.county} />
-          </Group>
-          <Group title="Listing Contact">
-            <Field label="Company" value={p.listing_company} />
-            <Field label="Agent" value={p.listing_agent_name} />
-            <Field label="Phone" value={p.listing_agent_phone} />
             <Field label="Owner" value={p.owner_name} />
           </Group>
 
