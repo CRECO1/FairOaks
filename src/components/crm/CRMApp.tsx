@@ -5507,6 +5507,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
                                     {project.description && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>· {project.description}</span>}
                                   </div>
+                                  {(() => {
+                                    const sent = projectCampaigns.map(c => c.last_sent_at).filter(Boolean) as string[];
+                                    const label = sent.length
+                                      ? `Last sent ${new Date([...sent].sort().slice(-1)[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                      : projectCampaigns.length ? 'Not sent yet' : 'No campaigns';
+                                    return <span style={{ fontSize: 12, color: '#9ca3af', marginRight: 6, flexShrink: 0 }}>{label}</span>;
+                                  })()}
                                   {isAdmin && (
                                     <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                                       <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
