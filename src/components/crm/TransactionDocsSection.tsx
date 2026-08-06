@@ -35,6 +35,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<{ form: Form; dealId?: string } | null>(null);
   const [pickForDeal, setPickForDeal] = useState<string | null>(null);
+  const [selectedFormId, setSelectedFormId] = useState('');
 
   const authHeaders = useMemo<Record<string, string>>(() => {
     const h: Record<string, string> = {};
@@ -90,24 +91,32 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
         </div>
       )}
 
-      <div style={{ border: '1px solid #eef0f2', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-        {filtered.map((f, i) => {
-          const catColor = f.category === 'Purchase' ? { bg: '#f3e8ff', color: '#7e22ce' } : { bg: '#e0f2fe', color: '#0369a1' };
-          return (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderTop: i ? '1px solid #f4f5f7' : 'none' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-              <span style={{ fontSize: 19, flexShrink: 0 }}>📄</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
-              </div>
-              {f.category && <span style={{ fontSize: 11, fontWeight: 600, color: catColor.color, background: catColor.bg, padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
-              <a href={f.url ?? undefined} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 12px', flexShrink: 0 }}>Open ↗</a>
-              <button onClick={() => setEditing({ form: f })} style={{ fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill out</button>
-            </div>
-          );
-        })}
-      </div>
+      {(() => {
+        const cats = Array.from(new Set(filtered.map(f => f.category || 'Other')));
+        const selForm = forms.find(f => f.id === selectedFormId);
+        return (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 12 }}>
+            <select value={selectedFormId} onChange={e => setSelectedFormId(e.target.value)}
+              style={{ flex: '1 1 340px', minWidth: 240, padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111' }}>
+              <option value="">📄  Choose a form to fill…</option>
+              {cats.map(cat => (
+                <optgroup key={cat} label={cat}>
+                  {filtered.filter(f => (f.category || 'Other') === cat).map(f => (
+                    <option key={f.id} value={f.id}>{f.name}{f.form_code ? ` — ${f.form_code}` : ''}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <button onClick={() => selForm && setEditing({ form: selForm })} disabled={!selForm}
+              style={{ padding: '11px 20px', fontSize: 13, fontWeight: 700, background: selForm ? '#c9922c' : '#eef0f2', color: selForm ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, cursor: selForm ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+              ✍️ Fill out
+            </button>
+            {selForm?.url && (
+              <a href={selForm.url} target="_blank" rel="noopener noreferrer" style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 8 }}>Open ↗</a>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Active Deals — create a deal or attach a doc to one */}
       <div style={{ marginTop: 36 }}>

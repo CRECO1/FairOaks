@@ -1013,7 +1013,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [authGet]); // eslint-disable-line
   const startPacket = useCallback(async (pkt: typeof FORM_PACKETS[number]) => {
     if (!activeDeal) return;
-    const byName = new Map(crmForms.map(f => [f.name, f]));
+    showToast(`Attaching ${pkt.label}…`);
+    let forms = crmForms;
+    if (!forms.length) {
+      try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); forms = j.forms ?? []; setCrmForms(forms); } catch { /* ignore */ }
+    }
+    const byName = new Map(forms.map(f => [f.name, f]));
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
     if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
     let n = 0;
@@ -1024,8 +1029,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       if (res.ok) n++;
     }
     await loadDealForms(activeDeal.id);
-    showToast(n ? `✓ Attached ${n} form${n === 1 ? '' : 's'} to the deal` : 'Forms not loaded yet — reopen the deal');
-  }, [activeDeal, crmForms, session?.access_token, businessUnit, loadDealForms]); // eslint-disable-line
+    showToast(n ? `✓ Attached ${n} form${n === 1 ? '' : 's'} to the deal` : 'Could not attach the packet');
+  }, [activeDeal, crmForms, session?.access_token, businessUnit, loadDealForms, authGet]); // eslint-disable-line
 
   const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
