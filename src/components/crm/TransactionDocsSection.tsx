@@ -35,7 +35,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<{ form: Form; dealId?: string } | null>(null);
   const [pickForDeal, setPickForDeal] = useState<string | null>(null);
-  const [selectedFormId, setSelectedFormId] = useState('');
+  const [formMenuOpen, setFormMenuOpen] = useState(false);
 
   const authHeaders = useMemo<Record<string, string>>(() => {
     const h: Record<string, string> = {};
@@ -65,54 +65,65 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 18 }}>
-        <div>
-          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Transaction Docs</h2>
-          <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
-            Your own fillable forms. Open to preview, or <strong>Fill</strong> to complete and generate a signed-ready PDF.
-          </div>
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Transaction Docs</h2>
+        <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
+          Pick a form to fill, or attach a use-case packet to a deal below.
         </div>
-        <input
-          placeholder="🔍  Search forms…"
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          style={{ padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, minWidth: 240, flex: '0 1 300px', fontFamily: "'DM Sans',sans-serif" }}
-        />
       </div>
-
-      <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16, fontWeight: 600 }}>
-        {loading ? 'Loading…' : `${filtered.length} form${filtered.length === 1 ? '' : 's'}`}
-      </div>
-
-      {!loading && filtered.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#9ca3af', padding: '54px 20px' }}>
-          <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
-          No forms yet.
-        </div>
-      )}
 
       {(() => {
+        const catColor = (c?: string) => c === 'Purchase' ? { bg: '#f3e8ff', color: '#7e22ce' } : { bg: '#e0f2fe', color: '#0369a1' };
         const cats = Array.from(new Set(filtered.map(f => f.category || 'Other')));
-        const selForm = forms.find(f => f.id === selectedFormId);
         return (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 12 }}>
-            <select value={selectedFormId} onChange={e => setSelectedFormId(e.target.value)}
-              style={{ flex: '1 1 340px', minWidth: 240, padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111' }}>
-              <option value="">📄  Choose a form to fill…</option>
-              {cats.map(cat => (
-                <optgroup key={cat} label={cat}>
-                  {filtered.filter(f => (f.category || 'Other') === cat).map(f => (
-                    <option key={f.id} value={f.id}>{f.name}{f.form_code ? ` — ${f.form_code}` : ''}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <button onClick={() => selForm && setEditing({ form: selForm })} disabled={!selForm}
-              style={{ padding: '11px 20px', fontSize: 13, fontWeight: 700, background: selForm ? '#c9922c' : '#eef0f2', color: selForm ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, cursor: selForm ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
-              ✍️ Fill out
+          <div style={{ position: 'relative', maxWidth: 560 }}>
+            <button onClick={() => setFormMenuOpen(o => !o)}
+              style={{ display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left', background: formMenuOpen ? '#fffdf6' : '#fff', border: `1px solid ${formMenuOpen ? '#c9922c' : '#e5e7eb'}`, borderRadius: 12, padding: '13px 16px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+              <span style={{ fontSize: 24 }}>🖊️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>Fill out a form</div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{loading ? 'Loading…' : `${forms.length} forms — contracts, lease, addenda & more`}</div>
+              </div>
+              <span style={{ fontSize: 12, color: '#c9922c', fontWeight: 700, transform: formMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>
             </button>
-            {selForm?.url && (
-              <a href={selForm.url} target="_blank" rel="noopener noreferrer" style={{ padding: '11px 14px', fontSize: 13, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 8 }}>Open ↗</a>
+            {formMenuOpen && (
+              <>
+                <div onClick={() => setFormMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 8, background: '#fff', border: '1px solid #eef0f2', borderRadius: 14, boxShadow: '0 16px 48px rgba(0,0,0,.18)', zIndex: 50, overflow: 'hidden' }}>
+                  <div style={{ padding: 10, borderBottom: '1px solid #f4f5f7' }}>
+                    <input autoFocus placeholder="🔍  Search forms…" value={q} onChange={e => setQ(e.target.value)}
+                      style={{ width: '100%', padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ maxHeight: '48vh', overflowY: 'auto', padding: 6 }}>
+                    {filtered.length === 0 && <div style={{ padding: 24, color: '#9ca3af', textAlign: 'center', fontSize: 13 }}>No forms match.</div>}
+                    {cats.map(cat => {
+                      const items = filtered.filter(f => (f.category || 'Other') === cat);
+                      if (!items.length) return null;
+                      return (
+                        <div key={cat} style={{ marginBottom: 4 }}>
+                          <div style={{ fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, padding: '8px 10px 4px' }}>{cat}</div>
+                          {items.map(f => {
+                            const cc = catColor(f.category);
+                            return (
+                              <div key={f.id} onClick={() => { setEditing({ form: f }); setFormMenuOpen(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 10px', borderRadius: 8, cursor: 'pointer' }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                                  <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
+                                </div>
+                                {f.category && <span style={{ fontSize: 10.5, fontWeight: 600, color: cc.color, background: cc.bg, padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>Fill ›</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         );
