@@ -92,6 +92,13 @@ function fmtRate(r?: string | number | null) {
 function cityLine(p: Property) {
   return [p.city, p.state].filter(Boolean).join(', ') + (p.zip ? ` ${p.zip}` : '');
 }
+function statusPill(s?: string) {
+  const v = (s || '').toLowerCase();
+  if (/vacan|avail/.test(v)) return { bg: '#dcfce7', color: '#15803d' };
+  if (/leas|occup|sold|pend/.test(v)) return { bg: '#dbeafe', color: '#1d4ed8' };
+  return { bg: '#f1f5f9', color: '#64748b' };
+}
+const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
 export default function PropertyDBSection({ businessUnit, authToken, onToast }: Props) {
   const [properties, setProperties] = useState<Property[]>([]);
@@ -191,35 +198,54 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
       )}
 
       {view === 'rows' && !loading && filtered.length > 0 && (
-        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
+        <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: '#fff' }}>
+          <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
+            <colgroup>
+              <col style={{ width: '33%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
             <thead>
-              <tr style={{ background: '#fafafa', textAlign: 'left', color: '#9ca3af', fontSize: 11, letterSpacing: .5, textTransform: 'uppercase' }}>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Property</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Location</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Type</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Size</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Rate / Price</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Broker</th>
-                <th style={{ padding: '10px 14px', fontWeight: 600 }}>Status</th>
+              <tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2' }}>
+                <th style={{ padding: '12px 16px', fontWeight: 700 }}>Property</th>
+                <th style={{ padding: '12px 10px', fontWeight: 700 }}>Type</th>
+                <th style={{ padding: '12px 10px', fontWeight: 700, textAlign: 'right' }}>Size</th>
+                <th style={{ padding: '12px 10px', fontWeight: 700, textAlign: 'right' }}>Rate / Price</th>
+                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Broker</th>
+                <th style={{ padding: '12px 12px', fontWeight: 700 }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(p => {
                 const as = assetStyle(p.asset_type);
                 const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
+                const st = statusPill(p.vacancy_status);
+                const loc = [p.address, cityLine(p)].filter(Boolean).join(' · ');
+                const ell: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
                 return (
                   <tr key={p.id} onClick={() => setActive(p)}
-                    style={{ borderTop: '1px solid #f3f4f6', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fafaf8')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td style={{ padding: '11px 14px', fontWeight: 600, color: '#1a1a1a' }}>{p.name || p.address || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#6b7280' }}>{[p.address, cityLine(p)].filter(Boolean).join(' · ') || '—'}</td>
-                    <td style={{ padding: '11px 14px' }}>{p.asset_type ? <span style={{ fontSize: 12, fontWeight: 600, background: as.bg, color: as.color, padding: '2px 8px', borderRadius: 5, whiteSpace: 'nowrap' }}>{p.asset_type}</span> : '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#374151', whiteSpace: 'nowrap' }}>{fmtSf(p.size_sf) || '—'}</td>
-                    <td style={{ padding: '11px 14px', fontWeight: 700, color: '#c9922c', whiteSpace: 'nowrap' }}>{price || '—'}</td>
-                    <td style={{ padding: '11px 14px', color: '#6b7280' }}>{[p.listing_agent_name, p.listing_company].filter(Boolean).join(' · ') || '—'}</td>
-                    <td style={{ padding: '11px 14px' }}>{p.vacancy_status ? <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#15803d', whiteSpace: 'nowrap' }}>{p.vacancy_status}</span> : '—'}</td>
+                    style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer', background: '#fff' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                    <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
+                      <div style={{ ...ell, fontWeight: 600, color: '#1a1a1a', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
+                      <div style={{ ...ell, color: '#9ca3af', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
+                    </td>
+                    <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
+                      {p.asset_type ? <span style={{ display: 'inline-block', maxWidth: '100%', ...ell, fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }} title={p.asset_type}>{p.asset_type}</span> : muted}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', color: '#374151', fontSize: 13.5, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{fmtSf(p.size_sf) || muted}</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, color: price ? '#b07d1f' : '#d1d5db', fontSize: 13.5, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{price || '—'}</td>
+                    <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
+                      <div style={{ ...ell, color: '#374151', fontSize: 13 }} title={p.listing_company || ''}>{p.listing_company || muted}</div>
+                      {p.listing_agent_name && <div style={{ ...ell, color: '#9ca3af', fontSize: 12, marginTop: 1 }} title={p.listing_agent_name}>{p.listing_agent_name}</div>}
+                    </td>
+                    <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
+                      {p.vacancy_status ? <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>{p.vacancy_status}</span> : muted}
+                    </td>
                   </tr>
                 );
               })}
