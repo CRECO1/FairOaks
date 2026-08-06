@@ -64,6 +64,7 @@ interface Props {
   isAdmin: boolean;
   authToken?: string;
   onToast: (msg: string) => void;
+  onCount?: (n: number) => void;
 }
 
 const ASSET_COLORS: Record<string, { bg: string; color: string }> = {
@@ -100,7 +101,7 @@ function statusPill(s?: string) {
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
-export default function PropertyDBSection({ businessUnit, authToken, onToast }: Props) {
+export default function PropertyDBSection({ businessUnit, authToken, onToast, onCount }: Props) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -124,12 +125,14 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
     try {
       const res = await fetch(`/api/crm/property-db?business_unit=${businessUnit}`, { headers: authHeaders });
       const json = await res.json();
-      setProperties(json.properties ?? []);
+      const list = json.properties ?? [];
+      setProperties(list);
+      onCount?.(list.length);
     } catch {
       onToast('Could not load the Property DB');
     }
     setLoading(false);
-  }, [businessUnit, authHeaders, onToast]);
+  }, [businessUnit, authHeaders, onToast, onCount]);
 
   useEffect(() => { load(); }, [load]);
 

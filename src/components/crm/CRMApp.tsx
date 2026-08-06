@@ -671,6 +671,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Task Manager (full Tasks page)
   const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan'>('propertydb');
+  const [propertyDbCount, setPropertyDbCount] = useState<number | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'done'>('open');
@@ -6917,6 +6918,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan')}
                     style={{ padding: '10px 22px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
                     {t.label}
+                    {t.k === 'propertydb' && propertyDbCount != null && (
+                      <span style={{ marginLeft: 8, background: propertiesTab === t.k ? '#c9922c' : '#e5e7eb', color: propertiesTab === t.k ? '#fff' : '#6b7280', fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 10, verticalAlign: 'middle' }}>{propertyDbCount}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -6927,6 +6931,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   isAdmin={isAdmin}
                   authToken={session?.access_token}
                   onToast={showToast}
+                  onCount={setPropertyDbCount}
                 />
               )}
               {propertiesTab === 'listings' && (
