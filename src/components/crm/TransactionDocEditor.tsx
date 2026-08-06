@@ -23,16 +23,22 @@ const RENDER_W = 850;
 let _idc = 0;
 const nextId = () => `f${++_idc}`;
 
+interface DealLite { id: string; client?: string; property?: string; type?: string; }
+
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, onToast, onClose, onSave,
+  form, url, authToken, isAdmin, deals, dealId, businessUnit, submissionId, onToast, onClose, onSaved,
 }: {
   form: { id: string; name: string };
   url: string;
   authToken?: string;
   isAdmin?: boolean;
+  deals?: DealLite[];
+  dealId?: string;
+  businessUnit?: string;
+  submissionId?: string;
   onToast?: (msg: string) => void;
   onClose: () => void;
-  onSave?: (bytes: Uint8Array, fields: Field[]) => void;
+  onSaved?: () => void;
 }) {
   const [pages, setPages] = useState<PageDim[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
@@ -40,6 +46,8 @@ export default function TransactionDocEditor({
   const [tool, setTool] = useState<'text' | 'check' | 'select'>('text');
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dealSel, setDealSel] = useState<string>(dealId ?? '');
+  const subIdRef = useRef<string | undefined>(submissionId);
 
   const bytesRef = useRef<Uint8Array | null>(null);
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
@@ -78,13 +86,23 @@ export default function TransactionDocEditor({
     return () => { cancelled = true; };
   }, [url]);
 
-  // ── Load the saved field template (preset fields) ───────────────────────────
+  // ── Load fields: a saved submission's values (re-edit) or the blank template ─
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const h: Record<string, string> = {};
         if (authToken) h.Authorization = `Bearer ${authToken}`;
+        if (submissionId) {
+          const r = await fetch(`/api/crm/form-submissions/${submissionId}`, { headers: h });
+          const j = await r.json();
+          if (cancelled) return;
+          const vals = j.submission?.values;
+          if (Array.isArray(vals) && vals.length) {
+            setFields(vals.map((f: Field) => ({ ...f, id: nextId() })));
+            return;
+          }
+        }
         const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
         const json = await res.json();
         if (cancelled || !Array.isArray(json.fields)) return;
@@ -95,7 +113,7 @@ export default function TransactionDocEditor({
       } catch { /* no template yet */ }
     })();
     return () => { cancelled = true; };
-  }, [form.id, authToken]);
+  }, [form.id, authToken, submissionId]);
 
   // ── Add a field on click ────────────────────────────────────────────────────
   const onPageClick = useCallback((e: React.MouseEvent, pd: PageDim) => {
@@ -173,11 +191,32 @@ export default function TransactionDocEditor({
     finally { setBusy(false); }
   }, [fields, authToken, form.id, onToast]);
 
-  const save = useCallback(async () => {
-    if (!onSave) return;
+  const saveToDeal = useCallback(async () => {
     setBusy(true);
-    try { const out = await build(); if (out) onSave(out, fields); } finally { setBusy(false); }
-  }, [build, fields, onSave]);
+    try {
+      const out = await build();
+      if (!out) return;
+      // base64-encode the PDF in chunks (avoids call-stack limits on big files)
+      let bin = '';
+      const bytes = new Uint8Array(out);
+      const CH = 0x8000;
+      for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+      const pdfBase64 = btoa(bin);
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) h.Authorization = `Bearer ${authToken}`;
+      const res = await fetch('/api/crm/form-submissions', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ form_id: form.id, deal_id: dealSel || null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        if (j.submission?.id) subIdRef.current = j.submission.id;
+        onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
+        onSaved?.();
+      } else onToast?.('Could not save');
+    } catch { onToast?.('Could not save'); }
+    finally { setBusy(false); }
+  }, [build, fields, dealSel, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
 
   const toolBtn = (t: typeof tool, label: string) => (
     <button onClick={() => setTool(t)}
@@ -198,10 +237,17 @@ export default function TransactionDocEditor({
           {toolBtn('select', '↖︎ Select / move')}
         </div>
         <div style={{ fontSize: 12, color: '#9ca3af' }}>{fields.length} field{fields.length === 1 ? '' : 's'} · {tool !== 'select' ? 'click a page to place' : 'drag to move, click ✕ to delete'}</div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {isAdmin && <button onClick={saveTemplate} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer' }}>💾 Save field layout</button>}
-          {onSave && <button onClick={save} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Save</button>}
-          <button onClick={download} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>{busy ? 'Working…' : '⬇ Download filled PDF'}</button>
+          {deals && deals.length > 0 && (
+            <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
+              style={{ padding: '8px 10px', fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, fontFamily: "'DM Sans',sans-serif" }}>
+              <option value="">— Link to a deal —</option>
+              {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
+            </select>
+          )}
+          <button onClick={saveToDeal} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 8, cursor: 'pointer' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : '💾 Save')}</button>
+          <button onClick={download} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>{busy ? 'Working…' : '⬇ Download'}</button>
           <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>
         </div>
       </div>

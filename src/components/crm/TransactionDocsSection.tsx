@@ -16,14 +16,17 @@ interface Form {
   created_at?: string;
 }
 
+interface DealLite { id: string; client?: string; property?: string; type?: string; }
+
 interface Props {
   businessUnit: string;
   isAdmin: boolean;
   authToken?: string;
+  deals?: DealLite[];
   onToast: (msg: string) => void;
 }
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, onToast }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onToast }: Props) {
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -113,6 +116,8 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
           url={editing.url}
           authToken={authToken}
           isAdmin={isAdmin}
+          deals={deals}
+          businessUnit={businessUnit}
           onToast={onToast}
           onClose={() => setEditing(null)}
         />
