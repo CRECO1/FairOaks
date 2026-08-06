@@ -16,21 +16,25 @@ interface Form {
   created_at?: string;
 }
 
-interface DealLite { id: string; client?: string; property?: string; type?: string; }
+interface DealLite { id: string; client?: string; property?: string; type?: string; stage?: string; }
 
 interface Props {
   businessUnit: string;
   isAdmin: boolean;
   authToken?: string;
   deals?: DealLite[];
+  onNewDeal?: () => void;
   onToast: (msg: string) => void;
 }
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onToast }: Props) {
+const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
+
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast }: Props) {
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
-  const [editing, setEditing] = useState<Form | null>(null);
+  const [editing, setEditing] = useState<{ form: Form; dealId?: string } | null>(null);
+  const [pickForDeal, setPickForDeal] = useState<string | null>(null);
 
   const authHeaders = useMemo<Record<string, string>>(() => {
     const h: Record<string, string> = {};
@@ -55,6 +59,8 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
     if (!term) return forms;
     return forms.filter(f => (f.name + ' ' + (f.form_code ?? '')).toLowerCase().includes(term));
   }, [forms, q]);
+
+  const activeDeals = useMemo(() => (deals ?? []).filter(d => !d.stage || ACTIVE_STAGES.includes(d.stage)), [deals]);
 
   return (
     <div style={{ maxWidth: 1100 }}>
@@ -97,7 +103,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setEditing(f)}
+              <button onClick={() => setEditing({ form: f })}
                 style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                 ✍️ Fill out
               </button>
@@ -110,13 +116,62 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
         ))}
       </div>
 
-      {editing && editing.url && (
+      {/* Active Deals — create a deal or attach a doc to one */}
+      <div style={{ marginTop: 36 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Active Deals</h3>
+            <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Attach a completed form to a live deal — or start a new one.</div>
+          </div>
+          {onNewDeal && (
+            <button onClick={onNewDeal} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New Deal</button>
+          )}
+        </div>
+        {activeDeals.length === 0 ? (
+          <div style={{ fontSize: 13, color: '#9ca3af', padding: '10px 0' }}>No active deals yet. Create one to start attaching documents.</div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+            {activeDeals.map(d => (
+              <div key={d.id} style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client || 'Deal'}</div>
+                <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[d.property, d.type].filter(Boolean).join(' · ')}</div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
+                  {d.stage && <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', padding: '2px 8px', borderRadius: 20 }}>{d.stage}</span>}
+                  <button onClick={() => setPickForDeal(d.id)} style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add doc</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pick a form to attach to the chosen deal */}
+      {pickForDeal && (
+        <div onClick={() => setPickForDeal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '12vh 16px', overflowY: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a' }}>Pick a form for this deal</div>
+            <div style={{ padding: 10, maxHeight: '52vh', overflowY: 'auto' }}>
+              {forms.map(f => (
+                <button key={f.id} onClick={() => { setEditing({ form: f, dealId: pickForDeal }); setPickForDeal(null); }}
+                  style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '11px 12px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
+                  onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                  <span style={{ fontSize: 20 }}>📄</span>
+                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editing && editing.form.url && (
         <TransactionDocEditor
-          form={{ id: editing.id, name: editing.name }}
-          url={editing.url}
+          form={{ id: editing.form.id, name: editing.form.name }}
+          url={editing.form.url}
           authToken={authToken}
           isAdmin={isAdmin}
           deals={deals}
+          dealId={editing.dealId}
           businessUnit={businessUnit}
           onToast={onToast}
           onClose={() => setEditing(null)}
