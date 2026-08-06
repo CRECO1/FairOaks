@@ -9,6 +9,9 @@ import SocialMediaSection from '@/components/crm/SocialMediaSection';
 import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
 import PropertyDBSection from '@/components/crm/PropertyDBSection';
 import TransactionDocsSection from '@/components/crm/TransactionDocsSection';
+import dynamic from 'next/dynamic';
+
+const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -424,6 +427,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showContactCompose, setShowContactCompose] = useState(false);
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
+  const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
+  const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null }[]>([]);
+  const [dealFormPicker, setDealFormPicker] = useState(false);
+  const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
@@ -976,6 +983,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const json = await res.json();
     setDealDocs((json.docs ?? []) as DealDoc[]);
   }, []);
+
+  const authGet = useCallback(
+    (path: string) => fetch(path, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} }),
+    [session?.access_token],
+  );
+  const loadDealForms = useCallback(async (dealId: string) => {
+    try { const r = await authGet(`/api/crm/form-submissions?deal_id=${dealId}`); const j = await r.json(); setDealForms(j.submissions ?? []); } catch { /* ignore */ }
+  }, [authGet]);
+  const loadCrmForms = useCallback(async () => {
+    try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); setCrmForms(j.forms ?? []); } catch { /* ignore */ }
+  }, [authGet, businessUnit]);
+  const openFormEditor = useCallback(async (form: { id: string; name: string; url?: string | null }, submissionId?: string) => {
+    let url = form.url ?? null;
+    if (!url) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
+    if (!url) { showToast('Could not open the form'); return; }
+    setDealFormPicker(false);
+    setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
+  }, [authGet]); // eslint-disable-line
 
   const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
@@ -2474,6 +2499,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDealCommission(null);
     loadDealEmails(deal.id);
     loadDealDocs(deal.id);
+    loadDealForms(deal.id);
+    loadCrmForms();
     loadDealCommission(deal.id, deal.earned_commission);
     if (typeof window !== 'undefined') sessionStorage.setItem('activeDealId', deal.id);
   }
@@ -7560,6 +7587,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Docs tab */}
               {dealTab === 'docs' && (
                 <div>
+                  {/* CRM Forms (Transaction Docs) tied to this deal */}
+                  <div style={{ marginBottom: 22 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>CRM Forms</div>
+                      <button onClick={() => { loadCrmForms(); setDealFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                    </div>
+                    {dealForms.length === 0 ? (
+                      <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>No forms on this deal yet. Fill a commercial/TREC form and it saves here, linked to the deal.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {dealForms.map(f => (
+                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '10px 14px' }}>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
+                            </div>
+                            {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
+                            <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
                   {/* Upload area */}
                   <div
                     onClick={() => docFileRef.current?.click()}
@@ -10136,6 +10188,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
           </div>
         </div>
+      )}
+
+      {/* Deal → pick a form to fill */}
+      {dealFormPicker && (
+        <div onClick={() => setDealFormPicker(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '12vh 16px', overflowY: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a' }}>Fill a form for this deal</div>
+            <div style={{ padding: 10, maxHeight: '52vh', overflowY: 'auto' }}>
+              {crmForms.length === 0 ? <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>No forms available.</div> :
+                crmForms.map(f => (
+                  <button key={f.id} onClick={() => openFormEditor(f)} style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '11px 12px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                    <span style={{ fontSize: 20 }}>📄</span>
+                    <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The fillable editor, launched from a deal */}
+      {dealFormEditor && (
+        <TransactionDocEditor
+          form={dealFormEditor.form}
+          url={dealFormEditor.url}
+          submissionId={dealFormEditor.submissionId}
+          authToken={session?.access_token}
+          isAdmin={isAdmin}
+          deals={deals}
+          dealId={activeDeal?.id}
+          businessUnit={businessUnit}
+          onToast={showToast}
+          onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); }}
+          onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
+        />
       )}
 
       {/* Toast */}
