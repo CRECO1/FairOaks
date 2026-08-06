@@ -301,7 +301,7 @@ export default function TransactionDocEditor({
               <div key={f.id}
                 onMouseDown={e => onDragStart(e, f, pd)}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
-                  height: boxH, transform: 'translateY(calc(-100% + 3px))', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
+                  height: boxH, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
                   background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
                   outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
                 <input
@@ -309,7 +309,7 @@ export default function TransactionDocEditor({
                   onChange={e => updateVal(f.id, e.target.value)}
                   onMouseDown={e => e.stopPropagation()}
                   onFocus={() => setSelected(f.id)}
-                  style={{ width: '100%', height: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
+                  style={{ width: '100%', height: boxH, minHeight: 0, boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
                     fontSize: fontPx, lineHeight: `${boxH}px`, color: '#0b1f4d',
                     textAlign: isCheck ? 'center' : 'left', padding: '0 3px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
                 />
