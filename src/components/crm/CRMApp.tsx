@@ -43,6 +43,16 @@ interface Commission { id: string; deal_id: string; agent_id?: string; business_
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
 const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
+
+// Curated form packets by use-case. `match` = deal types the packet is suggested
+// for. `forms` = crm_forms.name (exact). Starting a packet attaches a blank,
+// pre-linked submission for each form so the agent just fills them.
+const FORM_PACKETS: { key: string; label: string; match: string[]; forms: string[] }[] = [
+  { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: ['Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
+  { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: ['Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
+  { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: ['Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
+  { key: 'sublease', label: 'Sublease packet', match: ['Tenant Lease'], forms: ['Commercial Sublease', 'Commercial Lease Guaranty'] },
+];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
 const ASSET_TYPES = ['Home', 'Condo', 'Multi-Family', 'Land', 'Industrial', 'Flex/Warehouse', 'Retail', 'Office', 'Storage'] as const;
@@ -1001,6 +1011,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDealFormPicker(false);
     setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
   }, [authGet]); // eslint-disable-line
+  const startPacket = useCallback(async (pkt: typeof FORM_PACKETS[number]) => {
+    if (!activeDeal) return;
+    const byName = new Map(crmForms.map(f => [f.name, f]));
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
+    let n = 0;
+    for (const name of pkt.forms) {
+      const form = byName.get(name);
+      if (!form) continue;
+      const res = await fetch('/api/crm/form-submissions', { method: 'POST', headers: h, body: JSON.stringify({ form_id: form.id, deal_id: activeDeal.id, business_unit: businessUnit, title: form.name, values: [] }) });
+      if (res.ok) n++;
+    }
+    await loadDealForms(activeDeal.id);
+    showToast(n ? `✓ Attached ${n} form${n === 1 ? '' : 's'} to the deal` : 'Forms not loaded yet — reopen the deal');
+  }, [activeDeal, crmForms, session?.access_token, businessUnit, loadDealForms]); // eslint-disable-line
 
   const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
@@ -7593,6 +7618,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>CRM Forms</div>
                       <button onClick={() => { loadCrmForms(); setDealFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
+                      <span style={{ fontSize: 12, color: '#9ca3af', alignSelf: 'center', marginRight: 2 }}>Attach a packet:</span>
+                      {FORM_PACKETS.map(pkt => {
+                        const suggested = pkt.match.includes(activeDeal.type);
+                        return (
+                          <button key={pkt.key} onClick={() => startPacket(pkt)} title={pkt.forms.join(', ')}
+                            style={{ fontSize: 12, fontWeight: 600, padding: '6px 11px', borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                              border: suggested ? '1px solid #c9922c' : '1px solid #e5e7eb', background: suggested ? '#fdf6e9' : '#fff', color: suggested ? '#a06a12' : '#6b7280' }}>
+                            📦 {pkt.label}{suggested ? ' · suggested' : ''}
+                          </button>
+                        );
+                      })}
                     </div>
                     {dealForms.length === 0 ? (
                       <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>No forms on this deal yet. Fill a commercial/TREC form and it saves here, linked to the deal.</div>

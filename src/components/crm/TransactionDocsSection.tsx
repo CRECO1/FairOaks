@@ -90,30 +90,23 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
-        {filtered.map(f => (
-          <div key={f.id} style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 18, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 26 }}>📄</span>
+      <div style={{ border: '1px solid #eef0f2', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
+        {filtered.map((f, i) => {
+          const catColor = f.category === 'Purchase' ? { bg: '#f3e8ff', color: '#7e22ce' } : { bg: '#e0f2fe', color: '#0369a1' };
+          return (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', borderTop: i ? '1px solid #f4f5f7' : 'none' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+              <span style={{ fontSize: 19, flexShrink: 0 }}>📄</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.2 }}>{f.name}</div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3, fontWeight: 600 }}>
-                  {f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pages` : ''}
-                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
               </div>
+              {f.category && <span style={{ fontSize: 11, fontWeight: 600, color: catColor.color, background: catColor.bg, padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
+              <a href={f.url ?? undefined} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 12px', flexShrink: 0 }}>Open ↗</a>
+              <button onClick={() => setEditing({ form: f })} style={{ fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill out</button>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setEditing({ form: f })}
-                style={{ flex: 1, padding: '9px 0', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                ✍️ Fill out
-              </button>
-              <a href={f.url ?? undefined} target="_blank" rel="noopener noreferrer"
-                style={{ textAlign: 'center', textDecoration: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}>
-                Open ↗
-              </a>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Active Deals — create a deal or attach a doc to one */}
