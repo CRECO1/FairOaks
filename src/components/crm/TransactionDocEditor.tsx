@@ -175,8 +175,10 @@ export default function TransactionDocEditor({
     for (const f of fields) {
       const pg = pgs[f.page - 1]; if (!pg) continue;
       const { width, height } = pg.getSize();
-      const x = f.fx * width;
-      const y = height - f.fy * height - f.size;
+      const x = f.fx * width + 2;
+      // Baseline sits just above the blank line (detected fy = the underline),
+      // matching where the on-screen field renders.
+      const y = height - f.fy * height + 2;
       const text = winAnsi(f.type === 'check' ? (f.value ? 'X' : '') : (f.value || ''));
       if (text) pg.drawText(text, { x, y, size: f.size, font, color: rgb(0.06, 0.06, 0.1) });
     }
@@ -282,30 +284,44 @@ export default function TransactionDocEditor({
       <div style={{ flex: 1, overflow: 'auto', padding: '22px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
         {status === 'loading' && <div style={{ color: '#e5e7eb', padding: 60 }}>Loading document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', padding: 60 }}>Couldn’t open this document.</div>}
-        {pages.map(pd => (
+        {pages.map(pd => {
+          // One text line, sized to the page. Boxes are lifted so their bottom
+          // rides the blank line the field belongs to (detected y = the underline).
+          const LINE = Math.max(14, Math.round(pd.h * 0.019));
+          return (
           <div key={pd.num} onClick={e => onPageClick(e, pd)}
             style={{ position: 'relative', width: pd.w, height: pd.h, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair', flex: '0 0 auto' }}>
             <PageCanvas pageNum={pd.num} pdfRef={pdfRef} />
-            {fields.filter(f => f.page === pd.num).map(f => (
+            {fields.filter(f => f.page === pd.num).map(f => {
+              const isSel = selected === f.id;
+              const isCheck = f.type === 'check';
+              return (
               <div key={f.id}
                 onMouseDown={e => onDragStart(e, f, pd)}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
-                  outline: selected === f.id ? '2px solid #c9922c' : '1px dashed rgba(201,146,44,.7)', background: 'rgba(255,249,235,.75)', borderRadius: 3 }}>
+                  height: LINE, marginTop: -(LINE - 2), boxSizing: 'border-box', borderRadius: 2,
+                  background: isSel ? 'rgba(201,146,44,.16)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
+                  outline: isSel ? '1.5px solid #c9922c' : 'none',
+                  borderBottom: isSel ? '1px solid #c9922c' : `1px solid rgba(37,99,235,${isCheck ? .18 : .28})` }}>
                 <input
                   value={f.value}
                   onChange={e => updateVal(f.id, e.target.value)}
                   onMouseDown={e => e.stopPropagation()}
                   onFocus={() => setSelected(f.id)}
-                  style={{ width: '100%', border: 'none', background: 'transparent', outline: 'none', fontSize: f.size * (pd.w / pd.pw), color: '#111', padding: '1px 3px', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                  style={{ width: '100%', height: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
+                    fontSize: f.size * (pd.w / pd.pw), lineHeight: `${LINE}px`, color: '#0b1f4d',
+                    textAlign: isCheck ? 'center' : 'left', padding: '0 4px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
                 />
-                {selected === f.id && (
+                {isSel && (
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}
-                    style={{ position: 'absolute', top: -10, right: -10, width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: '18px', padding: 0 }}>✕</button>
+                    style={{ position: 'absolute', top: -9, right: -9, width: 17, height: 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: 10, cursor: 'pointer', lineHeight: '17px', padding: 0 }}>✕</button>
                 )}
               </div>
-            ))}
+            );
+            })}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
