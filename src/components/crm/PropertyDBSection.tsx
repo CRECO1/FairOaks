@@ -108,6 +108,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
   const [statusFilter, setStatusFilter] = useState('');
   const [active, setActive]     = useState<Property | null>(null);
   const [view, setView]         = useState<'rows' | 'cards' | 'map'>('rows');
+  const [sort, setSort]         = useState<{ key: string; dir: 1 | -1 }>({ key: '', dir: 1 });
 
   const authHeaders = useMemo<Record<string, string>>(
     () => {
@@ -151,6 +152,40 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
         .filter(Boolean).join(' ').toLowerCase().includes(q);
     });
   }, [properties, search, assetFilter, statusFilter]);
+
+  const rateNum = (p: Property): number => {
+    if (p.sale_price != null) return p.sale_price;
+    if (typeof p.asking_rate === 'number') return p.asking_rate;
+    const n = parseFloat(String(p.asking_rate ?? '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? n : -1;
+  };
+  const sorted = useMemo(() => {
+    if (!sort.key) return filtered;
+    const val = (p: Property): string | number => {
+      switch (sort.key) {
+        case 'name': return (p.name || p.address || '').toLowerCase();
+        case 'submarket': return (p.submarket || p.city || '').toLowerCase();
+        case 'type': return (p.asset_type || '').toLowerCase();
+        case 'size': return p.size_sf ?? -1;
+        case 'rate': return rateNum(p);
+        case 'status': return (p.vacancy_status || '').toLowerCase();
+        default: return 0;
+      }
+    };
+    return [...filtered].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      if (va < vb) return -1 * sort.dir;
+      if (va > vb) return 1 * sort.dir;
+      return 0;
+    });
+  }, [filtered, sort]); // eslint-disable-line
+
+  const sortTh = (key: string, label: string, align: 'left' | 'right' = 'left') => (
+    <th onClick={() => setSort(s => (s.key === key ? { key, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: 1 }))}
+      style={{ padding: '12px 12px', fontWeight: 700, textAlign: align, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', color: sort.key === key ? '#b07d1f' : '#9ca3af' }}>
+      {label}<span style={{ opacity: sort.key === key ? 1 : 0.3 }}>{sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ' ↕'}</span>
+    </th>
+  );
 
   const inputStyle: React.CSSProperties = {
     padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
@@ -199,52 +234,62 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
 
       {view === 'rows' && !loading && filtered.length > 0 && (
         <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: '#fff' }}>
-          <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
+          <table style={{ width: '100%', minWidth: 960, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
             <colgroup>
-              <col style={{ width: '33%' }} />
+              <col style={{ width: '26%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '10%' }} />
               <col style={{ width: '12%' }} />
-              <col style={{ width: '11%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: '15%' }} />
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
-              <tr style={{ textAlign: 'left', color: '#9ca3af', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2' }}>
-                <th style={{ padding: '12px 16px', fontWeight: 700 }}>Property</th>
-                <th style={{ padding: '12px 10px', fontWeight: 700 }}>Type</th>
-                <th style={{ padding: '12px 10px', fontWeight: 700, textAlign: 'right' }}>Size</th>
-                <th style={{ padding: '12px 10px', fontWeight: 700, textAlign: 'right' }}>Rate / Price</th>
-                <th style={{ padding: '12px 14px', fontWeight: 700 }}>Broker</th>
-                <th style={{ padding: '12px 12px', fontWeight: 700 }}>Status</th>
+              <tr style={{ textAlign: 'left', fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', borderBottom: '1px solid #eef0f2' }}>
+                {sortTh('name', 'Property')}
+                {sortTh('submarket', 'Submarket')}
+                {sortTh('type', 'Type')}
+                {sortTh('size', 'Size', 'right')}
+                {sortTh('rate', 'Rate / Price', 'right')}
+                <th style={{ padding: '12px 12px', fontWeight: 700, color: '#9ca3af' }}>Broker</th>
+                {sortTh('status', 'Status')}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => {
+              {sorted.map(p => {
                 const as = assetStyle(p.asset_type);
                 const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
                 const st = statusPill(p.vacancy_status);
                 const loc = [p.address, cityLine(p)].filter(Boolean).join(' · ');
+                const avail = p.available_sf && p.available_sf !== p.size_sf ? p.available_sf : null;
                 const ell: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
                 return (
                   <tr key={p.id} onClick={() => setActive(p)}
                     style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer', background: '#fff' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')}
                     onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-                    <td style={{ padding: '12px 16px', verticalAlign: 'top' }}>
+                    <td style={{ padding: '12px 12px 12px 16px', verticalAlign: 'top' }}>
                       <div style={{ ...ell, fontWeight: 600, color: '#1a1a1a', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
                       <div style={{ ...ell, color: '#9ca3af', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
+                    </td>
+                    <td style={{ padding: '12px 12px', verticalAlign: 'top', color: '#374151', fontSize: 13 }}>
+                      <div style={ell} title={p.submarket || ''}>{p.submarket || muted}</div>
+                      {p.county && <div style={{ ...ell, color: '#9ca3af', fontSize: 11.5, marginTop: 1 }} title={p.county}>{p.county} Co.</div>}
                     </td>
                     <td style={{ padding: '12px 10px', verticalAlign: 'top' }}>
                       {p.asset_type ? <span style={{ display: 'inline-block', maxWidth: '100%', ...ell, fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }} title={p.asset_type}>{p.asset_type}</span> : muted}
                     </td>
-                    <td style={{ padding: '12px 10px', textAlign: 'right', color: '#374151', fontSize: 13.5, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{fmtSf(p.size_sf) || muted}</td>
-                    <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, color: price ? '#b07d1f' : '#d1d5db', fontSize: 13.5, whiteSpace: 'nowrap', verticalAlign: 'top' }}>{price || '—'}</td>
-                    <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', verticalAlign: 'top' }}>
+                      <div style={{ color: '#374151', fontSize: 13.5, whiteSpace: 'nowrap' }}>{fmtSf(p.size_sf) || muted}</div>
+                      {avail && <div style={{ color: '#9ca3af', fontSize: 11.5, marginTop: 1, whiteSpace: 'nowrap' }}>{fmtSf(avail)} avail</div>}
+                    </td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, color: price ? '#b07d1f' : '#d1d5db', fontSize: 13, ...ell, verticalAlign: 'top' }} title={String(price || '')}>{price || '—'}</td>
+                    <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
                       <div style={{ ...ell, color: '#374151', fontSize: 13 }} title={p.listing_company || ''}>{p.listing_company || muted}</div>
                       {p.listing_agent_name && <div style={{ ...ell, color: '#9ca3af', fontSize: 12, marginTop: 1 }} title={p.listing_agent_name}>{p.listing_agent_name}</div>}
                     </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
-                      {p.vacancy_status ? <span style={{ display: 'inline-block', fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>{p.vacancy_status}</span> : muted}
+                      {p.vacancy_status ? <span style={{ display: 'inline-block', maxWidth: '100%', ...ell, fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20 }} title={p.vacancy_status}>{p.vacancy_status}</span> : muted}
                     </td>
                   </tr>
                 );
@@ -256,7 +301,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
 
       {view === 'cards' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-        {filtered.map(p => {
+        {sorted.map(p => {
           const as = assetStyle(p.asset_type);
           const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
           return (
@@ -313,7 +358,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast }: 
           <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 10 }}>
             {filtered.filter(p => p.latitude != null && p.longitude != null).length} of {filtered.length} shown — properties without a geocoded address aren’t on the map yet. Click a pin for details.
           </div>
-          <PropertyMap properties={filtered} onSelect={(p) => setActive(p as Property)} />
+          <PropertyMap properties={sorted} onSelect={(p) => setActive(p as Property)} />
         </div>
       )}
 
