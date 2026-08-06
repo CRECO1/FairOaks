@@ -180,7 +180,7 @@ export default function TransactionDocEditor({
       // matching where the on-screen field renders.
       const y = height - f.fy * height + 2;
       const text = winAnsi(f.type === 'check' ? (f.value ? 'X' : '') : (f.value || ''));
-      if (text) pg.drawText(text, { x, y, size: f.size, font, color: rgb(0.06, 0.06, 0.1) });
+      if (text) pg.drawText(text, { x, y, size: f.size * 0.85, font, color: rgb(0.06, 0.06, 0.1) });
     }
     return doc.save();
   }, [fields]);
@@ -285,9 +285,7 @@ export default function TransactionDocEditor({
         {status === 'loading' && <div style={{ color: '#e5e7eb', padding: 60 }}>Loading document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', padding: 60 }}>Couldn’t open this document.</div>}
         {pages.map(pd => {
-          // One text line, sized to the page. Boxes are lifted so their bottom
-          // rides the blank line the field belongs to (detected y = the underline).
-          const LINE = Math.max(14, Math.round(pd.h * 0.019));
+          const scale = pd.w / pd.pw; // px per PDF point
           return (
           <div key={pd.num} onClick={e => onPageClick(e, pd)}
             style={{ position: 'relative', width: pd.w, height: pd.h, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair', flex: '0 0 auto' }}>
@@ -295,22 +293,25 @@ export default function TransactionDocEditor({
             {fields.filter(f => f.page === pd.num).map(f => {
               const isSel = selected === f.id;
               const isCheck = f.type === 'check';
+              // Pin the box BOTTOM to the detected underline (fy) via translateY(-100%),
+              // and keep it one tight line tall so adjacent blanks don't merge into a block.
+              const fontPx = f.size * scale * 0.85;
+              const boxH = Math.max(11, Math.round(fontPx * 1.1));
               return (
               <div key={f.id}
                 onMouseDown={e => onDragStart(e, f, pd)}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
-                  height: LINE, marginTop: -(LINE - 2), boxSizing: 'border-box', borderRadius: 2,
-                  background: isSel ? 'rgba(201,146,44,.16)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
-                  outline: isSel ? '1.5px solid #c9922c' : 'none',
-                  borderBottom: isSel ? '1px solid #c9922c' : `1px solid rgba(37,99,235,${isCheck ? .18 : .28})` }}>
+                  height: boxH, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
+                  background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
+                  outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
                 <input
                   value={f.value}
                   onChange={e => updateVal(f.id, e.target.value)}
                   onMouseDown={e => e.stopPropagation()}
                   onFocus={() => setSelected(f.id)}
                   style={{ width: '100%', height: '100%', boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
-                    fontSize: f.size * (pd.w / pd.pw), lineHeight: `${LINE}px`, color: '#0b1f4d',
-                    textAlign: isCheck ? 'center' : 'left', padding: '0 4px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
+                    fontSize: fontPx, lineHeight: `${boxH}px`, color: '#0b1f4d',
+                    textAlign: isCheck ? 'center' : 'left', padding: '0 3px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
                 />
                 {isSel && (
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}
