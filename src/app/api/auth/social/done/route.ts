@@ -5,12 +5,36 @@ import { NextRequest, NextResponse } from 'next/server';
  *
  * Final landing page after OAuth. Broadcasts the result to the originating tab
  * via localStorage (works for both popup and new-tab flows), then closes itself.
+ *
+ * SECURITY: `platform` is validated against a fixed allowlist before it reaches the
+ * markup — never interpolate a raw query param into HTML (reflected XSS). Values that
+ * do land in the page are additionally HTML-escaped, and the JSON embedded in the
+ * inline script is `<`-escaped so it can't break out of the <script> element.
  */
+const ALLOWED_PLATFORMS = new Set(['facebook', 'linkedin', 'twitter', 'youtube', 'instagram', 'tiktok']);
+
+/** Escape the five characters that can change HTML/attribute parsing. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** JSON for embedding inside an inline <script> — `<` escaped so `</script>` can't close it. */
+function jsonForScript(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
 export async function GET(req: NextRequest) {
   const qs = req.nextUrl.searchParams.toString();
   const isError = req.nextUrl.searchParams.get('social') === 'error';
-  const platform = req.nextUrl.searchParams.get('platform') ?? '';
-  const label = platform.charAt(0).toUpperCase() + platform.slice(1);
+  const rawPlatform = (req.nextUrl.searchParams.get('platform') ?? '').toLowerCase();
+  const platform = ALLOWED_PLATFORMS.has(rawPlatform) ? rawPlatform : '';
+  // Derived only from the allowlisted value, then escaped — safe to embed in HTML.
+  const label = escapeHtml(platform ? platform.charAt(0).toUpperCase() + platform.slice(1) : 'Account');
 
   const html = `<!DOCTYPE html>
 <html>
@@ -35,7 +59,7 @@ export async function GET(req: NextRequest) {
 
   <script>
     (function() {
-      var qs = ${JSON.stringify(qs)};
+      var qs = ${jsonForScript(qs)};
 
       // Broadcast via localStorage so any open CRM tab picks it up
       try {
@@ -45,7 +69,7 @@ export async function GET(req: NextRequest) {
       // Also try postMessage in case this is a popup
       try {
         if (window.opener && !window.opener.closed) {
-          window.opener.postMessage({ type: 'social_oauth_done', qs: qs }, ${JSON.stringify(process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com')});
+          window.opener.postMessage({ type: 'social_oauth_done', qs: qs }, ${jsonForScript(process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com')});
         }
       } catch(e) {}
 

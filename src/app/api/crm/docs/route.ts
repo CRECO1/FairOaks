@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const BUCKET = 'deal-docs';
@@ -15,11 +15,15 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
 // ── GET: list docs for a deal (with signed download URLs) ─────────────────────
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const dealId = req.nextUrl.searchParams.get('dealId');
   if (!dealId) return NextResponse.json({ error: 'dealId required' }, { status: 400 });
+
+  // crm_deal_docs has no business_unit — access comes from the parent deal. Without this
+  // any authenticated user could list another workspace's docs *and* get signed URLs.
+  if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
 
   const supabase = adminClient();
   const { data: docs, error } = await supabase
@@ -45,17 +49,20 @@ export async function GET(req: NextRequest) {
 
 // ── POST: upload a doc ────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
   const dealId = formData.get('dealId') as string | null;
-  const uploadedBy = formData.get('uploadedBy') as string | null;
+  // NOTE: `uploadedBy` is deliberately NOT read from the form — it is the authenticated
+  // caller, otherwise the uploader (and the delete-your-own-docs rule) is spoofable.
 
   if (!file || !dealId) {
     return NextResponse.json({ error: 'file and dealId required' }, { status: 400 });
   }
+
+  if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
 
   // File size check
   if (file.size > MAX_FILE_SIZE) {
@@ -100,7 +107,7 @@ export async function POST(req: NextRequest) {
       storage_path: storagePath,
       file_size: file.size,
       file_type: file.type || ext,
-      uploaded_by: uploadedBy ?? null,
+      uploaded_by: ctx.userId,
     }])
     .select()
     .single();
@@ -116,27 +123,29 @@ export async function POST(req: NextRequest) {
 
 // ── DELETE: remove a doc ──────────────────────────────────────────────────────
 export async function DELETE(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { docId } = await req.json();
   if (!docId) return NextResponse.json({ error: 'docId required' }, { status: 400 });
 
   const supabase = adminClient();
 
-  // Fetch doc — include uploaded_by for ownership check
+  // Fetch doc — include deal_id + uploaded_by for the workspace and ownership checks
   const { data: doc } = await supabase
     .from('crm_deal_docs')
-    .select('storage_path, uploaded_by')
+    .select('deal_id, storage_path, uploaded_by')
     .eq('id', docId)
     .single();
 
-  if (!doc) return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+  if (!doc) return notFound('Document not found');
 
-  // Only the uploader OR an admin may delete
-  if (doc.uploaded_by !== caller.id) {
-    const admin = await getCrmAdmin();
-    if (!admin) return NextResponse.json({ error: 'Forbidden — you can only delete your own documents' }, { status: 403 });
+  // Workspace first, so a cross-tenant probe can't distinguish 403 from 404
+  if (!(await assertOwnsResource('crm_deals', doc.deal_id, ctx))) return notFound('Document not found');
+
+  // Then: only the uploader OR an admin may delete
+  if (doc.uploaded_by !== ctx.userId && !isAdminRole(ctx.role)) {
+    return NextResponse.json({ error: 'Forbidden — you can only delete your own documents' }, { status: 403 });
   }
 
   if (doc.storage_path) {

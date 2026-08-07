@@ -909,7 +909,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadActionPlans();
       loadCampaigns();
       loadCampaignProjects();
-      setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
+      setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -932,7 +932,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadActionPlans();
       loadCampaigns();
       loadCampaignProjects();
-      setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
+      setTimeout(() => { loadAllTasks(newProfile); loadAllCommissions(); }, 500);
     }
     setLoading(false);
   }, [session]);
@@ -1114,7 +1114,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const form = new FormData();
     form.append('file', file);
     form.append('dealId', deal.id);
-    form.append('uploadedBy', profile!.id);
+    // uploaded_by is stamped server-side from the authenticated session — not sent here
     const res = await fetch('/api/crm/docs', { method: 'POST', body: form });
     const json = await res.json();
     if (!res.ok) { showToast('Upload failed: ' + json.error); }
@@ -1426,11 +1426,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Task Management ───────────────────────────────────────────────────────────
-  async function loadAllTasks() {
+  // Accepts an optional profile so the initial-load callers can pass the freshly loaded
+  // one: they fire from a setTimeout that closes over `profile` while it is still null.
+  async function loadAllTasks(p?: Profile) {
+    const agent = p ?? profile;
+    if (!agent) return;
     const { data } = await supabase
       .from('crm_tasks')
       .select('*')
-      .eq('agent_id', profile!.id)
+      .eq('agent_id', agent.id)
       .is('completed_at', null)
       .order('due_date', { ascending: true });
     setAllTasks((data ?? []) as CRMTask[]);

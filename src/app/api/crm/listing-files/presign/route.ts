@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { LISTING_FILES_BUCKET as BUCKET, callerCanAccessListing } from '@/lib/listing-files-access';
 
-const BUCKET = 'listing-files';
 const ALLOWED_EXT = new Set(['pdf','doc','docx','xls','xlsx','jpg','jpeg','png','gif','webp','ppt','pptx','key','zip','txt','csv','mp4','mov']);
 const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
 
@@ -15,8 +15,8 @@ const MAX_SIZE = 50 * 1024 * 1024; // 50 MB
  * to save the DB record.
  */
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const body = await req.json();
   const { listing_id, filename, category, file_size, file_type } = body;
@@ -24,6 +24,8 @@ export async function POST(req: NextRequest) {
   if (!listing_id || !filename) {
     return NextResponse.json({ error: 'listing_id and filename required' }, { status: 400 });
   }
+  // Never hand out an upload URL for a listing outside the caller's workspace.
+  if (!(await callerCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
   if (file_size && file_size > MAX_SIZE) {
     return NextResponse.json({ error: 'File must be 50 MB or smaller' }, { status: 400 });
   }
@@ -47,6 +49,6 @@ export async function POST(req: NextRequest) {
     storagePath,
     token: data.token,
     // pass back metadata so the client can call /confirm
-    meta: { listing_id, filename, category: category ?? 'document', file_size, file_type, uploaded_by: caller.id },
+    meta: { listing_id, filename, category: category ?? 'document', file_size, file_type, uploaded_by: ctx.userId },
   });
 }

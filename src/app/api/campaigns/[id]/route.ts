@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Fields an agent is allowed to set on a campaign (prevents mass-assignment)
 const ALLOWED_PATCH_FIELDS = new Set([
   'name', 'description', 'type', 'frequency', 'send_date', 'send_time',
   'send_day_of_month', 'status', 'email_subject', 'email_body',
-  'sms_body', 'sender_agent_id', 'created_by', 'project_id',
+  'sms_body', 'project_id',
 ]);
+
+// Ownership/identity fields. Reassigning an owner or spoofing the "send as" agent is an
+// admin action (both dropdowns are already admin-only in the UI) — an agent PATCHing a
+// campaign must never be able to set them, so they stay out of ALLOWED_PATCH_FIELDS.
+const ADMIN_ONLY_PATCH_FIELDS = new Set(['created_by', 'sender_agent_id']);
 
 function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
   if (frequency === 'one-time' && sendDate) {
@@ -24,9 +29,9 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
   return now.toISOString();
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
   const supabase = adminClient();
@@ -34,13 +39,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .from('crm_campaigns')
     .select('*, sender_agent:crm_profiles!crm_campaigns_sender_agent_id_fkey(id, first_name, last_name, email, phone)')
     .eq('id', id).single();
-  if (error) { console.error("[api] not found error:", error); return NextResponse.json({ error: "Resource not found." }, { status: 404 }); }
+  if (error || !data) { console.error("[api] not found error:", error); return NextResponse.json({ error: "Resource not found." }, { status: 404 }); }
+  if (!isAdminRole(ctx.role) && data.business_unit !== ctx.businessUnit) return notFound('Resource not found.');
   return NextResponse.json({ campaign: data });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
   const body = await req.json();
@@ -59,16 +65,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
+  const supabase = adminClient();
+
+  // Fetch current campaign to detect activation + enforce workspace isolation
+  const { data: existing } = await supabase
+    .from('crm_campaigns')
+    .select('status, frequency, send_date, send_time, business_unit, created_by')
+    .eq('id', id)
+    .single();
+  if (!existing) return notFound('Resource not found.');
+  const isAdmin = isAdminRole(ctx.role);
+  if (!isAdmin && existing.business_unit !== ctx.businessUnit) return notFound('Resource not found.');
+
+  // Activating a campaign starts real sends to real contacts — admins or the campaign's
+  // own owner only.
+  const isOwner = existing.created_by === ctx.userId;
+  if (body.status === 'active' && existing.status !== 'active' && !isAdmin && !isOwner) {
+    return forbidden('Forbidden — only the campaign owner or an admin can activate a campaign');
+  }
+
   // Strip any fields not in the allowlist (prevents mass-assignment)
   const safeBody: Record<string, unknown> = {};
   for (const key of Object.keys(body)) {
     if (ALLOWED_PATCH_FIELDS.has(key)) safeBody[key] = body[key];
+    else if (isAdmin && ADMIN_ONLY_PATCH_FIELDS.has(key)) safeBody[key] = body[key];
   }
-
-  const supabase = adminClient();
-
-  // Fetch current campaign to detect activation
-  const { data: existing } = await supabase.from('crm_campaigns').select('status, frequency, send_date, send_time').eq('id', id).single();
 
   // Coerce empty strings to null for date/numeric fields before hitting Postgres
   const patchPayload = { ...safeBody, updated_at: new Date().toISOString() };
@@ -113,10 +134,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ campaign: data });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Campaign deletion is admin-only — it de-enrolls all contacts and drops queued sends
-  const admin = await getCrmAdmin();
-  if (!admin) return NextResponse.json({ error: 'Forbidden — admin only' }, { status: 403 });
+  const admin = await getCrmAdmin(req);
+  if (!admin) return forbidden();
 
   const { id } = await params;
   const supabase = adminClient();

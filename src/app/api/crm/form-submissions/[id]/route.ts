@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Load one submission for re-editing: its saved values + a signed URL to the
 // blank form PDF (to re-render the pages) and to the previously generated PDF.
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
+  // Submissions carry transaction PII — confine reads to the caller's workspace.
+  if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound();
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_form_submissions')

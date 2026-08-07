@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
+
+  // A timeline is the client's whole activity history + PII — only expose it to admins
+  // or to agents in the same workspace.
+  if (!(await assertOwnsResource('crm_clients', id, ctx))) return notFound();
+
   const supabase = adminClient();
 
   const [activity, campaigns, plans, deals, imports] = await Promise.all([

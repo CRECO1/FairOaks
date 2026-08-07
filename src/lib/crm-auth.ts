@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { adminClient } from '@/lib/supabase-admin';
 import { NextRequest, NextResponse } from 'next/server';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -73,4 +74,73 @@ export function forbidden(msg = 'Forbidden — admin only') {
 export function dbError(context: string, err: { message?: string } | null | unknown, status = 500) {
   console.error(`[${context}]`, err);
   return NextResponse.json({ error: 'An internal server error occurred.' }, { status });
+}
+
+/**
+ * 404 for cross-tenant / unauthorized-object access. We deliberately return "not found"
+ * rather than 403 so the status code can't be used to confirm a record exists in another
+ * workspace.
+ */
+export function notFound(msg = 'Not found') {
+  return NextResponse.json({ error: msg }, { status: 404 });
+}
+
+/** True when the role is an admin tier (admin or super_admin). */
+export function isAdminRole(role: string | null | undefined): boolean {
+  return !!role && (ADMIN_ROLES as readonly string[]).includes(role);
+}
+
+/** The authenticated caller plus the workspace fields every scoped route needs. */
+export interface CrmContext {
+  userId: string;
+  role: string | null;
+  businessUnit: string | null;
+}
+
+/**
+ * Full caller context in one place: the user id plus their crm_profiles role and
+ * business_unit. Prefer this over getCrmUser() in any route that must scope data to
+ * the caller's workspace, so authorization no longer depends on RLS alone (the API
+ * routes use the service-role key, which bypasses RLS by design).
+ */
+export async function getCrmContext(req?: NextRequest): Promise<CrmContext | null> {
+  const user = await getCrmUser(req);
+  if (!user) return null;
+  const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+  const { data } = await admin.from('crm_profiles').select('role, business_unit').eq('id', user.id).single();
+  return {
+    userId: user.id,
+    role: (data?.role as string | undefined) ?? null,
+    businessUnit: (data?.business_unit as string | undefined) ?? null,
+  };
+}
+
+/**
+ * Loads `id` from `table` and returns the row only if the caller may act on it.
+ *
+ * Admins/super-admins see everything. Everyone else is confined to their own
+ * `business_unit`, and — when `requireOwner` is set — to rows they own through one of
+ * `ownerColumns` (e.g. `agent_id`, `created_by`).
+ *
+ * Returns null for both "no such row" and "not yours" so callers can answer 404 either
+ * way and never confirm that a record exists in another workspace.
+ *
+ * Only for tables that carry `business_unit`. Child tables that don't (crm_listing_files,
+ * crm_deal_docs) must be scoped through their parent row instead.
+ */
+export async function assertOwnsResource(
+  table: string,
+  id: string,
+  ctx: CrmContext,
+  opts: { ownerColumns?: string[]; requireOwner?: boolean } = {},
+): Promise<Record<string, unknown> | null> {
+  const { ownerColumns = [], requireOwner = false } = opts;
+  const select = ['id', 'business_unit', ...ownerColumns].join(', ');
+  const { data } = await adminClient().from(table).select(select).eq('id', id).maybeSingle();
+  const row = data as Record<string, unknown> | null;
+  if (!row) return null;
+  if (isAdminRole(ctx.role)) return row;
+  if (row.business_unit !== ctx.businessUnit) return null;
+  if (requireOwner && !ownerColumns.some(col => row[col] === ctx.userId)) return null;
+  return row;
 }
