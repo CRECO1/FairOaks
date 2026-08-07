@@ -80,5 +80,7 @@ export default function PropertyMap({
     };
   }, [properties, onSelect]);
 
-  return <div ref={elRef} style={{ height: 560, width: '100%', borderRadius: 12, border: '1px solid #eef0f2', overflow: 'hidden', zIndex: 0 }} />;
+  // clamp() keeps the desktop height at 560 while letting the map shrink to fit a
+  // phone viewport instead of pushing the rest of the page off-screen.
+  return <div ref={elRef} style={{ height: 'clamp(340px, 60vh, 560px)', width: '100%', borderRadius: 12, border: '1px solid #eef0f2', overflow: 'hidden', zIndex: 0 }} />;
 }

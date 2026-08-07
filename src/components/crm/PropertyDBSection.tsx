@@ -65,6 +65,7 @@ interface Props {
   authToken?: string;
   onToast: (msg: string) => void;
   onCount?: (n: number) => void;
+  isMobile?: boolean;
 }
 
 const ASSET_COLORS: Record<string, { bg: string; color: string }> = {
@@ -101,7 +102,7 @@ function statusPill(s?: string) {
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
-export default function PropertyDBSection({ businessUnit, authToken, onToast, onCount }: Props) {
+export default function PropertyDBSection({ businessUnit, authToken, onToast, onCount, isMobile = false }: Props) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -205,19 +206,19 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           onChange={e => setSearch(e.target.value)}
           style={{ ...inputStyle, flex: '1 1 320px', minWidth: 220 }}
         />
-        <select value={assetFilter} onChange={e => setAssetFilter(e.target.value)} style={inputStyle}>
+        <select value={assetFilter} onChange={e => setAssetFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
           <option value="">All Types</option>
           {assetTypes.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={inputStyle}>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
           <option value="">All Statuses</option>
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', ...(isMobile ? { width: '100%' } : {}) }}>
           {(['rows', 'cards', 'map'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
-              style={{ padding: '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : '#fff', color: view === v ? '#fff' : '#6b7280' }}>
-              {v === 'rows' ? '☰ Rows' : v === 'cards' ? '▦ Cards' : '📍 Map'}
+              style={{ padding: isMobile ? '11px 10px' : '9px 14px', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: view === v ? '#c9922c' : '#fff', color: view === v ? '#fff' : '#6b7280', ...(isMobile ? { flex: 1, minHeight: 44 } : {}) }}>
+              {v === 'rows' ? '☰ List' : v === 'cards' ? '▦ Cards' : '📍 Map'}
             </button>
           ))}
         </div>
@@ -235,7 +236,71 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         </div>
       )}
 
-      {view === 'rows' && !loading && filtered.length > 0 && (
+      {/* ── Mobile list view — the 7-column table needs ~960px, so a phone gets
+             a dense card per property with the same fields, no pinch-zoom. ── */}
+      {view === 'rows' && !loading && filtered.length > 0 && isMobile && (
+        <div>
+          {/* Sorting lives in the table headers on desktop; on mobile it needs its own control */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, flexShrink: 0 }}>Sort</span>
+            <select
+              value={sort.key}
+              onChange={e => setSort({ key: e.target.value, dir: 1 })}
+              style={{ ...inputStyle, flex: 1, minWidth: 0, minHeight: 44 }}
+            >
+              <option value="">Default order</option>
+              <option value="name">Property</option>
+              <option value="submarket">Submarket</option>
+              <option value="type">Type</option>
+              <option value="size">Size</option>
+              <option value="rate">Rate / Price</option>
+              <option value="status">Status</option>
+            </select>
+            <button
+              onClick={() => setSort(s => ({ key: s.key || 'name', dir: (s.dir === 1 ? -1 : 1) as 1 | -1 }))}
+              aria-label={sort.dir === 1 ? 'Sort ascending' : 'Sort descending'}
+              style={{ minWidth: 44, minHeight: 44, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#6b7280', fontSize: 15, cursor: 'pointer', flexShrink: 0 }}
+            >
+              {sort.dir === 1 ? '↑' : '↓'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {sorted.map(p => {
+              const as = assetStyle(p.asset_type);
+              const st = statusPill(p.vacancy_status);
+              const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
+              const loc = [p.address, cityLine(p)].filter(Boolean).join(' · ');
+              const avail = p.available_sf && p.available_sf !== p.size_sf ? p.available_sf : null;
+              return (
+                <button key={p.id} onClick={() => setActive(p)}
+                  style={{ textAlign: 'left', width: '100%', background: '#fff', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.25 }}>{p.name || p.address || '—'}</div>
+                      {loc && <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2 }}>{loc}</div>}
+                    </div>
+                    {price && <div style={{ fontSize: 15, fontWeight: 700, color: '#b07d1f', whiteSpace: 'nowrap', flexShrink: 0 }}>{price}</div>}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, alignItems: 'center' }}>
+                    {p.asset_type && <span style={{ fontSize: 11.5, fontWeight: 600, background: as.bg, color: as.color, padding: '3px 9px', borderRadius: 20 }}>{p.asset_type}</span>}
+                    {p.vacancy_status && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20 }}>{p.vacancy_status}</span>}
+                    {p.size_sf ? <span style={{ fontSize: 12.5, color: '#374151' }}>{fmtSf(p.size_sf)}</span> : null}
+                    {avail ? <span style={{ fontSize: 12, color: '#9ca3af' }}>{fmtSf(avail)} avail</span> : null}
+                  </div>
+                  {(p.submarket || p.county || p.listing_company || p.listing_agent_name) && (
+                    <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid #f3f4f6', fontSize: 12, color: '#9ca3af', display: 'flex', flexWrap: 'wrap', gap: '3px 12px' }}>
+                      {p.submarket && <span>📍 {p.submarket}{p.county ? ` · ${p.county} Co.` : ''}</span>}
+                      {(p.listing_agent_name || p.listing_company) && <span>🏷 {[p.listing_agent_name, p.listing_company].filter(Boolean).join(' · ')}</span>}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {view === 'rows' && !loading && filtered.length > 0 && !isMobile && (
         <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: '#fff' }}>
           <table style={{ width: '100%', minWidth: 960, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
             <colgroup>
@@ -365,7 +430,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         </div>
       )}
 
-      {active && <DetailModal p={active} onClose={() => setActive(null)} />}
+      {active && <DetailModal p={active} onClose={() => setActive(null)} isMobile={isMobile} />}
     </div>
   );
 }
@@ -413,7 +478,7 @@ function StatTile({ label, value, accent }: { label: string; value?: string | nu
   );
 }
 
-function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
+function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: () => void; isMobile?: boolean }) {
   const as = assetStyle(p.asset_type);
   const st = statusPill(p.vacancy_status);
   const isSale = p.listing_type === 'Sale' || p.sale_price != null;
@@ -425,25 +490,29 @@ function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
   return (
     <div
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '5vh 16px', overflowY: 'auto' }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '5vh 16px', overflowY: isMobile ? 'hidden' : 'auto' }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 16, maxWidth: 800, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif" }}
+        style={{
+          background: '#fff', maxWidth: isMobile ? '100%' : 800, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif",
+          borderRadius: isMobile ? '18px 18px 0 0' : 16,
+          ...(isMobile ? { maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom)' } : {}),
+        }}
       >
-        <div style={{ height: 6, background: as.color, borderTopLeftRadius: 16, borderTopRightRadius: 16 }} />
-        <div style={{ padding: 28 }}>
-          {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ height: 6, background: as.color, borderTopLeftRadius: isMobile ? 18 : 16, borderTopRightRadius: isMobile ? 18 : 16, flexShrink: 0 }} />
+        <div style={{ padding: isMobile ? '18px 18px 24px' : 28, ...(isMobile ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, minHeight: 0 } : {}) }}>
+          {/* Header — the close button stays pinned at the top of the sheet on a phone */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', ...(isMobile ? { position: 'sticky', top: 0, background: '#fff', paddingBottom: 8, zIndex: 2 } : {}) }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.1 }}>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 28, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.15 }}>
                 {p.name || p.address || 'Property'}
               </div>
               <div style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>
                 {[p.address, p.suite].filter(Boolean).join(', ')}{(p.address || p.suite) && cityLine(p) ? ' · ' : ''}{cityLine(p)}
               </div>
             </div>
-            <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
+            <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
           </div>
 
           {/* Badges */}
@@ -472,7 +541,7 @@ function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
                 {p.listing_agent_name && p.listing_company && <div style={{ fontSize: 13, color: '#6b7280' }}>{p.listing_company}</div>}
               </div>
               {p.listing_agent_phone && (
-                <a href={`tel:${p.listing_agent_phone}`} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap' }}>📞 {p.listing_agent_phone}</a>
+                <a href={`tel:${p.listing_agent_phone}`} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {p.listing_agent_phone}</a>
               )}
             </div>
           )}
@@ -507,7 +576,7 @@ function DetailModal({ p, onClose }: { p: Property; onClose: () => void }) {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 18 }}>
               {links.filter(([, v]) => v).map(([label, url]) => (
                 <a key={label} href={String(url)} target="_blank" rel="noopener noreferrer"
-                   style={{ fontSize: 13, fontWeight: 600, color: '#c9922c', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '6px 12px', borderRadius: 8 }}>
+                   style={{ fontSize: 13, fontWeight: 600, color: '#c9922c', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: isMobile ? '11px 14px' : '6px 12px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>
                   {label} ↗
                 </a>
               ))}

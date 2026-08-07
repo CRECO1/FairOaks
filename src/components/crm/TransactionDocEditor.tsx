@@ -41,7 +41,7 @@ const winAnsi = (s: string): string =>
 interface DealLite { id: string; client?: string; property?: string; type?: string; }
 
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, businessUnit, submissionId, onToast, onClose, onSaved,
+  form, url, authToken, isAdmin, deals, dealId, businessUnit, submissionId, isMobile = false, onToast, onClose, onSaved,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -51,6 +51,7 @@ export default function TransactionDocEditor({
   dealId?: string;
   businessUnit?: string;
   submissionId?: string;
+  isMobile?: boolean;
   onToast?: (msg: string) => void;
   onClose: () => void;
   onSaved?: () => void;
@@ -63,6 +64,16 @@ export default function TransactionDocEditor({
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const subIdRef = useRef<string | undefined>(submissionId);
+  // Pages render at a fixed 850px. On a phone that overflows, so fit them to the
+  // viewport by default and let the agent flip to 100% for fine work.
+  const [viewportW, setViewportW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : RENDER_W));
+  const [zoom, setZoom] = useState<'fit' | 'full'>(isMobile ? 'fit' : 'full');
+  const [noticeOpen, setNoticeOpen] = useState(isMobile);
+  useEffect(() => {
+    const onResize = () => setViewportW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const bytesRef = useRef<Uint8Array | null>(null);
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
@@ -143,22 +154,51 @@ export default function TransactionDocEditor({
   }, [tool]);
 
   // ── Drag ────────────────────────────────────────────────────────────────────
-  const onDragStart = (e: React.MouseEvent, f: Field, pd: PageDim) => {
+  // dispW/dispH are the *rendered* page size (which differs from pd.w/pd.h once the
+  // page is scaled to fit a phone), so the drag delta stays in sync with the pointer.
+  const beginDrag = (id: string, clientX: number, clientY: number, f: Field, dispW: number, dispH: number) => {
+    setSelected(id);
+    drag.current = { id, sx: clientX, sy: clientY, ofx: f.fx, ofy: f.fy, pw: dispW, ph: dispH };
+  };
+  const onDragStart = (e: React.MouseEvent, f: Field, dispW: number, dispH: number) => {
     e.stopPropagation();
-    setSelected(f.id);
-    drag.current = { id: f.id, sx: e.clientX, sy: e.clientY, ofx: f.fx, ofy: f.fy, pw: pd.w, ph: pd.h };
+    beginDrag(f.id, e.clientX, e.clientY, f, dispW, dispH);
+  };
+  // Only an already-selected field takes over touch, so a finger landing on any of
+  // the dozens of blank-line fields still scrolls the page rather than dragging.
+  const onTouchDragStart = (e: React.TouchEvent, f: Field, dispW: number, dispH: number) => {
+    if (selected !== f.id) return;
+    const t = e.touches[0]; if (!t) return;
+    e.stopPropagation();
+    beginDrag(f.id, t.clientX, t.clientY, f, dispW, dispH);
   };
   useEffect(() => {
-    const move = (e: MouseEvent) => {
+    const apply = (clientX: number, clientY: number) => {
       const d = drag.current; if (!d) return;
-      const dfx = (e.clientX - d.sx) / d.pw;
-      const dfy = (e.clientY - d.sy) / d.ph;
+      const dfx = (clientX - d.sx) / d.pw;
+      const dfy = (clientY - d.sy) / d.ph;
       setFields(fs => fs.map(f => f.id === d.id ? { ...f, fx: Math.max(0, Math.min(0.98, d.ofx + dfx)), fy: Math.max(0, Math.min(0.99, d.ofy + dfy)) } : f));
+    };
+    const move = (e: MouseEvent) => { apply(e.clientX, e.clientY); };
+    const touchMove = (e: TouchEvent) => {
+      const t = e.touches[0]; if (!t || !drag.current) return;
+      // Non-passive so the page doesn't scroll out from under the field being moved.
+      e.preventDefault();
+      apply(t.clientX, t.clientY);
     };
     const up = () => { drag.current = null; };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
-    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('touchmove', touchMove, { passive: false });
+    window.addEventListener('touchend', up);
+    window.addEventListener('touchcancel', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('touchmove', touchMove);
+      window.removeEventListener('touchend', up);
+      window.removeEventListener('touchcancel', up);
+    };
   }, []);
 
   const updateVal = (id: string, value: string) => setFields(fs => fs.map(f => f.id === id ? { ...f, value } : f));
@@ -248,47 +288,90 @@ export default function TransactionDocEditor({
 
   const toolBtn = (t: typeof tool, label: string) => (
     <button onClick={() => setTool(t)}
-      style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+      style={{ padding: isMobile ? '10px 14px' : '7px 14px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
         border: tool === t ? '1px solid #c9922c' : '1px solid #e5e7eb', background: tool === t ? '#fdf6e9' : '#fff', color: tool === t ? '#a06a12' : '#374151' }}>
       {label}
     </button>
   );
+  const actionBtn: React.CSSProperties = {
+    padding: isMobile ? '11px 14px' : '8px 16px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap',
+    fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.55)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
-      {/* Toolbar */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #eef0f2', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 600, color: '#1a1a1a', marginRight: 8 }}>{form.name}</div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {toolBtn('text', '➕ Text field')}
-          {toolBtn('check', '☑︎ Check')}
-          {toolBtn('select', '↖︎ Select / move')}
+      {/* Toolbar — on a phone the title + close sit on their own row so ✕ is always
+          reachable, and the actions scroll horizontally underneath. */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #eef0f2', padding: isMobile ? '9px 12px' : '10px 18px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'nowrap' : 'wrap', flexShrink: 0, paddingTop: isMobile ? 'calc(9px + env(safe-area-inset-top))' : undefined }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 17 : 20, fontWeight: 600, color: '#1a1a1a', marginRight: isMobile ? 0 : 8, flex: isMobile ? 1 : undefined, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.name}</div>
+          {isMobile && (
+            <>
+              <button onClick={() => setZoom(z => (z === 'fit' ? 'full' : 'fit'))} aria-label="Toggle zoom"
+                style={{ ...actionBtn, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', flexShrink: 0 }}>
+                {zoom === 'fit' ? '🔍 100%' : '🔍 Fit'}
+              </button>
+              <button onClick={onClose} aria-label="Close"
+                style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 44, height: 44, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
+            </>
+          )}
         </div>
-        <div style={{ fontSize: 12, color: '#9ca3af' }}>{fields.length} field{fields.length === 1 ? '' : 's'} · {tool !== 'select' ? 'click a page to place' : 'drag to move, click ✕ to delete'}</div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {isAdmin && <button onClick={saveTemplate} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer' }}>💾 Save field layout</button>}
+
+        {!isMobile && (
+          <>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {toolBtn('text', '➕ Text field')}
+              {toolBtn('check', '☑︎ Check')}
+              {toolBtn('select', '↖︎ Select / move')}
+            </div>
+            <div style={{ fontSize: 12, color: '#9ca3af' }}>{fields.length} field{fields.length === 1 ? '' : 's'} · {tool !== 'select' ? 'click a page to place' : 'drag to move, click ✕ to delete'}</div>
+          </>
+        )}
+
+        <div
+          style={isMobile
+            ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
+            : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {isAdmin && !isMobile && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
-              style={{ padding: '8px 10px', fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, fontFamily: "'DM Sans',sans-serif" }}>
+              style={{ padding: isMobile ? '11px 10px' : '8px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
               <option value="">— Link to a deal —</option>
               {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
             </select>
           )}
-          <button onClick={saveToDeal} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 8, cursor: 'pointer' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : '💾 Save')}</button>
-          <button onClick={download} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>{busy ? 'Working…' : '⬇ Download'}</button>
-          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>
+          <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : '💾 Save')}</button>
+          <button onClick={download} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
+          {!isMobile && <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
         </div>
       </div>
 
+      {/* Mobile: be honest that precise field placement wants a bigger screen */}
+      {isMobile && noticeOpen && status === 'ready' && (
+        <div style={{ background: '#fffdf6', borderBottom: '1px solid #f0e2c4', padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', flexShrink: 0 }}>
+          <span style={{ fontSize: 15, lineHeight: 1.3 }}>💡</span>
+          <div style={{ flex: 1, fontSize: 12.5, color: '#7c5a12', lineHeight: 1.45, fontFamily: "'DM Sans',sans-serif" }}>
+            You can fill, save and download this form here. Adding or repositioning fields is far easier on a desktop.
+          </div>
+          <button onClick={() => setNoticeOpen(false)} aria-label="Dismiss"
+            style={{ background: 'none', border: 'none', color: '#a08a52', fontSize: 15, cursor: 'pointer', width: 32, height: 32, flexShrink: 0 }}>✕</button>
+        </div>
+      )}
+
       {/* Pages */}
-      <div style={{ flex: 1, overflow: 'auto', padding: '22px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+      <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: isMobile ? '12px 8px calc(24px + env(safe-area-inset-bottom))' : '22px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isMobile ? 12 : 18 }}>
         {status === 'loading' && <div style={{ color: '#e5e7eb', padding: 60 }}>Loading document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', padding: 60 }}>Couldn’t open this document.</div>}
         {pages.map(pd => {
-          const scale = pd.w / pd.pw; // px per PDF point
+          // Fit mode scales the whole page down to the viewport. Field positions are
+          // page fractions, so they follow automatically — only the px math rescales.
+          const dispW = zoom === 'fit' ? Math.min(pd.w, Math.max(240, viewportW - (isMobile ? 20 : 28))) : pd.w;
+          const k = dispW / pd.w;
+          const dispH = pd.h * k;
+          const scale = dispW / pd.pw; // px per PDF point
           return (
           <div key={pd.num} onClick={e => onPageClick(e, pd)}
-            style={{ position: 'relative', width: pd.w, height: pd.h, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair', flex: '0 0 auto' }}>
+            style={{ position: 'relative', width: dispW, height: dispH, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair', flex: '0 0 auto' }}>
             <PageCanvas pageNum={pd.num} pdfRef={pdfRef} />
             {fields.filter(f => f.page === pd.num).map(f => {
               const isSel = selected === f.id;
@@ -299,16 +382,19 @@ export default function TransactionDocEditor({
               const boxH = Math.max(11, Math.round(fontPx * 1.1));
               return (
               <div key={f.id}
-                onMouseDown={e => onDragStart(e, f, pd)}
+                onMouseDown={e => onDragStart(e, f, dispW, dispH)}
+                onTouchStart={e => onTouchDragStart(e, f, dispW, dispH)}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
                   height: boxH, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
-                  display: 'flex', alignItems: isCheck ? 'center' : 'flex-end',
+                  display: 'flex', alignItems: isCheck ? 'center' : 'flex-end', touchAction: isSel ? 'none' : undefined,
                   background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
                   outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
                 <input
+                  className="pdf-fill-input"
                   value={f.value}
                   onChange={e => updateVal(f.id, e.target.value)}
                   onMouseDown={e => e.stopPropagation()}
+                  onTouchStart={e => e.stopPropagation()}
                   onFocus={() => setSelected(f.id)}
                   style={{ width: '100%', height: 'auto', minHeight: 0, boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
                     fontSize: fontPx, lineHeight: `${Math.round(fontPx * 1.05)}px`, color: '#0b1f4d',
@@ -316,7 +402,9 @@ export default function TransactionDocEditor({
                 />
                 {isSel && (
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}
-                    style={{ position: 'absolute', top: -9, right: -9, width: 17, height: 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: 10, cursor: 'pointer', lineHeight: '17px', padding: 0 }}>✕</button>
+                    onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+                    aria-label="Delete field"
+                    style={{ position: 'absolute', top: isMobile ? -13 : -9, right: isMobile ? -13 : -9, width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
                 )}
               </div>
             );
