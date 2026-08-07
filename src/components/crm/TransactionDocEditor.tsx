@@ -17,7 +17,9 @@ interface Field {
   size: number;             // font size in PDF points
   type: 'text' | 'check';
 }
-interface PageDim { num: number; w: number; h: number; pw: number; ph: number; }
+// Only the PDF's own point dimensions are kept — the rendered pixel size is now
+// decided by CSS (width:100% capped at RENDER_W, with a matching aspect-ratio).
+interface PageDim { num: number; pw: number; ph: number; }
 
 const RENDER_W = 850;
 let _idc = 0;
@@ -64,16 +66,12 @@ export default function TransactionDocEditor({
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const subIdRef = useRef<string | undefined>(submissionId);
-  // Pages render at a fixed 850px. On a phone that overflows, so fit them to the
-  // viewport by default and let the agent flip to 100% for fine work.
-  const [viewportW, setViewportW] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : RENDER_W));
-  const [zoom, setZoom] = useState<'fit' | 'full'>(isMobile ? 'fit' : 'full');
+  // Pages used to render at a hard 850px, which overflows any phone. They now fill
+  // the available width, capped at RENDER_W — so desktop still lands on exactly 850
+  // and narrower screens scale down. 'full' pins the page back to 850 with
+  // horizontal scroll, for tapping small fields precisely on a phone.
+  const [zoom, setZoom] = useState<'fit' | 'full'>('fit');
   const [noticeOpen, setNoticeOpen] = useState(isMobile);
-  useEffect(() => {
-    const onResize = () => setViewportW(window.innerWidth);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   const bytesRef = useRef<Uint8Array | null>(null);
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
@@ -98,9 +96,7 @@ export default function TransactionDocEditor({
         for (let i = 1; i <= pdf.numPages; i++) {
           const p = await pdf.getPage(i);
           const base = p.getViewport({ scale: 1 });
-          const scale = RENDER_W / base.width;
-          const vp = p.getViewport({ scale });
-          dims.push({ num: i, w: vp.width, h: vp.height, pw: base.width, ph: base.height });
+          dims.push({ num: i, pw: base.width, ph: base.height });
         }
         if (cancelled) return;
         setPages(dims);
@@ -154,23 +150,26 @@ export default function TransactionDocEditor({
   }, [tool]);
 
   // ── Drag ────────────────────────────────────────────────────────────────────
-  // dispW/dispH are the *rendered* page size (which differs from pd.w/pd.h once the
-  // page is scaled to fit a phone), so the drag delta stays in sync with the pointer.
-  const beginDrag = (id: string, clientX: number, clientY: number, f: Field, dispW: number, dispH: number) => {
+  // The page's pixel size is read live off the DOM at drag time — it varies with the
+  // viewport now that pages are width-driven, and measuring on demand can't go stale.
+  const beginDrag = (id: string, clientX: number, clientY: number, f: Field, fieldBox: HTMLElement) => {
+    const page = fieldBox.parentElement;
+    if (!page) return;
+    const r = page.getBoundingClientRect();
     setSelected(id);
-    drag.current = { id, sx: clientX, sy: clientY, ofx: f.fx, ofy: f.fy, pw: dispW, ph: dispH };
+    drag.current = { id, sx: clientX, sy: clientY, ofx: f.fx, ofy: f.fy, pw: r.width, ph: r.height };
   };
-  const onDragStart = (e: React.MouseEvent, f: Field, dispW: number, dispH: number) => {
+  const onDragStart = (e: React.MouseEvent<HTMLDivElement>, f: Field) => {
     e.stopPropagation();
-    beginDrag(f.id, e.clientX, e.clientY, f, dispW, dispH);
+    beginDrag(f.id, e.clientX, e.clientY, f, e.currentTarget);
   };
   // Only an already-selected field takes over touch, so a finger landing on any of
   // the dozens of blank-line fields still scrolls the page rather than dragging.
-  const onTouchDragStart = (e: React.TouchEvent, f: Field, dispW: number, dispH: number) => {
+  const onTouchDragStart = (e: React.TouchEvent<HTMLDivElement>, f: Field) => {
     if (selected !== f.id) return;
     const t = e.touches[0]; if (!t) return;
     e.stopPropagation();
-    beginDrag(f.id, t.clientX, t.clientY, f, dispW, dispH);
+    beginDrag(f.id, t.clientX, t.clientY, f, e.currentTarget);
   };
   useEffect(() => {
     const apply = (clientX: number, clientY: number) => {
@@ -359,33 +358,45 @@ export default function TransactionDocEditor({
       )}
 
       {/* Pages */}
-      <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: isMobile ? '12px 8px calc(24px + env(safe-area-inset-bottom))' : '22px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isMobile ? 12 : 18 }}>
+      {/* alignItems must not be `center` while the page overflows: a centered flex item
+          overflows on BOTH sides and the leading half becomes unreachable by scrolling.
+          'fit' never overflows, so it keeps the centring. */}
+      <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: isMobile ? '12px 6px calc(24px + env(safe-area-inset-bottom))' : '22px 12px', display: 'flex', flexDirection: 'column', alignItems: zoom === 'full' ? 'flex-start' : 'center' }}>
         {status === 'loading' && <div style={{ color: '#e5e7eb', padding: 60 }}>Loading document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', padding: 60 }}>Couldn’t open this document.</div>}
+        {/* 'fit' fills the pane but caps at RENDER_W, so a wide screen still lands on
+            exactly 850 as before; 'full' pins it there and lets the pane scroll. */}
+        <div
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isMobile ? 12 : 18,
+            ...(zoom === 'full'
+              ? { width: RENDER_W, flex: '0 0 auto' }
+              : { width: '100%', maxWidth: RENDER_W }),
+          }}>
         {pages.map(pd => {
-          // Fit mode scales the whole page down to the viewport. Field positions are
-          // page fractions, so they follow automatically — only the px math rescales.
-          const dispW = zoom === 'fit' ? Math.min(pd.w, Math.max(240, viewportW - (isMobile ? 20 : 28))) : pd.w;
-          const k = dispW / pd.w;
-          const dispH = pd.h * k;
-          const scale = dispW / pd.pw; // px per PDF point
+          // Field boxes are positioned in page fractions, so they follow the container
+          // for free. Font sizes are the one px-denominated part, so they're expressed
+          // in cqw — a share of the page's own rendered width — and the layout engine
+          // keeps them in step at every size. At 850px this reproduces the old
+          // `f.size * (850/pw) * 0.85` px exactly, so desktop output is unchanged.
+          const cqw = (pts: number) => `${(pts / pd.pw * 100).toFixed(4)}cqw`;
           return (
           <div key={pd.num} onClick={e => onPageClick(e, pd)}
-            style={{ position: 'relative', width: dispW, height: dispH, background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair', flex: '0 0 auto' }}>
+            style={{ position: 'relative', width: '100%', aspectRatio: `${pd.pw}/${pd.ph}`, containerType: 'inline-size', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair' }}>
             <PageCanvas pageNum={pd.num} pdfRef={pdfRef} />
             {fields.filter(f => f.page === pd.num).map(f => {
               const isSel = selected === f.id;
               const isCheck = f.type === 'check';
               // Pin the box BOTTOM to the detected underline (fy) via translateY(-100%),
               // and keep it one tight line tall so adjacent blanks don't merge into a block.
-              const fontPx = f.size * scale * 0.85;
-              const boxH = Math.max(11, Math.round(fontPx * 1.1));
+              // The 11px floor keeps the box tappable once the page scales down.
+              const em = f.size * 0.85;
               return (
               <div key={f.id}
-                onMouseDown={e => onDragStart(e, f, dispW, dispH)}
-                onTouchStart={e => onTouchDragStart(e, f, dispW, dispH)}
+                onMouseDown={e => onDragStart(e, f)}
+                onTouchStart={e => onTouchDragStart(e, f)}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
-                  height: boxH, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
+                  height: `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
                   display: 'flex', alignItems: isCheck ? 'center' : 'flex-end', touchAction: isSel ? 'none' : undefined,
                   background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
                   outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
@@ -397,7 +408,7 @@ export default function TransactionDocEditor({
                   onTouchStart={e => e.stopPropagation()}
                   onFocus={() => setSelected(f.id)}
                   style={{ width: '100%', height: 'auto', minHeight: 0, boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
-                    fontSize: fontPx, lineHeight: `${Math.round(fontPx * 1.05)}px`, color: '#0b1f4d',
+                    fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
                     textAlign: isCheck ? 'center' : 'left', padding: '0 2px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
                 />
                 {isSel && (
@@ -412,6 +423,7 @@ export default function TransactionDocEditor({
           </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
