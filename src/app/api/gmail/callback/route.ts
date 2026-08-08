@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encryptToken } from '@/lib/token-crypto';
+import { randomUUID } from 'crypto';
 
 const BASE_URL     = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com').replace(/[\r\n\s]+$/, '');
 const REDIRECT_URI = `${BASE_URL}/api/gmail/callback`;
@@ -19,16 +20,26 @@ export async function GET(req: NextRequest) {
   const stateRaw = req.nextUrl.searchParams.get('state');
   const error    = req.nextUrl.searchParams.get('error');
 
-  // State is "userId", "userId|bu", or "userId|bu|retry"
+  // State is "userId|bu|retryFlag|nonce" (bu / retryFlag may be empty)
   const stateParts  = (stateRaw ?? '').split('|');
   const stateUserId = stateParts[0];
   const stateBu     = stateParts[1] ?? '';
   const isRetry     = stateParts[2] === 'retry';
+  const stateNonce  = stateParts[3] ?? '';
   const returnBase  = stateBu ? `${CRM_URL}/${stateBu}` : CRM_URL;
 
   if (error || !code || !stateUserId) {
     console.error('[gmail/callback] Missing params or error:', { error, code: !!code, stateUserId });
     return NextResponse.redirect(`${returnBase}?gmail=error&reason=oauth_denied`);
+  }
+
+  // CSRF: the nonce echoed in `state` must match the HttpOnly cookie the auth
+  // route (or a prior retry) set on this browser. Blocks account-linking CSRF —
+  // an attacker can't forge a callback that binds a Gmail account to another userId.
+  const cookieNonce = req.cookies.get('gmail_oauth_nonce')?.value ?? '';
+  if (!stateNonce || !cookieNonce || stateNonce !== cookieNonce) {
+    console.error('[gmail/callback] OAuth state nonce mismatch — possible CSRF');
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=bad_state`);
   }
 
   // Service-role client — no SSR session cookie needed
@@ -126,6 +137,7 @@ export async function GET(req: NextRequest) {
 
       // Auto-retry: go directly to Google OAuth (skip auth route to avoid session-cookie dependency).
       // After revocation, Google MUST issue a new refresh_token on the next consent.
+      const retryNonce = randomUUID();
       const googleUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       googleUrl.searchParams.set('client_id',     process.env.GOOGLE_CLIENT_ID!);
       googleUrl.searchParams.set('redirect_uri',  REDIRECT_URI);
@@ -134,9 +146,13 @@ export async function GET(req: NextRequest) {
       googleUrl.searchParams.set('access_type',   'offline');
       googleUrl.searchParams.set('prompt',        'consent');
       googleUrl.searchParams.set('login_hint',    gmailEmail);
-      // Encode retry flag into state so we don't loop indefinitely
-      googleUrl.searchParams.set('state', stateBu ? `${stateUserId}|${stateBu}|retry` : `${stateUserId}||retry`);
-      return NextResponse.redirect(googleUrl.toString());
+      // Carry the retry flag + a fresh nonce so the retry's callback passes the CSRF check
+      googleUrl.searchParams.set('state', `${stateUserId}|${stateBu}|retry|${retryNonce}`);
+      const retryRes = NextResponse.redirect(googleUrl.toString());
+      retryRes.cookies.set('gmail_oauth_nonce', retryNonce, {
+        httpOnly: true, secure: true, sameSite: 'lax', path: '/api/gmail', maxAge: 600,
+      });
+      return retryRes;
     }
 
     const { error: insertErr } = await supabase
@@ -158,5 +174,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.redirect(`${returnBase}?gmail=connected&account=${encodeURIComponent(gmailEmail)}`);
+  const successRes = NextResponse.redirect(`${returnBase}?gmail=connected&account=${encodeURIComponent(gmailEmail)}`);
+  successRes.cookies.delete('gmail_oauth_nonce'); // one-time use
+  return successRes;
 }
