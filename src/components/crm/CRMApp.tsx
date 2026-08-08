@@ -691,13 +691,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [propertyDbCount, setPropertyDbCount] = useState<number | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'done'>('open');
-  const [taskPriorityFilter, setTaskPriorityFilter] = useState('');
-  const [taskAssigneeFilter, setTaskAssigneeFilter] = useState('');
-  const [taskSearchStr, setTaskSearchStr] = useState('');
-  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [newTaskForm, setNewTaskForm] = useState({ title: '', description: '', due_date: '', assigned_to: '', client_id: '', priority: 'normal' as Task['priority'], status: 'open' as Task['status'] });
 
   // Bulk enroll in campaign
   const [showBulkEnrollModal, setShowBulkEnrollModal] = useState(false);
@@ -1345,42 +1338,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     finally { setTasksLoading(false); }
   }
 
-  async function createTask() {
-    if (!newTaskForm.title.trim()) return;
-    const res = await fetch('/api/crm/tasks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify({ ...newTaskForm, business_unit: businessUnit }),
-    });
-    if (!res.ok) { showToast('Error creating task'); return; }
-    const { task } = await res.json();
-    setTasks(prev => [task, ...prev]);
-    setShowNewTaskModal(false);
-    setNewTaskForm({ title: '', description: '', due_date: '', assigned_to: '', client_id: '', priority: 'normal', status: 'open' });
-    showToast('Task created ✓');
-  }
-
-  async function updateTask(id: string, updates: Partial<Task>) {
-    const res = await fetch(`/api/crm/tasks/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify(updates),
-    });
-    if (!res.ok) { showToast('Error updating task'); return; }
-    const { task } = await res.json();
-    setTasks(prev => prev.map(t => t.id === id ? task : t));
-    setEditingTask(null);
-    showToast('Task updated ✓');
-  }
-
-  async function deleteTask(id: string) {
-    await fetch(`/api/crm/tasks/${id}`, {
-      method: 'DELETE',
-      headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
-    });
-    setTasks(prev => prev.filter(t => t.id !== id));
-    showToast('Task deleted');
-  }
 
   async function bulkEnrollInCampaign() {
     if (!bulkEnrollCampaignId || selectedClientIds.size === 0) return;
@@ -4749,17 +4706,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Tasks Page ── */}
           {page === 'tasks' && tasksSubTab === 'tasks' && (() => {
-            // Legacy vars kept to avoid breaking any remaining references
-            const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
-              urgent: { bg: '#fee2e2', color: '#dc2626' },
-              high:   { bg: '#fed7aa', color: '#c2410c' },
-              normal: { bg: '#dbeafe', color: '#1d4ed8' },
-              low:    { bg: '#f1f5f9', color: '#64748b' },
-            };
-            void PRIORITY_COLORS;
-            const STATUS_ICONS: Record<string, string> = { open: '⬜', in_progress: '🔄', done: '✅' };
-            void STATUS_ICONS;
-
             return (
               <TasksSection
                 tasks={tasks}
