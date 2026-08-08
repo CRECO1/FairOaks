@@ -131,5 +131,9 @@ export const config = {
     '/api/mls/sync',
     '/api/attom',
     '/api/calendar/:path*',
+    // Social OAuth start/callback/landing pages render HTML — they must get CSP and the
+    // rest of the security headers. They carry their own state/CSRF handling, so they
+    // fall through to the headers-only branch below (no session refresh, no CSRF gate).
+    '/api/auth/social/:path*',
   ],
 };
