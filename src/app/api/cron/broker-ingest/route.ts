@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runPipeline } from '@/lib/broker-ingest';
 import { geocodeMissing } from '@/lib/broker-ingest/geocode';
+import { enrichMissing } from '@/lib/broker-ingest/enrich';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -42,6 +43,8 @@ export async function GET(req: NextRequest) {
     // Geocode any newly-ingested (or previously un-geocoded) properties so they
     // show on the Property DB map. Bounded per run to stay within cron time.
     const geo = await geocodeMissing(25);
+    // Derive County + Submarket from city/zip so those columns stay populated.
+    const enr = await enrichMissing();
     return NextResponse.json({
       scanned: r.scanned,
       listings: r.listings,
@@ -50,6 +53,7 @@ export async function GET(req: NextRequest) {
       inserted: r.inserted,
       dupSkipped: r.dupSkipped,
       geocoded: geo.geocoded,
+      enriched: enr.enriched,
       model: r.model,
     });
   } catch (err) {
