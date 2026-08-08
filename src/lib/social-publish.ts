@@ -50,11 +50,6 @@ export async function publishToplatform(
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
-function isExpired(expiresAt: string | null | undefined): boolean {
-  if (!expiresAt) return false;
-  return new Date(expiresAt) < new Date(Date.now() + 60_000); // 1 min buffer
-}
-
 async function refreshGoogleToken(connection: SocialConnection): Promise<string | null> {
   if (!connection.refresh_token) return null;
   try {

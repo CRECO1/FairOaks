@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Phone, Mail, MapPin, Clock, CheckCircle, Calendar } from 'lucide-react';
+import { Phone, Mail, MapPin, Clock, Calendar } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { trackLead, trackPhoneClick, trackEmailClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
@@ -18,7 +18,6 @@ const CONTACT_REASONS = [
 
 export default function ContactPage() {
   const router = useRouter();
-  const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -151,18 +150,7 @@ export default function ContactPage() {
               {/* Form */}
               <div className="lg:col-span-2">
                 <div className="rounded-2xl bg-white p-5 sm:p-8 shadow-card lg:p-10">
-                  {submitted ? (
-                    <div className="py-12 text-center">
-                      <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-gold/20">
-                        <CheckCircle className="h-8 w-8 text-gold-dark" />
-                      </div>
-                      <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Message Sent!</h2>
-                      <p className="text-body text-foreground-muted max-w-md mx-auto">
-                        Thank you for reaching out. A member of our team will contact you within 1 business day.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
+                  <>
                       <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
                       <p className="mb-6 text-body-sm text-foreground-muted">We respond within 1 business day — usually same day.</p>
                       <form onSubmit={handleSubmit} className="space-y-5">
@@ -221,7 +209,6 @@ export default function ContactPage() {
                         </Button>
                       </form>
                     </>
-                  )}
                 </div>
               </div>
             </div>

@@ -2,14 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Home, ArrowRight, CheckCircle } from 'lucide-react';
+import { Home, ArrowRight } from 'lucide-react';
 import { trackLead } from '@/lib/analytics';
 
 export function HomeValuationForm() {
   const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', phone: '', address: '' });
   const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
@@ -45,20 +44,6 @@ export function HomeValuationForm() {
     } finally {
       setLoading(false);
     }
-  }
-
-  if (submitted) {
-    return (
-      <div className="flex flex-col items-center justify-center py-10 text-center gap-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gold/20">
-          <CheckCircle className="h-8 w-8 text-gold" />
-        </div>
-        <h3 className="font-heading text-heading-lg font-bold text-white">We're on it!</h3>
-        <p className="text-white/70 max-w-sm">
-          Expect a call or email from our team within 1 business day with your personalized home valuation.
-        </p>
-      </div>
-    );
   }
 
   return (
