@@ -1,5 +1,12 @@
 import { withPayload } from '@payloadcms/next/withPayload';
 
+// `next dev` compiles modules through eval() for hot-module replacement, so the
+// dev server renders a blank page under a CSP without 'unsafe-eval'. This is
+// gated on NODE_ENV so it can never reach a built artifact: `next build` and
+// `next start` both run with NODE_ENV=production, as does Vercel.
+const isDev = process.env.NODE_ENV === 'development';
+const devScriptSrc = isDev ? " 'unsafe-eval'" : '';
+
 // Security headers for production
 const securityHeaders = [
   {
@@ -36,9 +43,11 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       // Scripts: self + inline (Next.js hydration requires unsafe-inline) + GTM/GA/Maps
-      // NOTE: 'unsafe-eval' removed — Next.js 14 production builds do not require it.
-      // Re-add only if a specific dependency explicitly needs it (check browser console for CSP violations).
-      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com",
+      // NOTE: 'unsafe-eval' stays out of every built artifact — Next.js production
+      // builds do not require it. It is appended for `next dev` only (see devScriptSrc
+      // above), because HMR evaluates modules through eval(). Do not add it here
+      // unconditionally; if a dependency needs it in production, justify it explicitly.
+      `script-src 'self' 'unsafe-inline'${devScriptSrc} https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com`,
       // Styles: self + inline (Tailwind/CSS-in-JS) + Google Fonts
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Images: allow any https source + data URIs (listing photos, Supabase storage)
