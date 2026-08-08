@@ -220,9 +220,6 @@ const DEFAULT_SELECT = [
   'PhotosCount', 'PublicRemarks',
 ].join(',');
 
-// Note: SABOR does not expose Latitude/Longitude in the Property entity.
-// Map pins are geocoded client-side from the address.
-export const MAP_SELECT = DEFAULT_SELECT;
 
 export async function searchProperties(opts: PropertySearchOptions = {}): Promise<ResoResponse<ResoProperty>> {
   const params: Record<string, string> = {

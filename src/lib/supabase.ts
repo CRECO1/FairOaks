@@ -125,17 +125,6 @@ export interface SoldProperty {
 
 // ─── Data Fetching ────────────────────────────────────────────────────────────
 
-export async function getListings(status = 'active'): Promise<Listing[]> {
-  const { data, error } = await supabase
-    .from('listings')
-    .select('*')
-    .in('status', ['active', 'pending'])   // show both active and pending on the listings page
-    .order('listing_date', { ascending: false })
-    .limit(500);
-
-  if (error) throw error;
-  return data ?? [];
-}
 
 export async function getListingBySlug(slug: string): Promise<Listing | null> {
   const { data, error } = await supabase
@@ -148,29 +137,7 @@ export async function getListingBySlug(slug: string): Promise<Listing | null> {
   return data;
 }
 
-export async function getAgents(): Promise<Agent[]> {
-  const { data, error } = await supabase
-    .from('agents')
-    .select('*')
-    .order('order', { ascending: true })
-    .limit(100);
 
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function getFeaturedAgent(): Promise<Agent | null> {
-  const { data, error } = await supabase
-    .from('agents')
-    .select('*')
-    .eq('featured', true)
-    .order('order', { ascending: true })
-    .limit(1)
-    .single();
-
-  if (error) return null;
-  return data;
-}
 
 export async function getNeighborhoods(): Promise<Neighborhood[]> {
   const { data, error } = await supabase
@@ -206,19 +173,6 @@ export async function getListingsByCity(city: string): Promise<Listing[]> {
   return data ?? [];
 }
 
-export async function getListingCountsByCity(): Promise<Record<string, number>> {
-  const { data, error } = await supabase
-    .from('listings')
-    .select('city')
-    .eq('status', 'active');
-
-  if (error) throw error;
-
-  return (data ?? []).reduce<Record<string, number>>((acc, row) => {
-    acc[row.city] = (acc[row.city] ?? 0) + 1;
-    return acc;
-  }, {});
-}
 
 export async function getTestimonials(featuredOnly = false): Promise<Testimonial[]> {
   let query = supabase.from('testimonials').select('*');
@@ -249,27 +203,3 @@ export async function getSoldProperties(limit = 12): Promise<SoldProperty[]> {
   })) as unknown as SoldProperty[];
 }
 
-export async function submitLead(lead: {
-  name: string;
-  email: string;
-  phone?: string;
-  message?: string;
-  property_interest?: string;
-  source?: string;
-}) {
-  const { data, error } = await supabase
-    .from('leads')
-    .insert([{
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone ?? null,
-      message: lead.message ?? null,
-      property_interest: lead.property_interest ?? null,
-      source: lead.source ?? 'contact',
-    }])
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
