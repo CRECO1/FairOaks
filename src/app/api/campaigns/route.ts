@@ -20,26 +20,36 @@ export async function GET(req: NextRequest) {
     campaignQuery,
     supabase
       .from('crm_campaign_sends')
-      .select('campaign_id, sent_at')
-      .eq('status', 'sent')
+      .select('campaign_id, sent_at, opened_at, tracking_id, status, type')
       .order('sent_at', { ascending: false }),
   ]);
 
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
-  // Build a map of campaign_id → latest sent_at
-  const lastSentMap: Record<string, string> = {};
+  // Build per-campaign stats: last_sent_at, send_count, open_rate
+  const statsMap: Record<string, { lastSent: string | null; sentCount: number; openedCount: number; trackedCount: number }> = {};
   for (const s of (sends ?? [])) {
-    if (!lastSentMap[s.campaign_id]) {
-      lastSentMap[s.campaign_id] = s.sent_at;
+    if (!statsMap[s.campaign_id]) statsMap[s.campaign_id] = { lastSent: null, sentCount: 0, openedCount: 0, trackedCount: 0 };
+    const st = statsMap[s.campaign_id];
+    if (!st.lastSent) st.lastSent = s.sent_at;
+    if (s.status === 'sent' && s.type === 'email') {
+      st.sentCount++;
+      if (s.tracking_id) st.trackedCount++;
+      if (s.opened_at) st.openedCount++;
     }
   }
 
-  const campaigns = (data ?? []).map((c: any) => ({
-    ...c,
-    enrollment_count: c.enrollment_count?.[0]?.count ?? 0,
-    last_sent_at: lastSentMap[c.id] ?? null,
-  }));
+  const campaigns = (data ?? []).map((c: any) => {
+    const st = statsMap[c.id];
+    const openRate = st && st.trackedCount > 0 ? Math.round((st.openedCount / st.trackedCount) * 100) : null;
+    return {
+      ...c,
+      enrollment_count: c.enrollment_count?.[0]?.count ?? 0,
+      last_sent_at: st?.lastSent ?? null,
+      send_count: st?.sentCount ?? 0,
+      open_rate: openRate,
+    };
+  });
   return NextResponse.json({ campaigns });
 }
 

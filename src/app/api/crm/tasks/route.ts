@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const unit = toUnit(req.nextUrl.searchParams.get('unit'));
   const status = req.nextUrl.searchParams.get('status') ?? 'open';
   const assignedTo = req.nextUrl.searchParams.get('assigned_to');
+  const clientId   = req.nextUrl.searchParams.get('client_id');
   const supabase = adminClient();
   let q = supabase.from('crm_tasks')
     .select(`*, client:crm_clients(id,first_name,last_name,email), assignee:crm_profiles!assigned_to(id,first_name,last_name)`)
@@ -21,6 +22,7 @@ export async function GET(req: NextRequest) {
     .order('due_date', { ascending: true, nullsFirst: false });
   if (status !== 'all') q = q.eq('status', status);
   if (assignedTo) q = q.eq('assigned_to', assignedTo);
+  if (clientId)   q = q.eq('client_id', clientId);
   const { data, error } = await q;
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
   return NextResponse.json({ tasks: data ?? [] });

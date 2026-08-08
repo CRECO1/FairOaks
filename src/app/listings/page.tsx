@@ -469,7 +469,7 @@ function ListingsPageInner() {
 
             {/* Map view — loads 200 listings for current filters, Google Maps handles viewport */}
             {viewMode === 'map' && (
-              <div className="h-[70vh] w-full rounded-xl overflow-hidden border border-border shadow-card">
+              <div className="h-[50vh] sm:h-[60vh] md:h-[70vh] w-full rounded-xl overflow-hidden border border-border shadow-card">
                 <ListingsMap
                   listings={mapListings.map((l: any) => ({
                     listing_key: l.listing_key ?? l.id,

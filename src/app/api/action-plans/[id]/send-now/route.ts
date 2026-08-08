@@ -2,22 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
-import { getBrand, fromLine } from '@/lib/branding';
 
 function fromAddress(businessUnit?: string) {
-  return fromLine(businessUnit);
+  return businessUnit === 'commercial'
+    ? 'CRECO <info@crecotx.com>'
+    : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
 
 function resendClient(businessUnit?: string) {
-  return new Resend(process.env[getBrand(businessUnit).resendKeyEnv]!);
+  const key = businessUnit === 'commercial'
+    ? process.env.RESEND_API_KEY_COMMERCIAL!
+    : process.env.RESEND_API_KEY!;
+  return new Resend(key);
 }
 
-function applyMergeFields(template: string, businessUnit: string | undefined, ctx: {
+function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
 }): string {
-  const brand = getBrand(businessUnit);
-  const unsubscribeUrl = `${brand.unsubscribeBaseUrl}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
   return template
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -26,8 +30,8 @@ function applyMergeFields(template: string, businessUnit: string | undefined, ct
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || brand.phone)
-    .replaceAll('{{brokerage}}', brand.legalName)
+    .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
+    .replaceAll('{{brokerage}}', 'CRECO Commercial Real Estate Company')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
@@ -99,12 +103,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .single();
 
   const isCommercial = plan.business_unit === 'commercial';
-  const planBrand = getBrand(plan.business_unit);
-  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: planBrand.fromEmail, phone: planBrand.phone };
+  const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '210-390-9997' };
   // For commercial plans always use CRECO contact info regardless of agent profile values
   if (isCommercial) {
-    agentCtx.email = planBrand.fromEmail;
-    agentCtx.phone = planBrand.phone;
+    agentCtx.email = 'info@crecotx.com';
+    agentCtx.phone = '210-817-3443';
   }
 
   // Fetch step 1
@@ -141,8 +144,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   try {
     if (step.type === 'email') {
-      const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, plan.business_unit, ctx);
-      const body = applyMergeFields(step.body || '', plan.business_unit, ctx);
+      const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
+      const body = applyMergeFields(step.body || '', ctx);
       const result = await resendClient(plan.business_unit).emails.send({
         from: fromAddress(plan.business_unit),
         to: client.email,
@@ -154,7 +157,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       status = 'skipped';
       errorMsg = 'SMS not yet configured';
     } else if (step.type === 'task' || step.type === 'note') {
-      const activityBody = applyMergeFields(step.body || '', plan.business_unit, ctx);
+      const activityBody = applyMergeFields(step.body || '', ctx);
       await supabase.from('crm_activity').insert([{
         client_id: client.id,
         agent_id: agentLookupId,

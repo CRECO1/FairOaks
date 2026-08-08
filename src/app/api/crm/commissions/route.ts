@@ -45,15 +45,12 @@ export async function POST(req: NextRequest) {
   if (!deal_id) return NextResponse.json({ error: 'deal_id required' }, { status: 400 });
   if (!sale_price || isNaN(Number(sale_price))) return NextResponse.json({ error: 'valid sale_price required' }, { status: 400 });
 
-  // Compute derived commission fields server-side — never trust client-supplied values
-  const sp   = Number(sale_price);
-  const rate = Number(commission_rate ?? 3);
+  const sp    = Number(sale_price);
+  const rate  = Number(commission_rate ?? 3);
   const split = Number(agent_split ?? 70);
-  const ref  = Number(referral_fee ?? 0);
+  const ref   = Number(referral_fee ?? 0);
   const txFee = Number(transaction_fee ?? 0);
-  const gross_commission = parseFloat((sp * rate / 100).toFixed(2));
-  const agent_net        = parseFloat(((gross_commission - ref) * split / 100 - txFee).toFixed(2));
-  const brokerage_net    = parseFloat((gross_commission - ref - agent_net - txFee).toFixed(2));
+  // gross_commission, agent_net, brokerage_net are generated columns — DB computes them automatically
 
   const supabase = adminClient();
   const { data, error } = await supabase
@@ -69,9 +66,6 @@ export async function POST(req: NextRequest) {
       referral_fee:    ref,
       referral_to:     referral_to  ?? null,
       transaction_fee: txFee,
-      gross_commission,
-      agent_net,
-      brokerage_net,
       status:          status       ?? 'pending',
       close_date:      close_date   ?? null,
       paid_date:       paid_date    ?? null,

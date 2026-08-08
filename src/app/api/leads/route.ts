@@ -20,14 +20,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, email, phone, message, property_interest, source, business_unit } = body;
 
-    if (!name || !email) {
-      return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
+    // Name is required; email OR phone must be provided for contact
+    if (!name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+    }
+    if (!email && !phone) {
+      return NextResponse.json({ error: 'Email or phone is required' }, { status: 400 });
     }
 
     const unit: 'residential' | 'commercial' = business_unit === 'commercial' ? 'commercial' : 'residential';
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (email && !emailRegex.test(email)) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
 
@@ -49,21 +53,24 @@ export async function POST(req: NextRequest) {
 
     // ── Save lead to Supabase ───────────────────────────────────────────────────
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    // Service role key bypasses RLS — required for server-side inserts
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? supabaseKey;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // must be service role — publishable key is blocked by RLS
+
+    if (!serviceKey) {
+      console.error('[leads] SUPABASE_SERVICE_ROLE_KEY is not set — skipping DB write');
+    }
 
     if (supabaseUrl && serviceKey) {
       const supabase = createClient(supabaseUrl, serviceKey);
-      await supabase.from('leads').insert([{
+      const { error: leadsErr } = await supabase.from('leads').insert([{
         name,
-        email,
+        email: email ?? null,
         phone: phone ?? null,
         message: message ?? null,
         property_interest: property_interest ?? null,
         source: source ?? 'contact',
         status: 'new',
       }]);
+      if (leadsErr) console.error('[leads] leads table insert error:', leadsErr);
     }
 
     // ── Auto-create CRM client from lead ────────────────────────────────────────
@@ -72,14 +79,19 @@ export async function POST(req: NextRequest) {
         const supabaseAdmin = createClient(supabaseUrl, serviceKey);
 
         // Find admin to assign as default owner
-        const { data: adminProfile } = await supabaseAdmin
+        const { data: adminProfile, error: adminErr } = await supabaseAdmin
           .from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        if (adminErr) console.error('[leads] crm_profiles lookup error:', adminErr);
         const adminId = adminProfile?.id;
 
         if (adminId) {
           // Skip duplicate — if a client with this email already exists don't double-create
-          const { data: existing } = await supabaseAdmin
-            .from('crm_clients').select('id').eq('email', email).maybeSingle();
+          let existing = null;
+          if (email) {
+            const { data } = await supabaseAdmin
+              .from('crm_clients').select('id').eq('email', email).maybeSingle();
+            existing = data;
+          }
 
           if (!existing) {
             const nameParts = name.trim().split(/\s+/);
@@ -101,25 +113,50 @@ export async function POST(req: NextRequest) {
 
             const unsubscribe_token = crypto.randomUUID();
 
-            await supabaseAdmin.from('crm_clients').insert([{
+            const { data: newClient, error: crmInsertErr } = await supabaseAdmin.from('crm_clients').insert([{
               first_name,
               last_name,
-              email,
+              email: email ?? null,
               phone: phone ?? '',
               type: clientType,
               notes: noteLines.join('\n'),
               agent_id: adminId,
               assigned_agent_ids: [],
               lead_source: 'Website',
+              prospect_status: 'new',
               business_unit: unit,
               tags: unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
-            }]);
+            }]).select('id').single();
+
+            if (crmInsertErr) {
+              console.error('[leads] crm_clients insert error:', JSON.stringify(crmInsertErr));
+            } else {
+              console.log(`[leads] CRM client created: ${first_name} ${last_name} (${email ?? phone})`);
+              // Write to email_lead_imports so the Prospects tab shows this lead immediately
+              await supabaseAdmin.from('email_lead_imports').insert([{
+                gmail_message_id:    `website-${crypto.randomUUID()}`,
+                gmail_connection_id: null,
+                source:              'Website',
+                business_unit:       unit,
+                client_id:           newClient?.id ?? null,
+                raw_subject:         `New Lead: ${name}`,
+                parsed_name:         name,
+                parsed_email:        email ?? null,
+                parsed_phone:        phone ?? null,
+                parsed_property:     property_interest ?? null,
+                parsed_message:      message ?? null,
+              }]);
+            }
+          } else {
+            console.log(`[leads] CRM client already exists for email: ${email}`);
           }
+        } else {
+          console.error('[leads] No admin profile found in crm_profiles — cannot assign CRM client');
         }
       } catch (crmErr) {
-        // Non-fatal — lead is already saved, just log CRM sync failure
-        console.error('CRM client sync error:', crmErr);
+        // Non-fatal — lead is already saved, CRM sync failure logged
+        console.error('[leads] CRM client sync exception:', crmErr);
       }
     }
 
@@ -147,8 +184,8 @@ export async function POST(req: NextRequest) {
         `,
       });
 
-      // Auto-reply to the lead
-      await resend.emails.send({
+      // Auto-reply to the lead (only if they provided an email)
+      if (email) await resend.emails.send({
         from: FROM_EMAIL,
         to: email,
         subject: 'We received your inquiry — Fair Oaks Realty Group',

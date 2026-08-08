@@ -83,27 +83,26 @@ interface Props {
   agentId: string;
   isAdmin: boolean;
   toast: (msg: string) => void;
-  businessUnit?: 'residential' | 'commercial';
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const PLATFORM_CONFIG: Record<SocialPlatform, { label: string; emoji: string; color: string; charLimit: number; bgClass: string }> = {
-  facebook:  { label: 'Facebook',  emoji: '📘', color: '#1877F2', charLimit: 63206, bgClass: '' },
-  instagram: { label: 'Instagram', emoji: '📸', color: '#E1306C', charLimit: 2200,  bgClass: '' },
-  linkedin:  { label: 'LinkedIn',  emoji: '💼', color: '#0A66C2', charLimit: 3000,  bgClass: '' },
-  twitter:   { label: 'Twitter/X', emoji: '🐦', color: '#1DA1F2', charLimit: 280,   bgClass: '' },
-  youtube:   { label: 'YouTube',   emoji: '▶️', color: '#FF0000', charLimit: 5000,  bgClass: '' },
+  facebook:  { label: 'Facebook',  emoji: 'facebook',  color: '#1877F2', charLimit: 63206, bgClass: '' },
+  instagram: { label: 'Instagram', emoji: 'instagram', color: '#E1306C', charLimit: 2200,  bgClass: '' },
+  linkedin:  { label: 'LinkedIn',  emoji: 'linkedin',  color: '#0A66C2', charLimit: 3000,  bgClass: '' },
+  twitter:   { label: 'Twitter/X', emoji: 'twitter',   color: '#1DA1F2', charLimit: 280,   bgClass: '' },
+  youtube:   { label: 'YouTube',   emoji: 'youtube',   color: '#FF0000', charLimit: 5000,  bgClass: '' },
 };
 
 const ALL_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
 const POSTABLE_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'youtube'];
 
 // ── New Office Campaign Posts ──────────────────────────────────────────────────
-const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlatform; content: string; hashtags: string; scheduledDaysOut: number; mediaUrls: string[] }> = [
+const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platforms: SocialPlatform[]; content: string; hashtags: string; scheduledDaysOut: number; mediaUrls: string[] }> = [
   {
     label: 'Post 1 — Teaser',
     emoji: '👀',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 0,
     content: `Something big is coming to Fair Oaks. 👀\n\nWe've been building something special for our clients, our agents, and our community — and we can't wait to share it with you.\n\nStay tuned. 🗝️`,
     hashtags: '#FairOaksRealty #ComingSoon #FairOaks #RealEstateTexas #NewBeginnings',
@@ -112,7 +111,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 2 — Grand Announcement',
     emoji: '🎉',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 3,
     content: `🎉 WE'VE MOVED — and we love our new home.\n\nFair Oaks Realty Group has officially opened its doors at our brand-new location:\n\n📍 8000 Fair Oaks Pkwy\n\nThis move is more than a new address — it's a reflection of how far we've come and our commitment to serving you at the highest level. Bigger space. Better tools. Same team that's always had your back.\n\nCome see us. We'd love to have you stop by. 🤝`,
     hashtags: '#FairOaksRealtyGroup #NewOffice #FairOaksPkwy #RealEstate #SanAntonio #GrandOpening #WeveMovedHome',
@@ -121,7 +120,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 3 — Inside Look',
     emoji: '🏠',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 4,
     content: `Take a look inside our new home. 🏠✨\n\nWe designed this space with one goal in mind — giving our clients and agents the best possible experience. Swipe to see where the magic happens. ➡️\n\nWhether you're buying, selling, or just curious about the market — our door is always open.\n\n📍 8000 Fair Oaks Pkwy\n🌐 fairoaksrealtygroup.com`,
     hashtags: '#OfficeTour #FairOaksRealty #RealEstateLife #NewSpace #RealEstateAgents #FairOaksTexas',
@@ -130,7 +129,7 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 4 — Meet the Team',
     emoji: '💛',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 5,
     content: `The people make the place. 💛\n\nMeet the team behind Fair Oaks Realty Group — now settled into our new office at 8000 Fair Oaks Pkwy and ready to help you make your next move.\n\nBuying? Selling? Relocating? We've got an expert for every situation.\n\nDrop a 👋 in the comments and we'll make sure you're connected with the right agent.`,
     hashtags: '#MeetTheTeam #FairOaksRealtyGroup #RealEstateAgents #FairOaks #NewOffice #YourRealtors',
@@ -139,15 +138,120 @@ const CAMPAIGN_POSTS: Array<{ label: string; emoji: string; platform: SocialPlat
   {
     label: 'Post 5 — Community CTA',
     emoji: '🏡',
-    platform: 'instagram',
+    platforms: ['instagram', 'facebook'],
     scheduledDaysOut: 7,
     content: `Home isn't just where you live — it's where you belong. 🏡\n\nAt Fair Oaks Realty Group, we've planted our roots right here in the community we love. Our new office at 8000 Fair Oaks Pkwy is our home base, but your dream home is what drives us.\n\nIf you're thinking about buying or selling in 2025 — let's talk. No pressure, just a conversation.\n\n🔗 Link in bio to connect with an agent.`,
     hashtags: '#FairOaksRealty #DreamHome #TexasRealEstate #BuyingAHome #SellingYourHome #FairOaksCommunity #RealEstateTips',
     mediaUrls: ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1080&h=1080&fit=crop'],
   },
+  {
+    label: 'Post 6 — Market Update',
+    emoji: '📊',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 10,
+    content: `The Fair Oaks Ranch market is moving. 📊\n\nHere's what buyers and sellers need to know right now:\n\n📈 Homes are still selling above list in the right price bands\n⏱️ Days on market is ticking up — buyers have a little more breathing room\n🏡 Inventory is thin, but serious sellers are still winning\n\nThinking about making a move this year? Let's talk strategy before you list — or before you make an offer.\n\n📍 8000 Fair Oaks Pkwy | fairoaksrealtygroup.com`,
+    hashtags: '#FairOaksRealEstate #MarketUpdate #TexasRealEstate #FairOaksRanch #HomeSelling #HomeBuying',
+    mediaUrls: ['https://images.unsplash.com/photo-1460472178825-e5240623afd5?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 7 — Neighborhood Love',
+    emoji: '🌿',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 12,
+    content: `Fair Oaks Ranch isn't just a zip code. It's a lifestyle. 🌿\n\nHill Country views. Top-rated schools. Neighbors who actually know your name.\n\nWe're proud to call this community home — and even prouder to help families find their place in it.\n\nIf you've been thinking about making the move to Fair Oaks Ranch, let's talk. We know every street.\n\n🔗 Link in bio.`,
+    hashtags: '#FairOaksRanch #HillCountry #TexasLiving #CommunityFirst #FairOaksRealty #FamilyFriendly',
+    mediaUrls: ['https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 8 — Seller Tip',
+    emoji: '💡',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 14,
+    content: `The #1 mistake sellers make? Skipping the prep. 💡\n\nHomes that are properly staged and priced from Day 1 sell faster and for more money — every time.\n\nHere's what we do before your sign hits the yard:\n✅ Pricing strategy based on real comps\n✅ Professional photography\n✅ Pre-market exposure to our buyer network\n✅ Targeted digital marketing\n\nYour home gets one first impression. Let's make it count.\n\n📞 (210) 817-3443`,
+    hashtags: '#SellerTips #ListingAgent #SellYourHome #FairOaksRealty #RealEstateTips #HomeSelling',
+    mediaUrls: ['https://images.unsplash.com/photo-1582268611958-ebfd161ef9cf?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 9 — Client Love',
+    emoji: '🙌',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 17,
+    content: `Nothing means more to us than this. 💛\n\nWhen a client calls us after closing — not to ask about something, just to say thank you — that's the whole reason we do this.\n\nWe don't measure success by transactions. We measure it by relationships.\n\nIf you've worked with Fair Oaks Realty Group, we'd love to hear from you. Drop a comment or send us a message — your story might just help another family make their move.`,
+    hashtags: '#ClientLove #RealEstateFamily #FairOaksRealty #Testimonial #RealtorLife #ThankYou',
+    mediaUrls: ['https://images.unsplash.com/photo-1531496730074-83b0f27f6338?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 10 — Buyer Tip',
+    emoji: '🔑',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 19,
+    content: `Thinking about buying in Fair Oaks Ranch? Here's what most buyers don't do — but should. 🔑\n\n1️⃣ Get pre-approved before you start touring (not pre-qualified — pre-approved)\n2️⃣ Know your non-negotiables vs. your nice-to-haves\n3️⃣ Work with a local agent who knows the neighborhood — not just the MLS\n\nThe right home is out there. The right strategy gets you in it.\n\nWe're here when you're ready. 🤝\n\n📍 8000 Fair Oaks Pkwy`,
+    hashtags: '#BuyerTips #FirstTimeHomeBuyer #FairOaksRanch #HomeSearch #RealEstate #FairOaksRealty',
+    mediaUrls: ['https://images.unsplash.com/photo-1560184897-ae75f418493e?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 11 — Agent Spotlight',
+    emoji: '⭐',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 21,
+    content: `Behind every great real estate experience is a great agent. 💛\n\nOur team has called Fair Oaks Ranch home for years — and it shows. From school districts to street-by-street comps, they know this market inside and out.\n\nReady to be matched with the right agent for your situation?\n\n📞 (210) 817-3443\n🌐 fairoaksrealtygroup.com`,
+    hashtags: '#MeetTheTeam #FairOaksRealty #RealEstateAgent #AgentSpotlight #SanAntonioRealtor',
+    mediaUrls: ['https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=1080&h=1080&fit=crop'],
+  },
+  {
+    label: 'Post 12 — CRECO Cross-Promo',
+    emoji: '🏗️',
+    platforms: ['instagram', 'facebook'],
+    scheduledDaysOut: 24,
+    content: `Big things are happening on Dietz Elkhorn. 👀\n\nOur commercial team at CRECO is pre-leasing a brand-new 20,000 SF retail center right here in Fair Oaks Ranch — and the trade area demographics are unlike anything else in the corridor.\n\nMedian household income over $168K. Hill Country lifestyle. A community that shops local.\n\nIf you're a local business owner looking for a Fair Oaks Ranch address, now is the time.\n\n🔗 crecotx.com/8979-dietz-elkhorn`,
+    hashtags: '#FairOaksRanch #DietzElkhorn #CRECO #RetailSpace #LocalBusiness #CommercialRealEstate',
+    mediaUrls: ['https://images.unsplash.com/photo-1486325212027-8081e485255e?w=1080&h=1080&fit=crop'],
+  },
 ];
 
-function platformEmoji(p: SocialPlatform) { return PLATFORM_CONFIG[p].emoji; }
+function platformEmoji(p: SocialPlatform) {
+  const s = 18;
+  if (p === 'facebook') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="12" fill="#1877F2"/>
+      <path d="M15.5 7H13.5C12.7 7 12 7.7 12 8.5V10H15L14.6 13H12V21H9V13H7V10H9V8.5C9 6.6 10.6 5 12.5 5H15.5V7Z" fill="white"/>
+    </svg>
+  );
+  if (p === 'instagram') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <defs>
+        <linearGradient id="ig" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stopColor="#FFDC80"/>
+          <stop offset="30%" stopColor="#F77737"/>
+          <stop offset="65%" stopColor="#C13584"/>
+          <stop offset="100%" stopColor="#833AB4"/>
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#ig)"/>
+      <circle cx="12" cy="12" r="4.5" fill="none" stroke="white" strokeWidth="1.8"/>
+      <circle cx="17.2" cy="6.8" r="1.2" fill="white"/>
+    </svg>
+  );
+  if (p === 'linkedin') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="24" height="24" rx="4" fill="#0A66C2"/>
+      <path d="M7 9.5H9.5V17H7V9.5ZM8.25 8.5C7.56 8.5 7 7.94 7 7.25C7 6.56 7.56 6 8.25 6C8.94 6 9.5 6.56 9.5 7.25C9.5 7.94 8.94 8.5 8.25 8.5ZM11 9.5H13.4V10.6C13.8 9.9 14.7 9.3 16 9.3C18.2 9.3 18.5 10.9 18.5 12.8V17H16V13.2C16 12.3 15.5 11.5 14.6 11.5C13.7 11.5 13.4 12.2 13.4 13.1V17H11V9.5Z" fill="white"/>
+    </svg>
+  );
+  if (p === 'twitter') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="24" height="24" rx="4" fill="#000"/>
+      <path d="M17.5 5.5H15L11.5 10.2L8 5.5H5.5L10.2 12L5.5 18.5H8L12 13.8L16 18.5H18.5L13.7 12L17.5 5.5Z" fill="white"/>
+    </svg>
+  );
+  if (p === 'youtube') return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" style={{ display: 'inline', verticalAlign: 'middle', flexShrink: 0 }}>
+      <rect width="24" height="24" rx="4" fill="#FF0000"/>
+      <path d="M10 8.5L17 12L10 15.5V8.5Z" fill="white"/>
+    </svg>
+  );
+  return <span>{(p as string)[0].toUpperCase()}</span>;
+}
 function platformColor(p: SocialPlatform) { return PLATFORM_CONFIG[p].color; }
 function platformLabel(p: SocialPlatform) { return PLATFORM_CONFIG[p].label; }
 
@@ -184,11 +288,63 @@ function statusBadge(status: PostStatus) {
   return map[status] || { bg: '#f3f4f6', color: '#6b7280' };
 }
 
+// ── Unicode text formatting ────────────────────────────────────────────────────
+// Facebook & Instagram APIs only accept plain text — Unicode math blocks are
+// the only way to render bold/italic across all platforms.
+
+const BOLD_MAP: Record<string, string> = Object.fromEntries([
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map((c, i) => {
+    const base = i < 26 ? 0x1D5D4 : 0x1D5EE - 26;
+    return [c, String.fromCodePoint(base + i)];
+  }),
+  ...'0123456789'.split('').map((c, i) => [c, String.fromCodePoint(0x1D7EC + i)]),
+]);
+
+const ITALIC_MAP: Record<string, string> = Object.fromEntries(
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map((c, i) => {
+    const base = i < 26 ? 0x1D608 : 0x1D622 - 26;
+    return [c, String.fromCodePoint(base + i)];
+  })
+);
+
+const BOLD_ITALIC_MAP: Record<string, string> = Object.fromEntries(
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map((c, i) => {
+    const base = i < 26 ? 0x1D63C : 0x1D656 - 26;
+    return [c, String.fromCodePoint(base + i)];
+  })
+);
+
+function applyUnicodeFormat(
+  map: Record<string, string>,
+  value: string,
+  start: number,
+  end: number
+): { newValue: string; newStart: number; newEnd: number } {
+  const selected = value.slice(start, end);
+  const converted = selected.split('').map(c => map[c] ?? c).join('');
+  const newValue = value.slice(0, start) + converted + value.slice(end);
+  // Each converted char may be 2 JS code units (surrogate pair) — recalc end
+  const newEnd = start + converted.length;
+  return { newValue, newStart: start, newEnd };
+}
+
+const EMOJI_LIST = [
+  '🏡','🔑','🏠','🏘️','🏗️','🏢','📍','💰','📈','✅',
+  '⭐','🌟','💛','👋','🤝','🎉','🎊','👀','🔥','💪',
+  '📞','📧','📱','🗓️','✨','🌿','🌳','🌄','🌇','🏙️',
+  '🛋️','🚿','🍳','🚗','🎯','💡','📣','🔔','💬','🙌',
+];
+
+const HASHTAG_GROUPS: Array<{ label: string; tags: string }> = [
+  { label: 'Fair Oaks',   tags: '#FairOaks #FairOaksRealty #FairOaksRealtyGroup #FairOaksTX' },
+  { label: 'Just Listed', tags: '#JustListed #NewListing #ForSale #DreamHome #RealEstate' },
+  { label: 'Luxury',      tags: '#LuxuryHomes #LuxuryRealEstate #HighEnd #PremiumLiving' },
+  { label: 'Community',   tags: '#FairOaksCommunity #TexasRealEstate #DFW #NorthTexas' },
+  { label: 'Market',      tags: '#RealEstateMarket #HomeBuying #HomeSelling #PropertyInvestment' },
+];
+
 // ── Main Component ─────────────────────────────────────────────────────────────
-export default function SocialMediaSection({ agentId, isAdmin, toast, businessUnit = 'residential' }: Props) {
-  // The "We've Moved" / New Office campaign preset is Fair Oaks-specific.
-  // Only offer/auto-seed it in the residential workspace.
-  const showFairOaksCampaign = businessUnit === 'residential';
+export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
   const [activeTab, setActiveTab] = useState<'publisher' | 'calendar' | 'inbox' | 'analytics'>('publisher');
 
   // Connections
@@ -273,9 +429,24 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
   const [showIgModal, setShowIgModal] = useState(false);
   const [igHandle, setIgHandle] = useState('');
   const [igSaving, setIgSaving] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
+
+  // Responsive width
+  const [windowWidth, setWindowWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  useEffect(() => {
+    function handleResize() { setWindowWidth(window.innerWidth); }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+  const isMobile = windowWidth < 768;
 
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
+
+  // Composer formatting toolbar
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [hashtagPickerOpen, setHashtagPickerOpen] = useState(false);
 
   useEffect(() => {
     loadConnections();
@@ -387,9 +558,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
       const data = await res.json();
       const loaded: SocialPost[] = data.posts || [];
       setPosts(loaded);
-      // Auto-seed campaign drafts on first load if the queue is empty.
-      // Gated to residential — the preset is Fair Oaks-branded.
-      if (seedIfEmpty && loaded.length === 0 && showFairOaksCampaign) {
+      // Auto-seed campaign drafts on first load if the queue is empty
+      if (seedIfEmpty && loaded.length === 0) {
         await importCampaignAsDrafts(true);
       }
     } catch {
@@ -420,11 +590,6 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
   }
 
   async function importCampaignAsDrafts(silent = false) {
-    // The New Office / "We've Moved" preset is Fair Oaks-specific; never seed it outside residential.
-    if (!showFairOaksCampaign) {
-      if (!silent) toast('This campaign preset is only available in the Fair Oaks (residential) workspace.');
-      return;
-    }
     setCampaignImporting(true);
     try {
       const today = new Date();
@@ -438,7 +603,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             content: cp.content,
-            platforms: [cp.platform],
+            platforms: cp.platforms,
             connection_ids: [],
             scheduled_at: scheduledDate.toISOString(),
             status: 'draft',
@@ -450,7 +615,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
           }),
         });
       }
-      if (!silent) toast('📢 5 campaign posts saved to Drafts!');
+      if (!silent) toast('📢 12 campaign posts saved to Drafts!');
       setPostQueueTab('drafts');
       const res = await fetch('/api/crm/social/posts');
       const data = await res.json();
@@ -794,10 +959,10 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
         {/* ── Two-column layout ── */}
-        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
 
           {/* ── LEFT: Composer ── */}
-          <div style={{ flex: '0 0 460px', maxWidth: 460 }}>
+          <div style={{ flex: isMobile ? 'none' : '0 0 460px', maxWidth: isMobile ? '100%' : 460, width: isMobile ? '100%' : undefined }}>
             <div style={{
               background: '#fff',
               borderRadius: 16,
@@ -935,20 +1100,160 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
 
               {/* Textarea */}
               <div style={{ marginBottom: 16 }}>
+                {/* Formatting toolbar */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 2,
+                  background: '#f9fafb', border: '1.5px solid #e5e7eb',
+                  borderBottom: 'none', borderRadius: '12px 12px 0 0',
+                  padding: '5px 8px',
+                }}>
+                  {/* Bold */}
+                  <button
+                    type="button"
+                    title="Bold (select text first)"
+                    onClick={() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const { newValue, newStart, newEnd } = applyUnicodeFormat(BOLD_MAP, composerContent, el.selectionStart, el.selectionEnd);
+                      setComposerContent(newValue);
+                      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
+                    }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                  >B</button>
+
+                  {/* Italic */}
+                  <button
+                    type="button"
+                    title="Italic (select text first)"
+                    onClick={() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const { newValue, newStart, newEnd } = applyUnicodeFormat(ITALIC_MAP, composerContent, el.selectionStart, el.selectionEnd);
+                      setComposerContent(newValue);
+                      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
+                    }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontStyle: 'italic', fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                  >I</button>
+
+                  {/* Bold Italic */}
+                  <button
+                    type="button"
+                    title="Bold italic (select text first)"
+                    onClick={() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      const { newValue, newStart, newEnd } = applyUnicodeFormat(BOLD_ITALIC_MAP, composerContent, el.selectionStart, el.selectionEnd);
+                      setComposerContent(newValue);
+                      requestAnimationFrame(() => { el.focus(); el.setSelectionRange(newStart, newEnd); });
+                    }}
+                    style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', fontStyle: 'italic', fontWeight: 800, fontSize: 13, cursor: 'pointer', color: '#1a1a2e', lineHeight: 1 }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#C9A84C'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb'; }}
+                  >BI</button>
+
+                  {/* Divider */}
+                  <span style={{ width: 1, height: 18, background: '#e5e7eb', margin: '0 4px', flexShrink: 0 }} />
+
+                  {/* Emoji picker */}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      title="Insert emoji"
+                      onClick={() => { setEmojiPickerOpen(o => !o); setHashtagPickerOpen(false); }}
+                      style={{ padding: '3px 8px', borderRadius: 6, border: '1px solid #e5e7eb', background: emojiPickerOpen ? '#fef9ec' : '#fff', fontSize: 14, cursor: 'pointer', lineHeight: 1, borderColor: emojiPickerOpen ? '#C9A84C' : '#e5e7eb' }}
+                    >😊</button>
+                    {emojiPickerOpen && (
+                      <div
+                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 10, width: 232 }}
+                        onMouseDown={e => e.preventDefault()}
+                      >
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(10, 1fr)', gap: 2 }}>
+                          {EMOJI_LIST.map(em => (
+                            <button
+                              key={em}
+                              type="button"
+                              onClick={() => {
+                                const el = textareaRef.current;
+                                const pos = el ? el.selectionStart : composerContent.length;
+                                const next = composerContent.slice(0, pos) + em + composerContent.slice(pos);
+                                setComposerContent(next);
+                                setEmojiPickerOpen(false);
+                                requestAnimationFrame(() => { if (el) { el.focus(); el.setSelectionRange(pos + em.length, pos + em.length); } });
+                              }}
+                              style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', padding: '3px 0', borderRadius: 4, lineHeight: 1 }}
+                              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef9ec'; }}
+                              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+                            >{em}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hashtag groups */}
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      title="Add hashtag group"
+                      onClick={() => { setHashtagPickerOpen(o => !o); setEmojiPickerOpen(false); }}
+                      style={{ padding: '3px 9px', borderRadius: 6, border: '1px solid #e5e7eb', background: hashtagPickerOpen ? '#fef9ec' : '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#6b7280', lineHeight: 1, borderColor: hashtagPickerOpen ? '#C9A84C' : '#e5e7eb' }}
+                    >#</button>
+                    {hashtagPickerOpen && (
+                      <div
+                        style={{ position: 'absolute', top: '110%', left: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,.10)', padding: 6, minWidth: 220 }}
+                        onMouseDown={e => e.preventDefault()}
+                      >
+                        {HASHTAG_GROUPS.map(group => (
+                          <button
+                            key={group.label}
+                            type="button"
+                            onClick={() => {
+                              const sep = composerContent && !composerContent.endsWith('\n') ? '\n\n' : '';
+                              setComposerContent(composerContent + sep + group.tags);
+                              setHashtagPickerOpen(false);
+                              requestAnimationFrame(() => textareaRef.current?.focus());
+                            }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '7px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12 }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fef9ec'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+                          >
+                            <span style={{ fontWeight: 700, color: '#1a1a2e', marginRight: 6 }}>{group.label}</span>
+                            <span style={{ color: '#9ca3af', fontSize: 11 }}>{group.tags.split(' ').length} tags</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <textarea
+                  ref={textareaRef}
                   value={composerContent}
                   onChange={e => setComposerContent(e.target.value)}
                   placeholder="Write your post…"
                   rows={7}
                   style={{
-                    width: '100%', padding: '13px 14px', borderRadius: 12,
-                    border: '1.5px solid #e5e7eb', fontSize: 13, lineHeight: 1.65,
+                    width: '100%', padding: '13px 14px',
+                    borderRadius: '0 0 12px 12px',
+                    border: '1.5px solid #e5e7eb', borderTop: 'none',
+                    fontSize: 13, lineHeight: 1.65,
                     resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box',
                     outline: 'none', transition: 'border-color .15s',
                     color: '#1a1a2e',
                   }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#C9A84C'; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  onFocus={e => {
+                    e.currentTarget.style.borderColor = '#C9A84C';
+                    (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = '#C9A84C';
+                  }}
+                  onBlur={e => {
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    (e.currentTarget.previousElementSibling as HTMLElement).style.borderColor = '#e5e7eb';
+                    setTimeout(() => { setEmojiPickerOpen(false); setHashtagPickerOpen(false); }, 150);
+                  }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 5 }}>
                   <span style={{
@@ -1096,7 +1401,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
               </div>
 
               {/* Link + Hashtags grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12, marginBottom: 14 }}>
                 <div>
                   <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', display: 'block', marginBottom: 6 }}>Link URL</label>
                   <input
@@ -1329,7 +1634,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
               <div style={{
                 display: 'flex', gap: 6, padding: '16px 16px 0',
                 borderBottom: '1px solid #f0f0f0', paddingBottom: 16,
+                alignItems: 'center', justifyContent: 'space-between',
               }}>
+                <div style={{ display: 'flex', gap: 6 }}>
                 {tabConfig.map(({ key, label, icon }) => {
                   const count = posts.filter(p => {
                     if (key === 'scheduled') return p.status === 'scheduled';
@@ -1363,6 +1670,20 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
                     </button>
                   );
                 })}
+                </div>
+                <button
+                  onClick={() => importCampaignAsDrafts(false)}
+                  disabled={campaignImporting}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px', borderRadius: 100, border: '1px solid #e5e7eb',
+                    background: '#fff', fontSize: 12, fontWeight: 700,
+                    color: '#1a1a2e', cursor: campaignImporting ? 'not-allowed' : 'pointer',
+                    opacity: campaignImporting ? 0.6 : 1, whiteSpace: 'nowrap',
+                  }}
+                >
+                  {campaignImporting ? '⏳ Importing…' : '📥 Load Campaign Drafts'}
+                </button>
               </div>
 
               {/* Queue content */}
@@ -1713,7 +2034,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
           )}
 
           <button
-            onClick={() => openOAuthPopup('facebook')}
+            onClick={() => setShowConnectModal(true)}
             style={{
               marginLeft: 'auto',
               display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -2022,7 +2343,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
         {/* Saved Replies Modal */}
         {savedRepliesOpen && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 'min(480px, calc(100vw - 28px))', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Saved Replies</h3>
                 <button onClick={() => setSavedRepliesOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
@@ -2077,9 +2398,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 20, alignItems: 'flex-start' }}>
           {/* Left: message list */}
-          <div style={{ flex: '0 0 360px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+          <div style={{ flex: isMobile ? 'none' : '0 0 360px', width: isMobile ? '100%' : undefined, background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
             {/* Filters */}
             <div style={{ padding: '14px 16px', borderBottom: '1px solid #f0f0f0' }}>
               <input
@@ -2327,9 +2648,9 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
       .slice(0, 5);
 
     const statCard = (label: string, value: string, emoji: string, sub: string) => (
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px', flex: 1, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-        <div style={{ fontSize: 24, marginBottom: 8 }}>{emoji}</div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Cormorant Garamond', serif", lineHeight: 1 }}>{value}</div>
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: isMobile ? '14px 16px' : '20px 24px', flex: 1, minWidth: isMobile ? 'calc(50% - 8px)' : 0, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+        <div style={{ fontSize: isMobile ? 20 : 24, marginBottom: 6 }}>{emoji}</div>
+        <div style={{ fontSize: isMobile ? 22 : 28, fontWeight: 800, color: '#1a1a2e', fontFamily: "'Cormorant Garamond', serif", lineHeight: 1 }}>{value}</div>
         <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', marginTop: 6 }}>{label}</div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{sub}</div>
       </div>
@@ -2339,13 +2660,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
       <div>
         {/* CTA for connecting more */}
         {connections.length < 3 && (
-          <div style={{ background: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ background: '#fffbeb', borderRadius: 12, border: '1px solid #fde68a', padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Connect more accounts to see richer analytics</div>
               <div style={{ fontSize: 11, color: '#a16207' }}>You have {connections.length} of 5 platforms connected.</div>
             </div>
             <button
-              onClick={() => setActiveTab('publisher')}
+              onClick={() => setShowConnectModal(true)}
               style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#C9A84C', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
             >
               Connect Accounts →
@@ -2354,7 +2675,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
         )}
 
         {/* Top stats */}
-        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 10 : 16, marginBottom: 24 }}>
           {statCard('Total Followers', fmtNum(totalFollowers), '👥', 'Across all accounts')}
           {statCard('Avg Engagement Rate', `${avgEngagement.toFixed(2)}%`, '📊', 'Last 30 days')}
           {statCard('Total Impressions', fmtNum(totalImpressions), '👁️', 'Last 30 days')}
@@ -2426,7 +2747,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
           )}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? 16 : 24, marginBottom: 24 }}>
           {/* Best time to post heatmap */}
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0', padding: '20px 24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -2482,24 +2803,47 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
                 No published posts yet. Start publishing to see your top performers!
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {topPosts.map((post, i) => {
-                  const totalEng = (post.engagement?.likes || 0) + (post.engagement?.comments || 0) + (post.engagement?.shares || 0);
+                  const likes    = post.engagement?.likes    || 0;
+                  const comments = post.engagement?.comments || 0;
+                  const shares   = post.engagement?.shares   || 0;
+                  const totalEng = likes + comments + shares;
+                  const rankColors = ['#C9A84C', '#9ca3af', '#cd7f32'];
+                  const rankColor  = rankColors[i] ?? '#e5e7eb';
                   return (
-                    <div key={post.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: '#fafafa', border: '1px solid #f0f0f0' }}>
-                      <div style={{ width: 22, height: 22, borderRadius: '50%', background: i === 0 ? '#C9A84C' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: i === 0 ? '#fff' : '#9ca3af', flexShrink: 0 }}>
-                        {i + 1}
+                    <div key={post.id} style={{ borderRadius: 10, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
+                      {/* Top bar: rank + platforms + total */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: i === 0 ? '#fffbeb' : '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 20, height: 20, borderRadius: '50%', background: rankColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                            {i + 1}
+                          </div>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {post.platforms.slice(0, 3).map(p => renderPlatformBadge(p))}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1a2e', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 20, padding: '2px 10px' }}>
+                          {totalEng} engagements
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-                        {post.platforms.slice(0, 2).map(p => renderPlatformBadge(p))}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, color: '#1a1a2e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.content}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-                        <span style={{ fontSize: 11, color: '#6b7280' }}>👍 {post.engagement?.likes || 0}</span>
-                        <span style={{ fontSize: 11, color: '#6b7280' }}>💬 {post.engagement?.comments || 0}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: '#1a1a2e' }}>= {totalEng}</span>
+                      {/* Post preview */}
+                      <div style={{ padding: '10px 12px' }}>
+                        <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {post.content || '(no caption)'}
+                        </div>
+                        {/* Metrics row */}
+                        <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                            <span>👍</span><span style={{ fontWeight: 600 }}>{likes}</span><span>Likes</span>
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                            <span>💬</span><span style={{ fontWeight: 600 }}>{comments}</span><span>Comments</span>
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280' }}>
+                            <span>🔁</span><span style={{ fontWeight: 600 }}>{shares}</span><span>Shares</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -2514,11 +2858,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
 
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px 32px', minHeight: '100vh', background: '#f8f8f8' }}>
+    <div style={{ padding: isMobile ? '16px 12px' : '24px 32px', minHeight: '100vh', background: '#f8f8f8' }}>
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 32, fontWeight: 700, color: '#1a1a2e', margin: 0, marginBottom: 4 }}>
+          <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#1a1a2e', margin: 0, marginBottom: 4 }}>
             Social Media
           </h1>
           <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
@@ -2528,7 +2872,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
         {activeTab === 'publisher' && (
           <button
             onClick={() => { resetComposer(); setComposerOpen(true); }}
-            style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#1a1a2e', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{ padding: '10px 16px', borderRadius: 10, border: 'none', background: '#1a1a2e', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
           >
             ✏️ Compose Post
           </button>
@@ -2536,7 +2880,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #f0f0f0', marginBottom: 28, gap: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '2px solid #f0f0f0', marginBottom: 24, gap: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' as any }}>
         {([
           { id: 'publisher', label: 'Publisher', emoji: '✏️' },
           { id: 'calendar', label: 'Calendar', emoji: '📅' },
@@ -2547,12 +2891,13 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '12px 20px', border: 'none', background: 'none',
+              padding: isMobile ? '10px 14px' : '12px 20px', border: 'none', background: 'none',
               borderBottom: `2px solid ${activeTab === tab.id ? '#1a1a2e' : 'transparent'}`,
               marginBottom: -2, fontSize: 13, fontWeight: 700, cursor: 'pointer',
               color: activeTab === tab.id ? '#1a1a2e' : '#9ca3af',
-              display: 'flex', alignItems: 'center', gap: 7,
+              display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
               transition: 'color .15s',
+              whiteSpace: 'nowrap',
             }}
           >
             <span>{tab.emoji}</span>
@@ -2787,6 +3132,100 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
         );
       })()}
 
+      {/* ── Platform Picker Modal ── */}
+      {showConnectModal && (
+        <>
+          <div onClick={() => setShowConnectModal(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            width: 480, maxWidth: '95vw', background: '#fff', borderRadius: 16,
+            zIndex: 1001, boxShadow: '0 24px 80px rgba(0,0,0,.25)', overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ background: '#1a1a2e', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ color: '#fff', fontFamily: "'Cormorant Garamond', serif", fontSize: 20, fontWeight: 700, margin: 0 }}>Social Accounts</h3>
+                <p style={{ color: 'rgba(255,255,255,.5)', fontSize: 12, margin: '3px 0 0' }}>Connect or disconnect your social platforms</p>
+              </div>
+              <button onClick={() => setShowConnectModal(false)}
+                style={{ background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8, color: 'rgba(255,255,255,.7)', fontSize: 18, cursor: 'pointer', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+            </div>
+            {/* Platform list */}
+            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {ALL_PLATFORMS.map(p => {
+                const conn = connections.find(c => c.platform === p);
+                return (
+                  <div key={p} style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '12px 14px', borderRadius: 12,
+                    border: `1.5px solid ${conn ? platformColor(p) + '40' : '#f0f0f0'}`,
+                    background: conn ? platformColor(p) + '08' : '#fafafa',
+                  }}>
+                    <div style={{
+                      width: 42, height: 42, borderRadius: '50%',
+                      background: conn ? platformColor(p) : '#e5e7eb',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, opacity: conn ? 1 : 0.5,
+                    }}>
+                      {platformEmoji(p)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#1a1a2e' }}>{platformLabel(p)}</div>
+                      {conn ? (
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>
+                          <span style={{ color: '#16a34a', fontWeight: 600 }}>● Connected</span>
+                          {' · '}{conn.account_name}
+                          {conn.followers_count > 0 && ` · ${fmtNum(conn.followers_count)} followers`}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>Not connected</div>
+                      )}
+                    </div>
+                    {conn ? (
+                      <button
+                        onClick={async () => {
+                          const warning = (p === 'facebook' || p === 'instagram')
+                            ? `Disconnect ${conn.account_name}?\n\nNote: To reconnect Facebook or Instagram, you must use Chrome or Safari (not DuckDuckGo).`
+                            : `Disconnect ${conn.account_name}?`;
+                          if (!confirm(warning)) return;
+                          await fetch('/api/crm/social/accounts', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ connection_id: conn.id }),
+                          });
+                          setConnections(prev => prev.filter(c => c.id !== conn.id));
+                          toast(`Disconnected ${conn.account_name}`);
+                        }}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: '1.5px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                      >
+                        Disconnect
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowConnectModal(false);
+                          if (p === 'instagram') setShowIgModal(true);
+                          else openOAuthPopup(p);
+                        }}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: platformColor(p), color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+                      >
+                        Connect
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: '10px 16px 16px', borderTop: '1px solid #f0f0f0' }}>
+              <p style={{ fontSize: 11, color: '#9ca3af', margin: 0, textAlign: 'center' }}>
+                Facebook & Instagram require Chrome or Safari to connect
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Manual Instagram connect modal */}
       {showIgModal && (
         <div
@@ -2795,7 +3234,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast, businessUn
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 16, padding: 32, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
+            style={{ background: '#fff', borderRadius: 16, padding: 32, width: 'min(420px, calc(100vw - 28px))', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
               <span style={{ fontSize: 28 }}>📸</span>

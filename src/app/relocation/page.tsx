@@ -238,6 +238,42 @@ export default function RelocationPage() {
           </Container>
         </section>
 
+        {/* Dallas → Hill Country callout */}
+        <section className="bg-white py-12 border-b border-border">
+          <Container>
+            <div className="max-w-4xl mx-auto rounded-2xl border border-border bg-background-cream p-8 flex flex-col lg:flex-row lg:items-center gap-8">
+              <div className="flex-1">
+                <p className="overline mb-2 text-[#C9A84C]">Moving from Dallas?</p>
+                <h2 className="font-heading text-heading-xl font-bold text-primary mb-3">
+                  Hill Country is what Dallas buyers move to when they want more for their money.
+                </h2>
+                <ul className="space-y-2 text-body-sm text-foreground-muted">
+                  {[
+                    'Save $100K–$200K vs. comparable DFW suburbs on the same school quality',
+                    'No state income tax — same as Texas already gives you',
+                    'Hill Country views, rivers, and 220+ sunny days a year',
+                    'Fair Oaks Ranch & Boerne rank among the safest cities in Texas',
+                  ].map(item => (
+                    <li key={item} className="flex items-start gap-2">
+                      <CheckCircle className="h-4 w-4 text-[#C9A84C] shrink-0 mt-0.5" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="shrink-0">
+                <Link
+                  href="/contact?service=relocation"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3.5 text-body-sm font-bold text-white hover:bg-primary/90 transition-colors"
+                >
+                  Talk to a Relocation Specialist <ArrowRight className="h-4 w-4" />
+                </Link>
+                <p className="mt-3 text-caption text-center text-foreground-muted">Free · No obligation · Same-day response</p>
+              </div>
+            </div>
+          </Container>
+        </section>
+
         {/* Why Hill Country */}
         <section className="section-luxury bg-background-cream">
           <Container>

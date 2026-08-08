@@ -51,7 +51,11 @@ export async function POST(req: NextRequest) {
   // Do NOT pass secrets as URL query params — they appear in server logs.
   const authHeader = req.headers.get('authorization');
   const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!WEBHOOK_SECRET || apiKey !== WEBHOOK_SECRET) {
+  // Timing-safe comparison to prevent secret enumeration via timing attacks
+  const secretValid = !!WEBHOOK_SECRET && !!apiKey &&
+    apiKey.length === WEBHOOK_SECRET.length &&
+    require('crypto').timingSafeEqual(Buffer.from(apiKey), Buffer.from(WEBHOOK_SECRET));
+  if (!secretValid) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
