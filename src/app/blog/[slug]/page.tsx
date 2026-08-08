@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Calendar, Tag, Phone } from 'lucide-react';
+import { ArrowLeft, Calendar, Phone } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Container } from '@/components/ui/Container';
 import { RichTextRenderer } from '@/components/blog/RichTextRenderer';

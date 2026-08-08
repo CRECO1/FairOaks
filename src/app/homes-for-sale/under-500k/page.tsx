@@ -3,7 +3,7 @@ export const revalidate = 3600;
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
-  MapPin, DollarSign, Home, Clock, CheckCircle,
+  MapPin, DollarSign, Home, CheckCircle,
   ArrowRight, Phone, TrendingUp, Users, Star,
 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';

@@ -15,7 +15,7 @@ const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionD
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import ActivitySection from '@/components/crm/ActivitySection';
-import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
+import MentionTextarea from '@/components/crm/MentionTextarea';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().

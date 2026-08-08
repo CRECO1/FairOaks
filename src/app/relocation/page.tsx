@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   MapPin, ArrowRight, Phone, School, DollarSign,
-  Trees, Briefcase, Clock, Shield, CheckCircle, Home,
+  Trees, Briefcase, Clock, Shield, CheckCircle,
 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';

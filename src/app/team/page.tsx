@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { Phone, Mail, Award, User, X, CheckCircle2 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
-import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { supabase } from '@/lib/supabase';

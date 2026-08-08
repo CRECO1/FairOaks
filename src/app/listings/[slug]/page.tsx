@@ -6,7 +6,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Bed, Bath, Square, MapPin, Calendar, Phone, ArrowLeft, Home, ArrowRight } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
-import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';

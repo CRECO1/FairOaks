@@ -3,7 +3,7 @@ export const revalidate = 86400;
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
-  MapPin, DollarSign, Home, School, Clock,
+  MapPin, DollarSign, School, Clock,
   Star, Trees, CheckCircle, ArrowRight, Phone, Car, Shield,
 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';

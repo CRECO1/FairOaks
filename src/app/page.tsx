@@ -37,7 +37,7 @@ export const metadata: Metadata = {
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, Star, Home, TrendingUp, Award, Sparkles, MapPin, Bed, Bath, Square } from 'lucide-react';
+import { ArrowRight, Star, Home, TrendingUp, Award, MapPin, Bed, Bath, Square } from 'lucide-react';
 
 /** Compute days on market from a listing date string. Returns null if date is missing. */
 function calcDaysOnMarket(listingDate: string | null | undefined): number | null {

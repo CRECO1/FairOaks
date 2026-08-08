@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   Shield, DollarSign, TrendingDown, RotateCcw, HandCoins,
-  CheckCircle, ArrowRight, Phone, Medal, Star, FileText,
+  CheckCircle, ArrowRight, Phone, Medal, Star,
 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';

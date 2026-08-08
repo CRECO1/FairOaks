@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { TrendingUp, Clock, DollarSign, Users, CheckCircle, ArrowRight, Phone } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { trackLead, trackPhoneClick } from '@/lib/analytics';

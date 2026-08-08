@@ -7,7 +7,6 @@ import Image from 'next/image';
 import { Search, SlidersHorizontal, Bed, Bath, Square, MapPin, Home, X, ChevronLeft, ChevronRight, List, Map } from 'lucide-react';
 import { ListingsMap } from '@/components/sections/ListingsMap';
 import { Header, Footer } from '@/components/layout';
-import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { Input } from '@/components/ui/Input';
 import { formatPrice } from '@/lib/utils';
