@@ -62,14 +62,13 @@ export async function GET(req: NextRequest) {
         );
         const insightData = await insightRes.json();
 
-        let impressions = 0, reach = 0, engagedUsers = 0, postEngagements = 0;
+        let impressions = 0, reach = 0, engagedUsers = 0;
         if (Array.isArray(insightData.data)) {
           for (const m of insightData.data) {
             const val = m.values?.[m.values.length - 1]?.value ?? 0;
             if (m.name === 'page_impressions')          impressions    = val;
             if (m.name === 'page_impressions_unique')   reach          = val;
             if (m.name === 'page_engaged_users')        engagedUsers   = val;
-            if (m.name === 'page_post_engagements')     postEngagements = val;
           }
         }
 

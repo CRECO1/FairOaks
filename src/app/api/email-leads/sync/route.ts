@@ -521,7 +521,7 @@ export async function POST(req: import('next/server').NextRequest) {
         // Skip billing/admin/platform emails — only process actual lead notifications
         const fromAddress = (from.match(/<([^>]+)>/) ?? [, from])[1] ?? from;
         // Parse lead first so we can pass the extracted email to isLeadEmail
-        const parsed = parseLeadEmail(subject, decodeBody(msg), from);
+        const parsed = parseLeadEmail(subject, body, from);
         if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email, source.ownWebsite)) continue;
 
         // Determine business_unit: source domain takes priority over agent profile
