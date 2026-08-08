@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const ALLOWED = new Set([
@@ -8,10 +8,18 @@ const ALLOWED = new Set([
   'close_date', 'paid_date', 'notes', 'deal_type',
 ]);
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+// Reads are open to the caller's workspace; writes additionally require that the caller
+// is the commission's agent or its creator. Admins bypass both checks.
+const OWNER_COLUMNS = ['agent_id', 'created_by'];
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_commissions', id, ctx, { ownerColumns: OWNER_COLUMNS }))) {
+    return notFound('Resource not found.');
+  }
+
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_commissions')
@@ -23,11 +31,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
-  const body = await req.json();
+  if (!(await assertOwnsResource('crm_commissions', id, ctx, { ownerColumns: OWNER_COLUMNS, requireOwner: true }))) {
+    return notFound('Resource not found.');
+  }
 
+  const body = await req.json();
   const safe: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of Object.keys(body)) {
     if (ALLOWED.has(key)) safe[key] = body[key];
@@ -44,10 +55,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ commission: data });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_commissions', id, ctx, { ownerColumns: OWNER_COLUMNS, requireOwner: true }))) {
+    return notFound('Resource not found.');
+  }
+
   const supabase = adminClient();
   const { error } = await supabase.from('crm_commissions').delete().eq('id', id);
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }

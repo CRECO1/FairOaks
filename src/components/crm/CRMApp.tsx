@@ -13,7 +13,7 @@ import { getBrand, type BusinessUnit } from '@/lib/branding';
 const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Role = 'admin' | 'agent';
+type Role = 'super_admin' | 'admin' | 'agent';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
@@ -797,7 +797,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
-      setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
+      setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
       const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
@@ -819,7 +819,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
-      setTimeout(() => { loadAllTasks(); loadAllCommissions(); }, 500);
+      setTimeout(() => { loadAllTasks(newProfile); loadAllCommissions(); }, 500);
     }
     setLoading(false);
   }, [session]);
@@ -948,7 +948,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const form = new FormData();
     form.append('file', file);
     form.append('dealId', deal.id);
-    form.append('uploadedBy', profile!.id);
+    // uploaded_by is stamped server-side from the authenticated session — not sent here
     const res = await fetch('/api/crm/docs', { method: 'POST', body: form });
     const json = await res.json();
     if (!res.ok) { showToast('Upload failed: ' + json.error); }
@@ -1187,11 +1187,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Task Management ───────────────────────────────────────────────────────────
-  async function loadAllTasks() {
+  // Accepts an optional profile so the initial-load callers can pass the freshly loaded
+  // one: they fire from a setTimeout that closes over `profile` while it is still null.
+  async function loadAllTasks(p?: Profile) {
+    const agent = p ?? profile;
+    if (!agent) return;
     const { data } = await supabase
       .from('crm_tasks')
       .select('*')
-      .eq('agent_id', profile!.id)
+      .eq('agent_id', agent.id)
       .is('completed_at', null)
       .order('due_date', { ascending: true });
     setAllTasks((data ?? []) as CRMTask[]);
@@ -2212,7 +2216,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} emailPlaceholder={`you@${brand.fromEmail.split('@')[1]}`} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
-  const isAdmin = profile.role === 'admin';
+  // super_admin is a strict superset of admin — it must pass every admin gate, or the
+  // whole admin UI disappears for super-admin accounts.
+  const isAdmin = profile.role === 'admin' || profile.role === 'super_admin';
   const isMobile = windowWidth < 768;
   const isTabletOrMobile = windowWidth < 1024; // sidebar hides on tablet too
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');

@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { writeAuditLog } from '@/lib/audit';
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
-  const unit = req.nextUrl.searchParams.get('unit') ?? 'commercial';
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+
+  const requested = req.nextUrl.searchParams.get('unit') ?? 'commercial';
+  // Agents can only export their own workspace's contacts; admins may pick a unit.
+  const unit = isAdminRole(ctx.role) ? requested : (ctx.businessUnit ?? requested);
+
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_clients')
     .select('first_name,last_name,email,phone,type,business_unit,lead_source,tags,created_at,last_touched_at')
     .eq('business_unit', unit)
     .order('last_name');
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+
+  // Record every bulk PII export server-side, so it can't be skipped by the client.
+  await writeAuditLog({
+    actorId: ctx.userId,
+    action: 'export_contacts',
+    targetType: 'crm_clients',
+    metadata: { unit, count: data?.length ?? 0 },
+    req,
+  });
+
   const headers = ['First Name','Last Name','Email','Phone','Type','Business Unit','Lead Source','Tags','Created','Last Touched'];
   const rows = (data ?? []).map(c => [
     c.first_name ?? '', c.last_name ?? '', c.email ?? '', c.phone ?? '',
