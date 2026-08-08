@@ -36,6 +36,14 @@ export function Header({ variant = 'default' }: HeaderProps) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Lock body scroll when mobile menu is open
+  React.useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = ''; };
+    }
+  }, [isMenuOpen]);
+
   const isTransparent = variant === 'transparent' && !isScrolled;
 
   // Text shadow style for transparent header to ensure readability

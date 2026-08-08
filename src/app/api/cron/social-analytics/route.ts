@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { decryptToken } from '@/lib/token-crypto';
+import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -129,9 +129,33 @@ export async function GET(req: NextRequest) {
       }
 
       // ── YouTube ───────────────────────────────────────────────────────────
-      // Uses the stored OAuth access token — no separate API key needed
+      // YouTube access tokens expire in 1 hour — refresh before every use
       else if (conn.platform === 'youtube') {
-        const ytHeaders = { Authorization: `Bearer ${token}` };
+        let ytToken = token;
+        if (conn.refresh_token) {
+          const refreshToken = decryptToken(conn.refresh_token);
+          const refreshRes = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.GOOGLE_CLIENT_ID!,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+              refresh_token: refreshToken,
+              grant_type: 'refresh_token',
+            }),
+          });
+          const refreshData = await refreshRes.json();
+          if (refreshData.access_token) {
+            ytToken = refreshData.access_token;
+            // Persist the new access token
+            await supabase.from('social_connections').update({
+              access_token: encryptToken(ytToken),
+              expires_at: new Date(Date.now() + (refreshData.expires_in ?? 3600) * 1000).toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('id', conn.id);
+          }
+        }
+        const ytHeaders = { Authorization: `Bearer ${ytToken}` };
 
         const channelRes = await fetch(
           `https://www.googleapis.com/youtube/v3/channels?part=statistics&mine=true`,
@@ -195,12 +219,15 @@ export async function GET(req: NextRequest) {
       }
 
       // Persist to social_analytics
-      await supabase.from('social_analytics').upsert({
+      const { error: upsertErr } = await supabase.from('social_analytics').upsert({
         connection_id: conn.id,
+        org_id: conn.org_id,
         date: today,
         ...metrics,
-        updated_at: new Date().toISOString(),
       }, { onConflict: 'connection_id,date' });
+      if (upsertErr) {
+        console.error(`[social-analytics] upsert failed for ${conn.platform}:`, upsertErr.message);
+      }
 
       // Keep followers_count on the connection row in sync
       if (metrics.followers) {
@@ -240,12 +267,29 @@ async function syncPostEngagement(supabase: any, connections: any[]) {
 
   if (!posts?.length) return;
 
-  // Build a lookup: platform → connection (decrypted token)
+  // Build a lookup: platform → connection (decrypted token, refreshed if needed)
   const connByPlatform: Record<string, { token: string; page_id: string; ig_id: string }> = {};
   for (const conn of connections) {
     if (!connByPlatform[conn.platform]) {
+      let token = decryptToken(conn.access_token);
+      // YouTube tokens expire hourly — refresh before use
+      if (conn.platform === 'youtube' && conn.refresh_token) {
+        const refreshToken = decryptToken(conn.refresh_token);
+        const r = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: process.env.GOOGLE_CLIENT_ID!,
+            client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+            refresh_token: refreshToken,
+            grant_type: 'refresh_token',
+          }),
+        });
+        const d = await r.json();
+        if (d.access_token) token = d.access_token;
+      }
       connByPlatform[conn.platform] = {
-        token:   decryptToken(conn.access_token),
+        token,
         page_id: conn.page_id ?? '',
         ig_id:   conn.platform_account_id ?? '',
       };

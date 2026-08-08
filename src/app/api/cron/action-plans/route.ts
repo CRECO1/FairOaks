@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { getBrand, fromLine } from '@/lib/branding';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
-function applyMergeFields(template: string, businessUnit: string | undefined, ctx: {
+function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
 }): string {
-  const brand = getBrand(businessUnit);
-  const unsubscribeUrl = `${brand.unsubscribeBaseUrl}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
   return template
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -21,17 +20,22 @@ function applyMergeFields(template: string, businessUnit: string | undefined, ct
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || brand.phone)
-    .replaceAll('{{brokerage}}', brand.legalName)
+    .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
+    .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
 function fromAddress(businessUnit?: string) {
-  return fromLine(businessUnit);
+  return businessUnit === 'commercial'
+    ? 'CRECO <info@crecotx.com>'
+    : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
 
 function resendClient(businessUnit?: string) {
-  return new Resend(process.env[getBrand(businessUnit).resendKeyEnv]!);
+  const key = businessUnit === 'commercial'
+    ? process.env.RESEND_API_KEY_COMMERCIAL!
+    : process.env.RESEND_API_KEY!;
+  return new Resend(key);
 }
 
 function computeNextStepAt(delayDays: number): string {
@@ -103,13 +107,12 @@ export async function GET(req: NextRequest) {
     if (!plan || !client) continue;
     if (client.unsubscribed_at) continue; // skip unsubscribed
 
-    const planBrand = getBrand(plan.business_unit);
     const agentId = client.agent_id || enrollment.agent_id;
-    const agent = agentMap[agentId ?? ''] ?? { first_name: 'Your', last_name: 'Agent', email: planBrand.fromEmail, phone: planBrand.phone };
+    const agent = agentMap[agentId ?? ''] ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '210-390-9997' };
     // Override contact info for commercial plans
     if (plan.business_unit === 'commercial') {
-      agent.email = planBrand.fromEmail;
-      agent.phone = planBrand.phone;
+      agent.email = 'info@crecotx.com';
+      agent.phone = '210-817-3443';
     }
 
     // Fetch the current step to execute
@@ -153,8 +156,8 @@ export async function GET(req: NextRequest) {
           stepStatus = 'skipped';
           errorMessage = 'No email address';
         } else {
-          const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, plan.business_unit, ctx);
-          const body = applyMergeFields(step.body || '', plan.business_unit, ctx);
+          const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
+          const body = applyMergeFields(step.body || '', ctx);
           await resendClient(plan.business_unit).emails.send({
             from: fromAddress(plan.business_unit),
             to: client.email,
@@ -168,7 +171,7 @@ export async function GET(req: NextRequest) {
         errorMessage = 'SMS not yet configured';
       } else if (step.type === 'task' || step.type === 'note') {
         // Log to crm_activity for agent visibility
-        const activityBody = applyMergeFields(step.body || '', plan.business_unit, ctx);
+        const activityBody = applyMergeFields(step.body || '', ctx);
         await supabase.from('crm_activity').insert([{
           client_id: client.id,
           agent_id: agentId,

@@ -11,7 +11,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Allow user to update their own profile; admin can update any
   if (caller.id !== id) {
     const { data: callerProfile } = await adminClient().from('crm_profiles').select('role').eq('id', caller.id).single();
-    if (callerProfile?.role !== 'admin') return forbidden('Cannot update another agent\'s profile');
+    if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'super_admin') return forbidden('Cannot update another agent\'s profile');
   }
 
   const body = await req.json();

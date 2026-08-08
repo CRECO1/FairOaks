@@ -29,4 +29,10 @@ media/
 
 # Claude local files
 .claude/
-.env*
+tsconfig.tsbuildinfo
+forms_src/
+
+# Local env backups / exports (these are NOT covered by .env*.local)
+.env.from-vercel
+.env.local.bak
+.env.*.bak

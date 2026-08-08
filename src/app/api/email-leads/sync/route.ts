@@ -183,14 +183,17 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
 }
 
 // ── Lead source config ──────────────────────────────────────────────────────
-const LEAD_SOURCES: { domain: string; source: string; business_unit: string }[] = [
-  { domain: 'loopnet.com',   source: 'LoopNet',     business_unit: 'commercial'   },
-  { domain: 'crexi.com',     source: 'Crexi',       business_unit: 'commercial'   },
-  { domain: 'costar.com',    source: 'CoStar',      business_unit: 'commercial'   },
-  { domain: '42floors.com',  source: '42Floors',    business_unit: 'commercial'   },
-  { domain: 'zillow.com',    source: 'Zillow',      business_unit: 'residential'  },
-  { domain: 'realtor.com',   source: 'Realtor.com', business_unit: 'residential'  },
-  { domain: 'move.com',      source: 'Realtor.com', business_unit: 'residential'  },
+const LEAD_SOURCES: { domain: string; source: string; business_unit: string; ownWebsite?: boolean }[] = [
+  { domain: 'loopnet.com',              source: 'LoopNet',     business_unit: 'commercial'   },
+  { domain: 'crexi.com',                source: 'Crexi',       business_unit: 'commercial'   },
+  { domain: 'costar.com',               source: 'CoStar',      business_unit: 'commercial'   },
+  { domain: '42floors.com',             source: '42Floors',    business_unit: 'commercial'   },
+  { domain: 'zillow.com',               source: 'Zillow',      business_unit: 'residential'  },
+  { domain: 'realtor.com',              source: 'Realtor.com', business_unit: 'residential'  },
+  { domain: 'move.com',                 source: 'Realtor.com', business_unit: 'residential'  },
+  // Own website contact forms — sender is noreply@crecotx.com / noreply@fairoaksrealtygroup.com
+  { domain: 'crecotx.com',             source: 'Website',     business_unit: 'commercial',  ownWebsite: true },
+  { domain: 'fairoaksrealtygroup.com',  source: 'Website',     business_unit: 'residential', ownWebsite: true },
 ];
 
 function detectSource(from: string): typeof LEAD_SOURCES[0] | null {
@@ -232,12 +235,15 @@ const NON_LEAD_PATTERNS = [
 // Our own internal domains — parsed lead emails from these should be skipped
 const INTERNAL_DOMAINS = ['crecotx.com', 'fairoaksrealtygroup.com'];
 
-function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string, parsedEmail?: string): boolean {
+function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string, parsedEmail?: string, ownWebsite?: boolean): boolean {
   // Reject known non-lead patterns in subject
   if (NON_LEAD_PATTERNS.some(re => re.test(subject))) return false;
-  // Reject if the sender email is the platform's own domain (including subdomains like email.crexi.com)
-  const senderDomain = (fromAddress.match(/@([\w.\-]+)/) ?? [])[1]?.toLowerCase() ?? '';
-  if (senderDomain === sourceDomain || senderDomain.endsWith(`.${sourceDomain}`)) return false;
+  // Own website contact form emails: sender IS our domain — that's expected, don't reject them.
+  // Only apply the sender-domain filter for third-party platforms.
+  if (!ownWebsite) {
+    const senderDomain = (fromAddress.match(/@([\w.\-]+)/) ?? [])[1]?.toLowerCase() ?? '';
+    if (senderDomain === sourceDomain || senderDomain.endsWith(`.${sourceDomain}`)) return false;
+  }
   // Reject if the parsed prospect email is from one of our own internal domains
   if (parsedEmail) {
     const parsedDomain = (parsedEmail.match(/@([\w.\-]+)/) ?? [])[1]?.toLowerCase() ?? '';
@@ -516,7 +522,7 @@ export async function POST(req: import('next/server').NextRequest) {
         const fromAddress = (from.match(/<([^>]+)>/) ?? [, from])[1] ?? from;
         // Parse lead first so we can pass the extracted email to isLeadEmail
         const parsed = parseLeadEmail(subject, decodeBody(msg), from);
-        if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email)) continue;
+        if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email, source.ownWebsite)) continue;
 
         // Determine business_unit: source domain takes priority over agent profile
         const business_unit = source.business_unit;

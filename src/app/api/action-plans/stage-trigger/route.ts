@@ -2,18 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { getCrmUser } from '@/lib/crm-auth';
-import { getBrand, fromLine } from '@/lib/branding';
 
 const db = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
 
 function resendClient(bu: string) {
-  return new Resend(process.env[getBrand(bu).resendKeyEnv]!);
+  return new Resend(bu === 'commercial' ? process.env.RESEND_API_KEY_COMMERCIAL! : process.env.RESEND_API_KEY!);
 }
 function fromAddress(bu: string) {
-  return fromLine(bu);
+  return bu === 'commercial' ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
-function applyMergeFields(t: string, bu: string, ctx: any): string {
-  const brand = getBrand(bu);
+function applyMergeFields(t: string, ctx: any): string {
+  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
   return t
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -21,9 +20,9 @@ function applyMergeFields(t: string, bu: string, ctx: any): string {
     .replaceAll('{{email}}', ctx.client.email || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || brand.phone)
-    .replaceAll('{{brokerage}}', ctx.agent.brokerage || brand.legalName)
-    .replaceAll('{{unsubscribe_url}}', `${brand.unsubscribeBaseUrl}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token || ''}`);
+    .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
+    .replaceAll('{{brokerage}}', ctx.agent.brokerage || 'CRECO Commercial Real Estate Company')
+    .replaceAll('{{unsubscribe_url}}', `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token || ''}`);
 }
 
 // POST /api/action-plans/stage-trigger
@@ -58,13 +57,12 @@ export async function POST(req: NextRequest) {
     if (!client || client.unsubscribed_at || !client.email) return NextResponse.json({ enrolled: 0 });
 
     const bu = businessUnit ?? 'commercial';
-    const buBrand = getBrand(bu);
-    const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: buBrand.fromEmail, phone: buBrand.phone };
-    if (bu === 'commercial') { agentCtx.email = buBrand.fromEmail; agentCtx.phone = buBrand.phone; }
+    const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@crecotx.com', phone: '210-817-3443' };
+    if (bu === 'commercial') { agentCtx.email = 'info@crecotx.com'; agentCtx.phone = '210-817-3443'; }
 
     const ctx = {
       client: { first_name: client.first_name, last_name: client.last_name, email: client.email, type: client.type, unsubscribe_token: client.unsubscribe_token ?? '' },
-      agent:  { first_name: agentCtx.first_name, last_name: agentCtx.last_name, email: agentCtx.email, phone: agentCtx.phone, brokerage: buBrand.legalName },
+      agent:  { first_name: agentCtx.first_name, last_name: agentCtx.last_name, email: agentCtx.email, phone: agentCtx.phone, brokerage: bu === 'commercial' ? 'CRECO Commercial Real Estate Company' : 'Fair Oaks Realty Group' },
     };
 
     let enrolled = 0;
@@ -84,8 +82,8 @@ export async function POST(req: NextRequest) {
       if (!step) continue;
 
       if (step.type === 'email') {
-        const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, bu, ctx);
-        const body = applyMergeFields(step.body || '', bu, ctx);
+        const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx);
+        const body = applyMergeFields(step.body || '', ctx);
         await resendClient(bu).emails.send({ from: fromAddress(bu), to: client.email, subject, html: body }).catch(() => {});
       }
 

@@ -10,8 +10,6 @@ export const Listings: CollectionConfig = {
   access: {
     read:   () => true,                                   // public — listings are shown on the site
     create: ({ req }) => req.user?.role === 'admin',
-    // NOTE: intentionally left broad — any authenticated user (agents) can update listings.
-    // Left pending an owner/admin decision on whether to scope this to record owner or admin only.
     update: ({ req }) => !!req.user,                      // any authenticated user can update (agents)
     delete: ({ req }) => req.user?.role === 'admin',
   },

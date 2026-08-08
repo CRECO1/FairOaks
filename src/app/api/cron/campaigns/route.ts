@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { getBrand, fromLine } from '@/lib/branding';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -13,9 +12,9 @@ function applyMergeFields(template: string, ctx: {
   agent: { first_name: string; last_name: string; email: string; phone?: string };
   brokerage: string;
   defaultPhone: string;
-  unsubscribeBaseUrl: string;
 }): string {
-  const unsubscribeUrl = `${ctx.unsubscribeBaseUrl}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
   return template
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -49,7 +48,7 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = adminClient();
-  const resend = new Resend(process.env.RESEND_API_KEY!);
+  // Resend client is picked per-enrollment based on business unit (see below)
 
   // Get all due active enrollments (limit 50 per run to stay within Vercel timeout)
   // next_send_at is set to the exact send datetime (CT converted to UTC) at enrollment time,
@@ -59,7 +58,7 @@ export async function GET(req: NextRequest) {
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit, org_id),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -95,11 +94,20 @@ export async function GET(req: NextRequest) {
     const senderAgent = campaign.sender_agent_id
       ? agentMap[campaign.sender_agent_id]
       : agentMap[client.agent_id];
-    const campaignBrand = getBrand(campaign.business_unit);
-    const fallbackAgentEmail = campaignBrand.fromEmail;
-    const fallbackAgentPhone = campaignBrand.phone;
-    const agent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
-    const brokerageName = campaignBrand.legalName;
+    const isCommercialCampaign = campaign.business_unit === 'commercial';
+    const resend = new Resend(((isCommercialCampaign ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) ?? '').replace(/[\r\n\s]+$/, ''));
+    // Per-workspace sender identity: CRECO campaigns send as zack@crecotx.com,
+    // Fair Oaks campaigns as info@fairoaksrealtygroup.com.
+    const fallbackAgentEmail = isCommercialCampaign ? 'zack@crecotx.com' : 'info@fairoaksrealtygroup.com';
+    const fallbackAgentPhone = isCommercialCampaign ? '210-817-3443' : '210-390-9997';
+    const rawAgent = senderAgent ?? { first_name: 'Your', last_name: 'Agent', email: fallbackAgentEmail, phone: fallbackAgentPhone };
+    // Never let an agent whose profile email is on the other brand's domain leak across
+    // workspaces (e.g. a Fair Oaks address on a CRECO send). Keep it on-domain, else fall back.
+    const agentEmailForUnit = (rawAgent.email && rawAgent.email.endsWith(isCommercialCampaign ? '@crecotx.com' : '@fairoaksrealtygroup.com'))
+      ? rawAgent.email
+      : fallbackAgentEmail;
+    const agent = { ...rawAgent, email: agentEmailForUnit };
+    const brokerageName = isCommercialCampaign ? 'CRECO' : 'Fair Oaks Realty Group';
 
     const ctx = {
       client: {
@@ -117,7 +125,6 @@ export async function GET(req: NextRequest) {
       },
       brokerage: brokerageName,
       defaultPhone: fallbackAgentPhone,
-      unsubscribeBaseUrl: campaignBrand.unsubscribeBaseUrl,
     };
 
     // Generate a unique tracking ID for this send
@@ -147,21 +154,26 @@ export async function GET(req: NextRequest) {
             ? renderedBody.replace('</body>', `${pixel}</body>`)
             : renderedBody + pixel;
 
-          // Brand based on business unit (sourced from the shared branding module)
-          const fallbackEmail = campaignBrand.fromEmail;
-
-          // Use sender agent's email as reply-to if they have one
-          const replyTo = agent.email && agent.email !== fallbackEmail
+          // Brand based on business unit
+          const isCommercial = campaign.business_unit === 'commercial';
+          const brandName = isCommercial ? 'CRECO' : 'Fair Oaks Realty Group';
+          const brandDomain = isCommercial ? 'crecotx.com' : 'fairoaksrealtygroup.com';
+          // reply_to uses the workspace-correct sender email resolved above (agent.email),
+          // so tenant replies land in the right inbox and never bounce from noreply@.
+          const replyTo = senderAgent
             ? `${agent.first_name} ${agent.last_name} <${agent.email}>`
-            : undefined;
+            : `${brandName} <${agent.email}>`;
 
           const emailResult = await resend.emails.send({
-            from: fromLine(campaign.business_unit),
+            from: `${brandName} <noreply@${brandDomain}>`,
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,
-            ...(replyTo ? { reply_to: replyTo } : {}),
+            replyTo: replyTo,
           });
+          if (emailResult.error) {
+            throw new Error(`Resend: ${emailResult.error.message ?? JSON.stringify(emailResult.error)}`);
+          }
           providerId = emailResult.data?.id ?? null;
         }
       } else if (campaign.type === 'sms') {
@@ -195,6 +207,7 @@ export async function GET(req: NextRequest) {
       subject: subjectRendered || null,
       body_preview: bodyPreview || null,
       tracking_id: trackingId,
+      org_id: campaign.org_id,
     }]);
 
     // Stamp last_touched_at on the client so the contact shows as recently touched

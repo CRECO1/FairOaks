@@ -68,7 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const supabase = adminClient();
   // Get campaign details including send_date and send_time for one-time campaigns
-  const { data: campaign } = await supabase.from('crm_campaigns').select('frequency, status, send_date, send_time').eq('id', id).single();
+  const { data: campaign } = await supabase.from('crm_campaigns').select('frequency, status, send_date, send_time, org_id').eq('id', id).single();
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
 
   const next_send_at = campaign.status === 'active'
@@ -81,6 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     enrolled_by: enrolled_by ?? null,
     next_send_at,
     active: true,
+    org_id: campaign.org_id,
   }));
 
   const { data, error } = await supabase

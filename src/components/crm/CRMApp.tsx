@@ -6,14 +6,23 @@ import { Session } from '@supabase/supabase-js';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import SocialMediaSection from '@/components/crm/SocialMediaSection';
-import { getBrand, type BusinessUnit } from '@/lib/branding';
+import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
+import PropertyDBSection from '@/components/crm/PropertyDBSection';
+import TransactionDocsSection from '@/components/crm/TransactionDocsSection';
+import dynamic from 'next/dynamic';
+
+const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
+import ListingsSection from '@/components/crm/ListingsSection';
+import TasksSection from '@/components/crm/TasksSection';
+import ActivitySection from '@/components/crm/ActivitySection';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
 const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Role = 'super_admin' | 'admin' | 'agent';
+type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
@@ -22,18 +31,28 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
-interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
+interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
 const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
+
+// Curated form packets by use-case. `match` = deal types the packet is suggested
+// for. `forms` = crm_forms.name (exact). Starting a packet attaches a blank,
+// pre-linked submission for each form so the agent just fills them.
+const FORM_PACKETS: { key: string; label: string; match: string[]; forms: string[] }[] = [
+  { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: ['Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
+  { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: ['Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
+  { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: ['Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
+  { key: 'sublease', label: 'Sublease packet', match: ['Tenant Lease'], forms: ['Commercial Sublease', 'Commercial Lease Guaranty'] },
+];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
 const ASSET_TYPES = ['Home', 'Condo', 'Multi-Family', 'Land', 'Industrial', 'Flex/Warehouse', 'Retail', 'Office', 'Storage'] as const;
@@ -68,6 +87,17 @@ const STAGE_CLS: Record<string, string> = {
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
+function fmtPhone(v: string): string {
+  const digits = v.replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0,3)}-${digits.slice(3)}`;
+  return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+}
+
+function titleCase(v: string): string {
+  return v.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
+}
+
 function emailDisplayName(addr: string): string {
   const m = addr.match(/^"?(.+?)"?\s*<[^>]+>/);
   return m ? m[1].trim() : addr.split('@')[0];
@@ -82,16 +112,52 @@ function emailAvatarColor(addr: string): string {
   return colors[Math.abs(h) % colors.length];
 }
 
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&hellip;/gi, '…')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+}
+
+// Patterns that mark the start of boilerplate we want to cut off
+const CUTOFF_PATTERNS = [
+  /CONFIDENTIALITY NOTICE/i,
+  /CONFIDENTIALITY AND DISCLAIMER/i,
+  /This e-?mail( message)? (is intended|may contain)/i,
+  /This message (is intended|may contain)/i,
+  /Texas Real Estate Commission Information About Brokerage/i,
+  /Information About Brokerage Services/i,
+  /^On .{5,200} wrote:/,
+  /^[-_]{3,}/,
+];
+
 function cleanEmailBody(raw: string): string {
-  const lines = raw.split('\n');
+  // If HTML email, convert to plain text first
+  let text = /<[a-z][\s\S]*>/i.test(raw) ? htmlToPlainText(raw) : raw;
+
+  // Inline cut — truncate at any boilerplate marker even if it's mid-paragraph
+  for (const pat of CUTOFF_PATTERNS) {
+    const m = pat.exec(text);
+    if (m && m.index !== undefined) text = text.slice(0, m.index);
+  }
+
+  const lines = text.split('\n');
   const result: string[] = [];
   for (const line of lines) {
     const t = line.trim();
     if (t.startsWith('>')) continue;
-    if (/^On .{5,120} wrote:$/.test(t)) break;
-    if (/^[-_]{3,}/.test(t)) break;
-    if (/^CONFIDENTIALITY NOTICE/i.test(t)) break;
-    if (/^This (e-?mail|message) (message |communication )?(is intended|may contain)/i.test(t)) break;
     if (/^(Thanks,?|Thank you,?|Best,?|Regards,?|Sincerely,?|Cheers,?)$/i.test(t)) { result.push(line); break; }
     result.push(line);
   }
@@ -248,11 +314,9 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                     {deal.value > 0 && (
                       <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>
                     )}
-                    {deal.value > 0 && (() => {
-                      const gci = deal.value * 0.03;
-                      const gciStr = gci >= 1000000 ? `$${(gci/1000000).toFixed(2)}M` : gci >= 1000 ? `$${Math.round(gci/1000)}k` : `$${Math.round(gci)}`;
-                      return <span style={{ fontSize: 11, color: '#c9922c', fontWeight: 700 }}>{gciStr} GCI</span>;
-                    })()}
+                    {deal.earned_commission != null && deal.earned_commission > 0 && (
+                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
+                    )}
                   </div>
                   {isAdmin && (
                     <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>👤 {agentName(deal.agent_id)}</div>
@@ -279,7 +343,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
 }
 
 // ── Login Screen ──────────────────────────────────────────────────────────────
-function LoginScreen({ onLogin, brandName, emailPlaceholder }: { onLogin: (s: Session) => void; brandName: string; emailPlaceholder: string }) {
+function LoginScreen({ onLogin, brandName }: { onLogin: (s: Session) => void; brandName: string }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -328,7 +392,7 @@ function LoginScreen({ onLogin, brandName, emailPlaceholder }: { onLogin: (s: Se
         {error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: '8px 12px', borderRadius: 6, fontSize: 14, marginBottom: 14 }}>{error}</div>}
         <form onSubmit={handleLogin}>
           <label style={labelStyle}>Email</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={emailPlaceholder} required style={inputStyle} />
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@fairoaksrealtygroup.com" required style={inputStyle} />
           <label style={labelStyle}>Password</label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required style={{ ...inputStyle, marginBottom: 20 }} />
           <button type="submit" disabled={loading}
@@ -342,17 +406,22 @@ function LoginScreen({ onLogin, brandName, emailPlaceholder }: { onLogin: (s: Se
 }
 
 // ── Main CRM ──────────────────────────────────────────────────────────────────
-// BusinessUnit type and BRANDING map now live in '@/lib/branding' (shared with API routes).
+type BusinessUnit = 'residential' | 'commercial';
+
+const BRANDING: Record<BusinessUnit, { name: string; shortName: string; tagline: string }> = {
+  residential: { name: 'Fair Oaks Realty Group', shortName: 'Fair Oaks', tagline: 'Residential CRM' },
+  commercial:  { name: 'CRECO',                  shortName: 'CRECO',      tagline: 'Commercial CRM'  },
+};
 
 export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit }) {
-  const brand = getBrand(businessUnit);
+  const brand = BRANDING[businessUnit];
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'today-calls', 'commissions', 'social'] as const;
+  const VALID_PAGES = ['dashboard', 'prospects', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'activity'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -368,6 +437,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showContactCompose, setShowContactCompose] = useState(false);
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
+  const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
+  const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null }[]>([]);
+  const [dealFormPicker, setDealFormPicker] = useState(false);
+  const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
@@ -401,13 +474,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [saving, setSaving] = useState(false);
   // Tasks
   const [allTasks, setAllTasks] = useState<CRMTask[]>([]);
+  const [clientCardTasks, setClientCardTasks] = useState<Task[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskClientId, setTaskClientId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
-  // Today's Calls work-queue
+  // Today's Calls work-queue (now a sub-tab inside the Tasks page)
   const [callSkippedIds, setCallSkippedIds] = useState<Set<string>>(new Set());
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
+  const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls'>('tasks');
 
   // Kanban drag state
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
@@ -428,6 +503,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [expandedContactThreads, setExpandedContactThreads] = useState<Set<string>>(new Set());
+  const [replyingToThreadKey, setReplyingToThreadKey] = useState<string | null>(null);
   const [composeAttachments, setComposeAttachments] = useState<File[]>([]);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const contactAttachInputRef = useRef<HTMLInputElement>(null);
@@ -473,8 +549,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
+  // Campaign quick preview modal
+  const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(null);
+  // View sent campaign email modal (from contact activity feed)
+  const [viewCampaignSendModal, setViewCampaignSendModal] = useState<{ send: CampaignSend & { campaign_name?: string }; contact: Client } | null>(null);
+  // Campaign projects (folders)
+  const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [showAddProject, setShowAddProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [newProjectColor, setNewProjectColor] = useState('#c9922c');
+  const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string; color: string } | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<{ year: number; month: number }>(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
-  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string; project_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
   const [enrollTypeFilter, setEnrollTypeFilter] = useState('');
@@ -493,6 +581,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showSaveList, setShowSaveList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [tagInput, setTagInput] = useState(''); // for tag input in add/edit forms
+  const [tagFocused, setTagFocused] = useState(false); // controls suggestion dropdown visibility
+  const [mentionedIds, setMentionedIds] = useState<string[]>([]); // profile IDs mentioned in current note
+  const [mentions, setMentions] = useState<any[]>([]); // crm_notifications for current user
+  const [mentionsLoaded, setMentionsLoaded] = useState(false);
+  const [linkedNoteIds, setLinkedNoteIds] = useState<Set<string>>(new Set()); // other contact IDs to receive same note
+  const [dealNotesText, setDealNotesText] = useState(''); // controlled value for active deal notes
 
   // Follow-Up Report
   const [followUpDays, setFollowUpDays] = useState(30);
@@ -534,6 +628,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Notification center
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // Mobile full menu sheet
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Email preview
   const [showEmailPreview, setShowEmailPreview] = useState(false);
@@ -590,6 +687,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // Task Manager (full Tasks page)
+  const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan'>('propertydb');
+  const [propertyDbCount, setPropertyDbCount] = useState<number | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'in_progress' | 'done'>('open');
@@ -604,6 +703,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showBulkEnrollModal, setShowBulkEnrollModal] = useState(false);
   const [bulkEnrollCampaignId, setBulkEnrollCampaignId] = useState('');
   const [bulkEnrolling, setBulkEnrolling] = useState(false);
+
+  // Bulk tag contacts
+  const [showBulkTag, setShowBulkTag] = useState(false);
+  const [bulkTagValue, setBulkTagValue] = useState('');
+
+  // Contacts pagination
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [contactsPage, setContactsPage] = useState(0);
+  const CONTACTS_PAGE_SIZE = 100;
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
@@ -631,13 +739,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadClientActivities(activeClient.id);
       loadClientCampaignSends(activeClient.id);
       loadContactEmails(activeClient.id);
+      loadClientTasks(activeClient.id);
       setNewActivity({ type: 'call', note: '' });
       setShowContactCompose(false);
       setReplyToContactEmail(null);
+      setReplyingToThreadKey(null);
     } else {
       setClientActivities([]);
       setClientCampaignSends([]);
       setContactEmails([]);
+      setClientCardTasks([]);
     }
   }, [activeClient?.id]); // eslint-disable-line
 
@@ -660,11 +771,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); setShowNotifications(false); }
       // Quick nav shortcuts — only when no input/modal is focused
       const tag = (document.activeElement as HTMLElement)?.tagName;
-      if (!e.metaKey && !e.ctrlKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+      const isEditable = (document.activeElement as HTMLElement)?.isContentEditable;
+      if (!e.metaKey && !e.ctrlKey && !e.altKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !isEditable) {
         if (e.key === '/') { e.preventDefault(); setShowSearch(true); setSearchQuery(''); }
-        const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : '';
-        if (e.key === 'n' && hash === 'contacts') { e.preventDefault(); setShowAddClient(true); }
-        if (e.key === 'c' && hash === 'deals') { e.preventDefault(); setShowAddDeal(true); }
       }
     }
     window.addEventListener('keydown', handleKey);
@@ -715,14 +824,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!session) return;
     loadProfile();
     // Check Gmail connection status
-    fetch(`/api/gmail/status?userId=${session.user.id}`)
+    const authHeader = { 'Authorization': `Bearer ${session.access_token}` };
+    fetch(`/api/gmail/status?userId=${session.user.id}`, { headers: authHeader })
       .then(r => r.json())
       .then(d => {
         if (d.connected) {
           setGmailConnected(true);
           setGmailAccounts(d.accounts ?? []);
           // Fetch & save Gmail signature in the background
-          fetch(`/api/gmail/signature?userId=${session.user.id}`)
+          fetch(`/api/gmail/signature?userId=${session.user.id}`, { headers: authHeader })
             .then(r => r.json())
             .then(s => {
               if (s.signature !== undefined) {
@@ -736,7 +846,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const params = new URLSearchParams(window.location.search);
     if (params.get('gmail') === 'connected') {
       const connectedAccount = params.get('account');
-      fetch(`/api/gmail/status?userId=${session.user.id}`)
+      fetch(`/api/gmail/status?userId=${session.user.id}`, { headers: authHeader })
         .then(r => r.json())
         .then(d => {
           if (d.connected) {
@@ -750,7 +860,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           }
         });
       // Fetch signature after fresh OAuth connect
-      fetch(`/api/gmail/signature?userId=${session.user.id}`)
+      fetch(`/api/gmail/signature?userId=${session.user.id}`, { headers: authHeader })
         .then(r => r.json())
         .then(s => { if (s.signature !== undefined) setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); })
         .catch(() => {});
@@ -785,7 +895,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const updated = { ...data, last_sign_in_at: authLastSignIn } as Profile;
 
       // Access control: non-admins are locked to their assigned business_unit
-      if (updated.role !== 'admin' && updated.business_unit && updated.business_unit !== businessUnit) {
+      // (super_admin is a superset of admin, so it must never be locked out of a unit)
+      if (updated.role !== 'admin' && updated.role !== 'super_admin' && updated.business_unit && updated.business_unit !== businessUnit) {
         router.replace(`/crm/${updated.business_unit}`);
         return;
       }
@@ -797,6 +908,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
+      loadCampaignProjects();
       setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
@@ -819,6 +931,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadSmartLists();
       loadActionPlans();
       loadCampaigns();
+      loadCampaignProjects();
       setTimeout(() => { loadAllTasks(newProfile); loadAllCommissions(); }, 500);
     }
     setLoading(false);
@@ -826,7 +939,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const loadDeals = useCallback(async (p: Profile) => {
     let q = supabase.from('crm_deals').select('*').eq('business_unit', businessUnit).order('last_touch', { ascending: false });
-    if (p.role === 'agent') q = q.eq('agent_id', p.id);
+    if (p.role === 'agent') q = q.or(`agent_id.eq.${p.id},assigned_agent_ids.cs.{${p.id}}`);
     const { data } = await q;
     const loaded = (data ?? []) as Deal[];
     setDeals(loaded);
@@ -862,7 +975,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadContactEmails = useCallback(async (clientId: string) => {
     setContactEmailsLoading(true);
     const { data } = await supabase.from('crm_deal_emails').select('*').eq('client_id', clientId).order('email_date', { ascending: false });
-    setContactEmails((data ?? []) as DealEmail[]);
+    const emails = (data ?? []) as DealEmail[];
+    setContactEmails(emails);
+    // Auto-expand the most recent thread
+    if (emails.length > 0) {
+      const mostRecent = emails[0];
+      const firstThreadKey = mostRecent.gmail_thread_id ?? `solo_${mostRecent.id}`;
+      setExpandedContactThreads(new Set([firstThreadKey]));
+    } else {
+      setExpandedContactThreads(new Set());
+    }
     setContactEmailsLoading(false);
   }, []);
 
@@ -872,7 +994,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDealDocs((json.docs ?? []) as DealDoc[]);
   }, []);
 
-  const loadDealCommission = useCallback(async (dealId: string) => {
+  const authGet = useCallback(
+    (path: string) => fetch(path, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} }),
+    [session?.access_token],
+  );
+  const loadDealForms = useCallback(async (dealId: string) => {
+    try { const r = await authGet(`/api/crm/form-submissions?deal_id=${dealId}`); const j = await r.json(); setDealForms(j.submissions ?? []); } catch { /* ignore */ }
+  }, [authGet]);
+  const loadCrmForms = useCallback(async () => {
+    try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); setCrmForms(j.forms ?? []); } catch { /* ignore */ }
+  }, [authGet, businessUnit]);
+  const openFormEditor = useCallback(async (form: { id: string; name: string; url?: string | null }, submissionId?: string) => {
+    let url = form.url ?? null;
+    if (!url) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
+    if (!url) { showToast('Could not open the form'); return; }
+    setDealFormPicker(false);
+    setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
+  }, [authGet]); // eslint-disable-line
+  const startPacket = useCallback(async (pkt: typeof FORM_PACKETS[number]) => {
+    if (!activeDeal) return;
+    showToast(`Attaching ${pkt.label}…`);
+    let forms = crmForms;
+    if (!forms.length) {
+      try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); forms = j.forms ?? []; setCrmForms(forms); } catch { /* ignore */ }
+    }
+    const byName = new Map(forms.map(f => [f.name, f]));
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
+    let n = 0;
+    for (const name of pkt.forms) {
+      const form = byName.get(name);
+      if (!form) continue;
+      const res = await fetch('/api/crm/form-submissions', { method: 'POST', headers: h, body: JSON.stringify({ form_id: form.id, deal_id: activeDeal.id, business_unit: businessUnit, title: form.name, values: [] }) });
+      if (res.ok) n++;
+    }
+    await loadDealForms(activeDeal.id);
+    showToast(n ? `✓ Attached ${n} form${n === 1 ? '' : 's'} to the deal` : 'Could not attach the packet');
+  }, [activeDeal, crmForms, session?.access_token, businessUnit, loadDealForms, authGet]); // eslint-disable-line
+
+  const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
     try {
       const res = await fetch(`/api/crm/commissions?business_unit=${businessUnit}&deal_id=${dealId}`, {
@@ -894,6 +1054,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           paid_date: c.paid_date ?? '',
           notes: c.notes ?? '',
         });
+      } else {
+        // No commission yet — pre-fill sale price from deal's Billable Value
+        setCommissionForm(prev => ({
+          ...prev,
+          sale_price: billableValue != null && billableValue > 0 ? String(billableValue) : '',
+        }));
       }
     } catch { /* ignore */ }
     finally { setCommissionLoading(false); }
@@ -963,17 +1129,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     else showToast('Delete failed');
   }
 
-  const loadClients = useCallback(async (p?: Profile) => {
+  // Loads ALL contacts for the current business unit. The API caps each request at a
+  // fixed number of rows (per-role max-rows), so we page through in BATCH-sized chunks
+  // and accumulate until the full set is loaded. Enrollment pickers and smart-list
+  // segments rely on `clients` holding every contact — not just the first page — so
+  // this always returns the complete list. The `_page` arg is retained for call-site
+  // compatibility (e.g. the legacy "Load more" button) but no longer limits results.
+  const loadClients = useCallback(async (p?: Profile, _page = 0) => {
     const prof = p ?? profile;
     if (!prof) return;
-    const { data, error } = await supabase
-      .from('crm_clients')
-      .select('*')
-      .eq('business_unit', businessUnit)
-      .order('created_at', { ascending: false });
-    if (error) { console.error('loadClients error:', error.message); return; }
-    setClients((data ?? []) as Client[]);
-  }, [profile, businessUnit]);
+    const BATCH = 1000;
+    let from = 0;
+    let all: Client[] = [];
+    let total = 0;
+    for (;;) {
+      const { data, count, error } = await supabase
+        .from('crm_clients')
+        .select('*', { count: 'exact' })
+        .eq('business_unit', businessUnit)
+        .order('created_at', { ascending: false })
+        .range(from, from + BATCH - 1);
+      if (error) { console.error('loadClients error:', error.message); return; }
+      all = all.concat((data ?? []) as Client[]);
+      total = count ?? all.length;
+      if (!data || data.length < BATCH || all.length >= total) break;
+      from += BATCH;
+    }
+    setClients(all);
+    setContactsTotal(total);
+    setContactsPage(0);
+  }, [profile, businessUnit]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const loadCalendarEvents = useCallback(async (days = 30) => {
@@ -987,6 +1172,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     } catch { setCalendarEvents([]); }
     setCalendarLoading(false);
   }, [session, gmailConnected]);
+
+  // Auto-load calendar events when Gmail becomes connected while on the calendar page
+  // (covers direct URL navigation to #calendar before the async status check returns)
+  useEffect(() => {
+    if (gmailConnected && page === 'calendar' && calendarEvents.length === 0 && !calendarLoading) {
+      loadCalendarEvents(90);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmailConnected, page]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -1022,6 +1216,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }]);
     if (error) { showToast('Error: ' + error.message); } else {
       showToast(`${nc.first_name} ${nc.last_name} added`);
+      if (mentionedIds.length) {
+        // We don't have the new client's ID from this insert, so use a generic message
+        await createMentionNotifications(mentionedIds, `@${profile?.first_name} mentioned you in notes for ${nc.first_name} ${nc.last_name}`, 'contact');
+        setMentionedIds([]);
+      }
       setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null, birthday: '' });
       setShowAddClient(false);
       loadClients(profile!);
@@ -1030,7 +1229,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteClient(id: string, name: string) {
-    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
+    if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     if (!confirm(`Remove ${name}? This cannot be undone.`)) return;
     await supabase.from('crm_clients').delete().eq('id', id);
     setClients(prev => prev.filter(c => c.id !== id));
@@ -1038,7 +1237,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function massDeleteClients() {
-    if (!isAdmin) { showToast('Only admins can delete contacts.'); return; }
+    if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     const count = selectedClientIds.size;
     if (count === 0) return;
     if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
@@ -1076,6 +1275,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       birthday: c.birthday ?? '',
     });
     setEditClient(c);
+    setLinkedNoteIds(new Set());
+    setMentionedIds([]);
     setActiveClient(null); // close profile modal when opening edit
   }
 
@@ -1112,7 +1313,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (error) {
       showToast('Error: ' + error.message);
     } else {
-      showToast(`${ec.first_name} ${ec.last_name} updated`);
+      const linkedCount = linkedNoteIds.size;
+      // Propagate notes to linked contacts (same company)
+      if (linkedCount > 0 && ec.notes) {
+        const linkedArr = [...linkedNoteIds];
+        await supabase.from('crm_clients').update({ notes: ec.notes }).in('id', linkedArr);
+        setClients(prev => prev.map(c => linkedArr.includes(c.id) ? { ...c, notes: ec.notes } : c));
+        setLinkedNoteIds(new Set());
+      }
+      if (mentionedIds.length) {
+        await createMentionNotifications(mentionedIds, `@${profile?.first_name} mentioned you in notes for ${ec.first_name} ${ec.last_name}`, 'contact', editClient.id);
+        setMentionedIds([]);
+      }
+      showToast(`${ec.first_name} ${ec.last_name} updated${linkedCount > 0 ? ` · notes synced to ${linkedCount} contact${linkedCount !== 1 ? 's' : ''}` : ''}`);
       setClients(prev => prev.map(c => c.id === editClient.id ? { ...c, ...ec } : c));
       setEditClient(null);
     }
@@ -1186,6 +1399,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     else showToast('Error enrolling contacts');
   }
 
+  async function bulkTagContacts(mode: 'add' | 'remove') {
+    const tag = bulkTagValue.trim().toLowerCase();
+    if (!tag || selectedClientIds.size === 0) return;
+    const toUpdate = clients.filter(c => selectedClientIds.has(c.id));
+    // Update each contact's tags array
+    for (const c of toUpdate) {
+      const current = c.tags ?? [];
+      const updated = mode === 'add'
+        ? [...new Set([...current, tag])]
+        : current.filter(t => t !== tag);
+      await supabase.from('crm_clients').update({ tags: updated }).eq('id', c.id);
+    }
+    // Reflect in local state immediately
+    setClients(prev => prev.map(c => {
+      if (!selectedClientIds.has(c.id)) return c;
+      const current = c.tags ?? [];
+      const updated = mode === 'add'
+        ? [...new Set([...current, tag])]
+        : current.filter(t => t !== tag);
+      return { ...c, tags: updated };
+    }));
+    showToast(`Tag "${tag}" ${mode === 'add' ? 'added to' : 'removed from'} ${toUpdate.length} contact${toUpdate.length !== 1 ? 's' : ''}`);
+    setShowBulkTag(false);
+    setBulkTagValue('');
+  }
+
   // ── Task Management ───────────────────────────────────────────────────────────
   // Accepts an optional profile so the initial-load callers can pass the freshly loaded
   // one: they fire from a setTimeout that closes over `profile` while it is still null.
@@ -1210,8 +1449,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       title: taskForm.title.trim(),
       due_date: taskForm.due_date,
       notes: taskForm.notes.trim(),
-      business_unit: businessUnit,
-      status: 'open',
     }]).select().single();
     if (error) { showToast('Error saving task'); return; }
     setAllTasks(prev => [...prev, data as CRMTask].sort((a, b) => a.due_date.localeCompare(b.due_date)));
@@ -1243,10 +1480,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function completeTask(taskId: string) {
+    const task = allTasks.find(t => t.id === taskId);
     const now = new Date().toISOString();
-    await supabase.from('crm_tasks').update({ completed_at: now, status: 'done' }).eq('id', taskId);
+    await supabase.from('crm_tasks').update({ completed_at: now }).eq('id', taskId);
     setAllTasks(prev => prev.filter(t => t.id !== taskId));
     showToast('Task completed ✓');
+    // Log a touch on the linked contact
+    if (task?.client_id) {
+      logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
+      if (activeClient?.id === task.client_id) loadClientTasks(task.client_id);
+    }
+  }
+
+  async function loadClientTasks(clientId: string) {
+    const headers: Record<string,string> = session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+    const res = await fetch(`/api/crm/tasks?unit=${businessUnit}&status=all&client_id=${clientId}`, { headers });
+    if (!res.ok) return;
+    const json = await res.json();
+    setClientCardTasks((json.tasks ?? []) as Task[]);
   }
 
   // ── Today's Calls: disposition + auto next-follow-up ──────────────────────────
@@ -1352,6 +1603,46 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     showToast(updated.includes(agentId) ? `${agentLabel} tagged on client` : `${agentLabel} removed from client`);
   }
 
+  // ── @mention notifications ────────────────────────────────────────────────
+  async function loadMentions() {
+    if (mentionsLoaded) return;
+    const { data } = await supabase
+      .from('crm_notifications')
+      .select('*')
+      .eq('recipient_id', profile!.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setMentions(data ?? []);
+    setMentionsLoaded(true);
+  }
+
+  async function createMentionNotifications(ids: string[], message: string, entityType?: string, entityId?: string) {
+    if (!ids.length || !profile) return;
+    const rows = ids
+      .filter(id => id !== profile.id) // don't notify yourself
+      .map(id => ({
+        recipient_id: id,
+        sender_id: profile.id,
+        type: 'mention',
+        message,
+        entity_type: entityType ?? null,
+        entity_id: entityId ?? null,
+      }));
+    if (rows.length) await supabase.from('crm_notifications').insert(rows);
+  }
+
+  async function markMentionRead(id: string) {
+    await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).eq('id', id);
+    setMentions(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+  }
+
+  async function markAllMentionsRead() {
+    const unread = mentions.filter(n => !n.read_at).map(n => n.id);
+    if (!unread.length) return;
+    await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).in('id', unread);
+    setMentions(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+  }
+
   async function saveClientTags(clientId: string, newTags: string[]) {
     const { error } = await supabase.from('crm_clients').update({ tags: newTags }).eq('id', clientId);
     if (error) { showToast('Error saving tags'); return; }
@@ -1380,19 +1671,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ? clients.filter(c => selectedClientIds.has(c.id))
       : clients;
 
-    // Notify admin whenever any agent (non-admin) exports
-    if (!isAdmin && profile) {
-      fetch('/api/crm/export-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_name: `${profile.first_name} ${profile.last_name}`,
-          agent_email: profile.email ?? '',
-          count: toExport.length,
-          business_unit: businessUnit,
-          selected: selectedClientIds.size > 0,
-        }),
-      }).catch(() => {});
+    // Contact export is restricted to the super admin. Everyone else (incl.
+    // admins like Brian) is blocked, and the attempt is logged so the super
+    // admin has an audit trail if someone tries to take the contact list.
+    if (!isSuperAdmin) {
+      if (profile) {
+        fetch('/api/crm/export-log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent_name: `${profile.first_name} ${profile.last_name}`,
+            agent_email: profile.email ?? '',
+            count: toExport.length,
+            business_unit: businessUnit,
+            selected: selectedClientIds.size > 0,
+            blocked: true,
+          }),
+        }).catch(() => {});
+      }
+      showToast('Only a super admin can export contacts.');
+      return;
     }
 
     const headers = ['First Name', 'Last Name', 'Business Name', 'Type', 'Email', 'Phone', 'Cell Phone', 'Budget', 'Size Range', 'Asset Types', 'Address', 'City', 'State', 'ZIP', 'Brokerage', 'License', 'Notes', 'Date Added'];
@@ -1598,6 +1896,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Delete agent ──────────────────────────────────────────────────────────────
   async function updateAgentRole(userId: string, firstName: string, newRole: 'admin' | 'agent') {
+    // Granting/revoking admin is super-admin-only — stops an admin (e.g. Brian)
+    // from promoting himself/others or demoting the super admin.
+    if (!isSuperAdmin) { showToast('Only a super admin can change admin access.'); return; }
     const action = newRole === 'admin' ? `Make ${firstName} an admin?` : `Remove admin access from ${firstName}?`;
     if (!confirm(action)) return;
     const { error } = await supabase.from('crm_profiles').update({ role: newRole }).eq('id', userId);
@@ -1637,11 +1938,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Disconnect Gmail account ──────────────────────────────────────────────────
   async function disconnectGmailAccount(connectionId: string) {
-    await fetch('/api/gmail/status', {
+    const res = await fetch('/api/gmail/status', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
       body: JSON.stringify({ connectionId, userId: session!.user.id }),
     });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      showToast('Failed to disconnect — please try again');
+      return;
+    }
     const updated = gmailAccounts.filter(a => a.id !== connectionId);
     setGmailAccounts(updated);
     if (updated.length === 0) setGmailConnected(false);
@@ -1724,7 +2030,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       );
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: client.email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
       });
       const json = await res.json();
@@ -1733,6 +2039,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         showToast('Email sent');
         setShowContactCompose(false);
         setReplyToContactEmail(null);
+        setReplyingToThreadKey(null);
         clearContactComposeBody();
         setComposeSubject('');
         setComposeAttachments([]);
@@ -1774,7 +2081,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
       });
       let j: any = {};
@@ -1839,6 +2146,43 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
+  async function loadCampaignProjects() {
+    const { data } = await supabase.from('crm_campaign_projects').select('*').order('created_at', { ascending: true });
+    setCampaignProjects(data ?? []);
+    // Expand every project (and the ungrouped bucket) by default so campaigns are
+    // visible at a glance without a click; users can still collapse individually.
+    setExpandedProjects(new Set([...(data ?? []).map((p: any) => p.id), '__ungrouped__']));
+  }
+
+  async function createCampaignProject() {
+    if (!newProjectName.trim()) return;
+    const { data } = await supabase.from('crm_campaign_projects').insert({ name: newProjectName.trim(), description: newProjectDesc.trim(), color: newProjectColor, created_by: session!.user.id }).select().single();
+    if (data) {
+      setCampaignProjects(prev => [...prev, data]);
+      setExpandedProjects(prev => new Set([...prev, data.id]));
+    }
+    setNewProjectName(''); setNewProjectDesc(''); setNewProjectColor('#c9922c'); setShowAddProject(false);
+  }
+
+  async function updateCampaignProject() {
+    if (!editingProject) return;
+    await supabase.from('crm_campaign_projects').update({ name: editingProject.name, description: editingProject.description, color: editingProject.color }).eq('id', editingProject.id);
+    setCampaignProjects(prev => prev.map(p => p.id === editingProject.id ? editingProject : p));
+    setEditingProject(null);
+  }
+
+  async function deleteCampaignProject(id: string) {
+    if (!confirm('Delete this project? Campaigns inside will become ungrouped.')) return;
+    await supabase.from('crm_campaign_projects').delete().eq('id', id);
+    setCampaignProjects(prev => prev.filter(p => p.id !== id));
+    setCampaigns(prev => prev.map(c => c.project_id === id ? { ...c, project_id: null } : c));
+  }
+
+  async function assignCampaignToProject(campaignId: string, projectId: string | null) {
+    await fetch(`/api/campaigns/${campaignId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify({ project_id: projectId }) });
+    setCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, project_id: projectId } : c));
+  }
+
   async function saveCampaign() {
     // Always grab the freshest content — editor ref if mounted, otherwise state
     const latestEmailBody = (emailEditorMode === 'rich' && emailEditorRef.current?.innerHTML)
@@ -1848,7 +2192,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const body = { ...newCampaign, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
-      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify(body) });
       const j = await res.json();
       if (!res.ok) { showToast('Error: ' + (j.error ?? 'Save failed')); }
       else {
@@ -1856,7 +2200,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setEmailEditorMode('rich');
         setCampaignView('list');
         setActiveCampaign(null);
-        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' });
+        setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
         loadCampaigns();
       }
     } catch (err) {
@@ -1877,7 +2221,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function loadCampaignEnrollments(campaignId: string) {
     setCampaignEnrollmentsLoading(true);
-    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`);
+    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, { headers: { 'Authorization': `Bearer ${session!.access_token}` } });
     if (res.ok) { const j = await res.json(); setCampaignEnrollments(j.enrollments ?? []); }
     setCampaignEnrollmentsLoading(false);
   }
@@ -1891,7 +2235,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!selectedEnrollIds.length) { showToast('Select at least one client'); return; }
     const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
       body: JSON.stringify({ client_ids: selectedEnrollIds, enrolled_by: session!.user.id }),
     });
     const j = await res.json();
@@ -1900,7 +2244,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function unenrollClient(campaignId: string, clientId: string) {
-    await fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) });
+    const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify({ client_id: clientId }) });
+    if (!res.ok) { showToast('Failed to remove — please try again'); return; }
     showToast('Client unenrolled');
     loadCampaignEnrollments(campaignId);
   }
@@ -1908,7 +2253,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Smart Lists ───────────────────────────────────────────────────────────────
   async function loadSmartLists() {
     const res = await fetch(`/api/smart-lists?unit=${businessUnit}`);
-    if (res.ok) { const j = await res.json(); setSmartLists(j.smartLists ?? []); }
+    if (res.ok) { const j = await res.json(); setSmartLists(j.smart_lists ?? j.smartLists ?? []); }
   }
 
   async function saveSmartList() {
@@ -2036,10 +2381,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function bulkUnenrollClients(campaignId: string) {
     if (!selectedUnenrollIds.length) return;
-    await Promise.all(selectedUnenrollIds.map(clientId =>
-      fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId }) })
+    const results = await Promise.all(selectedUnenrollIds.map(clientId =>
+      fetch(`/api/campaigns/${campaignId}/enrollments`, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify({ client_id: clientId }) })
     ));
-    showToast(`Removed ${selectedUnenrollIds.length} client${selectedUnenrollIds.length !== 1 ? 's' : ''}`);
+    const failed = results.filter(r => !r.ok).length;
+    if (failed > 0) { showToast(`${failed} removal(s) failed — please try again`); }
+    else { showToast(`Removed ${selectedUnenrollIds.length} client${selectedUnenrollIds.length !== 1 ? 's' : ''}`); }
     setSelectedUnenrollIds([]);
     loadCampaignEnrollments(campaignId);
   }
@@ -2140,7 +2487,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       closedEnrollCampaignIds.map(campaignId =>
         fetch(`/api/campaigns/${campaignId}/enrollments`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
           body: JSON.stringify({ client_ids: [clientId], enrolled_by: agentId }),
         })
       )
@@ -2183,12 +2530,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Open deal modal ───────────────────────────────────────────────────────────
   function openDeal(deal: Deal) {
     setActiveDeal(deal);
+    setDealNotesText(deal.notes ?? '');
     setDealTab('overview');
     setShowDealAgentPicker(false);
     setDealCommission(null);
     loadDealEmails(deal.id);
     loadDealDocs(deal.id);
-    loadDealCommission(deal.id);
+    loadDealForms(deal.id);
+    loadCrmForms();
+    loadDealCommission(deal.id, deal.earned_commission);
     if (typeof window !== 'undefined') sessionStorage.setItem('activeDealId', deal.id);
   }
 
@@ -2200,7 +2550,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   });
 
   function getDefaultEmailBody(): string {
-    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · ${brand.address}</small></p>`;
+    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015</small></p>`;
   }
 
   // ── Render guards ─────────────────────────────────────────────────────────────
@@ -2213,31 +2563,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
-  if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} emailPlaceholder={`you@${brand.fromEmail.split('@')[1]}`} />;
+  if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
-  // super_admin is a strict superset of admin — it must pass every admin gate, or the
-  // whole admin UI disappears for super-admin accounts.
-  const isAdmin = profile.role === 'admin' || profile.role === 'super_admin';
+  // super_admin is a strict superset of admin — passes every admin gate, plus
+  // the super-admin-only ones (delete/export contacts, manage admins).
+  const isSuperAdmin = profile.role === 'super_admin';
+  const isAdmin = profile.role === 'admin' || isSuperAdmin;
   const isMobile = windowWidth < 768;
   const isTabletOrMobile = windowWidth < 1024; // sidebar hides on tablet too
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');
   const agentName = (id: string) => { const p = profiles.find(x => x.id === id); return p ? `${p.first_name} ${p.last_name}` : profile.id === id ? `${profile.first_name} ${profile.last_name}` : '—'; };
 
-  const mobileNavItems: { id: typeof page; icon: string; label: string }[] = [
-    { id: 'dashboard', icon: '🏠', label: 'Home' },
-    { id: 'prospects' as typeof page, icon: '🎯', label: 'Prospects' },
-    { id: 'deals', icon: '📋', label: 'Deals' },
-    { id: 'contacts', icon: '👥', label: 'Contacts' },
-    { id: 'tasks' as typeof page, icon: '✅', label: 'Tasks' },
-    { id: 'campaigns' as typeof page, icon: '📣', label: 'Campaigns' },
-    { id: 'action-plans' as typeof page, icon: '⚡', label: 'Plans' },
-    ...(isAdmin ? [{ id: 'agents' as typeof page, icon: '🤝', label: 'Team' }] : []),
-  ];
-
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', prospects: 'Prospects', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', 'today-calls': "Today's Calls", commissions: 'Commissions', social: 'Social Media',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2249,6 +2589,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-input{padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:'DM Sans',sans-serif;width:100%;}
         .crm-input:focus{outline:none;border-color:#c9922c;}
         .crm-btn{padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;min-height:44px;}
+        /* Anchors styled as buttons are inline by default, so min-height never applies */
+        a.crm-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;}
         .crm-btn-gold{background:#c9922c;color:#111;font-weight:600;}
         .crm-btn-ghost{background:transparent;border:1px solid #ccc;color:#6b7280;}
         .crm-btn-sm{padding:7px 12px;font-size:13px;min-height:36px;}
@@ -2265,6 +2607,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .modal{background:#fff;border-radius:12px;width:760px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.3);flex-shrink:0;}
         .pill{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:500;}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        @keyframes slideRight{from{transform:translateX(-100%)}to{transform:translateX(0)}}
+        @keyframes fadeIn{from{opacity:0}to{opacity:1}}
         /* ── Contacts redesign ── */
         .contacts-table{border:1px solid #e8edf2!important;border-radius:12px!important;overflow:hidden!important;box-shadow:0 1px 4px rgba(0,0,0,.05)!important;table-layout:fixed!important;}
         .contacts-table thead{background:#f8fafc!important;color:inherit!important;}
@@ -2293,17 +2638,64 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .cf-tag-input:focus{border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
         .cf-tag-input.active{border-color:#c9922c;background:#fffbf2;}
         @media(max-width:767px){
+          /* Modals → bottom sheet */
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
-          .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;}
+          .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;padding-bottom:env(safe-area-inset-bottom);}
+          /* max-height:none wins over the desktop calc(90vh - N) caps some bodies set
+             inline — the sheet's own 92vh + flex:1 already bounds them, and the cap
+             otherwise leaves dead space under the content. */
+          .modal-body{overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;flex:1!important;min-height:0!important;max-height:none!important;}
+          /* Touch-friendly controls */
           .crm-btn{padding:12px 18px;font-size:15px;min-height:48px;}
           .crm-btn-sm{padding:10px 14px!important;font-size:14px!important;min-height:44px!important;}
-          .crm-input{padding:12px 14px;font-size:16px;min-height:48px;}
-          .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-          td{padding:10px 12px!important;font-size:13px!important;}
-          th{padding:8px 12px!important;font-size:10px!important;}
+          .crm-input{padding:12px 14px;font-size:16px!important;min-height:48px;}
+          .crm-input:focus{font-size:16px!important;}
+          /* Prevent iOS zoom on focus. .pdf-fill-input is exempt — those inputs are sized
+             to the rendered PDF page scale, so forcing 16px blows the fields off the page. */
+          input:not(.pdf-fill-input),select,textarea{font-size:16px!important;}
+          .cf-select{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
+          .cf-tag-input{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
+          /* Table helpers */
+          .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;}
+          .mobile-table-scroll::-webkit-scrollbar{display:none;}
+          .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;border-radius:10px;}
+          td{padding:12px!important;font-size:13px!important;}
+          th{padding:9px 12px!important;font-size:10px!important;}
+          /* Utility classes */
+          .mobile-full-width{width:100%!important;margin-left:0!important;}
+          .mobile-stack{flex-direction:column!important;}
+          .mobile-hide{display:none!important;}
+          /* Icon-only buttons (pencil / trash / ✕ / search) need a real thumb target */
+          .crm-icon-btn{min-width:44px!important;min-height:44px!important;display:inline-flex!important;align-items:center;justify-content:center;}
+          /* Horizontal tab strips scroll instead of wrapping or clipping */
+          .crm-tabs-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;flex-wrap:nowrap!important;}
+          .crm-tabs-scroll::-webkit-scrollbar{display:none;}
+          .crm-tabs-scroll>*{flex-shrink:0;}
+          /* Card lists that replace a wide table on a phone */
+          .crm-mobile-cards{display:flex;flex-direction:column;gap:10px;}
+          .crm-mobile-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+          /* Nothing may push the page sideways — wide children scroll inside their own wrapper */
+          .crm-page-scroll{overflow-x:hidden!important;}
+          .crm-page-scroll img,.crm-page-scroll canvas,.crm-page-scroll iframe{max-width:100%;}
+          /* 3-col stat grids → 2-col on small phones */
+          .stats-3col{grid-template-columns:1fr 1fr!important;}
+          /* 2-col form grids → 1-col on small phones for readability */
+          .form-grid-2{grid-template-columns:1fr!important;}
+          /* Panel drawers fill screen */
+          .crm-panel{max-width:100%!important;border-radius:0!important;}
         }
+        /* Intermediate small tablet / large phone */
+        @media(min-width:480px) and (max-width:767px){
+          .stats-3col{grid-template-columns:repeat(3,1fr)!important;}
+          .form-grid-2{grid-template-columns:1fr 1fr!important;}
+        }
+        /* Tablet */
         @media(max-width:1023px){
           .contacts-table col.col-asset,.contacts-table col.col-source,.contacts-table col.col-tags,.contacts-table col.col-owner{display:none;}
+          /* Contacts table on tablet - allow horizontal scroll */
+          .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+          /* Commission stats 4-col → 2-col on tablet */
+          .stats-4col{grid-template-columns:1fr 1fr!important;}
         }
       `}</style>
 
@@ -2336,6 +2728,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
           <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
+          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); loadAllTasks(); loadClients(); }}>
+            ✅ &nbsp;Tasks
+            {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+              </span>
+            )}
+          </button>
         </div>
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Deal Flow</div>
@@ -2350,25 +2750,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
-          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); loadTasks(); loadProfiles(); }}>
-            ✅ &nbsp;Tasks
-            {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
-              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
-              </span>
-            )}
-          </button>
-          <button className={`crm-nav${page === 'today-calls' ? ' active' : ''}`} onClick={() => { setPage('today-calls'); loadAllTasks(); loadClients(); }}>
-            📞 &nbsp;Today's Calls
-            {allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length > 0 && (
-              <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                {allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length}
-              </span>
-            )}
-          </button>
-          <button className={`crm-nav${page === 'campaigns' ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Campaigns</button>
-          <button className={`crm-nav${page === 'action-plans' ? ' active' : ''}`} onClick={() => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); }}>⚡ &nbsp;Action Plans</button>
-          <button className={`crm-nav${page === 'social' ? ' active' : ''}`} onClick={() => setPage('social')}>📱 &nbsp;Social Media</button>
+          <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Marketing</button>
           {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); }}>💰 &nbsp;Commissions</button>}
           {/* Billing — links to the CRECO billing surface (crecotx.com),
               which is a separate Next.js app deployed independently. Opens
@@ -2398,6 +2780,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </span>
             </a>
           )}
+          <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}>🏢 &nbsp;Properties</button>
+          <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -2436,43 +2820,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button onClick={() => disconnectGmailAccount(acct.id)} title="Disconnect" aria-label="Disconnect" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)', cursor: 'pointer', fontSize: 14, lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
             ))}
-            {showGmailInput ? (
-              <div style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 7, padding: '8px 10px' }}>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginBottom: 6 }}>Enter the Gmail address to connect:</div>
-                <input
-                  type="email"
-                  autoFocus
-                  placeholder="you@gmail.com"
-                  value={gmailInputValue}
-                  onChange={e => setGmailInputValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && gmailInputValue.trim()) {
-                      window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}&bu=${businessUnit}`;
-                    }
-                    if (e.key === 'Escape') { setShowGmailInput(false); setGmailInputValue(''); }
-                  }}
-                  style={{ width: '100%', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.2)', borderRadius: 5, padding: '5px 8px', fontSize: 12, color: '#fff', fontFamily: "'DM Sans',sans-serif", outline: 'none', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <button
-                    disabled={!gmailInputValue.trim()}
-                    onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&hint=${encodeURIComponent(gmailInputValue.trim())}&bu=${businessUnit}`; }}
-                    style={{ flex: 1, padding: '5px 0', borderRadius: 5, border: 'none', background: gmailInputValue.trim() ? '#c9922c' : 'rgba(255,255,255,.1)', color: gmailInputValue.trim() ? '#111' : 'rgba(255,255,255,.3)', fontSize: 12, fontWeight: 700, cursor: gmailInputValue.trim() ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
-                    Connect →
-                  </button>
-                  <button onClick={() => { setShowGmailInput(false); setGmailInputValue(''); }}
-                    style={{ padding: '5px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,.15)', background: 'none', color: 'rgba(255,255,255,.4)', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setShowGmailInput(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,.04)', border: '1px dashed rgba(255,255,255,.15)', borderRadius: 7, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
-                <span style={{ fontSize: 13 }}>＋</span>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)', fontWeight: 500 }}>{gmailAccounts.length === 0 ? 'Connect Google Account' : 'Add Another Account'}</span>
-              </button>
-            )}
+            <button
+              onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&bu=${businessUnit}`; }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'rgba(255,255,255,.04)', border: '1px dashed rgba(255,255,255,.15)', borderRadius: 7, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+              <span style={{ fontSize: 13 }}>＋</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,.45)', fontWeight: 500 }}>{gmailAccounts.length === 0 ? 'Connect Google Account' : 'Add Another Account'}</span>
+            </button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{initials}</div>
@@ -2480,7 +2833,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
             </div>
-            <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 16 }} title="Sign out">⏻</button>
+            <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 16 }} title="Sign out">⏻</button>
           </div>
         </div>
       </nav>}
@@ -2490,17 +2843,155 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
         {/* Mobile/tablet top header */}
         {isTabletOrMobile && (
-          <div style={{ background: '#111', color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.2)' }}>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</div>
-            <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,.15)', flexShrink: 0 }} />
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 16, fontWeight: 600, color: '#fff', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageLabel[page]}</div>
-            {/* Search */}
-            <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
-              style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 16, padding: '6px 10px', flexShrink: 0, lineHeight: 1 }}>🔍</button>
-            {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 14 }}>+ Add</button>}
-            {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 14 }}>+ Deal</button>}
-            {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '' }); }} style={{ flexShrink: 0, padding: '7px 12px', fontSize: 14 }}>+ New</button>}
+          <div style={{ background: '#111', color: '#fff', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.25)' }}>
+            {/* Hamburger → opens full menu sheet */}
+            <button onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.8)', cursor: 'pointer', padding: '4px 6px', flexShrink: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 4, lineHeight: 0, minWidth: 44, minHeight: 44, marginLeft: -6 }}>
+              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
+              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
+              <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
+            </button>
+            {/* Brand + page title */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>{brand.shortName}</span>
+              <span style={{ color: 'rgba(255,255,255,.25)', flexShrink: 0 }}>›</span>
+              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageLabel[page]}</span>
+            </div>
+            {/* Right actions */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+              {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Add</button>}
+              {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Deal</button>}
+              {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
+              <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
+                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
+            </div>
           </div>
+        )}
+
+        {/* ── Mobile full-screen nav sheet ── */}
+        {isTabletOrMobile && mobileMenuOpen && (
+          <>
+            {/* Backdrop */}
+            <div onClick={() => setMobileMenuOpen(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9998, animation: 'fadeIn .2s ease' }} />
+            {/* Drawer */}
+            <div style={{
+              position: 'fixed', left: 0, top: 0, bottom: 0, width: Math.min(290, windowWidth - 40),
+              background: '#111', zIndex: 9999, display: 'flex', flexDirection: 'column',
+              overflowY: 'auto', boxShadow: '4px 0 24px rgba(0,0,0,.4)',
+              transform: 'translateX(0)', animation: 'slideRight .25s ease',
+            }}>
+              {/* Drawer header */}
+              <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(201,146,44,.3)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 3 }}>{brand.tagline}</div>
+                </div>
+                <button onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"
+                  style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+              </div>
+
+              {/* Workspace switcher (admin) */}
+              {isAdmin && (
+                <div style={{ padding: '10px 14px 0' }}>
+                  <a href={businessUnit === 'residential' ? '/crm/commercial' : '/crm/residential'}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)', borderRadius: 8, padding: '8px 12px', textDecoration: 'none' }}>
+                    <span style={{ fontSize: 16 }}>{businessUnit === 'residential' ? '🏢' : '🏡'}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,.45)', letterSpacing: 1, textTransform: 'uppercase' }}>Switch to</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,.9)' }}>{businessUnit === 'residential' ? 'CRECO' : 'Fair Oaks'}</div>
+                    </div>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,.4)' }}>→</span>
+                  </a>
+                </div>
+              )}
+
+              {/* Nav sections */}
+              <div style={{ padding: '16px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Overview</div>
+                <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}>🏠 &nbsp;Dashboard</button>
+                <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); loadAllTasks(); loadClients(); setMobileMenuOpen(false); }}>
+                  ✅ &nbsp;Tasks
+                  {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                      {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              <div style={{ padding: '14px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Deal Flow</div>
+                <button className={`crm-nav${page === 'deals' ? ' active' : ''}`} onClick={() => { setPage('deals'); setFilter(''); setMobileMenuOpen(false); }}>
+                  📋 &nbsp;All Deals
+                  <span style={{ marginLeft: 'auto', background: '#c9922c', color: '#111', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{deals.length}</span>
+                </button>
+              </div>
+
+              <div style={{ padding: '14px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>People</div>
+                <button className={`crm-nav${page === 'contacts' ? ' active' : ''}`} onClick={() => { setPage('contacts'); loadClients(); loadSmartLists(); setMobileMenuOpen(false); }}>
+                  👥 &nbsp;Contacts
+                  <span style={{ marginLeft: 'auto', background: clients.length > 0 ? '#c9922c' : 'rgba(255,255,255,.12)', color: clients.length > 0 ? '#111' : 'rgba(255,255,255,.4)', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{clients.length}</span>
+                </button>
+                <button className={`crm-nav${page === 'prospects' ? ' active' : ''}`} onClick={() => { setPage('prospects'); loadProspects(); setMobileMenuOpen(false); }}>
+                  🎯 &nbsp;Prospects
+                  {prospects.filter(p => p.client?.prospect_status === 'new').length > 0 && (
+                    <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{prospects.filter(p => p.client?.prospect_status === 'new').length}</span>
+                  )}
+                </button>
+                {isAdmin && <button className={`crm-nav${page === 'agents' ? ' active' : ''}`} onClick={() => { setPage('agents'); loadProfiles(); loadActivityReport(activityReportDays); setMobileMenuOpen(false); }}>🤝 &nbsp;Broker / Agents</button>}
+              </div>
+
+              <div style={{ padding: '14px 12px 4px' }}>
+                <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Tools</div>
+                <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); setMobileMenuOpen(false); }}>📅 &nbsp;Calendar</button>
+                <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}>📣 &nbsp;Marketing</button>
+                {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); setMobileMenuOpen(false); }}>💰 &nbsp;Commissions</button>}
+                {isAdmin && (
+                  <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
+                    🧾 &nbsp;Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
+                  </a>
+                )}
+                <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}>🏢 &nbsp;Properties</button>
+                <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
+              </div>
+
+              {isAdmin && businessUnit === 'residential' && (
+                <div style={{ padding: '10px 12px 4px' }}>
+                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>MLS</div>
+                  <button
+                    onClick={async () => {
+                      setMlsSyncing(true);
+                      try {
+                        const res = await fetch('/api/mls/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}) } });
+                        const data = await res.json();
+                        if (!res.ok) showToast('MLS sync failed: ' + (data.error ?? res.status));
+                        else showToast(`✅ MLS sync done — ${data.synced} listings updated`);
+                      } catch { showToast('MLS sync error — check console'); }
+                      finally { setMlsSyncing(false); }
+                    }}
+                    disabled={mlsSyncing}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, cursor: mlsSyncing ? 'default' : 'pointer', border: '1px solid rgba(201,146,44,.3)', background: 'rgba(201,146,44,.08)', color: 'rgba(255,255,255,.85)', fontSize: 14, fontFamily: "'DM Sans',sans-serif", width: '100%', opacity: mlsSyncing ? 0.7 : 1 }}>
+                    <span>{mlsSyncing ? '⏳' : '🏠'}</span>
+                    <span>{mlsSyncing ? 'Syncing…' : '↻ Sync MLS Listings'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Profile + sign out */}
+              <div style={{ marginTop: 'auto', padding: '14px 14px', borderTop: '1px solid rgba(255,255,255,.07)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px', background: 'rgba(255,255,255,.05)', borderRadius: 8 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#111', flexShrink: 0 }}>{initials}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
+                  </div>
+                  <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Desktop topbar */}
@@ -2536,10 +3027,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               const d = Math.ceil((new Date(c.lease_expiration_date).getTime() - now) / 86400000);
               return d >= 0 && d <= 30;
             });
-            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length;
+            const unreadMentions = mentions.filter(n => !n.read_at);
+            const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length + unreadMentions.length;
             return (
               <div style={{ position: 'relative' }}>
-                <button onClick={() => setShowNotifications(n => !n)} title="Notifications"
+                <button onClick={() => { setShowNotifications(n => !n); loadMentions(); }} title="Notifications"
                   style={{ position: 'relative', width: 38, height: 38, borderRadius: 8, border: `1px solid ${totalAlerts > 0 ? '#fde68a' : '#e5e7eb'}`, background: showNotifications ? '#fef9f0' : totalAlerts > 0 ? '#fffbeb' : '#f9fafb', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all .15s' }}>
                   🔔
                   {totalAlerts > 0 && (
@@ -2551,7 +3043,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {showNotifications && (
                   <>
                     <div style={{ position: 'fixed', inset: 0, zIndex: 8999 }} onClick={() => setShowNotifications(false)} />
-                    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 9000, marginTop: 6, width: 340, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 9000, marginTop: 6, width: Math.min(340, windowWidth - 32), background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,.15)', overflow: 'hidden' }}>
                       <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>🔔 Smart Alerts</span>
                         {totalAlerts > 0 && <span style={{ fontSize: 12, color: '#6b7280' }}>{totalAlerts} item{totalAlerts !== 1 ? 's' : ''}</span>}
@@ -2612,7 +3104,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         )}
                         {lxpUrgent.length > 0 && (
-                          <div style={{ padding: '10px 16px' }}>
+                          <div style={{ padding: '10px 16px', borderBottom: mentions.length > 0 ? '1px solid #f9fafb' : 'none' }}>
                             <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#c2410c', fontWeight: 700, marginBottom: 8 }}>🗓 LXP Expiring Within 30 Days ({lxpUrgent.length})</div>
                             {lxpUrgent.slice(0, 3).map(c => {
                               const daysLeft = Math.ceil((new Date(c.lease_expiration_date!).getTime() - now) / 86400000);
@@ -2627,9 +3119,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             })}
                           </div>
                         )}
+                        {mentions.length > 0 && (
+                          <div style={{ padding: '10px 16px' }}>
+                            <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6d28d9', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <span>💬 Mentions ({mentions.length})</span>
+                              {unreadMentions.length > 0 && (
+                                <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: '#6d28d9', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
+                              )}
+                            </div>
+                            {mentions.slice(0, 5).map(n => (
+                              <button key={n.id} onClick={() => {
+                                markMentionRead(n.id);
+                                if (n.entity_type === 'contact' && n.entity_id) {
+                                  const c = clients.find(cl => cl.id === n.entity_id);
+                                  if (c) { setPage('contacts'); setActiveClient(c); }
+                                }
+                                setShowNotifications(false);
+                              }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', padding: '6px 0', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: n.read_at ? '#d1d5db' : '#6d28d9', flexShrink: 0, marginTop: 4 }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, color: n.read_at ? '#6b7280' : '#111', fontWeight: n.read_at ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.message}</div>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{new Date(n.created_at).toLocaleDateString()}</div>
+                                </div>
+                              </button>
+                            ))}
+                            {mentions.length > 5 && <div style={{ fontSize: 12, color: '#9ca3af', paddingTop: 4 }}>+{mentions.length - 5} more</div>}
+                          </div>
+                        )}
                       </div>
                       <div style={{ padding: '8px 16px', borderTop: '1px solid #f0f0f0', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: '#9ca3af' }}>Keyboard shortcut: N (contacts) · C (deals) · / (search)</span>
+                        <span style={{ fontSize: 11, color: '#9ca3af' }}>Keyboard shortcut: / (search)</span>
                         <button onClick={() => setShowNotifications(false)} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Close</button>
                       </div>
                     </div>
@@ -2647,9 +3167,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {selectedClientIds.size} selected
                 </span>
               )}
-              <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={exportClients} title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'} style={{ fontSize: 13 }}>
-                ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
-              </button>
+              {isSuperAdmin && (
+                <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={exportClients} title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'} style={{ fontSize: 13 }}>
+                  ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
+                </button>
+              )}
               <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => importFileRef.current?.click()} title="Import from XLSX or CSV" style={{ fontSize: 13 }}>⬆ Import</button>
               <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add Client</button>
             </div>
@@ -2700,13 +3222,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>}
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
+        <div className="crm-page-scroll" style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
             <div>
               {/* Deal stat cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
+              <div className="stats-4col" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
                 {[
                   { label: 'Active Deals', val: deals.filter(d => d.stage === 'Active').length, sub: 'in pipeline' },
                   { label: 'In Contract', val: deals.filter(d => d.stage === 'In Contract').length, sub: 'pending close' },
@@ -2720,6 +3242,90 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 ))}
               </div>
+
+              {/* ── Pipeline by Stage chart ── */}
+              {deals.length > 0 && (() => {
+                const STAGE_COLORS_CHART: Record<string, string> = {
+                  Prospect: '#9ca3af', Active: '#3b82f6', LOI: '#a855f7',
+                  'In Contract': '#f59e0b', Closed: '#22c55e', Lost: '#ef4444',
+                };
+                const fmtV = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
+                const stageCounts = STAGES.map(s => ({
+                  stage: s,
+                  count: deals.filter(d => d.stage === s).length,
+                  value: deals.filter(d => d.stage === s).reduce((sum, d) => sum + (Number(d.value) || 0), 0),
+                })).filter(s => s.count > 0);
+                const maxCount = Math.max(...stageCounts.map(s => s.count), 1);
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600 }}>📊 Pipeline by Stage</div>
+                      <button onClick={() => setPage('deals')} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>
+                        View Pipeline →
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      {stageCounts.map(({ stage, count, value }) => (
+                        <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: isMobile ? 72 : 88, fontSize: 12, color: '#374151', fontWeight: 500, flexShrink: 0, textAlign: 'right' }}>{stage}</div>
+                          <div style={{ flex: 1, height: 24, background: '#f3f4f6', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
+                            <div style={{
+                              width: `${Math.round(count / maxCount * 100)}%`,
+                              height: '100%',
+                              background: STAGE_COLORS_CHART[stage] ?? '#c9922c',
+                              borderRadius: 5,
+                              transition: 'width .5s ease',
+                              display: 'flex', alignItems: 'center', paddingLeft: 8,
+                              minWidth: count > 0 ? 28 : 0,
+                            }}>
+                              <span style={{ color: '#fff', fontSize: 11, fontWeight: 700, lineHeight: 1 }}>{count}</span>
+                            </div>
+                          </div>
+                          {value > 0 && (
+                            <div style={{ fontSize: 12, color: '#6b7280', flexShrink: 0, minWidth: isMobile ? 48 : 64, textAlign: 'right' }}>{fmtV(value)}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── Monthly GCI Trend (last 6 months) ── */}
+              {allCommissions.length > 0 && (() => {
+                const months: { key: string; label: string; gci: number }[] = [];
+                for (let i = 5; i >= 0; i--) {
+                  const d = new Date();
+                  d.setDate(1);
+                  d.setMonth(d.getMonth() - i);
+                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                  const label = d.toLocaleDateString('en-US', { month: 'short' });
+                  const gci = allCommissions.filter(c => c.close_date?.startsWith(key)).reduce((s, c) => s + (c.gross_commission ?? 0), 0);
+                  months.push({ key, label, gci });
+                }
+                if (months.every(m => m.gci === 0)) return null;
+                const maxGci = Math.max(...months.map(m => m.gci), 1);
+                const curKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+                const fmtG = (n: number) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n.toFixed(0)}`;
+                return (
+                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, marginBottom: 16 }}>📈 Monthly GCI — Last 6 Months</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: isMobile ? 6 : 10, height: 90 }}>
+                      {months.map(({ key, label, gci }) => {
+                        const barH = gci > 0 ? Math.max(Math.round(gci / maxGci * 72), 8) : 4;
+                        const isCur = key === curKey;
+                        return (
+                          <div key={key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, height: '100%', justifyContent: 'flex-end' }}>
+                            {gci > 0 && <div style={{ fontSize: isMobile ? 9 : 10, color: isCur ? '#c9922c' : '#9ca3af', textAlign: 'center', lineHeight: 1 }}>{fmtG(gci)}</div>}
+                            <div style={{ width: '70%', height: barH, background: isCur ? '#c9922c' : '#d1d5db', borderRadius: '3px 3px 0 0', transition: 'height .5s ease' }} title={`${label}: ${fmtG(gci)}`} />
+                            <div style={{ fontSize: isMobile ? 10 : 11, color: isCur ? '#c9922c' : '#9ca3af', fontWeight: isCur ? 700 : 400 }}>{label}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* YTD Commission widget */}
               {allCommissions.length > 0 && (() => {
@@ -2977,7 +3583,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>
                         ⚠️ Overdue Tasks — {overdue.length}
                       </div>
-                      <button onClick={() => { setPage('tasks'); loadTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View All Tasks →</button>
+                      <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View All Tasks →</button>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {overdue.slice(0, 5).map(t => {
@@ -3014,7 +3620,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {t || 'All'}
                   </button>
                 ))}
-                <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ marginLeft: 'auto', width: 200 }} />
+                <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ width: isMobile ? '100%' : 200, ...(isMobile ? {} : { marginLeft: 'auto' }) }} />
               </div>
               <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} onAddDeal={() => setShowAddDeal(true)} />
             </div>
@@ -3047,7 +3653,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
                   {['all', ...STATUS_OPTIONS].map(s => (
                     <button key={s} onClick={() => setProspectStatusFilter(s)}
-                      style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor: prospectStatusFilter === s ? '#c9922c' : '#e5e7eb', background: prospectStatusFilter === s ? '#c9922c' : '#fff', color: prospectStatusFilter === s ? '#111' : '#6b7280', textTransform: 'capitalize' }}>
+                      style={{ padding: isMobile ? '9px 16px' : '4px 14px', minHeight: isMobile ? 40 : undefined, borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor:prospectStatusFilter === s ? '#c9922c' : '#e5e7eb', background: prospectStatusFilter === s ? '#c9922c' : '#fff', color: prospectStatusFilter === s ? '#111' : '#6b7280', textTransform: 'capitalize' }}>
                       {s === 'all' ? `All (${prospects.length})` : `${s} (${prospects.filter(p => p.client?.prospect_status === s).length})`}
                     </button>
                   ))}
@@ -3181,7 +3787,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </select>
                     {/* Tag filter */}
                     <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
-                      className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: 140 }} />
+                      className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: isMobile ? '100%' : 140 }} />
                     {/* Clear */}
                     {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && (
                       <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); }}
@@ -3201,7 +3807,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <input autoFocus placeholder="List name…" value={newListName} onChange={e => setNewListName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveSmartList(); if (e.key === 'Escape') setShowSaveList(false); }}
                           className="cf-tag-input active" style={{ width: 140 }} />
                         <button onClick={saveSmartList} style={{ padding: '5px 12px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>Save</button>
-                        <button onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                        <button className="crm-icon-btn" onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>✕</button>
                       </div>
                     )}
                   </div>
@@ -3316,15 +3922,60 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       👤 Reassign
                     </button>
                     <button
-                      onClick={massDeleteClients}
-                      style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                      🗑 Delete Selected
+                      onClick={() => { setShowBulkTag(v => !v); setBulkTagValue(''); }}
+                      style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                      🏷 Tag
                     </button>
+                    {isSuperAdmin && (
+                      <button
+                        onClick={massDeleteClients}
+                        style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                        🗑 Delete
+                      </button>
+                    )}
                     <button
                       onClick={() => setSelectedClientIds(new Set())}
                       style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                      Clear selection
+                      Clear
                     </button>
+                  </div>
+                )}
+                {/* Bulk tag inline form */}
+                {isAdmin && showBulkTag && selectedClientIds.size > 0 && (
+                  <div style={{ marginBottom: 10, padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>
+                      Tag {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <input
+                        className="crm-input"
+                        placeholder="Tag name (e.g. hot-lead, q1-follow-up)…"
+                        value={bulkTagValue}
+                        onChange={e => setBulkTagValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') bulkTagContacts('add'); }}
+                        style={{ flex: 1, minWidth: 200, fontSize: 14 }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => bulkTagContacts('add')}
+                        disabled={!bulkTagValue.trim()}
+                        className="crm-btn"
+                        style={{ background: '#166534', color: '#fff', border: 'none', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>
+                        + Add Tag
+                      </button>
+                      <button
+                        onClick={() => bulkTagContacts('remove')}
+                        disabled={!bulkTagValue.trim()}
+                        className="crm-btn crm-btn-ghost"
+                        style={{ color: '#dc2626', borderColor: '#fecaca', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>
+                        − Remove Tag
+                      </button>
+                      <button
+                        onClick={() => { setShowBulkTag(false); setBulkTagValue(''); }}
+                        className="crm-btn crm-btn-ghost">
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div style={{ overflowX: 'auto' }}>
@@ -3545,10 +4196,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Edit contact">
                                       ✏️
                                     </button>
-                                    <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
-                                      style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove client (admin only)">
-                                      🗑
-                                    </button>
+                                    {isSuperAdmin && (
+                                      <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
+                                        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove contact (super admin only)">
+                                        🗑
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </div>
@@ -3562,6 +4215,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </> // end desktop view (bulk bar + table)
                 ); // end desktop table return
               })() /* end filteredContacts IIFE */}
+
+              {/* ── Load More contacts ��─ */}
+              {clients.length > 0 && clients.length < contactsTotal && (
+                <div style={{ textAlign: 'center', marginTop: 16, marginBottom: 8 }}>
+                  <button
+                    className="crm-btn crm-btn-ghost"
+                    onClick={() => loadClients(profile!, contactsPage + 1)}
+                    style={{ fontSize: 13, padding: '8px 22px' }}>
+                    Load more contacts ({clients.length} of {contactsTotal} loaded)
+                  </button>
+                </div>
+              )}
+              {clients.length > 0 && clients.length >= contactsTotal && contactsTotal > CONTACTS_PAGE_SIZE && (
+                <div style={{ textAlign: 'center', marginTop: 8, marginBottom: 4, fontSize: 12, color: '#9ca3af' }}>
+                  All {contactsTotal} contacts loaded
+                </div>
+              )}
 
               {/* ── Follow-Up Report ── */}
               {clients.length > 0 && (() => {
@@ -3811,12 +4481,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Left: Month Grid */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: isMobile ? 'none' : '1px solid #e5e7eb', borderBottom: isMobile ? '1px solid #e5e7eb' : 'none', overflow: 'hidden' }}>
                       {/* Month header */}
-                      <div style={{ display: 'flex', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb', background: '#fff', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', padding: isMobile ? '12px 14px' : '16px 24px', borderBottom: '1px solid #e5e7eb', background: '#fff', gap: isMobile ? 8 : 12 }}>
                         <button onClick={() => setCalViewMonth(new Date(year, month - 1, 1))}
-                          style={{ width: 32, height: 32, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                          style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, flexShrink: 0, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
                         <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#111', flex: 1, textAlign: 'center' }}>{monthName}</span>
                         <button onClick={() => setCalViewMonth(new Date(year, month + 1, 1))}
-                          style={{ width: 32, height: 32, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                          style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, flexShrink: 0, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                         <button onClick={() => { setCalViewMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setCalSelectedDate(today.toDateString()); }}
                           style={{ padding: '5px 12px', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 12, color: '#374151', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>Today</button>
                         <button onClick={() => loadCalendarEvents(90)}
@@ -3831,7 +4501,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
 
                       {/* Calendar grid */}
-                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gridAutoRows: '1fr', overflow: 'hidden' }}>
+                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gridAutoRows: isMobile ? 'minmax(60px, auto)' : '1fr', overflow: 'hidden' }}>
                         {/* Empty cells before first day */}
                         {Array.from({ length: firstDay }).map((_, i) => (
                           <div key={`empty-${i}`} style={{ borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }} />
@@ -3847,7 +4517,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           return (
                             <div key={dayNum} onClick={() => setCalSelectedDate(dateKey)}
-                              style={{ borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', padding: '6px 8px', cursor: 'pointer', background: isSelected ? '#fef9f0' : '#fff', transition: 'background 0.1s', overflow: 'hidden' }}
+                              style={{ borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', padding: isMobile ? '5px 4px' : '6px 8px', cursor: 'pointer', background: isSelected ? '#fef9f0' : '#fff', transition: 'background 0.1s', overflow: 'hidden' }}
                               onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#fafafa'; }}
                               onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -3856,13 +4526,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </span>
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                {dayEvents.slice(0, 3).map(ev => (
+                                {dayEvents.slice(0, isMobile ? 2 : 3).map(ev => (
                                   <div key={ev.id} style={{ fontSize: 11, background: '#1a365d', color: '#fff', borderRadius: 3, padding: '1px 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {ev.allDay ? '● ' : `${new Date(ev.start!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} `}{ev.title}
                                   </div>
                                 ))}
-                                {dayEvents.length > 3 && (
-                                  <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4 }}>+{dayEvents.length - 3} more</div>
+                                {dayEvents.length > (isMobile ? 2 : 3) && (
+                                  <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4 }}>+{dayEvents.length - (isMobile ? 2 : 3)} more</div>
                                 )}
                               </div>
                             </div>
@@ -3938,8 +4608,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
           )}
 
-          {/* ── Today's Calls Page ── */}
-          {page === 'today-calls' && (() => {
+          {/* ── Tasks tab: sub-tab toggle (Tasks | Call Queue) ── */}
+          {page === 'tasks' && (() => {
+            const callDue = allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= today()).length;
+            return (
+              <div style={{ display: 'flex', gap: 8, marginBottom: 18, borderBottom: '1px solid #eee' }}>
+                <button onClick={() => setTasksSubTab('tasks')}
+                  style={{ padding: isMobile ? '12px 16px' : '9px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'tasks' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'tasks' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  📋 &nbsp;Tasks
+                </button>
+                <button onClick={() => { setTasksSubTab('calls'); loadAllTasks(); loadClients(); }}
+                  style={{ padding: isMobile ? '12px 16px' : '9px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'calls' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'calls' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  📞 &nbsp;Call Queue
+                  {callDue > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{callDue}</span>}
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* ── Tasks tab → Call Queue sub-view (was the standalone Today's Calls page) ── */}
+          {page === 'tasks' && tasksSubTab === 'calls' && (() => {
             const t0 = today();
             // Queue: agent-scoped call/follow-up tasks (allTasks is already .eq(agent_id)/.is(completed_at,null)),
             // due today or earlier (overdue included), oldest due first, skipped removed.
@@ -4060,222 +4748,39 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           })()}
 
           {/* ── Tasks Page ── */}
-          {page === 'tasks' && (() => {
+          {page === 'tasks' && tasksSubTab === 'tasks' && (() => {
+            // Legacy vars kept to avoid breaking any remaining references
             const PRIORITY_COLORS: Record<string, { bg: string; color: string }> = {
               urgent: { bg: '#fee2e2', color: '#dc2626' },
               high:   { bg: '#fed7aa', color: '#c2410c' },
               normal: { bg: '#dbeafe', color: '#1d4ed8' },
               low:    { bg: '#f1f5f9', color: '#64748b' },
             };
+            void PRIORITY_COLORS;
             const STATUS_ICONS: Record<string, string> = { open: '⬜', in_progress: '🔄', done: '✅' };
-
-            const filteredTasks = tasks.filter(t => {
-              if (taskStatusFilter !== 'all' && t.status !== taskStatusFilter) return false;
-              if (taskPriorityFilter && t.priority !== taskPriorityFilter) return false;
-              if (taskAssigneeFilter && t.assigned_to !== taskAssigneeFilter) return false;
-              if (taskSearchStr && !t.title.toLowerCase().includes(taskSearchStr.toLowerCase())) return false;
-              return true;
-            });
-
-            const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length;
-            const openCt    = tasks.filter(t => t.status === 'open').length;
-            const inProgCt  = tasks.filter(t => t.status === 'in_progress').length;
+            void STATUS_ICONS;
 
             return (
-              <div>
-                {/* Stats row */}
-                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-                  {[
-                    { label: 'Open',        val: openCt,   color: '#3b82f6' },
-                    { label: 'In Progress', val: inProgCt, color: '#f59e0b' },
-                    { label: 'Overdue',     val: overdueCt,color: '#ef4444' },
-                    { label: 'Total',       val: tasks.length, color: '#c9922c' },
-                  ].map(s => (
-                    <div key={s.label} style={{ background: '#fff', borderRadius: 10, padding: '14px 18px', border: '1px solid #e0e0e0', borderLeft: `4px solid ${s.color}` }}>
-                      <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', marginBottom: 4 }}>{s.label}</div>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 30, fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.val}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Filters + New Task */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-                  {(['all', 'open', 'in_progress', 'done'] as const).map(s => (
-                    <button key={s} onClick={() => setTaskStatusFilter(s)}
-                      style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif",
-                        background: taskStatusFilter === s ? '#111' : '#fff', color: taskStatusFilter === s ? '#fff' : '#6b7280', borderColor: taskStatusFilter === s ? '#111' : '#ddd' }}>
-                      {s === 'all' ? 'All' : s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase() + s.slice(1)}
-                    </button>
-                  ))}
-                  <select value={taskPriorityFilter} onChange={e => setTaskPriorityFilter(e.target.value)}
-                    style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: taskPriorityFilter ? '#111' : '#9ca3af', background: '#fff', cursor: 'pointer' }}>
-                    <option value="">All Priorities</option>
-                    {['urgent','high','normal','low'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                  </select>
-                  {isAdmin && (
-                    <select value={taskAssigneeFilter} onChange={e => setTaskAssigneeFilter(e.target.value)}
-                      style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: taskAssigneeFilter ? '#111' : '#9ca3af', background: '#fff', cursor: 'pointer' }}>
-                      <option value="">All Assignees</option>
-                      {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                    </select>
-                  )}
-                  <input className="crm-input" placeholder="🔍 Search tasks…" value={taskSearchStr} onChange={e => setTaskSearchStr(e.target.value)} style={{ width: 200 }} />
-                  <button className="crm-btn crm-btn-gold" style={{ marginLeft: 'auto' }} onClick={() => setShowNewTaskModal(true)}>+ New Task</button>
-                </div>
-
-                {/* Task list */}
-                {tasksLoading ? (
-                  <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading tasks…</div>
-                ) : filteredTasks.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb' }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>No tasks found</div>
-                    <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 4 }}>Create a new task to get started</div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {filteredTasks.map(t => {
-                      const isOverdue = t.status !== 'done' && t.due_date && t.due_date < today();
-                      const pc = PRIORITY_COLORS[t.priority] ?? PRIORITY_COLORS.normal;
-                      const linkedClient = t.client ?? (t.client_id ? clients.find(c => c.id === t.client_id) : null);
-                      const assigneeName = t.assignee ? `${t.assignee.first_name} ${t.assignee.last_name}` : t.assigned_to ? agentName(t.assigned_to) : '—';
-                      return (
-                        <div key={t.id} style={{ background: '#fff', borderRadius: 10, padding: '14px 16px', border: `1px solid ${isOverdue ? '#fecaca' : '#e5e7eb'}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                          {/* Status toggle */}
-                          <button title="Toggle status" onClick={() => {
-                            const next: Task['status'] = t.status === 'open' ? 'in_progress' : t.status === 'in_progress' ? 'done' : 'open';
-                            updateTask(t.id, { status: next });
-                          }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, flexShrink: 0, padding: 0, marginTop: 1 }}>
-                            {STATUS_ICONS[t.status]}
-                          </button>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                              <span style={{ fontSize: 14, fontWeight: 600, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none' }}>
-                                {t.title}
-                              </span>
-                              <span style={{ ...pc, padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>
-                                {t.priority}
-                              </span>
-                              {isOverdue && <span style={{ padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>OVERDUE</span>}
-                            </div>
-                            {t.description && <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>{t.description}</div>}
-                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12, color: '#9ca3af' }}>
-                              {t.due_date && <span>📅 {new Date(t.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
-                              {linkedClient && <span>👤 {typeof linkedClient === 'object' && 'first_name' in linkedClient ? `${linkedClient.first_name} ${linkedClient.last_name}` : ''}</span>}
-                              {isAdmin && t.assigned_to && <span>🤝 {assigneeName}</span>}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                            <button onClick={() => setEditingTask(t)} style={{ background: '#f3f4f6', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>Edit</button>
-                            <button onClick={() => { if (confirm('Delete this task?')) deleteTask(t.id); }} style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: '#dc2626', fontFamily: "'DM Sans',sans-serif" }}>✕</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* New Task Modal */}
-                {showNewTaskModal && (
-                  <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowNewTaskModal(false); }}>
-                    <div className="modal" style={{ padding: 28, maxWidth: 520 }}>
-                      <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20 }}>New Task</h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Title *</label>
-                          <input className="crm-input" placeholder="Call to discuss offer…" value={newTaskForm.title} onChange={e => setNewTaskForm(f => ({ ...f, title: e.target.value }))} autoFocus />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Description</label>
-                          <textarea className="crm-input" style={{ minHeight: 60, resize: 'none' }} placeholder="Optional details…" value={newTaskForm.description} onChange={e => setNewTaskForm(f => ({ ...f, description: e.target.value }))} />
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Due Date</label>
-                            <input type="date" className="crm-input" value={newTaskForm.due_date} onChange={e => setNewTaskForm(f => ({ ...f, due_date: e.target.value }))} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Priority</label>
-                            <select className="crm-input" value={newTaskForm.priority} onChange={e => setNewTaskForm(f => ({ ...f, priority: e.target.value as Task['priority'] }))}>
-                              {['urgent','high','normal','low'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        {isAdmin && (
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Assign To</label>
-                            <select className="crm-input" value={newTaskForm.assigned_to} onChange={e => setNewTaskForm(f => ({ ...f, assigned_to: e.target.value }))}>
-                              <option value="">Unassigned</option>
-                              {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                            </select>
-                          </div>
-                        )}
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Linked Contact</label>
-                          <select className="crm-input" value={newTaskForm.client_id} onChange={e => setNewTaskForm(f => ({ ...f, client_id: e.target.value }))}>
-                            <option value="">None</option>
-                            {clients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}{c.business_name ? ` — ${c.business_name}` : ''}</option>)}
-                          </select>
-                        </div>
-                        <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-                          <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setShowNewTaskModal(false)}>Cancel</button>
-                          <button className="crm-btn crm-btn-gold" style={{ flex: 2 }} disabled={!newTaskForm.title.trim()} onClick={createTask}>Create Task</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Edit Task Modal */}
-                {editingTask && (
-                  <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setEditingTask(null); }}>
-                    <div className="modal" style={{ padding: 28, maxWidth: 520 }}>
-                      <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Edit Task</h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Title *</label>
-                          <input className="crm-input" value={editingTask.title} onChange={e => setEditingTask(t => t ? { ...t, title: e.target.value } : t)} autoFocus />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Description</label>
-                          <textarea className="crm-input" style={{ minHeight: 60, resize: 'none' }} value={editingTask.description ?? ''} onChange={e => setEditingTask(t => t ? { ...t, description: e.target.value } : t)} />
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Due Date</label>
-                            <input type="date" className="crm-input" value={editingTask.due_date ?? ''} onChange={e => setEditingTask(t => t ? { ...t, due_date: e.target.value } : t)} />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Status</label>
-                            <select className="crm-input" value={editingTask.status} onChange={e => setEditingTask(t => t ? { ...t, status: e.target.value as Task['status'] } : t)}>
-                              {['open','in_progress','done'].map(s => <option key={s} value={s}>{s === 'in_progress' ? 'In Progress' : s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Priority</label>
-                          <select className="crm-input" value={editingTask.priority} onChange={e => setEditingTask(t => t ? { ...t, priority: e.target.value as Task['priority'] } : t)}>
-                            {['urgent','high','normal','low'].map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                          </select>
-                        </div>
-                        {isAdmin && (
-                          <div>
-                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 5 }}>Assign To</label>
-                            <select className="crm-input" value={editingTask.assigned_to ?? ''} onChange={e => setEditingTask(t => t ? { ...t, assigned_to: e.target.value } : t)}>
-                              <option value="">Unassigned</option>
-                              {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                            </select>
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-                          <button className="crm-btn crm-btn-ghost" style={{ flex: 1 }} onClick={() => setEditingTask(null)}>Cancel</button>
-                          <button className="crm-btn crm-btn-gold" style={{ flex: 2 }} disabled={!editingTask.title.trim()} onClick={() => updateTask(editingTask.id, { title: editingTask.title, description: editingTask.description, due_date: editingTask.due_date, status: editingTask.status, priority: editingTask.priority, assigned_to: editingTask.assigned_to })}>Save Changes</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <TasksSection
+                tasks={tasks}
+                tasksLoading={tasksLoading}
+                profiles={profiles}
+                clients={clients}
+                isAdmin={isAdmin}
+                isMobile={isMobile}
+                businessUnit={businessUnit}
+                authHeaders={session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}}
+                onTasksChange={setTasks}
+                showToast={showToast}
+                onRefresh={loadTasks}
+                currentUserId={profile?.id}
+                onTaskComplete={task => {
+                  if (task.client_id) {
+                    logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
+                    if (activeClient?.id === task.client_id) loadClientTasks(task.client_id);
+                  }
+                }}
+              />
             );
           })()}
 
@@ -4314,7 +4819,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Edit form */}
                     {isEditing ? (
                       <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name</label>
                             <input className="crm-input" style={{ marginTop: 3 }} value={editAgentForm.first_name} onChange={e => setEditAgentForm({ ...editAgentForm, first_name: e.target.value })} />
@@ -4328,7 +4833,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label>
                           <input className="crm-input" style={{ marginTop: 3 }} type="email" value={editAgentForm.email} onChange={e => setEditAgentForm({ ...editAgentForm, email: e.target.value })} />
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
                             <input className="crm-input" style={{ marginTop: 3 }} type="tel" placeholder="210-555-0000" value={editAgentForm.phone} onChange={e => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} />
@@ -4375,8 +4880,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* Role toggle — only for other users */}
-                      {a.id !== profile.id && (
+                      {/* Role toggle — super admin only; can't target another super admin */}
+                      {isSuperAdmin && a.id !== profile.id && a.role !== 'super_admin' && (
                         <button
                           onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
                           style={{ width: '100%', padding: '7px 0', fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#f0fdf4', color: a.role === 'admin' ? '#92400e' : '#166534', border: `1px solid ${a.role === 'admin' ? '#fde68a' : '#bbf7d0'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -4389,7 +4894,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ flex: 1, padding: '7px 0', fontSize: 13, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           🔑 Reset Password
                         </button>
-                        {a.id !== profile.id && a.role !== 'admin' && (
+                        {a.id !== profile.id && a.role !== 'admin' && a.role !== 'super_admin' && (
                           <button
                             onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
                             style={{ padding: '7px 10px', fontSize: 13, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -4562,7 +5067,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               }).filter(r => r.total > 0).sort((a, b) => b.total - a.total);
               const totalPaid = agentTotals.reduce((s, r) => s + r.total, 0);
               const needsFiling = agentTotals.filter(r => r.total >= 600);
-              const buName = brand.name;
+              const buName = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
 
               return (
                 <div>
@@ -4634,7 +5139,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     ) : (
                       <>
                         {/* Summary banner */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
+                        <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 24 }}>
                           {[
                             { label: 'Agents Paid', val: String(agentTotals.length), note: 'received commission' },
                             { label: 'Must File 1099', val: String(needsFiling.length), note: '≥ $600 threshold' },
@@ -4761,7 +5266,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* Summary stat row */}
                 {filtered.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
+                  <div className="stats-4col" style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4,1fr)', gap: 10, marginBottom: 18 }}>
                     {[
                       { label: 'Deals', val: String(filtered.length), color: '#111' },
                       { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c' },
@@ -4783,10 +5288,64 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No commissions found</div>
                     <div style={{ fontSize: 13 }}>Add commissions via the Commission tab on any deal.</div>
                   </div>
+                ) : isMobile ? (
+                  /* ── Mobile commission cards — the 8-column table is unreadable on a phone ── */
+                  <div className="crm-mobile-cards">
+                    {filtered.map(c => {
+                      const sc = statusColor[c.status] ?? { bg: '#f3f4f6', color: '#374151' };
+                      const openCommission = () => { if (c.deal_id) { const d = deals.find(x => x.id === c.deal_id); if (d) { setPage('deals'); openDeal(d); setDealTab('commission'); } } };
+                      return (
+                        <div key={c.id} className="crm-mobile-card" onClick={openCommission} style={{ cursor: c.deal_id ? 'pointer' : 'default' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>{c.deal?.client ?? '—'}</div>
+                              {c.deal?.property && <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{c.deal.property}</div>}
+                            </div>
+                            <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: sc.bg, color: sc.color, flexShrink: 0 }}>
+                              {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                            <span>👤 {c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '—'}</span>
+                            <span>📅 {c.close_date ? new Date(c.close_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
+                            {[
+                              { label: 'Sale Price', val: fmt(c.sale_price), color: '#111' },
+                              { label: 'Gross GCI', val: fmt(c.gross_commission), color: '#c9922c' },
+                              { label: 'Agent Net', val: fmt(c.agent_net), color: '#059669' },
+                              { label: 'Broker Net', val: fmt(c.brokerage_net), color: '#374151' },
+                            ].map(f => (
+                              <div key={f.label}>
+                                <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>{f.label}</div>
+                                <div style={{ fontSize: 15, fontWeight: 700, color: f.color, marginTop: 2 }}>{f.val}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* Totals card */}
+                    <div className="crm-mobile-card" style={{ background: '#f9f5ef', border: '1px solid #e8dcc8' }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700, marginBottom: 10 }}>Total ({filtered.length})</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        {[
+                          { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c' },
+                          { label: 'Agent Net', val: fmt(totalAgentNet), color: '#059669' },
+                          { label: 'Broker Net', val: fmt(totalBrokerNet), color: '#374151' },
+                        ].map(f => (
+                          <div key={f.label}>
+                            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>{f.label}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: f.color, marginTop: 2 }}>{f.val}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
                     <div className="mobile-table-scroll">
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <table className="commission-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ background: '#f9f5ef', borderBottom: '2px solid #e8dcc8' }}>
                             {['Client / Property', 'Agent', 'Close Date', 'Sale Price', 'Gross GCI', 'Agent Net', 'Broker Net', 'Status'].map(h => (
@@ -4837,134 +5396,368 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           })()}
 
           {/* ── Campaigns Page ── */}
+          {['campaigns', 'action-plans', 'social'].includes(page) && (
+            <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 2, padding: isMobile ? '12px 16px 0' : '20px 28px 0', borderBottom: '1px solid #eef0f2', overflowX: 'auto' }}>
+              {[
+                { k: 'campaigns',    label: '📣 Campaigns',    on: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); } },
+                { k: 'action-plans', label: '⚡ Action Plans', on: () => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); } },
+                { k: 'social',       label: '📱 Social Media', on: () => setPage('social') },
+              ].map(t => (
+                <button key={t.k} onClick={t.on}
+                  style={{ padding: isMobile ? '12px 14px' : '9px 18px', minHeight: isMobile ? 44 : undefined, border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", color: page === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${page === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -1 }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
           {page === 'campaigns' && (
             <div style={{ padding: isMobile ? '16px' : '28px', flex: 1, overflowY: 'auto' }}>
 
               {/* List view */}
               {campaignView === 'list' && (
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                     <div>
                       <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
-                      <p style={{ fontSize: 14, color: '#6b7280' }}>Automated email & SMS drip campaigns to keep clients engaged</p>
+                      <p style={{ fontSize: 14, color: '#6b7280' }}>Organized by project — campaigns auto-send to enrolled contacts</p>
                     </div>
-                    <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>
-                      + New Campaign
-                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setShowAddProject(true)} style={{ fontSize: 13 }}>📁 New Project</button>}
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: '' }); setCampaignView('builder'); }}>+ New Campaign</button>
+                    </div>
                   </div>
 
-                  {/* Agent filter row — admin only */}
-                  {isAdmin && profiles.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginRight: 4 }}>Agent:</span>
-                      <button onClick={() => setCampaignAgentFilter(null)}
-                        style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignAgentFilter === null ? '#1a1a1a' : '#fff', color: campaignAgentFilter === null ? '#fff' : '#6b7280', borderColor: campaignAgentFilter === null ? '#1a1a1a' : '#e5e7eb' }}>
-                        All
-                      </button>
-                      {profiles.map(p => {
-                        const name = `${p.first_name} ${p.last_name}`.trim() || p.email;
-                        const count = campaigns.filter(c => c.created_by === p.id).length;
-                        if (count === 0) return null;
-                        const active = campaignAgentFilter === p.id;
-                        return (
-                          <button key={p.id} onClick={() => setCampaignAgentFilter(active ? null : p.id)}
-                            style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: active ? '#c9922c' : '#fff', color: active ? '#fff' : '#6b7280', borderColor: active ? '#c9922c' : '#e5e7eb' }}>
-                            {name} <span style={{ opacity: .7 }}>({count})</span>
-                          </button>
-                        );
-                      })}
+                  {/* New project modal */}
+                  {showAddProject && (
+                    <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>New Project</div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <input className="crm-input" placeholder="Project name *" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} style={{ flex: 2, minWidth: 160 }} />
+                        <input className="crm-input" placeholder="Description (optional)" value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} style={{ flex: 3, minWidth: 180 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
+                            <button key={col} onClick={() => setNewProjectColor(col)} style={{ width: 22, height: 22, borderRadius: '50%', background: col, border: newProjectColor === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+                          ))}
+                        </div>
+                        <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={createCampaignProject} disabled={!newProjectName.trim()}>Create</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setShowAddProject(false); setNewProjectName(''); setNewProjectDesc(''); }}>Cancel</button>
+                      </div>
                     </div>
                   )}
 
-                  {/* Status filter tabs */}
-                  {campaigns.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
-                      {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => {
-                        const filtered = campaigns.filter(c => campaignAgentFilter ? c.created_by === campaignAgentFilter : true);
-                        return (
-                          <button key={f} onClick={() => setCampaignFilter(f)}
-                            style={{ padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
-                            {f === 'all' ? `All (${filtered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${filtered.filter(c => c.status === f).length})`}
-                          </button>
-                        );
-                      })}
+                  {/* Edit project inline */}
+                  {editingProject && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Edit Project</div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <input className="crm-input" placeholder="Project name *" value={editingProject.name} onChange={e => setEditingProject({ ...editingProject, name: e.target.value })} style={{ flex: 2, minWidth: 160 }} />
+                        <input className="crm-input" placeholder="Description" value={editingProject.description} onChange={e => setEditingProject({ ...editingProject, description: e.target.value })} style={{ flex: 3, minWidth: 180 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
+                            <button key={col} onClick={() => setEditingProject({ ...editingProject, color: col })} style={{ width: 22, height: 22, borderRadius: '50%', background: col, border: editingProject.color === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+                          ))}
+                        </div>
+                        <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={updateCampaignProject}>Save</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setEditingProject(null)}>Cancel</button>
+                      </div>
                     </div>
                   )}
 
                   {campaignLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading campaigns…</div>
-                  ) : campaigns.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
-                      <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
-                      <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
-                      <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>Create your first drip campaign to automatically stay in touch with clients</div>
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gap: 12 }}>
-                      {campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter)).map(camp => (
-                        <div key={camp.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-                            {camp.type === 'email' ? '✉️' : '💬'}
+                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading…</div>
+                  ) : (() => {
+                    const visibleCampaigns = campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter));
+
+                    // Helper: render a single campaign row
+                    const renderCampaignRow = (camp: Campaign) => {
+                      const rateColor = camp.open_rate == null ? '#9ca3af' : camp.open_rate >= 40 ? '#16a34a' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444';
+                      const schedule = camp.last_sent_at
+                        ? `Sent ${new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                        : camp.send_date
+                          ? `Sends ${new Date(camp.send_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                          : 'Not scheduled';
+                      const sent = camp.send_count ?? 0;
+                      return (
+                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 9, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                          {camp.type === 'email' ? '✉️' : '💬'}
+                        </div>
+                        {/* Name + status + schedule — takes the rest of row 1 on a phone
+                            so the metric columns wrap onto a second line instead of
+                            squeezing the campaign name down to a few characters. */}
+                        <div style={{ flex: isMobile ? '1 1 calc(100% - 50px)' : 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{camp.name}</span>
+                            <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{camp.name}</span>
-                              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: .5, padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', color: camp.type === 'email' ? '#1e40af' : '#065f46' }}>{camp.type.toUpperCase()}</span>
-                            </div>
-                            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                              <span>{camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)} · {camp.enrollment_count ?? 0} enrolled</span>
-                              {camp.last_sent_at
-                                ? <span style={{ color: '#16a34a', fontWeight: 500 }}> · Last sent {new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                : <span style={{ color: '#9ca3af' }}> · Never sent</span>
-                              }
-                              {isAdmin && (
-                                inlineOwnerCampaignId === camp.id ? (
-                                  <select
-                                    autoFocus
-                                    value={camp.created_by ?? ''}
-                                    onBlur={() => setInlineOwnerCampaignId(null)}
-                                    onChange={async e => {
-                                      const newOwner = e.target.value;
-                                      await fetch(`/api/campaigns/${camp.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ created_by: newOwner }) });
-                                      setCampaigns(prev => prev.map(c => c.id === camp.id ? { ...c, created_by: newOwner } : c));
-                                      if (activeCampaign?.id === camp.id) setActiveCampaign(ac => ac ? { ...ac, created_by: newOwner } : ac);
-                                      setInlineOwnerCampaignId(null);
-                                      showToast('Owner updated ✓');
-                                    }}
-                                    style={{ fontSize: 13, fontFamily: "'DM Sans',sans-serif", border: '1px solid #c9922c', borderRadius: 6, padding: '2px 6px', color: '#c9922c', fontWeight: 600, background: '#fff', cursor: 'pointer' }}
-                                  >
-                                    {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                                  </select>
-                                ) : (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setInlineOwnerCampaignId(camp.id); }}
-                                    title="Click to change owner"
-                                    style={{ background: 'none', border: 'none', padding: '1px 0', cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 13, fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                                  >
-                                    · {(() => { const o = profiles.find(p => p.id === camp.created_by); return o ? `${o.first_name} ${o.last_name}` : '—'; })()}
-                                    <span style={{ fontSize: 10, color: '#d1a054', marginLeft: 1 }}>▾</span>
-                                  </button>
-                                )
-                              )}
-                              {!isAdmin && (() => { const owner = profiles.find(p => p.id === camp.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
-                              {camp.description && <span> · {camp.description}</span>}
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
-                            {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                            <span style={{ color: camp.last_sent_at ? '#16a34a' : '#9ca3af' }}>{schedule}</span>
+                            <span> · {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        {/* Enrolled column */}
+                        <div style={{ width: 66, textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 14, color: '#374151', fontWeight: 600 }}>{camp.enrollment_count ?? 0}</div>
+                          <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
+                        </div>
+                        {/* Performance column */}
+                        <div style={{ width: 116, flexShrink: 0 }}>
+                          {sent > 0 && camp.open_rate != null ? (
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: rateColor, textAlign: 'right' }}>{camp.open_rate}% open</div>
+                              <div style={{ height: 4, borderRadius: 2, background: '#f0f0f0', marginTop: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${Math.min(100, Math.max(0, camp.open_rate))}%`, height: '100%', background: rateColor }} />
+                              </div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'right', marginTop: 2 }}>{sent} sent</div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: '#c4c4c4', textAlign: 'right' }}>Not sent yet</div>
+                          )}
+                        </div>
+                        {/* Move to project dropdown */}
+                        {isAdmin && campaignProjects.length > 0 && (
+                          <select
+                            value={camp.project_id ?? ''}
+                            onChange={e => assignCampaignToProject(camp.id, e.target.value || null)}
+                            title="Move to project"
+                            style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', maxWidth: 120, flexShrink: 0 }}
+                          >
+                            <option value="">No project</option>
+                            {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        )}
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(camp)} title="Preview email">👁 Preview</button>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
+                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
+                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
+                        </div>
+                      </div>
+                    );
+                    };
+
+                    if (visibleCampaigns.length === 0) return (
+                      <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+                        <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
+                        <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
+                        <div style={{ fontSize: 14, color: '#6b7280', marginBottom: 20 }}>Create a project first, then add campaigns inside it</div>
+                        <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: '' }); setCampaignView('builder'); }}>+ Create First Campaign</button>
+                      </div>
+                    );
+
+                    // Status filter pills
+                    const allFiltered = campaigns.filter(c => !campaignAgentFilter || c.created_by === campaignAgentFilter);
+                    return (
+                      <div>
+                        {/* Filter pills + summary */}
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
+                            <button key={f} onClick={() => setCampaignFilter(f)}
+                              style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
+                              {f === 'all' ? `All (${allFiltered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${allFiltered.filter(c => c.status === f).length})`}
+                            </button>
+                          ))}
+                          {(() => {
+                            const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
+                            if (!rated.length) return null;
+                            const avg = Math.round(rated.reduce((s, c) => s + (c.open_rate ?? 0), 0) / rated.length);
+                            return <span style={{ marginLeft: 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif" }}>Avg open rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
+                          })()}
+                        </div>
+
+                        {/* Project sections */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                          {campaignProjects.map(project => {
+                            const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id);
+                            const isExpanded = expandedProjects.has(project.id);
+                            return (
+                              <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
+                                {/* Project header */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                  onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has(project.id) ? n.delete(project.id) : n.add(project.id); return n; })}>
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flex: 1 }}>
+                                    {project.name}
+                                    <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
+                                    {project.description && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>· {project.description}</span>}
+                                  </div>
+                                  {(() => {
+                                    const sent = projectCampaigns.map(c => c.last_sent_at).filter(Boolean) as string[];
+                                    const label = sent.length
+                                      ? `Last sent ${new Date([...sent].sort().slice(-1)[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                      : projectCampaigns.length ? 'Not sent yet' : 'No campaigns';
+                                    return <span style={{ fontSize: 12, color: '#9ca3af', marginRight: 6, flexShrink: 0 }}>{label}</span>;
+                                  })()}
+                                  {isAdmin && (
+                                    <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                                        onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: project.id }); setCampaignView('builder'); }}>+ Campaign</button>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setEditingProject(project)}>Edit</button>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px', color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaignProject(project.id)}>🗑</button>
+                                    </div>
+                                  )}
+                                  <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 4 }}>{isExpanded ? '▾' : '▸'}</span>
+                                </div>
+                                {/* Campaigns inside project */}
+                                {isExpanded && (
+                                  <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {projectCampaigns.length === 0 ? (
+                                      <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>No campaigns in this project yet — click "+ Campaign" above</div>
+                                    ) : projectCampaigns.map(renderCampaignRow)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Ungrouped campaigns */}
+                          {(() => {
+                            const ungrouped = visibleCampaigns.filter(c => !c.project_id);
+                            if (ungrouped.length === 0 && campaignProjects.length > 0) return null;
+                            const isExpanded = expandedProjects.has('__ungrouped__');
+                            return (
+                              <div style={{ border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                  onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has('__ungrouped__') ? n.delete('__ungrouped__') : n.add('__ungrouped__'); return n; })}>
+                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', flex: 1 }}>
+                                    Ungrouped
+                                    <span style={{ fontWeight: 400, marginLeft: 8 }}>{ungrouped.length} campaign{ungrouped.length !== 1 ? 's' : ''}</span>
+                                  </div>
+                                  <span style={{ fontSize: 13, color: '#9ca3af' }}>{isExpanded ? '▾' : '▸'}</span>
+                                </div>
+                                {isExpanded && (
+                                  <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {ungrouped.length === 0 ? (
+                                      <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>All campaigns are organized into projects</div>
+                                    ) : ungrouped.map(renderCampaignRow)}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
               {/* Detail view */}
+              {/* Campaign quick preview modal */}
+              {previewCampaign && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setPreviewCampaign(null)}>
+                  <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                    {/* Modal header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{previewCampaign.name}</div>
+                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Email preview — sample data</div>
+                      </div>
+                      <button onClick={() => setPreviewCampaign(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
+                    </div>
+                    {/* Subject */}
+                    <div style={{ padding: '12px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                      <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
+                        {(previewCampaign.email_subject ?? '(no subject)')
+                          .replace(/\{\{first_name\}\}/g, 'Jane')
+                          .replace(/\{\{last_name\}\}/g, 'Smith')
+                          .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())}
+                      </span>
+                    </div>
+                    {/* Email body */}
+                    <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                      {previewCampaign.email_body ? (
+                        <iframe
+                          srcDoc={previewCampaign.email_body
+                            .replace(/\{\{first_name\}\}/g, 'Jane')
+                            .replace(/\{\{last_name\}\}/g, 'Smith')
+                            .replace(/\{\{full_name\}\}/g, 'Jane Smith')
+                            .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
+                            .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@example.com')
+                            .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
+                            .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
+                            .replace(/\{\{unsubscribe_url\}\}/g, '#')}
+                          style={{ width: '100%', border: 'none', display: 'block' }}
+                          height={600}
+                          title="Email preview"
+                          sandbox="allow-same-origin"
+                        />
+                      ) : (
+                        <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No email body yet.</div>
+                      )}
+                    </div>
+                    <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafafa' }}>
+                      <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(null)}>Close</button>
+                      <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setActiveCampaign(previewCampaign); loadCampaignEnrollments(previewCampaign.id); loadCampaignSends(previewCampaign.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); setPreviewCampaign(null); }}>Manage →</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* View Sent Campaign Email Modal */}
+              {viewCampaignSendModal && (() => {
+                const { send, contact } = viewCampaignSendModal;
+                const camp = campaigns.find(c => c.id === send.campaign_id);
+                const renderedBody = camp?.email_body
+                  ? camp.email_body
+                    .replaceAll('{{first_name}}', contact.first_name ?? '')
+                    .replaceAll('{{last_name}}', contact.last_name ?? '')
+                    .replaceAll('{{full_name}}', [contact.first_name, contact.last_name].filter(Boolean).join(' '))
+                    .replaceAll('{{email}}', contact.email ?? '')
+                    .replaceAll('{{client_type}}', contact.type ?? '')
+                    .replaceAll('{{agent_name}}', `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim())
+                    .replaceAll('{{agent_email}}', profile?.email ?? '')
+                    .replaceAll('{{agent_phone}}', profile?.phone ?? '')
+                    .replaceAll('{{brokerage}}', businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
+                    .replaceAll('{{unsubscribe_url}}', '#preview')
+                  : null;
+                return (
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setViewCampaignSendModal(null)}>
+                    <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 700, boxShadow: '0 24px 80px rgba(0,0,0,.35)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#111' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{send.campaign_name}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                            Sent to {[contact.first_name, contact.last_name].filter(Boolean).join(' ') || contact.email} · {new Date(send.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {send.opened_at && <span style={{ marginLeft: 8, color: '#86efac', fontWeight: 600 }}>· 👁 Opened</span>}
+                          </div>
+                        </div>
+                        <button onClick={() => setViewCampaignSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
+                      </div>
+                      {/* Subject */}
+                      <div style={{ padding: '10px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{send.subject ?? camp?.email_subject ?? '(no subject)'}</span>
+                      </div>
+                      {/* Email body */}
+                      <div style={{ maxHeight: '65vh', overflowY: 'auto', background: '#fff' }}>
+                        {renderedBody ? (
+                          <iframe
+                            srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${renderedBody}</body></html>`}
+                            style={{ width: '100%', border: 'none', display: 'block', minHeight: 500 }}
+                            title="Sent email"
+                            sandbox="allow-same-origin"
+                            onLoad={(e) => { try { const doc = (e.currentTarget as HTMLIFrameElement).contentDocument; if (doc) e.currentTarget.style.height = (doc.body.scrollHeight + 40) + 'px'; } catch {} }}
+                          />
+                        ) : (
+                          <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>📧</div>
+                            <div>Email template not available for preview.</div>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', background: '#fafafa' }}>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setViewCampaignSendModal(null)}>Close</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {campaignView === 'detail' && activeCampaign && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
@@ -4975,7 +5768,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '', project_id: activeCampaign.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
                         {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated ✓'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
@@ -5064,7 +5857,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
 
                               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                {filtered.slice(0, 50).map(c => (
+                                {filtered.slice(0, 1000).map(c => (
                                   <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
                                     <input type="checkbox" checked={selectedEnrollIds.includes(c.id)} onChange={() => setSelectedEnrollIds(prev => prev.includes(c.id) ? prev.filter(x => x !== c.id) : [...prev, c.id])} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -5085,7 +5878,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </label>
                                 ))}
                                 {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 13 }}>No contacts match these filters</div>}
-                                {filtered.length > 50 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 50 of {filtered.length} — refine filters to narrow down</div>}
+                                {filtered.length > 1000 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 1000 of {filtered.length} — refine filters to narrow down</div>}
                               </div>
                             </>
                           );
@@ -5100,15 +5893,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                       {/* Enrolled list — show all for completed/one-time, active-only for recurring */}
                       {(() => {
-                        const isCompleted = activeCampaign.status === 'completed' || activeCampaign.frequency === 'one-time';
-                        const visibleEnrollments = isCompleted ? campaignEnrollments : campaignEnrollments.filter(e => e.active);
-                        const activeEnrollments = campaignEnrollments.filter(e => e.active);
+                        const isCompleted = activeCampaign.status === 'completed';
+                        const visibleEnrollments = campaignEnrollments.filter(e => e.active);
+                        const activeEnrollments = visibleEnrollments;
                         const allUnenrollChecked = activeEnrollments.length > 0 && selectedUnenrollIds.length === activeEnrollments.length;
                         return (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                               <div style={{ fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>
-                                {isCompleted ? `All Recipients (${visibleEnrollments.length})` : `Currently Enrolled (${activeEnrollments.length})`}
+                                {isCompleted ? `All Recipients (${visibleEnrollments.length})` : `Enrolled (${activeEnrollments.length})`}
                               </div>
                               {selectedUnenrollIds.length > 0 && (
                                 <button onClick={() => bulkUnenrollClients(activeCampaign.id)}
@@ -5123,7 +5916,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 14 }}>No clients enrolled yet</div>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {/* Select all row — only show for active recurring campaigns */}
+                                {/* Select all row */}
                                 {!isCompleted && (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px', background: '#f9fafb', borderRadius: 6, border: '1px dashed #e5e7eb' }}>
                                     <input type="checkbox" checked={allUnenrollChecked} style={{ accentColor: '#c9922c', cursor: 'pointer' }}
@@ -5131,21 +5924,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ fontSize: 13, color: '#6b7280', fontWeight: 500 }}>Select all to remove</span>
                                   </div>
                                 )}
-                                {visibleEnrollments.map(en => (
+                                {visibleEnrollments.map(en => {
+                                  const displayName = [en.client?.first_name, en.client?.last_name].filter(Boolean).join(' ') || en.client?.business_name || en.client?.email || '—';
+                                  const initials = en.client?.first_name?.[0] || en.client?.last_name?.[0] || en.client?.business_name?.[0] || en.client?.email?.[0] || '?';
+                                  return (
                                   <div key={en.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: selectedUnenrollIds.includes(en.client_id) ? '#fff5f5' : '#fff', border: `1px solid ${selectedUnenrollIds.includes(en.client_id) ? '#fecaca' : '#e5e7eb'}`, borderRadius: 8, transition: 'all .1s' }}>
                                     {!isCompleted && (
                                       <input type="checkbox" checked={selectedUnenrollIds.includes(en.client_id)} style={{ accentColor: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
                                         onChange={e => setSelectedUnenrollIds(prev => e.target.checked ? [...prev, en.client_id] : prev.filter(id => id !== en.client_id))} />
                                     )}
-                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: en.active ? '#c9922c' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                                      {(en.client?.first_name?.[0] ?? '') + (en.client?.last_name?.[0] ?? '')}
+                                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: en.active ? '#c9922c' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0, textTransform: 'uppercase' }}>
+                                      {initials}
                                     </div>
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 500 }}>{en.client?.first_name} {en.client?.last_name}</div>
+                                      <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
                                       <div style={{ fontSize: 12, color: '#9ca3af' }}>
                                         {isCompleted
                                           ? <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Sent</span>
-                                          : <>Next send: {en.next_send_at ? new Date(en.next_send_at).toLocaleDateString() : 'On activation'}</>
+                                          : <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Enrolled{en.next_send_at ? ` · Sends ${new Date(en.next_send_at).toLocaleDateString()}` : ' · Sends on activation'}</span>
                                         }
                                         {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
                                       </div>
@@ -5154,7 +5950,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       <button onClick={() => unenrollClient(activeCampaign.id, en.client_id)} style={{ background: 'none', border: '1px solid #fecaca', borderRadius: 5, color: '#ef4444', fontSize: 12, cursor: 'pointer', padding: '3px 10px', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Remove</button>
                                     )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </>
@@ -5167,90 +5964,93 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {campaignTab === 'history' && (
                     <div>
                       {campaignSends.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No sends yet — activate the campaign to start sending.</div>
+                        <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', fontSize: 14 }}>No sends yet — activate the campaign to start sending.</div>
                       ) : (() => {
                         const sentEmails = campaignSends.filter(s => s.status === 'sent' && s.type === 'email');
                         const openedCount = sentEmails.filter(s => s.opened_at).length;
                         const trackedCount = sentEmails.filter(s => s.tracking_id).length;
+                        const failedCount = campaignSends.filter(s => s.status === 'failed').length;
                         const openRate = trackedCount > 0 ? Math.round((openedCount / trackedCount) * 100) : null;
+                        const barColor = openRate == null ? '#e5e7eb' : openRate >= 40 ? '#16a34a' : openRate >= 20 ? '#c9922c' : '#ef4444';
                         return (
                           <div>
-                            {/* Open rate summary bar */}
+                            {/* Stats cards */}
                             {trackedCount > 0 && (
-                              <div style={{ display: 'flex', gap: 16, padding: '12px 16px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                                <div style={{ textAlign: 'center', minWidth: 60 }}>
-                                  <div style={{ fontSize: 22, fontWeight: 700, color: '#111', fontFamily: "'Cormorant Garamond',serif" }}>{openRate}%</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Open Rate</div>
-                                </div>
-                                <div style={{ width: 1, background: '#e5e7eb', alignSelf: 'stretch' }} />
-                                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#16a34a' }}>{openedCount}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Opened</div>
-                                </div>
-                                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#6b7280' }}>{trackedCount - openedCount}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Unopened</div>
-                                </div>
-                                <div style={{ textAlign: 'center', minWidth: 50 }}>
-                                  <div style={{ fontSize: 18, fontWeight: 700, color: '#374151' }}>{trackedCount}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>Tracked</div>
-                                </div>
-                                {/* Open rate bar */}
-                                <div style={{ flex: 1, minWidth: 120 }}>
-                                  <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
-                                    <div style={{ height: '100%', width: `${openRate}%`, background: openRate! >= 40 ? '#16a34a' : openRate! >= 20 ? '#c9922c' : '#ef4444', borderRadius: 4, transition: 'width .4s' }} />
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, marginBottom: 20 }}>
+                                {/* Open rate card */}
+                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center', gridColumn: 'span 2' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Open Rate</div>
+                                  <div style={{ fontSize: 32, fontWeight: 700, color: barColor, fontFamily: "'Cormorant Garamond',serif", lineHeight: 1 }}>{openRate}%</div>
+                                  <div style={{ height: 4, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', margin: '10px 0 4px' }}>
+                                    <div style={{ height: '100%', width: `${openRate}%`, background: barColor, borderRadius: 4, transition: 'width .5s' }} />
                                   </div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Industry avg: ~20–25%</div>
+                                  <div style={{ fontSize: 11, color: '#d1d5db' }}>avg 20–25%</div>
                                 </div>
+                                {/* Delivered */}
+                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Sent</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#111' }}>{trackedCount}</div>
+                                </div>
+                                {/* Opened */}
+                                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Opened</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#15803d' }}>{openedCount}</div>
+                                </div>
+                                {/* Unopened */}
+                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Unopened</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#6b7280' }}>{trackedCount - openedCount}</div>
+                                </div>
+                                {failedCount > 0 && (
+                                  <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: 11, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Failed</div>
+                                    <div style={{ fontSize: 26, fontWeight: 700, color: '#dc2626' }}>{failedCount}</div>
+                                  </div>
+                                )}
                               </div>
                             )}
 
                             {/* Send rows */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                               {campaignSends.map(s => {
                                 const client = clients.find(c => c.id === s.client_id);
+                                const displayName = client ? ([client.first_name, client.last_name].filter(Boolean).join(' ') || client.business_name || client.email || 'Unknown') : 'Unknown';
+                                const subName = client?.business_name && (client.first_name || client.last_name) ? client.business_name : null;
+                                const initial = displayName[0]?.toUpperCase() || '?';
                                 const isOpened = !!s.opened_at;
                                 const isTracked = !!s.tracking_id;
+                                const isFailed = s.status === 'failed';
                                 return (
-                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isOpened ? '#f0fdf4' : '#fff', border: `1px solid ${isOpened ? '#bbf7d0' : '#e5e7eb'}`, borderRadius: 8 }}>
-                                    {/* Send status */}
-                                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, flexShrink: 0, background: s.status === 'sent' ? '#dcfce7' : s.status === 'failed' ? '#fee2e2' : '#f3f4f6', color: s.status === 'sent' ? '#166534' : s.status === 'failed' ? '#991b1b' : '#6b7280' }}>
-                                      {s.status.toUpperCase()}
-                                    </span>
-
-                                    {/* Client name + subject */}
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{client ? `${client.first_name} ${client.last_name}` : 'Unknown'}</div>
-                                      {s.subject && <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.subject}</div>}
+                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? '#f0fdf4' : isFailed ? '#fff5f5' : '#fff', borderRadius: 10, borderLeft: `3px solid ${isOpened ? '#22c55e' : isFailed ? '#ef4444' : '#e5e7eb'}` }}>
+                                    {/* Avatar */}
+                                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOpened ? '#dcfce7' : '#f3f4f6', color: isOpened ? '#16a34a' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
+                                      {initial}
                                     </div>
 
-                                    {/* Open badge */}
+                                    {/* Name + sub */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
+                                      {subName && <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subName}</div>}
+                                      {isFailed && s.error_message && <div style={{ fontSize: 11, color: '#ef4444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.error_message}</div>}
+                                    </div>
+
+                                    {/* Open status */}
                                     {s.status === 'sent' && s.type === 'email' && (
                                       isOpened ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: '1px solid #bbf7d0', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>
-                                          👁 Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}
-                                        </span>
+                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                          <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}</div>
+                                          {s.opened_at && <div style={{ fontSize: 11, color: '#86efac' }}>{new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>}
+                                        </div>
                                       ) : isTracked ? (
-                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#9ca3af', background: '#f3f4f6', border: '1px solid #e5e7eb', padding: '2px 9px', borderRadius: 20, flexShrink: 0 }}>
-                                          ○ Unopened
-                                        </span>
+                                        <div style={{ fontSize: 12, color: '#d1d5db', flexShrink: 0 }}>Not opened</div>
                                       ) : null
                                     )}
+                                    {isFailed && <div style={{ fontSize: 12, fontWeight: 600, color: '#ef4444', flexShrink: 0 }}>Failed</div>}
 
-                                    {/* Date */}
-                                    <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0 }}>
+                                    {/* Sent date */}
+                                    <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, textAlign: 'right', minWidth: 48 }}>
                                       {new Date(s.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                      {isOpened && s.opened_at && (
-                                        <div style={{ fontSize: 11, color: '#16a34a' }}>
-                                          opened {new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                        </div>
-                                      )}
                                     </div>
-
-                                    {/* Type pill */}
-                                    <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 8, flexShrink: 0, background: s.type === 'email' ? '#dbeafe' : '#d1fae5', color: s.type === 'email' ? '#1e40af' : '#065f46' }}>
-                                      {s.type.toUpperCase()}
-                                    </span>
                                   </div>
                                 );
                               })}
@@ -5275,8 +6075,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 .replace(/\{\{last_name\}\}/g, 'Smith')
                                 .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                                 .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
-                                .replace(/\{\{brokerage\}\}/g, brand.legalName)
+                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
+                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                                 || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No SMS body set.</span>}
                             </div>
                           </div>
@@ -5294,7 +6094,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 .replace(/\{\{last_name\}\}/g, 'Smith')
                                 .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                                 .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{brokerage\}\}/g, brand.legalName)}
+                                .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')}
                             </span>
                           </div>
 
@@ -5307,7 +6107,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#f59e0b' }} />
                                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e' }} />
                                 <div style={{ flex: 1, marginLeft: 12, background: '#fff', borderRadius: 6, padding: '4px 12px', fontSize: 12, color: '#9ca3af' }}>
-                                  From: {brand.fromName} &lt;{brand.fromEmail}&gt;
+                                  From: {businessUnit === 'commercial' ? 'CRECO <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>'}
                                 </div>
                               </div>
                               <iframe
@@ -5320,9 +6120,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     .replace(/\{\{email\}\}/g, 'jane@example.com')
                                     .replace(/\{\{client_type\}\}/g, 'Buyer')
                                     .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                    .replace(/\{\{agent_email\}\}/g, profile?.email ?? `agent@${brand.fromEmail.split('@')[1]}`)
-                                    .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
-                                    .replace(/\{\{brokerage\}\}/g, brand.legalName)
+                                    .replace(/\{\{agent_email\}\}/g, businessUnit === 'commercial' ? 'zack@crecotx.com' : (profile?.email ?? 'info@fairoaksrealtygroup.com'))
+                                    .replace(/\{\{agent_phone\}\}/g, businessUnit === 'commercial' ? '210-817-3443' : (profile?.phone ?? '210-390-9997'))
+                                    .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
                                     .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
                                   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${body}</body></html>`;
                                 })()}
@@ -5428,7 +6228,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Campaign Name *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Monthly Market Update" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Brief description of the campaign purpose" value={newCampaign.description} onChange={e => setNewCampaign({ ...newCampaign, description: e.target.value })} /></div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      {campaignProjects.length > 0 && (
+                        <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Project</label>
+                          <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.project_id} onChange={e => setNewCampaign({ ...newCampaign, project_id: e.target.value })}>
+                            <option value="">— No project (ungrouped) —</option>
+                            {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Channel</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.type} onChange={e => setNewCampaign({ ...newCampaign, type: e.target.value as 'email' | 'sms' })}>
@@ -5542,9 +6350,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Send As (Agent)</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.sender_agent_id} onChange={e => setNewCampaign({ ...newCampaign, sender_agent_id: e.target.value })}>
                             <option value="">— Contact&apos;s assigned agent (default) —</option>
-                            {profiles.map(a => (
-                              <option key={a.id} value={a.id}>{a.first_name} {a.last_name}{a.email ? ` (${a.email})` : ''}</option>
-                            ))}
+                            {profiles.map(a => {
+                              // Show the workspace-correct sender email (mirrors the send logic):
+                              // an agent whose profile email is on the other brand's domain presents
+                              // as this workspace's address (e.g. CRECO → zack@crecotx.com).
+                              const domain = businessUnit === 'commercial' ? '@crecotx.com' : '@fairoaksrealtygroup.com';
+                              const unitDefault = businessUnit === 'commercial' ? 'zack@crecotx.com' : 'info@fairoaksrealtygroup.com';
+                              const shownEmail = a.email && a.email.endsWith(domain) ? a.email : unitDefault;
+                              return <option key={a.id} value={a.id}>{a.first_name} {a.last_name} ({shownEmail})</option>;
+                            })}
                           </select>
                           <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Override whose name &amp; reply-to appear on every email in this campaign.</div>
                         </div>
@@ -5751,17 +6565,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gap: 12 }}>
-                      {actionPlans.filter(plan => !actionPlanAgentFilter || plan.created_by === actionPlanAgentFilter).map(plan => (
-                        <div key={plan.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-                          <div style={{ width: 44, height: 44, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>⚡</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>{plan.name}</span>
-                              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
-                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#ede9fe', color: '#6d28d9' }}>{plan.trigger_type.replace('_', ' ')}</span>
+                      {actionPlans.filter(plan => !actionPlanAgentFilter || plan.created_by === actionPlanAgentFilter).map(plan => {
+                        const triggerLabel = plan.trigger_type === 'manual' ? 'Manual'
+                          : plan.trigger_type === 'new_contact' ? 'On new contact'
+                          : plan.trigger_type === 'stage_change' ? `On stage change${plan.trigger_value ? ` → ${plan.trigger_value}` : ''}`
+                          : `On tag added${plan.trigger_value ? ` → ${plan.trigger_value}` : ''}`;
+                        return (
+                        <div key={plan.id} title={plan.description || undefined} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: isMobile ? '14px 16px' : '16px 20px', display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+                          <div style={{ width: 42, height: 42, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>⚡</div>
+                          {/* Name + status + trigger + owner */}
+                          <div style={{ flex: isMobile ? '1 1 calc(100% - 56px)' : 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <span style={{ fontSize: 15, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.name}</span>
+                              <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
                             </div>
-                            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                              <span>{plan.step_count ?? 0} steps · {plan.enrollment_count ?? 0} enrolled</span>
+                            <div style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#ede9fe', color: '#6d28d9' }}>{triggerLabel}</span>
                               {isAdmin && (
                                 inlineOwnerPlanId === plan.id ? (
                                   <select
@@ -5792,8 +6611,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 )
                               )}
                               {!isAdmin && (() => { const owner = profiles.find(p => p.id === plan.created_by); return owner ? <span style={{ color: '#c9922c', fontWeight: 500 }}> · {owner.first_name} {owner.last_name}</span> : null; })()}
-                              {plan.description && <span> · {plan.description}</span>}
                             </div>
+                          </div>
+                          {/* Steps column */}
+                          <div style={{ width: 60, textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{plan.step_count ?? 0}</div>
+                            <div style={{ fontSize: 11, color: '#9ca3af' }}>steps</div>
+                          </div>
+                          {/* Enrolled column */}
+                          <div style={{ width: 66, textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{plan.enrollment_count ?? 0}</div>
+                            <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setSelectedPlanEnrollIds([]); setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); setPreviewStepIdx(0); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setDetailSteps(j.plan?.steps ?? [])); setActionPlanView('detail'); }}>Manage</button>
@@ -5801,7 +6629,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteActionPlan(plan.id)}>🗑</button>}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -5896,7 +6725,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </div>
 
                               <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                {filtered.slice(0, 50).map(c => (
+                                {filtered.slice(0, 1000).map(c => (
                                   <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, cursor: 'pointer', background: selectedPlanEnrollIds.includes(c.id) ? '#fef3e2' : 'transparent', transition: 'background .1s' }}>
                                     <input type="checkbox" checked={selectedPlanEnrollIds.includes(c.id)} onChange={e => setSelectedPlanEnrollIds(prev => e.target.checked ? [...prev, c.id] : prev.filter(id => id !== c.id))} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
                                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -5917,7 +6746,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </label>
                                 ))}
                                 {filtered.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: '#9ca3af', fontSize: 13 }}>No contacts match these filters</div>}
-                                {filtered.length > 50 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 50 of {filtered.length} — refine filters to narrow down</div>}
+                                {filtered.length > 1000 && <div style={{ textAlign: 'center', padding: 8, color: '#9ca3af', fontSize: 12 }}>Showing 1000 of {filtered.length} — refine filters to narrow down</div>}
                               </div>
                             </>
                           );
@@ -5948,17 +6777,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* Preview tab */}
                   {actionPlanTab === 'preview' && (() => {
-                    const fromLine = `${brand.fromName} <${brand.fromEmail}>`;
+                    const fromLine = businessUnit === 'commercial'
+                      ? 'CRECO <info@crecotx.com>'
+                      : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
                     const applyPreview = (t: string) => (t ?? '')
                       .replace(/\{\{first_name\}\}/g, 'Jane')
                       .replace(/\{\{last_name\}\}/g, 'Smith')
                       .replace(/\{\{full_name\}\}/g, 'Jane Smith')
                       .replace(/\{\{email\}\}/g, 'jane@example.com')
-                      .replace(/\{\{client_type\}\}/g, businessUnit === 'commercial' ? 'Tenant' : 'Buyer')
+                      .replace(/\{\{client_type\}\}/g, 'Tenant')
                       .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                      .replace(/\{\{agent_email\}\}/g, profile?.email ?? `agent@${brand.fromEmail.split('@')[1]}`)
-                      .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
-                      .replace(/\{\{brokerage\}\}/g, brand.legalName)
+                      .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
+                      .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
+                      .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                       .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
 
                     if (detailSteps.length === 0) return (
@@ -6088,7 +6919,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Plan Name *</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.name} onChange={e => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="e.g. New Buyer Welcome Sequence" /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.description} onChange={e => setNewPlan({ ...newPlan, description: e.target.value })} placeholder="What does this plan do?" /></div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Trigger</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newPlan.trigger_type} onChange={e => setNewPlan({ ...newPlan, trigger_type: e.target.value as ActionPlan['trigger_type'], trigger_value: '' })}>
@@ -6166,10 +6997,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               .replaceAll('{{full_name}}', 'John Smith')
                               .replaceAll('{{email}}', 'john.smith@email.com')
                               .replaceAll('{{client_type}}', 'Buyer')
-                              .replaceAll('{{agent_name}}', `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                              .replaceAll('{{agent_email}}', profile?.email ?? brand.fromEmail)
-                              .replaceAll('{{agent_phone}}', profile?.phone ?? brand.phone)
-                              .replaceAll('{{brokerage}}', brand.legalName)
+                              .replaceAll('{{agent_name}}', 'Zachary Stovall')
+                              .replaceAll('{{agent_email}}', 'info@fairoaksrealtygroup.com')
+                              .replaceAll('{{agent_phone}}', '210-390-9997')
+                              .replaceAll('{{brokerage}}', 'Fair Oaks Realty Group')
                               .replaceAll('{{unsubscribe_url}}', '#');
                             return (
                               <div>
@@ -6197,9 +7028,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', minHeight: 200, overflow: 'hidden' }}>
                                     {/* Email chrome */}
                                     <div style={{ background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', padding: '8px 14px', fontSize: 13, color: '#6b7280' }}>
-                                      <div><strong>From:</strong> {brand.fromName} &lt;{brand.fromEmail}&gt;</div>
+                                      <div><strong>From:</strong> Fair Oaks Realty Group &lt;info@fairoaksrealtygroup.com&gt;</div>
                                       <div><strong>To:</strong> john.smith@email.com</div>
-                                      <div><strong>Subject:</strong> {(step.subject || '(no subject)').replaceAll('{{first_name}}', 'John').replaceAll('{{agent_name}}', `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())}</div>
+                                      <div><strong>Subject:</strong> {(step.subject || '(no subject)').replaceAll('{{first_name}}', 'John').replaceAll('{{agent_name}}', 'Zachary Stovall')}</div>
                                     </div>
                                     <iframe
                                       srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:20px;font-family:Arial,sans-serif;font-size:15px;color:#222;line-height:1.6}a{color:#c9922c}</style></head><body>${preview || '<p style="color:#9ca3af">Nothing to preview yet — add some HTML in the Code tab.</p>'}</body></html>`}
@@ -6235,29 +7066,134 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
 
           {/* ── Social Media Page ── */}
+          {/* ── Activity Log Page ── */}
+          {page === 'activity' && (
+            <ActivitySection
+              businessUnit={businessUnit}
+              profileId={profile?.id ?? ''}
+              isAdmin={isAdmin}
+              authHeaders={session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}}
+              showToast={showToast}
+            />
+          )}
+
           {page === 'social' && (
             <SocialMediaSection
               agentId={profile?.id ?? ''}
               isAdmin={isAdmin}
               toast={(msg: string) => showToast(msg)}
+            />
+          )}
+
+          {/* ── Properties Page ── */}
+          {page === 'properties' && (
+            <div>
+              {/* Sub-tabs */}
+              <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: isMobile ? 16 : 24 }}>
+                {[{ k: 'propertydb', label: '🗂️ Property DB' }, { k: 'listings', label: '🏢 Listings' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
+                  <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan')}
+                    style={{ padding: isMobile ? '12px 14px' : '10px 22px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
+                    {t.label}
+                    {t.k === 'propertydb' && propertyDbCount != null && (
+                      <span style={{ marginLeft: 8, background: propertiesTab === t.k ? '#c9922c' : '#e5e7eb', color: propertiesTab === t.k ? '#fff' : '#6b7280', fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 10, verticalAlign: 'middle' }}>{propertyDbCount}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {propertiesTab === 'propertydb' && (
+                <PropertyDBSection
+                  businessUnit={businessUnit}
+                  isAdmin={isAdmin}
+                  authToken={session?.access_token}
+                  onToast={showToast}
+                  onCount={setPropertyDbCount}
+                  isMobile={isMobile}
+                />
+              )}
+              {propertiesTab === 'listings' && (
+                <ListingsSection
+                  businessUnit={businessUnit}
+                  isAdmin={isAdmin}
+                  authToken={session?.access_token}
+                  profiles={profiles}
+                  onToast={showToast}
+                />
+              )}
+              {propertiesTab === 'floorplan' && (
+                <PropertiesFloorPlan
+                  businessUnit={businessUnit}
+                  isAdmin={isAdmin}
+                  authToken={session?.access_token}
+                  onToast={(msg: string) => showToast(msg)}
+                />
+              )}
+            </div>
+          )}
+
+          {page === 'transaction-docs' && (
+            <TransactionDocsSection
               businessUnit={businessUnit}
+              isAdmin={isAdmin}
+              authToken={session?.access_token}
+              deals={deals}
+              onNewDeal={() => setShowAddDeal(true)}
+              onToast={showToast}
+              isMobile={isMobile}
             />
           )}
 
         </div>
-        {/* Mobile bottom nav */}
-        {isMobile && (
-          <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.08)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-            {mobileNavItems.map(item => (
-              <button key={item.id}
-                onClick={() => { setPage(item.id); if (item.id === 'contacts') loadClients(); if (item.id === 'calendar') loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); if (item.id === 'campaigns') { setCampaignView('list'); loadCampaigns(); } }}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 0 6px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'color .15s', color: page === item.id ? '#c9922c' : 'rgba(255,255,255,.4)' }}>
-                <span style={{ fontSize: 22, lineHeight: 1 }}>{item.icon}</span>
-                <span style={{ fontSize: 11, marginTop: 3, fontWeight: page === item.id ? 700 : 400, letterSpacing: .3 }}>{item.label}</span>
+        {/* ── Mobile bottom tab bar (5 tabs + Menu) ── */}
+        {isMobile && (() => {
+          const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length;
+          const tabs = [
+            { id: 'dashboard' as typeof page, icon: '🏠', label: 'Home' },
+            { id: 'contacts'  as typeof page, icon: '👥', label: 'Contacts' },
+            { id: 'deals'     as typeof page, icon: '📋', label: 'Deals' },
+            { id: 'tasks'     as typeof page, icon: '✅', label: 'Tasks', badge: overdueCt },
+            { id: 'social'    as typeof page, icon: '📱', label: 'Social' },
+          ];
+          return (
+            <nav style={{ background: '#111', display: 'flex', borderTop: '1px solid rgba(255,255,255,.1)', flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              {tabs.map(tab => {
+                const active = page === tab.id;
+                return (
+                  <button key={tab.id}
+                    onClick={() => {
+                      setPage(tab.id);
+                      if (tab.id === 'contacts') { loadClients(); loadSmartLists(); }
+                      if (tab.id === 'tasks') { loadTasks(); loadProfiles(); }
+                      if (tab.id === 'deals') setFilter('');
+                    }}
+                    style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif', position: 'relative", color: active ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ fontSize: 22, lineHeight: 1, display: 'block' }}>{tab.icon}</span>
+                      {(tab as any).badge > 0 && (
+                        <span style={{ position: 'absolute', top: -4, right: -6, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #111' }}>
+                          {(tab as any).badge > 9 ? '9+' : (tab as any).badge}
+                        </span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 11, marginTop: 3, fontWeight: active ? 700 : 400, letterSpacing: .2 }}>{tab.label}</span>
+                    {active && <span style={{ position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 2, background: '#c9922c', borderRadius: '2px 2px 0 0' }} />}
+                  </button>
+                );
+              })}
+              {/* Menu button → opens drawer */}
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '9px 2px 7px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: mobileMenuOpen ? '#c9922c' : 'rgba(255,255,255,.5)', transition: 'color .15s' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center', justifyContent: 'center', width: 22, height: 22 }}>
+                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
+                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
+                  <span style={{ display: 'block', width: 18, height: 2, background: 'currentColor', borderRadius: 2 }} />
+                </div>
+                <span style={{ fontSize: 11, marginTop: 3, fontWeight: 400, letterSpacing: .2 }}>Menu</span>
               </button>
-            ))}
-          </nav>
-        )}
+            </nav>
+          );
+        })()}
       </div>
 
       {/* ── Deal Modal ── */}
@@ -6267,7 +7203,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>{activeDeal.client}</h3>
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
-              <button onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}>
               {/* Pipeline bar */}
@@ -6279,10 +7215,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })}
               </div>
               {/* Tabs */}
-              <div style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
+              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
                 {(['overview', 'client', 'emails', 'docs', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => setDealTab(t)}
-                    style={{ padding: '8px 18px', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
+                    style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
                     {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
@@ -6291,9 +7227,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Overview tab */}
               {dealTab === 'overview' && (
                 <div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Property</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.property} onBlur={e => updateDeal(activeDeal.id, { property: e.target.value })} /></div>
-                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} /></div>
+                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Gross Lease Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} /></div>
+                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Billable Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.earned_commission ?? ''} placeholder="e.g. 15000" onBlur={e => { const v = e.target.value !== '' ? +e.target.value : null; updateDeal(activeDeal.id, { earned_commission: v }); setActiveDeal(prev => prev ? { ...prev, earned_commission: v } : prev); if (!dealCommission) setCommissionForm(prev => ({ ...prev, sale_price: v != null ? String(v) : '' })); }} /></div>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Stage</label>
                       <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.stage} onChange={e => setStage(activeDeal, e.target.value)}>
                         {STAGES.map(s => <option key={s}>{s}</option>)}
@@ -6306,7 +7243,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </select>
                       </div>
                     )}
-                    <div style={{ gridColumn: '1/-1' }}><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Notes</label><textarea className="crm-input" style={{ marginTop: 4, minHeight: 80, resize: 'vertical' }} defaultValue={activeDeal.notes} onBlur={e => updateDeal(activeDeal.id, { notes: e.target.value })} /></div>
+                    <div style={{ gridColumn: '1/-1' }}>
+                      <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Notes</label>
+                      <div style={{ marginTop: 4 }}>
+                        <MentionTextarea
+                          className="crm-input"
+                          style={{ minHeight: 80, resize: 'vertical', width: '100%' }}
+                          placeholder="Deal notes… (type @ to tag a teammate)"
+                          profiles={profiles}
+                          value={dealNotesText}
+                          onChange={v => setDealNotesText(v)}
+                          onMentionedIds={ids => {
+                            if (ids.length) createMentionNotifications(ids, `@${profile?.first_name} mentioned you in notes for deal: ${activeDeal.property || activeDeal.client}`, 'deal', activeDeal.id);
+                          }}
+                        />
+                        {dealNotesText !== (activeDeal.notes ?? '') && (
+                          <button onClick={() => { updateDeal(activeDeal.id, { notes: dealNotesText }); setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText } : prev); showToast('Notes saved ✓'); }}
+                            style={{ marginTop: 6, padding: '4px 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                            Save Notes
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   {/* ── Loss Reason Banner ── */}
@@ -6414,7 +7372,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
               {/* Client tab */}
               {dealTab === 'client' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Client Name</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client} onBlur={e => updateDeal(activeDeal.id, { client: e.target.value })} /></div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label><input className="crm-input" type="email" style={{ marginTop: 4 }} defaultValue={activeDeal.client_email} onBlur={e => updateDeal(activeDeal.id, { client_email: e.target.value })} /></div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client_phone} onBlur={e => updateDeal(activeDeal.id, { client_phone: e.target.value })} /></div>
@@ -6456,7 +7414,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                             ↻ Sync signature
                           </button>
-                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                          <button className="crm-icon-btn" onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                         </div>
                       </div>
                       {replyToEmail && (
@@ -6722,7 +7680,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>to {emailDisplayName(e.to_email)}</div>
                                       </div>
                                     </div>
-                                    <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap', paddingLeft: 42 }}>{cleanEmailBody(e.body)}</div>
+                                    {(() => {
+                                      const bodyText = cleanEmailBody(e.body ?? '');
+                                      if (!bodyText.trim()) return null;
+                                      return (
+                                        <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
+                                          {bodyText.split('\n').map((line, i) => (
+                                            <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{line || ' '}</p>
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 );})}
 
@@ -6751,7 +7719,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: 15 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#111' }}>+ Log Email Touch</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Direction</label>
                         <select className="crm-input" style={{ marginTop: 4 }} value={ne.direction} onChange={e => setNe({ ...ne, direction: e.target.value as 'sent' | 'received' })}>
                           <option value="sent">Sent</option><option value="received">Received</option>
@@ -6771,6 +7739,44 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Docs tab */}
               {dealTab === 'docs' && (
                 <div>
+                  {/* CRM Forms (Transaction Docs) tied to this deal */}
+                  <div style={{ marginBottom: 22 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>CRM Forms</div>
+                      <button onClick={() => { loadCrmForms(); setDealFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
+                      <span style={{ fontSize: 12, color: '#9ca3af', alignSelf: 'center', marginRight: 2 }}>Attach a packet:</span>
+                      {FORM_PACKETS.map(pkt => {
+                        const suggested = pkt.match.includes(activeDeal.type);
+                        return (
+                          <button key={pkt.key} onClick={() => startPacket(pkt)} title={pkt.forms.join(', ')}
+                            style={{ fontSize: 12, fontWeight: 600, padding: '6px 11px', borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                              border: suggested ? '1px solid #c9922c' : '1px solid #e5e7eb', background: suggested ? '#fdf6e9' : '#fff', color: suggested ? '#a06a12' : '#6b7280' }}>
+                            📦 {pkt.label}{suggested ? ' · suggested' : ''}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {dealForms.length === 0 ? (
+                      <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>No forms on this deal yet. Fill a commercial/TREC form and it saves here, linked to the deal.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {dealForms.map(f => (
+                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '10px 14px' }}>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
+                            </div>
+                            {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
+                            <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
                   {/* Upload area */}
                   <div
                     onClick={() => docFileRef.current?.click()}
@@ -6889,7 +7895,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 16 }}>
                         <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Property Details</div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 12 }}>{d.address?.oneLine}</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                        <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                           {[
                             { label: 'Type', val: d.summary?.proptype ?? d.summary?.propLandUse ?? '—' },
                             { label: 'Year Built', val: d.summary?.yearbuilt ?? '—' },
@@ -6976,7 +7982,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const agentNet = gross * (split / 100) - ref - txFee;
                           const brokerNet = gross - gross * (split / 100);
                           return (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20, background: '#f9f5ef', border: '1px solid #e8dcc8', borderRadius: 10, padding: '14px 16px' }}>
+                            <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20, background: '#f9f5ef', border: '1px solid #e8dcc8', borderRadius: 10, padding: '14px 16px' }}>
                               <div style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 3 }}>Gross Commission</div>
                                 <div style={{ fontSize: 18, fontWeight: 700, color: '#c9922c' }}>${gross.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
@@ -6995,7 +8001,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       )}
 
                       {/* Form grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div style={{ gridColumn: '1/-1' }}>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Sale / Lease Price ($) *</label>
                           <input className="crm-input" type="number" style={{ marginTop: 4 }} value={commissionForm.sale_price} onChange={e => setCommissionForm(f => ({ ...f, sale_price: e.target.value }))} placeholder="0" />
@@ -7062,9 +8068,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>New Deal</h3>
-              <button onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ padding: '22px 26px' }}>
+            <div className="modal-body" style={{ padding: '22px 26px' }}>
 
               {/* Client selector */}
               <div style={{ marginBottom: 18 }}>
@@ -7117,7 +8123,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+              <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Deal Type *</label>
                   <select className="crm-input" style={{ marginTop: 4 }} value={nd.type} onChange={e => setNd({ ...nd, type: e.target.value })}>
@@ -7154,16 +8160,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Header */}
             <div style={{ padding: '20px 28px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0', flexShrink: 0 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>Add Contact</h3>
-              <button onClick={() => setShowAddClient(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setShowAddClient(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Scrollable body */}
-            <div style={{ padding: '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
+            <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
 
               {/* ── Section: Contact Type ── */}
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Contact Type *</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 8 }}>
                   {CLIENT_TYPES.map(t => (
                     <button key={t} type="button" onClick={() => setNc({ ...nc, type: t })}
                       style={{
@@ -7187,20 +8193,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Identity</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name *</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="Jane" value={nc.first_name} onChange={e => setNc({ ...nc, first_name: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="Jane" value={nc.first_name} onChange={e => setNc({ ...nc, first_name: titleCase(e.target.value) })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Last Name</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="Smith" value={nc.last_name} onChange={e => setNc({ ...nc, last_name: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="Smith" value={nc.last_name} onChange={e => setNc({ ...nc, last_name: titleCase(e.target.value) })} />
                   </div>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>
                       {nc.type === 'Agent' || nc.type === 'Broker' ? 'Business / Brokerage Name' : 'Business Name'} <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span>
                     </label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Century 21, Keller Williams…' : 'Company or business name'} value={nc.business_name} onChange={e => setNc({ ...nc, business_name: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Century 21, Keller Williams…' : 'Company or business name'} value={nc.business_name} onChange={e => setNc({ ...nc, business_name: titleCase(e.target.value) })} />
                   </div>
                 </div>
               </div>
@@ -7211,18 +8217,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Contact Info</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label>
                     <input className="crm-input" type="email" style={{ marginTop: 4 }} placeholder="jane@email.com" value={nc.email} onChange={e => setNc({ ...nc, email: e.target.value })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="210-555-0000" value={nc.phone} onChange={e => setNc({ ...nc, phone: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="210-555-0000" value={nc.phone} onChange={e => setNc({ ...nc, phone: fmtPhone(e.target.value) })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cell Phone</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="210-555-0001" value={nc.cell_phone} onChange={e => setNc({ ...nc, cell_phone: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="210-555-0001" value={nc.cell_phone} onChange={e => setNc({ ...nc, cell_phone: fmtPhone(e.target.value) })} />
                   </div>
                 </div>
               </div>
@@ -7273,7 +8279,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
 
                   {/* Budget + Size side by side */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Budget / Price Range</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="$400k – $500k" value={nc.budget} onChange={e => setNc({ ...nc, budget: e.target.value })} />
@@ -7313,7 +8319,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Professional</div>
                     <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Brokerage</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="Century 21, KW…" value={nc.brokerage} onChange={e => setNc({ ...nc, brokerage: e.target.value })} />
@@ -7368,14 +8374,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Location</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Street Address</label>
                     <input className="crm-input" style={{ marginTop: 4 }} placeholder="123 Main St" value={nc.address} onChange={e => setNc({ ...nc, address: e.target.value })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>City</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="San Antonio" value={nc.city} onChange={e => setNc({ ...nc, city: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder="San Antonio" value={nc.city} onChange={e => setNc({ ...nc, city: titleCase(e.target.value) })} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div>
@@ -7393,7 +8399,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* ── Section: Notes ── */}
               <div>
                 {/* Lead Source & Tags */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <div>
                     <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Lead Source</label>
                     <select className="crm-input" style={{ marginTop: 4 }} value={nc.lead_source} onChange={e => setNc({ ...nc, lead_source: e.target.value })}>
@@ -7403,18 +8409,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div>
                     <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tags</label>
-                    <div style={{ marginTop: 4, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
-                      onClick={() => document.getElementById('nc-tag-input')?.focus()}>
-                      {nc.tags.map(tag => (
-                        <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                          {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
-                        </span>
-                      ))}
-                      <input id="nc-tag-input" placeholder={nc.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
-                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!nc.tags.includes(tag)) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
-                        style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ marginTop: 4, border: `1px solid ${tagFocused ? '#c9922c' : '#e5e7eb'}`, borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
+                        onClick={() => document.getElementById('nc-tag-input')?.focus()}>
+                        {nc.tags.map(tag => (
+                          <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            {tag}<button onClick={() => setNc({ ...nc, tags: nc.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                          </span>
+                        ))}
+                        <input id="nc-tag-input" placeholder={nc.tags.length === 0 ? 'Add tags…' : ''} value={tagInput}
+                          onChange={e => setTagInput(e.target.value)}
+                          onFocus={() => setTagFocused(true)}
+                          onBlur={() => setTimeout(() => setTagFocused(false), 150)}
+                          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!nc.tags.includes(tag)) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
+                          style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                      </div>
+                      {(() => {
+                        const allTags = [...new Set(clients.flatMap(c => c.tags ?? []))].sort();
+                        const suggestions = tagInput.length > 0
+                          ? allTags.filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !nc.tags.includes(t)).slice(0, 8)
+                          : tagFocused ? allTags.filter(t => !nc.tags.includes(t)).slice(0, 8) : [];
+                        if (!suggestions.length || !tagFocused) return null;
+                        return (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', marginTop: 2, overflow: 'hidden' }}>
+                            <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+                              {tagInput ? 'Matching tags' : 'Existing tags'}
+                            </div>
+                            {suggestions.map(s => (
+                              <button key={s} onMouseDown={() => { if (!nc.tags.includes(s)) setNc({ ...nc, tags: [...nc.tags, s] }); setTagInput(''); }}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: '#1e293b' }}
+                                onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                                onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                                🏷 {s}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
-                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Press Enter or comma to add</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Type to search existing tags or press Enter to create new</div>
                   </div>
                 </div>
 
@@ -7422,9 +8455,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <textarea className="crm-input" style={{ minHeight: 70, resize: 'vertical' }}
-                  placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, relationship notes…' : 'Pre-approval status, timeline, special requirements…'}
-                  value={nc.notes} onChange={e => setNc({ ...nc, notes: e.target.value })} />
+                <MentionTextarea
+                  className="crm-input"
+                  style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
+                  placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, relationship notes… (type @ to tag a teammate)' : 'Pre-approval status, timeline, special requirements… (type @ to tag a teammate)'}
+                  profiles={profiles} value={nc.notes}
+                  onChange={v => setNc({ ...nc, notes: v })}
+                  onMentionedIds={setMentionedIds} />
               </div>
             </div>
 
@@ -7443,13 +8480,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>Invite Agent</h3>
-              <button onClick={() => setShowInvite(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setShowInvite(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ padding: '22px 26px' }}>
+            <div className="modal-body" style={{ padding: '22px 26px' }}>
               <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
                 An invite email will be sent with a link to set their password and access the CRM.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+              <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 {[
                   { label: 'First Name *', key: 'first_name', placeholder: 'Jane', type: 'text' },
                   { label: 'Last Name *', key: 'last_name', placeholder: 'Smith', type: 'text' },
@@ -7503,7 +8540,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {c.type === 'Buyer' ? '🏡' : c.type === 'Seller' ? '🪧' : c.type === 'Tenant' ? '🔑' : c.type === 'Landlord/Investor' ? '🏢' : c.type === 'Agent' ? '🤝' : '🏛'} {c.type}
                   </span>
                 </div>
-                <button onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                <button className="crm-icon-btn" onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
 
               {/* Smart Status Banner */}
@@ -7557,13 +8594,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return null;
               })()}
 
-              <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
+              <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, overflowY: 'auto', maxHeight: 'calc(90vh - 120px)' }}>
                 {/* Contact Info */}
                 <div>
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>
                     {c.type === 'Tenant' ? '🔑 Tenant Details' : c.type === 'Buyer' ? '🏡 Buyer Details' : c.type === 'Seller' ? '🪧 Seller Details' : c.type === 'Landlord/Investor' ? '🏢 Landlord Details' : c.type === 'Agent' || c.type === 'Broker' ? '🤝 Agent Details' : 'Contact Information'}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', gridColumn: (c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
                         Email{(c.extra_emails?.length ?? 0) > 0 ? 's' : ''}
@@ -7750,57 +8787,117 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* Tasks */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tasks</div>
-                    <button
-                      onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
-                      style={{ background: 'none', border: '1px dashed #c9922c', borderRadius: 6, color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 10px', fontFamily: "'DM Sans',sans-serif" }}>
-                      + Add Task
-                    </button>
-                  </div>
-                  {(() => {
-                    const clientTasks = allTasks.filter(t => t.client_id === c.id);
-                    if (clientTasks.length === 0) return (
-                      <div style={{ fontSize: 14, color: '#9ca3af', fontStyle: 'italic' }}>No pending tasks</div>
-                    );
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        {clientTasks.map(t => {
-                          const due = new Date(t.due_date + 'T00:00:00');
-                          const today = new Date(); today.setHours(0,0,0,0);
-                          const isOverdue = due < today;
-                          const isToday = due.getTime() === today.getTime();
-                          const dueBg = isOverdue ? '#fee2e2' : isToday ? '#fef3c7' : '#f0fdf4';
-                          const dueColor = isOverdue ? '#dc2626' : isToday ? '#92400e' : '#15803d';
-                          const typeLabel = t.type === 'follow_up' ? '📋 Follow Up' : t.type === 'call' ? '📞 Call' : '✉️ Email';
-                          return (
-                            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
-                              <button onClick={() => completeTask(t.id)}
-                                style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #d1d5db', background: '#fff', cursor: 'pointer', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
-                                title="Mark complete">
-                              </button>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 2 }}>{t.title}</div>
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                                  <span style={{ fontSize: 12, color: '#6b7280' }}>{typeLabel}</span>
-                                  <span style={{ fontSize: 12, fontWeight: 700, color: dueColor, background: dueBg, padding: '1px 7px', borderRadius: 10 }}>
-                                    {isOverdue ? `Overdue · ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : isToday ? 'Due today' : due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}
-                                  </span>
-                                </div>
-                                {t.notes && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{t.notes}</div>}
-                              </div>
-                            </div>
-                          );
-                        })}
+                {(() => {
+                  const oldPending = allTasks.filter(t => t.client_id === c.id);
+                  const newPending = clientCardTasks.filter(t => t.status !== 'done');
+                  const newDone    = clientCardTasks.filter(t => t.status === 'done');
+                  const todayD = new Date(); todayD.setHours(0,0,0,0);
+                  function dueBadge(dateStr?: string) {
+                    if (!dateStr) return null;
+                    const due = new Date(dateStr + 'T00:00:00');
+                    const isOverdue = due < todayD;
+                    const isToday   = due.getTime() === todayD.getTime();
+                    const bg    = isOverdue ? '#fee2e2' : isToday ? '#fef3c7' : '#f0fdf4';
+                    const color = isOverdue ? '#dc2626' : isToday ? '#92400e' : '#15803d';
+                    const label = isOverdue ? `Overdue · ${due.toLocaleDateString('en-US',{month:'short',day:'numeric'})}` : isToday ? 'Due today' : due.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+                    return <span style={{ fontSize: 11, fontWeight: 700, color, background: bg, padding: '1px 7px', borderRadius: 10 }}>{label}</span>;
+                  }
+                  const PRIORITY_DOT: Record<string,string> = { urgent:'#dc2626', high:'#c2410c', normal:'#3b82f6', low:'#94a3b8' };
+                  return (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tasks</div>
+                        <button
+                          onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
+                          style={{ background: 'none', border: '1px dashed #c9922c', borderRadius: 6, color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 10px', fontFamily: "'DM Sans',sans-serif" }}>
+                          + Add Task
+                        </button>
                       </div>
-                    );
-                  })()}
-                </div>
+
+                      {/* Old-style pending tasks */}
+                      {oldPending.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+                          {oldPending.map(t => {
+                            const typeLabel = t.type === 'follow_up' ? '📋' : t.type === 'call' ? '📞' : '✉️';
+                            return (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
+                                <button onClick={() => completeTask(t.id)}
+                                  style={{ width: 18, height: 18, borderRadius: 4, border: '2px solid #d1d5db', background: '#fff', cursor: 'pointer', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  title="Mark complete" />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 3 }}>{typeLabel} {t.title}</div>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    {dueBadge(t.due_date)}
+                                  </div>
+                                  {t.notes && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{t.notes}</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* New-style pending tasks */}
+                      {newPending.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
+                          {newPending.map(t => {
+                            const STATUS_COLORS: Record<string,{bg:string;color:string}> = { open:{bg:'#dbeafe',color:'#1d4ed8'}, in_progress:{bg:'#fef3c7',color:'#b45309'} };
+                            const sc = STATUS_COLORS[t.status] ?? {bg:'#f1f5f9',color:'#475569'};
+                            return (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
+                                <div style={{ width: 18, height: 18, flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: PRIORITY_DOT[t.priority] ?? '#94a3b8', display: 'inline-block' }} />
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', marginBottom: 3 }}>{t.title}</div>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span style={{ ...sc, padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 700 } as React.CSSProperties}>{t.status.replace('_',' ')}</span>
+                                    {dueBadge(t.due_date)}
+                                  </div>
+                                  {t.description && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 3 }}>{t.description}</div>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Empty state */}
+                      {oldPending.length === 0 && newPending.length === 0 && (
+                        <div style={{ fontSize: 13, color: '#9ca3af', fontStyle: 'italic', marginBottom: 6 }}>No pending tasks</div>
+                      )}
+
+                      {/* History — completed tasks */}
+                      {newDone.length > 0 && (
+                        <details style={{ marginTop: 4 }}>
+                          <summary style={{ fontSize: 11, color: '#9ca3af', cursor: 'pointer', userSelect: 'none', letterSpacing: 0.5, listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span>▸</span>
+                            <span style={{ fontWeight: 600 }}>{newDone.length} completed task{newDone.length !== 1 ? 's' : ''}</span>
+                          </summary>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
+                            {newDone.map(t => (
+                              <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', opacity: 0.75 }}>
+                                <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>✅</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 500, color: '#6b7280', textDecoration: 'line-through', marginBottom: 2 }}>{t.title}</div>
+                                  {t.due_date && <div style={{ fontSize: 11, color: '#9ca3af' }}>Due {new Date(t.due_date + 'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>}
+                                  {t.description && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{t.description}</div>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Activity Log */}
                 <div>
-                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Activity Log</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Activity Log</div>
+                    <button onClick={() => { loadClientActivities(c.id); loadClientCampaignSends(c.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, padding: '2px 6px', borderRadius: 4 }} title="Refresh">⟳ Refresh</button>
+                  </div>
 
                   {/* Log new activity */}
                   <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
@@ -7899,11 +8996,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: statusColor.bg, color: statusColor.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.status}</span>
                                     <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
                                   </div>
-                                  <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 2 }}>{s.campaign_name}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                                    <div style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>{s.campaign_name}</div>
+                                    {s.status === 'sent' && s.type === 'email' && (
+                                      <button onClick={() => setViewCampaignSendModal({ send: s, contact: c })} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 4, padding: '1px 8px', fontSize: 11, color: '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>👁 View</button>
+                                    )}
+                                  </div>
                                   {s.subject && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>Subject: {s.subject}</div>}
-                                  {s.body_preview && (
-                                    <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.4, background: '#f9fafb', borderRadius: 6, padding: '5px 8px', whiteSpace: 'pre-wrap', overflow: 'hidden', maxHeight: 48, textOverflow: 'ellipsis' }}>{s.body_preview}</div>
-                                  )}
+                                  {s.opened_at ? (
+                                    <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>👁 Opened {new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                                  ) : (s.tracking_id && s.status === 'sent') ? (
+                                    <div style={{ fontSize: 11, color: '#9ca3af' }}>Not opened yet</div>
+                                  ) : null}
                                 </div>
                               </div>
                             );
@@ -7925,11 +9029,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           setComposeSubject('');
                           setReplyToContactEmail(null);
                           setComposeAttachments([]);
+                          setReplyingToThreadKey(null);
                         }
                         setShowContactCompose(v => !v);
                       }}
                         style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                        ✉️ Compose
+                        ✉️ New Email
                       </button>
                     </div>
 
@@ -7944,7 +9049,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                               ↻ Sync signature
                             </button>
-                            <button onClick={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                            <button className="crm-icon-btn" onClick={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                           </div>
                         </div>
                         {replyToContactEmail && (
@@ -8069,9 +9174,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Sync bar */}
                     <div style={{ marginBottom: 12, padding: '10px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 13, color: '#166534' }}>✉️ Gmail — direct thread with {c.email}</span>
+                        <div>
+                          <div style={{ fontSize: 13, color: '#166534', fontWeight: 600 }}>✉️ Email Thread with {c.email}</div>
+                          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>Searches all {gmailAccounts.length > 1 ? `${gmailAccounts.length} connected accounts` : 'connected Gmail accounts'} for replies</div>
+                        </div>
                         <button onClick={() => syncGmailForContact(c)} disabled={syncing}
-                          style={{ padding: '4px 12px', fontSize: 13, fontWeight: 600, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
+                          style={{ padding: '4px 12px', fontSize: 13, fontWeight: 600, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: syncing ? 0.7 : 1, whiteSpace: 'nowrap' }}>
                           {syncing ? 'Syncing…' : '↻ Sync'}
                         </button>
                       </div>
@@ -8162,24 +9270,112 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>to {emailDisplayName(e.to_email)}</div>
                                         </div>
                                       </div>
-                                      <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, whiteSpace: 'pre-wrap', paddingLeft: 42 }}>{cleanEmailBody(e.body)}</div>
+                                      {(() => {
+                                        const bodyText = cleanEmailBody(e.body ?? '');
+                                        if (!bodyText.trim()) return null;
+                                        return (
+                                          <div style={{ fontSize: 14, color: '#374151', lineHeight: 1.65, paddingLeft: 42, marginTop: 4 }}>
+                                            {bodyText.split('\n').map((line, i) => (
+                                              <p key={i} style={{ margin: 0, marginBottom: line.trim() ? 6 : 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{line || ' '}</p>
+                                            ))}
+                                          </div>
+                                        );
+                                      })()}
                                     </div>
                                   ))}
-                                  {/* Reply button */}
-                                  <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', background: '#fff' }}>
-                                    <button
-                                      onClick={() => {
-                                        const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
-                                        setReplyToContactEmail(lastEmail);
-                                        setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
-                                        clearContactComposeBody();
-                                        setComposeAttachments([]);
-                                        setShowContactCompose(true);
-                                      }}
-                                      style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                                      ↩ Reply
-                                    </button>
-                                  </div>
+                                  {/* Inline reply compose */}
+                                  {replyingToThreadKey === threadKey ? (
+                                    <div style={{ borderTop: '2px solid #c9922c', background: '#fff' }}>
+                                      {/* Reply header */}
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#111', color: '#fff' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <span style={{ fontSize: 13, fontWeight: 600 }}>↩ Reply to {emailDisplayName(replyToContactEmail?.from_email ?? c.email)}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                          <button onClick={() => fetch(`/api/gmail/signature?userId=${session!.user.id}`).then(r => r.json()).then(s => { if (s.signature !== undefined) { setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev); showToast('Signature synced'); } })}
+                                            style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 11, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>↻ Sig</button>
+                                          <button onClick={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                                        </div>
+                                      </div>
+                                      {/* Subject (read-only for replies) */}
+                                      <div style={{ padding: '6px 12px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', fontSize: 12, color: '#6b7280', display: 'flex', gap: 8 }}>
+                                        <span style={{ color: '#9ca3af' }}>Subject:</span>
+                                        <span style={{ fontWeight: 600, color: '#374151' }}>{composeSubject}</span>
+                                      </div>
+                                      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        {/* Toolbar */}
+                                        <div style={{ border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1, padding: '4px 8px', background: '#fafafa', borderBottom: '1px solid #e9ecef' }}>
+                                            <select className="rtb-select" aria-label="Font family" defaultValue="Arial" onChange={e => richCmdContact('fontName', e.target.value)} style={{ padding: '0 6px', maxWidth: 104 }}>
+                                              {['Arial','Georgia','Times New Roman','Courier New','Verdana'].map(f => <option key={f} value={f}>{f === 'Times New Roman' ? 'Times' : f}</option>)}
+                                            </select>
+                                            <select className="rtb-select" aria-label="Font size" defaultValue="3" onChange={e => richCmdContact('fontSize', e.target.value)} style={{ padding: '0 4px', width: 50 }}>
+                                              {[['1','8'],['2','10'],['3','12'],['4','14'],['5','18'],['6','24']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                                            </select>
+                                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 4px' }} />
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('bold'); }} style={{ fontWeight: 700, fontSize: 14 }}>B</button>
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('italic'); }} style={{ fontStyle: 'italic', fontSize: 14 }}>I</button>
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('underline'); }} style={{ textDecoration: 'underline', fontSize: 14 }}>U</button>
+                                            <span style={{ width: 1, height: 18, background: '#e0e0e0', margin: '0 4px' }} />
+                                            <button className="rtb" onMouseDown={e => { e.preventDefault(); richCmdContact('insertUnorderedList'); }} title="Bullets">•≡</button>
+                                          </div>
+                                          <div
+                                            ref={contactComposeBodyRef}
+                                            contentEditable suppressContentEditableWarning
+                                            role="textbox" aria-multiline="true" aria-label="Reply body"
+                                            style={{ minHeight: 140, maxHeight: 280, overflowY: 'auto', padding: '12px 14px', fontSize: 14, fontFamily: 'Arial, sans-serif', lineHeight: 1.65, outline: 'none', color: '#111' }}
+                                            data-placeholder="Write your reply…"
+                                          />
+                                        </div>
+                                        {profile?.email_signature && (
+                                          <div style={{ fontSize: 12, color: '#9ca3af', borderTop: '1px dashed #e5e7eb', paddingTop: 6 }}>
+                                            <div style={{ padding: '6px 10px', background: '#f9fafb', borderRadius: 5, fontSize: 13, color: '#374151' }}
+                                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(profile.email_signature) }} />
+                                          </div>
+                                        )}
+                                        {/* Attachments */}
+                                        <input ref={contactAttachInputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files ?? []); setComposeAttachments(prev => [...prev, ...files]); e.target.value = ''; }} />
+                                        {composeAttachments.length > 0 && (
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                            {composeAttachments.map((file, i) => (
+                                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 5, fontSize: 12, color: '#374151' }}>
+                                                <span>📎</span><span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                                                <button onClick={() => setComposeAttachments(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 14, lineHeight: 1, padding: 0 }}>✕</button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <button onClick={() => contactAttachInputRef.current?.click()} style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 13, cursor: 'pointer', color: '#374151' }}>📎 Attach</button>
+                                          <div style={{ display: 'flex', gap: 8 }}>
+                                            <button onClick={() => { setReplyingToThreadKey(null); setReplyToContactEmail(null); setComposeAttachments([]); clearContactComposeBody(); }}
+                                              style={{ background: 'none', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                                            <button onClick={() => sendGmailEmailToContact(c)} disabled={composeSending}
+                                              style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: composeSending ? 0.7 : 1 }}>
+                                              {composeSending ? 'Sending…' : '↩ Send Reply'}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px', background: '#fafafa', borderTop: '1px solid #f0f0f0' }}>
+                                      <button
+                                        onClick={() => {
+                                          const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
+                                          const replyTo = lastEmail.direction === 'received' ? lastEmail : (threadEmails.find(e => e.direction === 'received') ?? lastEmail);
+                                          setReplyToContactEmail(replyTo);
+                                          setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                          clearContactComposeBody();
+                                          setComposeAttachments([]);
+                                          setShowContactCompose(false);
+                                          setReplyingToThreadKey(threadKey);
+                                        }}
+                                        style={{ background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                                        ↩ Reply
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -8254,7 +9450,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {c.review_requested_at ? `⭐ Sent ${new Date(c.review_requested_at).toLocaleDateString()}` : '⭐ Request Review'}
                     </button>
                   )}
-                  {isAdmin && (
+                  {isSuperAdmin && (
                     <button onClick={() => { setActiveClient(null); deleteClient(c.id, `${c.first_name} ${c.last_name}`); }}
                       style={{ padding: '7px 16px', fontSize: 13, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                       🗑 Remove
@@ -8288,16 +9484,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600 }}>Edit Contact</h3>
                 <div style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{editClient.first_name} {editClient.last_name}</div>
               </div>
-              <button onClick={() => setEditClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setEditClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Scrollable body */}
-            <div style={{ padding: '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
+            <div className="modal-body" style={{ padding: isMobile ? '20px 18px' : '24px 28px', overflowY: 'auto', maxHeight: 'calc(90vh - 130px)' }}>
 
               {/* ── Contact Type ── */}
               <div style={{ marginBottom: 22 }}>
                 <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>Contact Type *</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(6, 1fr)', gap: 8 }}>
                   {CLIENT_TYPES.map(t => (
                     <button key={t} type="button" onClick={() => setEc({ ...ec, type: t })}
                       style={{
@@ -8321,20 +9517,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Identity</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name *</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.first_name} onChange={e => setEc({ ...ec, first_name: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.first_name} onChange={e => setEc({ ...ec, first_name: titleCase(e.target.value) })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Last Name</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.last_name} onChange={e => setEc({ ...ec, last_name: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.last_name} onChange={e => setEc({ ...ec, last_name: titleCase(e.target.value) })} />
                   </div>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>
                       {ec.type === 'Agent' || ec.type === 'Broker' ? 'Business / Brokerage Name' : 'Business Name'} <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span>
                     </label>
-                    <input className="crm-input" style={{ marginTop: 4 }} placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Century 21, Keller Williams…' : 'Company or business name'} value={ec.business_name} onChange={e => setEc({ ...ec, business_name: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Century 21, Keller Williams…' : 'Company or business name'} value={ec.business_name} onChange={e => setEc({ ...ec, business_name: titleCase(e.target.value) })} />
                   </div>
                 </div>
               </div>
@@ -8345,7 +9541,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Contact Info</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
                   {/* ── Email(s) ── */}
                   <div style={{ gridColumn: '1/-1' }}>
@@ -8414,11 +9610,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.phone} onChange={e => setEc({ ...ec, phone: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.phone} onChange={e => setEc({ ...ec, phone: fmtPhone(e.target.value) })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cell Phone</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.cell_phone} onChange={e => setEc({ ...ec, cell_phone: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.cell_phone} onChange={e => setEc({ ...ec, cell_phone: fmtPhone(e.target.value) })} />
                   </div>
                 </div>
               </div>
@@ -8465,7 +9661,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Budget / Price Range</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="$400k – $500k" value={ec.budget} onChange={e => setEc({ ...ec, budget: e.target.value })} />
@@ -8510,7 +9706,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Professional</div>
                     <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Brokerage</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="Century 21, KW…" value={ec.brokerage} onChange={e => setEc({ ...ec, brokerage: e.target.value })} />
@@ -8565,14 +9761,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Location</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Street Address</label>
                     <input className="crm-input" style={{ marginTop: 4 }} value={ec.address} onChange={e => setEc({ ...ec, address: e.target.value })} />
                   </div>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>City</label>
-                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.city} onChange={e => setEc({ ...ec, city: e.target.value })} />
+                    <input className="crm-input" style={{ marginTop: 4 }} value={ec.city} onChange={e => setEc({ ...ec, city: titleCase(e.target.value) })} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <div>
@@ -8588,7 +9784,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
 
               {/* ── Lead Source & Tags ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
                   <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Lead Source</label>
                   <select className="crm-input" style={{ marginTop: 4 }} value={ec.lead_source} onChange={e => setEc({ ...ec, lead_source: e.target.value })}>
@@ -8598,18 +9794,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
                 <div>
                   <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Tags</label>
-                  <div style={{ marginTop: 4, border: '1px solid #e5e7eb', borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
-                    onClick={() => document.getElementById('ec-tag-input')?.focus()}>
-                    {ec.tags.map(tag => (
-                      <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
-                        {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
-                      </span>
-                    ))}
-                    <input id="ec-tag-input" placeholder={ec.tags.length === 0 ? 'Add tags…' : ''} value={tagInput} onChange={e => setTagInput(e.target.value)}
-                      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!ec.tags.includes(tag)) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
-                      style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ marginTop: 4, border: `1px solid ${tagFocused ? '#c9922c' : '#e5e7eb'}`, borderRadius: 6, padding: '4px 8px', minHeight: 38, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', background: '#fff', cursor: 'text' }}
+                      onClick={() => document.getElementById('ec-tag-input')?.focus()}>
+                      {ec.tags.map(tag => (
+                        <span key={tag} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3 }}>
+                          {tag}<button onClick={() => setEc({ ...ec, tags: ec.tags.filter(t => t !== tag) })} aria-label={`Remove tag ${tag}`} title="Remove tag" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                        </span>
+                      ))}
+                      <input id="ec-tag-input" placeholder={ec.tags.length === 0 ? 'Add tags…' : ''} value={tagInput}
+                        onChange={e => setTagInput(e.target.value)}
+                        onFocus={() => setTagFocused(true)}
+                        onBlur={() => setTimeout(() => setTagFocused(false), 150)}
+                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!ec.tags.includes(tag)) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
+                        style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
+                    </div>
+                    {(() => {
+                      const allTags = [...new Set(clients.flatMap(c => c.tags ?? []))].sort();
+                      const suggestions = tagInput.length > 0
+                        ? allTags.filter(t => t.toLowerCase().includes(tagInput.toLowerCase()) && !ec.tags.includes(t)).slice(0, 8)
+                        : tagFocused ? allTags.filter(t => !ec.tags.includes(t)).slice(0, 8) : [];
+                      if (!suggestions.length || !tagFocused) return null;
+                      return (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', marginTop: 2, overflow: 'hidden' }}>
+                          <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+                            {tagInput ? 'Matching tags' : 'Existing tags'}
+                          </div>
+                          {suggestions.map(s => (
+                            <button key={s} onMouseDown={() => { if (!ec.tags.includes(s)) setEc({ ...ec, tags: [...ec.tags, s] }); setTagInput(''); }}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif", color: '#1e293b' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+                              onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                              🏷 {s}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Press Enter or comma to add</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Type to search existing tags or press Enter to create new</div>
                 </div>
               </div>
 
@@ -8619,9 +9842,48 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Notes</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <textarea className="crm-input" style={{ minHeight: 70, resize: 'vertical' }}
-                  placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, relationship notes…' : 'Pre-approval status, timeline, special requirements…'}
-                  value={ec.notes} onChange={e => setEc({ ...ec, notes: e.target.value })} />
+                <MentionTextarea
+                  className="crm-input"
+                  style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
+                  placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, relationship notes… (type @ to tag a teammate)' : 'Pre-approval status, timeline, special requirements… (type @ to tag a teammate)'}
+                  profiles={profiles} value={ec.notes}
+                  onChange={v => setEc({ ...ec, notes: v })}
+                  onMentionedIds={setMentionedIds} />
+                {/* Also apply note to other contacts in the same company */}
+                {(() => {
+                  const companyContacts = ec.business_name.trim()
+                    ? clients.filter(c => c.id !== editClient?.id && c.business_name?.toLowerCase() === ec.business_name.trim().toLowerCase())
+                    : [];
+                  if (!companyContacts.length) return null;
+                  return (
+                    <div style={{ marginTop: 10, padding: '10px 12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 }}>
+                        Also update notes for ({companyContacts.length} contact{companyContacts.length !== 1 ? 's' : ''} at {ec.business_name})
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {companyContacts.map(c => {
+                          const checked = linkedNoteIds.has(c.id);
+                          return (
+                            <button key={c.id} type="button" onClick={() => {
+                              setLinkedNoteIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+                                return next;
+                              });
+                            }} style={{
+                              display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+                              background: checked ? '#c9922c' : '#fff', color: checked ? '#fff' : '#374151',
+                              border: `1px solid ${checked ? '#c9922c' : '#d1d5db'}`, borderRadius: 20,
+                              fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
+                            }}>
+                              {checked ? '✓ ' : ''}{c.first_name} {c.last_name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -8656,12 +9918,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 style={{ display: 'flex', alignItems: 'center', gap: 6, background: sendingTestEmail ? 'rgba(201,146,44,.4)' : 'rgba(201,146,44,.15)', border: '1px solid rgba(201,146,44,.5)', color: '#c9a84c', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: sendingTestEmail ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", marginRight: 8, whiteSpace: 'nowrap' }}>
                 {sendingTestEmail ? '⏳ Sending…' : '📧 Send Test to Me'}
               </button>
-              <button onClick={() => setShowEmailPreview(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setShowEmailPreview(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             {/* Email meta bar */}
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 13, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <span><strong>To:</strong> Jane Smith &lt;jane@example.com&gt;</span>
-              <span><strong>From:</strong> {brand.fromName} &lt;{brand.fromEmail}&gt;</span>
+              <span><strong>From:</strong> Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;</span>
               <span style={{ marginLeft: 'auto', color: '#9ca3af', fontStyle: 'italic' }}>Test sends to: {profile?.email ?? session?.user?.email}</span>
             </div>
             <div style={{ fontSize: 11, background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '6px 20px', color: '#92400e', fontWeight: 500 }}>
@@ -8675,9 +9937,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   .replace(/\{\{full_name\}\}/g, 'Jane Smith').replace(/\{\{email\}\}/g, 'jane@example.com')
                   .replace(/\{\{client_type\}\}/g, 'Buyer')
                   .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`)
-                  .replace(/\{\{agent_email\}\}/g, profile?.email ?? `agent@${brand.fromEmail.split('@')[1]}`)
-                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? brand.phone)
-                  .replace(/\{\{brokerage\}\}/g, brand.legalName)
+                  .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
+                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
+                  .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
                   .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview'))
               }}
             />
@@ -8696,7 +9958,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
               <button onClick={() => setShowBulkReassign(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
-            <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="modal-body" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 8 }}>Assign to Agent</label>
                 <select className="crm-input" value={bulkReassignTarget} onChange={e => setBulkReassignTarget(e.target.value)}>
@@ -8747,9 +10009,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         ).slice(0, 3) : [];
         const hasResults = contactResults.length + dealResults.length + campaignResults.length > 0;
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 80 }}
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 10000, display: 'flex', alignItems: isMobile ? 'flex-end' : 'flex-start', justifyContent: 'center', paddingTop: isMobile ? 0 : 80, paddingBottom: isMobile ? 0 : 0 }}
             onClick={() => { setShowSearch(false); setSearchQuery(''); }}>
-            <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 580, margin: '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden' }}
+            <div style={{ background: '#fff', borderRadius: isMobile ? '20px 20px 0 0' : 14, width: '100%', maxWidth: isMobile ? '100%' : 580, margin: isMobile ? 0 : '0 16px', boxShadow: '0 20px 60px rgba(0,0,0,.25)', overflow: 'hidden', paddingBottom: isMobile ? 'env(safe-area-inset-bottom)' : 0, maxHeight: isMobile ? '80vh' : undefined, display: 'flex', flexDirection: 'column' }}
               onClick={e => e.stopPropagation()}>
               {/* Search input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid #f0f0f0' }}>
@@ -8764,7 +10026,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <kbd style={{ fontSize: 11, background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: 4, padding: '2px 6px', color: '#6b7280', fontFamily: 'monospace' }}>ESC</kbd>
               </div>
               {/* Results */}
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              <div style={{ maxHeight: isMobile ? '60vh' : 420, overflowY: 'auto', flex: 1 }}>
                 {!q && (
                   <div style={{ padding: '20px 18px', color: '#9ca3af', fontSize: 14, textAlign: 'center' }}>
                     Start typing to search contacts, deals, and campaigns
@@ -9006,7 +10268,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
                 <button onClick={() => setShowTaskModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
               </div>
-              <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="modal-body" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                 {/* Task type */}
                 <div>
@@ -9093,9 +10355,54 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
       )}
 
+      {/* Deal → pick a form to fill */}
+      {dealFormPicker && (
+        <div onClick={() => setDealFormPicker(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '12vh 16px', overflowY: isMobile ? 'hidden' : 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? '18px 18px 0 0' : 14, maxWidth: isMobile ? '100%' : 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden', ...(isMobile ? { maxHeight: '88vh', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{ flex: 1 }}>Fill a form for this deal</span>
+              <button className="crm-icon-btn" onClick={() => setDealFormPicker(false)} aria-label="Close"
+                style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16, color: '#6b7280', flexShrink: 0 }}>✕</button>
+            </div>
+            <div style={{ padding: 10, maxHeight: isMobile ? undefined : '52vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', ...(isMobile ? { flex: 1, minHeight: 0 } : {}) }}>
+              {crmForms.length === 0 ? <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>No forms available.</div> :
+                crmForms.map(f => (
+                  <button key={f.id} onClick={() => openFormEditor(f)} style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                    <span style={{ fontSize: 20 }}>📄</span>
+                    <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* The fillable editor, launched from a deal */}
+      {dealFormEditor && (
+        <TransactionDocEditor
+          form={dealFormEditor.form}
+          url={dealFormEditor.url}
+          submissionId={dealFormEditor.submissionId}
+          authToken={session?.access_token}
+          isAdmin={isAdmin}
+          deals={deals}
+          dealId={activeDeal?.id}
+          businessUnit={businessUnit}
+          onToast={showToast}
+          isMobile={isMobile}
+          onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); }}
+          onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
+        />
+      )}
+
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: 26, right: 26, background: '#111', color: '#fff', padding: '12px 20px', borderRadius: 8, fontSize: 14, zIndex: 9999, borderLeft: '4px solid #c9922c', maxWidth: 300, boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
+        <div style={{ position: 'fixed', ...(isMobile
+          // clear the bottom tab bar (~60px) + the home indicator
+          ? { bottom: 'calc(72px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
+          : { bottom: 26, right: 26, maxWidth: 300 }),
+          background: '#111', color: '#fff', padding: '12px 20px', borderRadius: 8, fontSize: 14, zIndex: 9999, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
           {toast}
         </div>
       )}

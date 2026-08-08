@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
+import { getCrmAdmin, getCrmSuperAdmin, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
 
@@ -19,6 +19,21 @@ export async function POST(req: NextRequest) {
 
     if (!serviceRoleKey || !anonKey) {
       return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+    }
+
+    // No one may remove themselves via this route.
+    if (userId === caller.id) return forbidden('You cannot remove your own account.');
+
+    // Removing an admin or super_admin is super-admin-only — stops an admin
+    // (e.g. Brian) from deleting the super admin or another admin to seize control.
+    const targetRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/crm_profiles?id=eq.${userId}&select=role`,
+      { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
+    );
+    const targetRows = await targetRes.json().catch(() => []);
+    const targetRole: string | undefined = Array.isArray(targetRows) ? targetRows[0]?.role : undefined;
+    if (targetRole === 'admin' || targetRole === 'super_admin') {
+      if (!(await getCrmSuperAdmin())) return forbidden('Only a super admin can remove an admin.');
     }
 
     // Delete the user from Supabase Auth (cascades to crm_profiles via RLS/FK)

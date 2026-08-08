@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       const { data: { user } } = await verifier.auth.getUser(bearerToken);
       if (user) {
         const { data } = await verifier.from('crm_profiles').select('role').eq('id', user.id).single();
-        isAdmin = data?.role === 'admin';
+        isAdmin = data?.role === 'admin' || data?.role === 'super_admin';
       }
     } else {
       // Fallback: cookie-based session
