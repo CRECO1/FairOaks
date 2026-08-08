@@ -2343,7 +2343,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         {/* Saved Replies Modal */}
         {savedRepliesOpen && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 480, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+            <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 'min(480px, calc(100vw - 28px))', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Saved Replies</h3>
                 <button onClick={() => setSavedRepliesOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
@@ -3234,7 +3234,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 16, padding: 32, width: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
+            style={{ background: '#fff', borderRadius: 16, padding: 32, width: 'min(420px, calc(100vw - 28px))', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
               <span style={{ fontSize: 28 }}>📸</span>

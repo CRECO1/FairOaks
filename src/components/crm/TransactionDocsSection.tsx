@@ -25,11 +25,12 @@ interface Props {
   deals?: DealLite[];
   onNewDeal?: () => void;
   onToast: (msg: string) => void;
+  isMobile?: boolean;
 }
 
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, isMobile = false }: Props) {
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -66,7 +67,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   return (
     <div style={{ maxWidth: 1100 }}>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Transaction Docs</h2>
+        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Transaction Docs</h2>
         <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>
           Pick a form to fill, or attach a use-case packet to a deal below.
         </div>
@@ -76,7 +77,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
         const catColor = (c?: string) => c === 'Purchase' ? { bg: '#f3e8ff', color: '#7e22ce' } : { bg: '#e0f2fe', color: '#0369a1' };
         const cats = Array.from(new Set(filtered.map(f => f.category || 'Other')));
         return (
-          <div style={{ position: 'relative', maxWidth: 560 }}>
+          <div style={{ position: 'relative', maxWidth: isMobile ? '100%' : 560 }}>
             <button onClick={() => setFormMenuOpen(o => !o)}
               style={{ display: 'flex', alignItems: 'center', gap: 13, width: '100%', textAlign: 'left', background: formMenuOpen ? '#fffdf6' : '#fff', border: `1px solid ${formMenuOpen ? '#c9922c' : '#e5e7eb'}`, borderRadius: 12, padding: '13px 16px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
               <span style={{ fontSize: 24 }}>🖊️</span>
@@ -106,14 +107,14 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                             const cc = catColor(f.category);
                             return (
                               <div key={f.id} onClick={() => { setEditing({ form: f }); setFormMenuOpen(false); }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 10px', borderRadius: 8, cursor: 'pointer' }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
                                 onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                                 <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                                   <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
                                 </div>
-                                {f.category && <span style={{ fontSize: 10.5, fontWeight: 600, color: cc.color, background: cc.bg, padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
+                                {f.category && !isMobile && <span style={{ fontSize: 10.5, fontWeight: 600, color: cc.color, background: cc.bg, padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
                                 <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>Fill ›</span>
                               </div>
                             );
@@ -130,27 +131,27 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
       })()}
 
       {/* Active Deals — create a deal or attach a doc to one */}
-      <div style={{ marginTop: 36 }}>
+      <div style={{ marginTop: isMobile ? 26 : 36 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
           <div>
             <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 21, fontWeight: 600, color: '#1a1a1a', margin: 0 }}>Active Deals</h3>
             <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Attach a completed form to a live deal — or start a new one.</div>
           </div>
           {onNewDeal && (
-            <button onClick={onNewDeal} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New Deal</button>
+            <button onClick={onNewDeal} style={{ padding: isMobile ? '12px 16px' : '8px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 13, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New Deal</button>
           )}
         </div>
         {activeDeals.length === 0 ? (
           <div style={{ fontSize: 13, color: '#9ca3af', padding: '10px 0' }}>No active deals yet. Create one to start attaching documents.</div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
             {activeDeals.map(d => (
               <div key={d.id} style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, boxShadow: '0 1px 2px rgba(0,0,0,.04)' }}>
                 <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client || 'Deal'}</div>
                 <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[d.property, d.type].filter(Boolean).join(' · ')}</div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 14, alignItems: 'center' }}>
                   {d.stage && <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', padding: '2px 8px', borderRadius: 20 }}>{d.stage}</span>}
-                  <button onClick={() => setPickForDeal(d.id)} style={{ marginLeft: 'auto', padding: '7px 12px', fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add doc</button>
+                  <button onClick={() => setPickForDeal(d.id)} style={{ marginLeft: 'auto', padding: isMobile ? '11px 14px' : '7px 12px', minHeight: isMobile ? 44 : undefined, fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add doc</button>
                 </div>
               </div>
             ))}
@@ -160,13 +161,17 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
 
       {/* Pick a form to attach to the chosen deal */}
       {pickForDeal && (
-        <div onClick={() => setPickForDeal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '12vh 16px', overflowY: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a' }}>Pick a form for this deal</div>
-            <div style={{ padding: 10, maxHeight: '52vh', overflowY: 'auto' }}>
+        <div onClick={() => setPickForDeal(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '12vh 16px', overflowY: isMobile ? 'hidden' : 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? '18px 18px 0 0' : 14, maxWidth: isMobile ? '100%' : 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden', ...(isMobile ? { maxHeight: '88vh', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{ flex: 1 }}>Pick a form for this deal</span>
+              <button onClick={() => setPickForDeal(null)} aria-label="Close"
+                style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: isMobile ? 44 : 32, height: isMobile ? 44 : 32, cursor: 'pointer', fontSize: 16, color: '#6b7280', flexShrink: 0 }}>✕</button>
+            </div>
+            <div style={{ padding: 10, maxHeight: isMobile ? undefined : '52vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', ...(isMobile ? { flex: 1, minHeight: 0 } : {}) }}>
               {forms.map(f => (
                 <button key={f.id} onClick={() => { setEditing({ form: f, dealId: pickForDeal }); setPickForDeal(null); }}
-                  style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '11px 12px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
+                  style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                   <span style={{ fontSize: 20 }}>📄</span>
                   <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
@@ -187,6 +192,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
           dealId={editing.dealId}
           businessUnit={businessUnit}
           onToast={onToast}
+          isMobile={isMobile}
           onClose={() => setEditing(null)}
         />
       )}

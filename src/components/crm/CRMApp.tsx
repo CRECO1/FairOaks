@@ -2589,6 +2589,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .crm-input{padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:'DM Sans',sans-serif;width:100%;}
         .crm-input:focus{outline:none;border-color:#c9922c;}
         .crm-btn{padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;min-height:44px;}
+        /* Anchors styled as buttons are inline by default, so min-height never applies */
+        a.crm-btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;}
         .crm-btn-gold{background:#c9922c;color:#111;font-weight:600;}
         .crm-btn-ghost{background:transparent;border:1px solid #ccc;color:#6b7280;}
         .crm-btn-sm{padding:7px 12px;font-size:13px;min-height:36px;}
@@ -2639,29 +2641,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           /* Modals → bottom sheet */
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
           .modal{width:100%!important;max-width:100%!important;border-radius:20px 20px 0 0!important;max-height:92vh!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;padding-bottom:env(safe-area-inset-bottom);}
-          .modal-body{overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;flex:1!important;min-height:0!important;}
+          /* max-height:none wins over the desktop calc(90vh - N) caps some bodies set
+             inline — the sheet's own 92vh + flex:1 already bounds them, and the cap
+             otherwise leaves dead space under the content. */
+          .modal-body{overflow-y:auto!important;-webkit-overflow-scrolling:touch!important;flex:1!important;min-height:0!important;max-height:none!important;}
           /* Touch-friendly controls */
           .crm-btn{padding:12px 18px;font-size:15px;min-height:48px;}
           .crm-btn-sm{padding:10px 14px!important;font-size:14px!important;min-height:44px!important;}
           .crm-input{padding:12px 14px;font-size:16px!important;min-height:48px;}
           .crm-input:focus{font-size:16px!important;}
-          /* Prevent iOS zoom on focus */
-          input,select,textarea{font-size:16px!important;}
+          /* Prevent iOS zoom on focus. .pdf-fill-input is exempt — those inputs are sized
+             to the rendered PDF page scale, so forcing 16px blows the fields off the page. */
+          input:not(.pdf-fill-input),select,textarea{font-size:16px!important;}
           .cf-select{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
           .cf-tag-input{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
           /* Table helpers */
           .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;}
           .mobile-table-scroll::-webkit-scrollbar{display:none;}
           .crm-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;border-radius:10px;}
-          td{padding:10px 12px!important;font-size:13px!important;}
-          th{padding:8px 12px!important;font-size:10px!important;}
-          /* Commission/contacts table - hide non-essential cols on mobile */
-          .commission-table td:nth-child(4),.commission-table td:nth-child(7),.commission-table td:nth-child(8){display:none!important;}
-          .commission-table th:nth-child(4),.commission-table th:nth-child(7),.commission-table th:nth-child(8){display:none!important;}
+          td{padding:12px!important;font-size:13px!important;}
+          th{padding:9px 12px!important;font-size:10px!important;}
           /* Utility classes */
           .mobile-full-width{width:100%!important;margin-left:0!important;}
           .mobile-stack{flex-direction:column!important;}
           .mobile-hide{display:none!important;}
+          /* Icon-only buttons (pencil / trash / ✕ / search) need a real thumb target */
+          .crm-icon-btn{min-width:44px!important;min-height:44px!important;display:inline-flex!important;align-items:center;justify-content:center;}
+          /* Horizontal tab strips scroll instead of wrapping or clipping */
+          .crm-tabs-scroll{overflow-x:auto!important;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;flex-wrap:nowrap!important;}
+          .crm-tabs-scroll::-webkit-scrollbar{display:none;}
+          .crm-tabs-scroll>*{flex-shrink:0;}
+          /* Card lists that replace a wide table on a phone */
+          .crm-mobile-cards{display:flex;flex-direction:column;gap:10px;}
+          .crm-mobile-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.05);}
+          /* Nothing may push the page sideways — wide children scroll inside their own wrapper */
+          .crm-page-scroll{overflow-x:hidden!important;}
+          .crm-page-scroll img,.crm-page-scroll canvas,.crm-page-scroll iframe{max-width:100%;}
           /* 3-col stat grids → 2-col on small phones */
           .stats-3col{grid-template-columns:1fr 1fr!important;}
           /* 2-col form grids → 1-col on small phones for readability */
@@ -2818,7 +2833,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
             </div>
-            <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 16 }} title="Sign out">⏻</button>
+            <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.3)', cursor: 'pointer', fontSize: 16 }} title="Sign out">⏻</button>
           </div>
         </div>
       </nav>}
@@ -2830,8 +2845,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         {isTabletOrMobile && (
           <div style={{ background: '#111', color: '#fff', padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderBottom: '1px solid rgba(201,146,44,.25)' }}>
             {/* Hamburger → opens full menu sheet */}
-            <button onClick={() => setMobileMenuOpen(true)}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.8)', cursor: 'pointer', padding: '4px 6px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, lineHeight: 0 }}>
+            <button onClick={() => setMobileMenuOpen(true)} aria-label="Open menu"
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.8)', cursor: 'pointer', padding: '4px 6px', flexShrink: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 4, lineHeight: 0, minWidth: 44, minHeight: 44, marginLeft: -6 }}>
               <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
               <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
               <span style={{ display: 'block', width: 20, height: 2, background: 'currentColor', borderRadius: 2 }} />
@@ -2847,8 +2862,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {page === 'contacts' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddClient(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Add</button>}
               {page === 'deals' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => setShowAddDeal(true)} style={{ padding: '6px 12px', fontSize: 13 }}>+ Deal</button>}
               {page === 'campaigns' && <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => { setCampaignView('builder'); setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' }); }} style={{ padding: '6px 12px', fontSize: 13 }}>+ New</button>}
-              <button onClick={() => { setShowSearch(true); setSearchQuery(''); }}
-                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: '5px 9px', lineHeight: 1 }}>🔍</button>
+              <button onClick={() => { setShowSearch(true); setSearchQuery(''); }} aria-label="Search"
+                style={{ background: 'rgba(255,255,255,.1)', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>🔍</button>
             </div>
           </div>
         )}
@@ -2872,8 +2887,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#c9922c', lineHeight: 1.2 }}>{brand.name}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', letterSpacing: 2, textTransform: 'uppercase', marginTop: 3 }}>{brand.tagline}</div>
                 </div>
-                <button onClick={() => setMobileMenuOpen(false)}
-                  style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, padding: '4px 9px', lineHeight: 1 }}>✕</button>
+                <button onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"
+                  style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 8, color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 18, padding: 0, lineHeight: 1, width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
               </div>
 
               {/* Workspace switcher (admin) */}
@@ -2972,7 +2987,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile.first_name} {profile.last_name}</div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,.4)' }}>{isAdmin ? 'Broker · Admin' : 'Agent'}</div>
                   </div>
-                  <button onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
+                  <button className="crm-icon-btn" onClick={signOut} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.4)', cursor: 'pointer', fontSize: 18 }} title="Sign out">⏻</button>
                 </div>
               </div>
             </div>
@@ -3207,7 +3222,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>}
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
+        <div className="crm-page-scroll" style={{ flex: 1, overflowY: (page === 'calendar' && !isMobile) ? 'hidden' : 'auto', padding: page === 'calendar' || page === 'campaigns' || page === 'action-plans' ? 0 : isMobile ? 14 : isTabletOrMobile ? 20 : 26 }} onClick={() => { setAssetDropdownOpen(null); }}>
 
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
@@ -3638,7 +3653,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
                   {['all', ...STATUS_OPTIONS].map(s => (
                     <button key={s} onClick={() => setProspectStatusFilter(s)}
-                      style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor: prospectStatusFilter === s ? '#c9922c' : '#e5e7eb', background: prospectStatusFilter === s ? '#c9922c' : '#fff', color: prospectStatusFilter === s ? '#111' : '#6b7280', textTransform: 'capitalize' }}>
+                      style={{ padding: isMobile ? '9px 16px' : '4px 14px', minHeight: isMobile ? 40 : undefined, borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", border: '1px solid', borderColor:prospectStatusFilter === s ? '#c9922c' : '#e5e7eb', background: prospectStatusFilter === s ? '#c9922c' : '#fff', color: prospectStatusFilter === s ? '#111' : '#6b7280', textTransform: 'capitalize' }}>
                       {s === 'all' ? `All (${prospects.length})` : `${s} (${prospects.filter(p => p.client?.prospect_status === s).length})`}
                     </button>
                   ))}
@@ -3792,7 +3807,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <input autoFocus placeholder="List name…" value={newListName} onChange={e => setNewListName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveSmartList(); if (e.key === 'Escape') setShowSaveList(false); }}
                           className="cf-tag-input active" style={{ width: 140 }} />
                         <button onClick={saveSmartList} style={{ padding: '5px 12px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>Save</button>
-                        <button onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                        <button className="crm-icon-btn" onClick={() => setShowSaveList(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 14, cursor: 'pointer' }}>✕</button>
                       </div>
                     )}
                   </div>
@@ -4466,12 +4481,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Left: Month Grid */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: isMobile ? 'none' : '1px solid #e5e7eb', borderBottom: isMobile ? '1px solid #e5e7eb' : 'none', overflow: 'hidden' }}>
                       {/* Month header */}
-                      <div style={{ display: 'flex', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #e5e7eb', background: '#fff', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', padding: isMobile ? '12px 14px' : '16px 24px', borderBottom: '1px solid #e5e7eb', background: '#fff', gap: isMobile ? 8 : 12 }}>
                         <button onClick={() => setCalViewMonth(new Date(year, month - 1, 1))}
-                          style={{ width: 32, height: 32, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                          style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, flexShrink: 0, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
                         <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#111', flex: 1, textAlign: 'center' }}>{monthName}</span>
                         <button onClick={() => setCalViewMonth(new Date(year, month + 1, 1))}
-                          style={{ width: 32, height: 32, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                          style={{ width: isMobile ? 40 : 32, height: isMobile ? 40 : 32, flexShrink: 0, border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                         <button onClick={() => { setCalViewMonth(new Date(today.getFullYear(), today.getMonth(), 1)); setCalSelectedDate(today.toDateString()); }}
                           style={{ padding: '5px 12px', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', background: '#fff', fontSize: 12, color: '#374151', fontFamily: "'DM Sans',sans-serif", fontWeight: 500 }}>Today</button>
                         <button onClick={() => loadCalendarEvents(90)}
@@ -4486,7 +4501,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
 
                       {/* Calendar grid */}
-                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gridAutoRows: '1fr', overflow: 'hidden' }}>
+                      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gridAutoRows: isMobile ? 'minmax(60px, auto)' : '1fr', overflow: 'hidden' }}>
                         {/* Empty cells before first day */}
                         {Array.from({ length: firstDay }).map((_, i) => (
                           <div key={`empty-${i}`} style={{ borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }} />
@@ -4502,7 +4517,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           return (
                             <div key={dayNum} onClick={() => setCalSelectedDate(dateKey)}
-                              style={{ borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', padding: '6px 8px', cursor: 'pointer', background: isSelected ? '#fef9f0' : '#fff', transition: 'background 0.1s', overflow: 'hidden' }}
+                              style={{ borderRight: '1px solid #f0f0f0', borderBottom: '1px solid #f0f0f0', padding: isMobile ? '5px 4px' : '6px 8px', cursor: 'pointer', background: isSelected ? '#fef9f0' : '#fff', transition: 'background 0.1s', overflow: 'hidden' }}
                               onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = '#fafafa'; }}
                               onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = '#fff'; }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -4511,13 +4526,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </span>
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                {dayEvents.slice(0, 3).map(ev => (
+                                {dayEvents.slice(0, isMobile ? 2 : 3).map(ev => (
                                   <div key={ev.id} style={{ fontSize: 11, background: '#1a365d', color: '#fff', borderRadius: 3, padding: '1px 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                     {ev.allDay ? '● ' : `${new Date(ev.start!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} `}{ev.title}
                                   </div>
                                 ))}
-                                {dayEvents.length > 3 && (
-                                  <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4 }}>+{dayEvents.length - 3} more</div>
+                                {dayEvents.length > (isMobile ? 2 : 3) && (
+                                  <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4 }}>+{dayEvents.length - (isMobile ? 2 : 3)} more</div>
                                 )}
                               </div>
                             </div>
@@ -4599,11 +4614,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             return (
               <div style={{ display: 'flex', gap: 8, marginBottom: 18, borderBottom: '1px solid #eee' }}>
                 <button onClick={() => setTasksSubTab('tasks')}
-                  style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'tasks' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'tasks' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  style={{ padding: isMobile ? '12px 16px' : '9px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'tasks' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'tasks' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                   📋 &nbsp;Tasks
                 </button>
                 <button onClick={() => { setTasksSubTab('calls'); loadAllTasks(); loadClients(); }}
-                  style={{ padding: '9px 16px', fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'calls' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'calls' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  style={{ padding: isMobile ? '12px 16px' : '9px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'calls' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'calls' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   📞 &nbsp;Call Queue
                   {callDue > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{callDue}</span>}
                 </button>
@@ -4804,7 +4819,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {/* Edit form */}
                     {isEditing ? (
                       <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name</label>
                             <input className="crm-input" style={{ marginTop: 3 }} value={editAgentForm.first_name} onChange={e => setEditAgentForm({ ...editAgentForm, first_name: e.target.value })} />
@@ -4818,7 +4833,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label>
                           <input className="crm-input" style={{ marginTop: 3 }} type="email" value={editAgentForm.email} onChange={e => setEditAgentForm({ ...editAgentForm, email: e.target.value })} />
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label>
                             <input className="crm-input" style={{ marginTop: 3 }} type="tel" placeholder="210-555-0000" value={editAgentForm.phone} onChange={e => setEditAgentForm({ ...editAgentForm, phone: e.target.value })} />
@@ -5273,6 +5288,60 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No commissions found</div>
                     <div style={{ fontSize: 13 }}>Add commissions via the Commission tab on any deal.</div>
                   </div>
+                ) : isMobile ? (
+                  /* ── Mobile commission cards — the 8-column table is unreadable on a phone ── */
+                  <div className="crm-mobile-cards">
+                    {filtered.map(c => {
+                      const sc = statusColor[c.status] ?? { bg: '#f3f4f6', color: '#374151' };
+                      const openCommission = () => { if (c.deal_id) { const d = deals.find(x => x.id === c.deal_id); if (d) { setPage('deals'); openDeal(d); setDealTab('commission'); } } };
+                      return (
+                        <div key={c.id} className="crm-mobile-card" onClick={openCommission} style={{ cursor: c.deal_id ? 'pointer' : 'default' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: '#111' }}>{c.deal?.client ?? '—'}</div>
+                              {c.deal?.property && <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 2 }}>{c.deal.property}</div>}
+                            </div>
+                            <span style={{ padding: '3px 10px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: sc.bg, color: sc.color, flexShrink: 0 }}>
+                              {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 13, color: '#6b7280', marginBottom: 12 }}>
+                            <span>👤 {c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '—'}</span>
+                            <span>📅 {c.close_date ? new Date(c.close_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0' }}>
+                            {[
+                              { label: 'Sale Price', val: fmt(c.sale_price), color: '#111' },
+                              { label: 'Gross GCI', val: fmt(c.gross_commission), color: '#c9922c' },
+                              { label: 'Agent Net', val: fmt(c.agent_net), color: '#059669' },
+                              { label: 'Broker Net', val: fmt(c.brokerage_net), color: '#374151' },
+                            ].map(f => (
+                              <div key={f.label}>
+                                <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>{f.label}</div>
+                                <div style={{ fontSize: 15, fontWeight: 700, color: f.color, marginTop: 2 }}>{f.val}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* Totals card */}
+                    <div className="crm-mobile-card" style={{ background: '#f9f5ef', border: '1px solid #e8dcc8' }}>
+                      <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700, marginBottom: 10 }}>Total ({filtered.length})</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        {[
+                          { label: 'Gross GCI', val: fmt(totalGCI), color: '#c9922c' },
+                          { label: 'Agent Net', val: fmt(totalAgentNet), color: '#059669' },
+                          { label: 'Broker Net', val: fmt(totalBrokerNet), color: '#374151' },
+                        ].map(f => (
+                          <div key={f.label}>
+                            <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>{f.label}</div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: f.color, marginTop: 2 }}>{f.val}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
                     <div className="mobile-table-scroll">
@@ -5328,14 +5397,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
           {/* ── Campaigns Page ── */}
           {['campaigns', 'action-plans', 'social'].includes(page) && (
-            <div style={{ display: 'flex', gap: 2, padding: isMobile ? '12px 16px 0' : '20px 28px 0', borderBottom: '1px solid #eef0f2', overflowX: 'auto' }}>
+            <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 2, padding: isMobile ? '12px 16px 0' : '20px 28px 0', borderBottom: '1px solid #eef0f2', overflowX: 'auto' }}>
               {[
                 { k: 'campaigns',    label: '📣 Campaigns',    on: () => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); } },
                 { k: 'action-plans', label: '⚡ Action Plans', on: () => { setPage('action-plans'); setActionPlanView('list'); loadActionPlans(); loadCampaigns(); loadProfiles(); setActionPlanAgentFilter(null); } },
                 { k: 'social',       label: '📱 Social Media', on: () => setPage('social') },
               ].map(t => (
                 <button key={t.k} onClick={t.on}
-                  style={{ padding: '9px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", color: page === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${page === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -1 }}>
+                  style={{ padding: isMobile ? '12px 14px' : '9px 18px', minHeight: isMobile ? 44 : undefined, border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", color: page === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${page === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -1 }}>
                   {t.label}
                 </button>
               ))}
@@ -5410,12 +5479,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           : 'Not scheduled';
                       const sent = camp.send_count ?? 0;
                       return (
-                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }}>
+                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }}>
                         <div style={{ width: 36, height: 36, borderRadius: 9, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
                           {camp.type === 'email' ? '✉️' : '💬'}
                         </div>
-                        {/* Name + status + schedule */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        {/* Name + status + schedule — takes the rest of row 1 on a phone
+                            so the metric columns wrap onto a second line instead of
+                            squeezing the campaign name down to a few characters. */}
+                        <div style={{ flex: isMobile ? '1 1 calc(100% - 50px)' : 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
                             <span style={{ fontSize: 14, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{camp.name}</span>
                             <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
@@ -6165,7 +6236,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </select>
                         </div>
                       )}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Channel</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.type} onChange={e => setNewCampaign({ ...newCampaign, type: e.target.value as 'email' | 'sms' })}>
@@ -6500,10 +6571,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           : plan.trigger_type === 'stage_change' ? `On stage change${plan.trigger_value ? ` → ${plan.trigger_value}` : ''}`
                           : `On tag added${plan.trigger_value ? ` → ${plan.trigger_value}` : ''}`;
                         return (
-                        <div key={plan.id} title={plan.description || undefined} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+                        <div key={plan.id} title={plan.description || undefined} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: isMobile ? '14px 16px' : '16px 20px', display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 16, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
                           <div style={{ width: 42, height: 42, borderRadius: 10, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, flexShrink: 0 }}>⚡</div>
                           {/* Name + status + trigger + owner */}
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ flex: isMobile ? '1 1 calc(100% - 56px)' : 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                               <span style={{ fontSize: 15, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{plan.name}</span>
                               <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: plan.status === 'active' ? '#dcfce7' : '#fef3c7', color: plan.status === 'active' ? '#166534' : '#92400e', textTransform: 'uppercase' }}>{plan.status}</span>
@@ -6848,7 +6919,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Plan Name *</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.name} onChange={e => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="e.g. New Buyer Welcome Sequence" /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} value={newPlan.description} onChange={e => setNewPlan({ ...newPlan, description: e.target.value })} placeholder="What does this plan do?" /></div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Trigger</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newPlan.trigger_type} onChange={e => setNewPlan({ ...newPlan, trigger_type: e.target.value as ActionPlan['trigger_type'], trigger_value: '' })}>
@@ -7018,10 +7089,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {page === 'properties' && (
             <div>
               {/* Sub-tabs */}
-              <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 24 }}>
+              <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: isMobile ? 16 : 24 }}>
                 {[{ k: 'propertydb', label: '🗂️ Property DB' }, { k: 'listings', label: '🏢 Listings' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
                   <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan')}
-                    style={{ padding: '10px 22px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
+                    style={{ padding: isMobile ? '12px 14px' : '10px 22px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
                     {t.label}
                     {t.k === 'propertydb' && propertyDbCount != null && (
                       <span style={{ marginLeft: 8, background: propertiesTab === t.k ? '#c9922c' : '#e5e7eb', color: propertiesTab === t.k ? '#fff' : '#6b7280', fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 10, verticalAlign: 'middle' }}>{propertyDbCount}</span>
@@ -7037,6 +7108,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   authToken={session?.access_token}
                   onToast={showToast}
                   onCount={setPropertyDbCount}
+                  isMobile={isMobile}
                 />
               )}
               {propertiesTab === 'listings' && (
@@ -7067,6 +7139,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               deals={deals}
               onNewDeal={() => setShowAddDeal(true)}
               onToast={showToast}
+              isMobile={isMobile}
             />
           )}
 
@@ -7130,7 +7203,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>{activeDeal.client}</h3>
               <span style={{ ...Object.fromEntries((TYPE_COLORS[activeDeal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{activeDeal.type}</span>
-              <button onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => { setActiveDeal(null); setShowDealAgentPicker(false); setDealTab('overview'); if (typeof window !== 'undefined') sessionStorage.removeItem('activeDealId'); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ padding: isMobile ? '16px 18px' : '20px 26px', overflowY: 'auto', flex: 1 }}>
               {/* Pipeline bar */}
@@ -7142,10 +7215,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })}
               </div>
               {/* Tabs */}
-              <div style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
+              <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
                 {(['overview', 'client', 'emails', 'docs', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => setDealTab(t)}
-                    style={{ padding: '8px 18px', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
+                    style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
                     {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
@@ -7341,7 +7414,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                             ↻ Sync signature
                           </button>
-                          <button onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                          <button className="crm-icon-btn" onClick={() => { setShowCompose(false); setReplyToEmail(null); clearComposeBody(); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                         </div>
                       </div>
                       {replyToEmail && (
@@ -7646,7 +7719,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 8, padding: 15 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: '#111' }}>+ Log Email Touch</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Direction</label>
                         <select className="crm-input" style={{ marginTop: 4 }} value={ne.direction} onChange={e => setNe({ ...ne, direction: e.target.value as 'sent' | 'received' })}>
                           <option value="sent">Sent</option><option value="received">Received</option>
@@ -7909,7 +7982,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const agentNet = gross * (split / 100) - ref - txFee;
                           const brokerNet = gross - gross * (split / 100);
                           return (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20, background: '#f9f5ef', border: '1px solid #e8dcc8', borderRadius: 10, padding: '14px 16px' }}>
+                            <div className="stats-3col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 20, background: '#f9f5ef', border: '1px solid #e8dcc8', borderRadius: 10, padding: '14px 16px' }}>
                               <div style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 500, marginBottom: 3 }}>Gross Commission</div>
                                 <div style={{ fontSize: 18, fontWeight: 700, color: '#c9922c' }}>${gross.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
@@ -7928,7 +8001,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       )}
 
                       {/* Form grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div style={{ gridColumn: '1/-1' }}>
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Sale / Lease Price ($) *</label>
                           <input className="crm-input" type="number" style={{ marginTop: 4 }} value={commissionForm.sale_price} onChange={e => setCommissionForm(f => ({ ...f, sale_price: e.target.value }))} placeholder="0" />
@@ -7995,9 +8068,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>New Deal</h3>
-              <button onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ padding: '22px 26px' }}>
+            <div className="modal-body" style={{ padding: '22px 26px' }}>
 
               {/* Client selector */}
               <div style={{ marginBottom: 18 }}>
@@ -8050,7 +8123,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+              <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Deal Type *</label>
                   <select className="crm-input" style={{ marginTop: 4 }} value={nd.type} onChange={e => setNd({ ...nd, type: e.target.value })}>
@@ -8087,7 +8160,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Header */}
             <div style={{ padding: '20px 28px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0', flexShrink: 0 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>Add Contact</h3>
-              <button onClick={() => setShowAddClient(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setShowAddClient(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Scrollable body */}
@@ -8120,7 +8193,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Identity</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name *</label>
                     <input className="crm-input" style={{ marginTop: 4 }} placeholder="Jane" value={nc.first_name} onChange={e => setNc({ ...nc, first_name: titleCase(e.target.value) })} />
@@ -8144,7 +8217,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Contact Info</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label>
                     <input className="crm-input" type="email" style={{ marginTop: 4 }} placeholder="jane@email.com" value={nc.email} onChange={e => setNc({ ...nc, email: e.target.value })} />
@@ -8206,7 +8279,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
 
                   {/* Budget + Size side by side */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Budget / Price Range</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="$400k – $500k" value={nc.budget} onChange={e => setNc({ ...nc, budget: e.target.value })} />
@@ -8246,7 +8319,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Professional</div>
                     <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Brokerage</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="Century 21, KW…" value={nc.brokerage} onChange={e => setNc({ ...nc, brokerage: e.target.value })} />
@@ -8301,7 +8374,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Location</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Street Address</label>
                     <input className="crm-input" style={{ marginTop: 4 }} placeholder="123 Main St" value={nc.address} onChange={e => setNc({ ...nc, address: e.target.value })} />
@@ -8326,7 +8399,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* ── Section: Notes ── */}
               <div>
                 {/* Lead Source & Tags */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <div>
                     <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Lead Source</label>
                     <select className="crm-input" style={{ marginTop: 4 }} value={nc.lead_source} onChange={e => setNc({ ...nc, lead_source: e.target.value })}>
@@ -8407,13 +8480,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>Invite Agent</h3>
-              <button onClick={() => setShowInvite(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setShowInvite(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ padding: '22px 26px' }}>
+            <div className="modal-body" style={{ padding: '22px 26px' }}>
               <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
                 An invite email will be sent with a link to set their password and access the CRM.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+              <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 {[
                   { label: 'First Name *', key: 'first_name', placeholder: 'Jane', type: 'text' },
                   { label: 'Last Name *', key: 'last_name', placeholder: 'Smith', type: 'text' },
@@ -8467,7 +8540,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {c.type === 'Buyer' ? '🏡' : c.type === 'Seller' ? '🪧' : c.type === 'Tenant' ? '🔑' : c.type === 'Landlord/Investor' ? '🏢' : c.type === 'Agent' ? '🤝' : '🏛'} {c.type}
                   </span>
                 </div>
-                <button onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                <button className="crm-icon-btn" onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
 
               {/* Smart Status Banner */}
@@ -8527,7 +8600,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 10 }}>
                     {c.type === 'Tenant' ? '🔑 Tenant Details' : c.type === 'Buyer' ? '🏡 Buyer Details' : c.type === 'Seller' ? '🪧 Seller Details' : c.type === 'Landlord/Investor' ? '🏢 Landlord Details' : c.type === 'Agent' || c.type === 'Broker' ? '🤝 Agent Details' : 'Contact Information'}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px', gridColumn: (c.extra_emails?.length > 0) ? '1/-1' : undefined }}>
                       <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
                         Email{(c.extra_emails?.length ?? 0) > 0 ? 's' : ''}
@@ -8976,7 +9049,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               style={{ background: 'none', border: '1px solid rgba(255,255,255,.3)', color: 'rgba(255,255,255,.7)', cursor: 'pointer', fontSize: 12, borderRadius: 4, padding: '2px 8px', fontFamily: "'DM Sans',sans-serif" }}>
                               ↻ Sync signature
                             </button>
-                            <button onClick={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+                            <button className="crm-icon-btn" onClick={() => { setShowContactCompose(false); setReplyToContactEmail(null); clearContactComposeBody(); setComposeAttachments([]); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
                           </div>
                         </div>
                         {replyToContactEmail && (
@@ -9411,7 +9484,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600 }}>Edit Contact</h3>
                 <div style={{ fontSize: 13, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{editClient.first_name} {editClient.last_name}</div>
               </div>
-              <button onClick={() => setEditClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setEditClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Scrollable body */}
@@ -9444,7 +9517,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Identity</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>First Name *</label>
                     <input className="crm-input" style={{ marginTop: 4 }} value={ec.first_name} onChange={e => setEc({ ...ec, first_name: titleCase(e.target.value) })} />
@@ -9468,7 +9541,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Contact Info</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
                   {/* ── Email(s) ── */}
                   <div style={{ gridColumn: '1/-1' }}>
@@ -9588,7 +9661,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Budget / Price Range</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="$400k – $500k" value={ec.budget} onChange={e => setEc({ ...ec, budget: e.target.value })} />
@@ -9633,7 +9706,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Professional</div>
                     <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Brokerage</label>
                       <input className="crm-input" style={{ marginTop: 4 }} placeholder="Century 21, KW…" value={ec.brokerage} onChange={e => setEc({ ...ec, brokerage: e.target.value })} />
@@ -9688,7 +9761,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>Location</div>
                   <div style={{ flex: 1, height: 1, background: '#f0f0f0' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div style={{ gridColumn: '1/-1' }}>
                     <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Street Address</label>
                     <input className="crm-input" style={{ marginTop: 4 }} value={ec.address} onChange={e => setEc({ ...ec, address: e.target.value })} />
@@ -9711,7 +9784,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
 
               {/* ── Lead Source & Tags ── */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                 <div>
                   <label style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Lead Source</label>
                   <select className="crm-input" style={{ marginTop: 4 }} value={ec.lead_source} onChange={e => setEc({ ...ec, lead_source: e.target.value })}>
@@ -9845,7 +9918,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 style={{ display: 'flex', alignItems: 'center', gap: 6, background: sendingTestEmail ? 'rgba(201,146,44,.4)' : 'rgba(201,146,44,.15)', border: '1px solid rgba(201,146,44,.5)', color: '#c9a84c', borderRadius: 7, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: sendingTestEmail ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", marginRight: 8, whiteSpace: 'nowrap' }}>
                 {sendingTestEmail ? '⏳ Sending…' : '📧 Send Test to Me'}
               </button>
-              <button onClick={() => setShowEmailPreview(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => setShowEmailPreview(false)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
             {/* Email meta bar */}
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 13, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -9885,7 +9958,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
               <button onClick={() => setShowBulkReassign(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
             </div>
-            <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="modal-body" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
                 <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 8 }}>Assign to Agent</label>
                 <select className="crm-input" value={bulkReassignTarget} onChange={e => setBulkReassignTarget(e.target.value)}>
@@ -10195,7 +10268,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
                 <button onClick={() => setShowTaskModal(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
               </div>
-              <div style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="modal-body" style={{ padding: '22px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                 {/* Task type */}
                 <div>
@@ -10284,13 +10357,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* Deal → pick a form to fill */}
       {dealFormPicker && (
-        <div onClick={() => setDealFormPicker(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '12vh 16px', overflowY: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, maxWidth: 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a' }}>Fill a form for this deal</div>
-            <div style={{ padding: 10, maxHeight: '52vh', overflowY: 'auto' }}>
+        <div onClick={() => setDealFormPicker(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '12vh 16px', overflowY: isMobile ? 'hidden' : 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? '18px 18px 0 0' : 14, maxWidth: isMobile ? '100%' : 460, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden', ...(isMobile ? { maxHeight: '88vh', display: 'flex', flexDirection: 'column', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #eef0f2', fontWeight: 600, fontSize: 16, color: '#1a1a1a', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{ flex: 1 }}>Fill a form for this deal</span>
+              <button className="crm-icon-btn" onClick={() => setDealFormPicker(false)} aria-label="Close"
+                style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16, color: '#6b7280', flexShrink: 0 }}>✕</button>
+            </div>
+            <div style={{ padding: 10, maxHeight: isMobile ? undefined : '52vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', ...(isMobile ? { flex: 1, minHeight: 0 } : {}) }}>
               {crmForms.length === 0 ? <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>No forms available.</div> :
                 crmForms.map(f => (
-                  <button key={f.id} onClick={() => openFormEditor(f)} style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: '11px 12px', border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
+                  <button key={f.id} onClick={() => openFormEditor(f)} style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                     <span style={{ fontSize: 20 }}>📄</span>
                     <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
@@ -10313,6 +10390,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           dealId={activeDeal?.id}
           businessUnit={businessUnit}
           onToast={showToast}
+          isMobile={isMobile}
           onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); }}
           onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
         />
@@ -10320,7 +10398,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: 26, right: 26, background: '#111', color: '#fff', padding: '12px 20px', borderRadius: 8, fontSize: 14, zIndex: 9999, borderLeft: '4px solid #c9922c', maxWidth: 300, boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
+        <div style={{ position: 'fixed', ...(isMobile
+          // clear the bottom tab bar (~60px) + the home indicator
+          ? { bottom: 'calc(72px + env(safe-area-inset-bottom))', left: 14, right: 14, maxWidth: 'none' }
+          : { bottom: 26, right: 26, maxWidth: 300 }),
+          background: '#111', color: '#fff', padding: '12px 20px', borderRadius: 8, fontSize: 14, zIndex: 9999, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)' }}>
           {toast}
         </div>
       )}
