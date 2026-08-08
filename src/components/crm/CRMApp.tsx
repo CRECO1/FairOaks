@@ -76,14 +76,6 @@ const CLIENT_TYPE_COLORS: Record<string, string> = {
   'Agent':    'background:#e0f2fe;color:#075985',
   'Broker':   'background:#f1f5f9;color:#334155',
 };
-const STAGE_CLS: Record<string, string> = {
-  'Prospect': 'bg-gray-100 text-gray-600',
-  'Active': 'bg-blue-100 text-blue-700',
-  'LOI': 'bg-purple-100 text-purple-700',
-  'In Contract': 'bg-amber-100 text-amber-700',
-  'Closed': 'bg-green-100 text-green-700',
-  'Lost': 'bg-red-100 text-red-700',
-};
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
@@ -459,8 +451,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const docFileRef = useRef<HTMLInputElement>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
-  const [editTagsClientId, setEditTagsClientId] = useState<string | null>(null);
-  const [inlineTagInput, setInlineTagInput] = useState('');
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -490,8 +480,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Gmail connection state
   const [gmailConnected, setGmailConnected] = useState(false);
-  const [showGmailInput, setShowGmailInput] = useState(false);
-  const [gmailInputValue, setGmailInputValue] = useState('');
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [mlsSyncing, setMlsSyncing] = useState(false);
@@ -531,7 +519,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Calendar state
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
-  const [calendarFilter, setCalendarFilter] = useState<'week' | 'month' | 'all'>('month');
+  const [calendarFilter] = useState<'week' | 'month' | 'all'>('month');
   const [calendarScopeError, setCalendarScopeError] = useState(false);
   const [calViewMonth, setCalViewMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [calSelectedDate, setCalSelectedDate] = useState<string | null>(new Date().toDateString());
@@ -597,7 +585,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [actionPlanAgentFilter, setActionPlanAgentFilter] = useState<string | null>(null);
   // Inline owner editing on list cards
   const [inlineOwnerPlanId, setInlineOwnerPlanId] = useState<string | null>(null);
-  const [inlineOwnerCampaignId, setInlineOwnerCampaignId] = useState<string | null>(null);
 
   // Action Plans
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
@@ -1542,24 +1529,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
-  async function toggleAgentTag(clientId: string, agentId: string) {
-    const client = clients.find(c => c.id === clientId);
-    if (!client) return;
-    const current = client.assigned_agent_ids ?? [];
-    const updated = current.includes(agentId)
-      ? current.filter(id => id !== agentId)
-      : [...current, agentId];
-    const { error } = await supabase
-      .from('crm_clients')
-      .update({ assigned_agent_ids: updated })
-      .eq('id', clientId);
-    if (error) { showToast('Error: ' + error.message); return; }
-    setClients(prev => prev.map(c => c.id === clientId ? { ...c, assigned_agent_ids: updated } : c));
-    const agentP = profiles.find(p => p.id === agentId);
-    const agentLabel = agentP ? `${agentP.first_name} ${agentP.last_name}` : 'Agent';
-    showToast(updated.includes(agentId) ? `${agentLabel} tagged on client` : `${agentLabel} removed from client`);
-  }
-
   // ── @mention notifications ────────────────────────────────────────────────
   async function loadMentions() {
     if (mentionsLoaded) return;
@@ -1598,12 +1567,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!unread.length) return;
     await supabase.from('crm_notifications').update({ read_at: new Date().toISOString() }).in('id', unread);
     setMentions(prev => prev.map(n => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
-  }
-
-  async function saveClientTags(clientId: string, newTags: string[]) {
-    const { error } = await supabase.from('crm_clients').update({ tags: newTags }).eq('id', clientId);
-    if (error) { showToast('Error saving tags'); return; }
-    setClients(prev => prev.map(c => c.id === clientId ? { ...c, tags: newTags } : c));
   }
 
   async function toggleDealAgentTag(dealId: string, agentId: string) {
@@ -3978,8 +3941,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {filteredContacts.map(c => {
                         const clientDeals = deals.filter(d => d.client_id === c.id);
                         const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
-                        const taggedAgents = (c.assigned_agent_ids ?? []).map(aid => profiles.find(p => p.id === aid)).filter(Boolean) as Profile[];
-                        const canTag = isAdmin || c.agent_id === profile!.id;
 
                         // Avatar gradient based on first letter
                         const avatarColors: Record<string, string> = {
@@ -7602,8 +7563,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {isExpanded && (
                               <div style={{ borderTop: '1px solid #f0f0f0' }}>
                                 {[...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).map((e, idx, arr) => {
-                                  const fromAddr = e.direction === 'sent' ? e.to_email : e.from_email;
-                                  const toAddr = e.direction === 'sent' ? e.to_email : e.from_email;
                                   return (
                                   <div key={e.id} style={{ padding: '14px 16px', background: idx % 2 === 0 ? '#fafafa' : '#fff', borderBottom: idx < arr.length - 1 ? '1px solid #f0f0f0' : 'none' }}>
                                     {/* Email header */}

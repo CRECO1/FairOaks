@@ -272,9 +272,6 @@ function fmtNum(n: number): string {
   return String(n);
 }
 
-function initials(name: string): string {
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-}
 
 // Status badge styles
 function statusBadge(status: PostStatus) {

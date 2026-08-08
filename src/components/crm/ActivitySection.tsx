@@ -101,10 +101,6 @@ function statusPill(actual: number, target: number) {
   );
 }
 
-function ratio(a: number, b: number): string {
-  if (b === 0) return '—';
-  return (a / b * 100).toFixed(1) + '%';
-}
 
 function blankDay(date: string): DayLog {
   return {

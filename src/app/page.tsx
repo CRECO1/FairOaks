@@ -74,12 +74,6 @@ import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sa
 import { formatPrice } from '@/lib/utils';
 import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 
-const DEMO_LISTINGS = [
-  { id: '1', title: '124 Saddlebrook Drive', slug: '124-saddlebrook-drive', price: 725000, city: 'Fair Oaks Ranch', bedrooms: 4, bathrooms: 3, sqft: 2850, images: null, status: 'active' },
-  { id: '2', title: '3318 Hill Country Blvd', slug: '3318-hill-country-blvd', price: 595000, city: 'Fair Oaks Ranch', bedrooms: 3, bathrooms: 2.5, sqft: 2200, images: null, status: 'active' },
-  { id: '3', title: '7820 Cibolo Creek Court', slug: '7820-cibolo-creek-court', price: 949000, city: 'Boerne', bedrooms: 5, bathrooms: 4, sqft: 3900, images: null, status: 'active' },
-];
-
 const DEMO_TESTIMONIALS = [
   { id: '1', client_name: 'The Martinez Family', client_location: 'Fair Oaks Ranch, TX', quote: 'Fair Oaks Realty Group made buying our dream home effortless. They knew every neighborhood and found us the perfect fit on the first try.', rating: 5 },
   { id: '2', client_name: 'Robert & Linda Chen', client_location: 'Boerne, TX', quote: 'Professional, patient, and deeply knowledgeable about the Texas Hill Country market. We sold above asking price in under two weeks!', rating: 5 },
