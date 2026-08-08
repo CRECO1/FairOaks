@@ -2216,7 +2216,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   if (!session) return <LoginScreen onLogin={s => { setSession(s); setLoading(true); }} brandName={brand.name} emailPlaceholder={`you@${brand.fromEmail.split('@')[1]}`} />;
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
-  const isAdmin = profile.role === 'admin';
+  // super_admin is a strict superset of admin — it must pass every admin gate, or the
+  // whole admin UI disappears for super-admin accounts.
+  const isAdmin = profile.role === 'admin' || profile.role === 'super_admin';
   const isMobile = windowWidth < 768;
   const isTabletOrMobile = windowWidth < 1024; // sidebar hides on tablet too
   const initials = (profile.first_name[0] ?? '') + (profile.last_name[0] ?? '');
