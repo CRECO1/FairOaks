@@ -938,9 +938,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadProfiles = useCallback(async () => {
     // Sync real last_sign_in_at from Supabase Auth → crm_profiles first
     await fetch('/api/crm/sync-logins', { method: 'POST' }).catch(() => {});
-    // Each workspace shows its own agents + all admins
+    // Each workspace shows its own agents + all admins & super-admins
     const { data } = await supabase.from('crm_profiles').select('*')
-      .or(`business_unit.eq.${businessUnit},role.eq.admin`)
+      .or(`business_unit.eq.${businessUnit},role.eq.admin,role.eq.super_admin`)
       .order('last_name');
     setProfiles((data ?? []) as Profile[]);
   }, [businessUnit]);
@@ -4574,7 +4574,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>
                           {isEditing ? `${editAgentForm.first_name} ${editAgentForm.last_name}`.trim() || 'Editing…' : `${a.first_name} ${a.last_name}`}
-                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: a.role === 'admin' ? '#92400e' : '#0369a1' }}>{a.role}</span>
+                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'super_admin' ? '#f3e8ff' : a.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: a.role === 'super_admin' ? '#7e22ce' : a.role === 'admin' ? '#92400e' : '#0369a1' }}>{a.role === 'super_admin' ? 'Super Admin' : a.role === 'admin' ? 'Admin' : 'Agent'}</span>
                         </div>
                         <div style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{isEditing ? editAgentForm.email : a.email}</div>
                       </div>

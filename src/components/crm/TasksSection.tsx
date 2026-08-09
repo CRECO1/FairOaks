@@ -109,6 +109,7 @@ function ContactSearch({
 interface Task {
   id: string; title: string; description?: string; due_date?: string;
   assigned_to?: string; client_id?: string; deal_id?: string;
+  type?: string;
   status: 'open' | 'in_progress' | 'done';
   priority: 'low' | 'normal' | 'high' | 'urgent';
   created_by?: string; business_unit: string; created_at: string; updated_at?: string;
@@ -458,7 +459,7 @@ export default function TasksSection({
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [newForm, setNewForm] = useState({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal' as PriorityKey, status: 'open' as StatusKey });
+  const [newForm, setNewForm] = useState({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal' as PriorityKey, status: 'open' as StatusKey, type: '' as '' | 'call' | 'follow_up' | 'email' });
   const quickAddRef = useRef<HTMLInputElement>(null);
 
   const todayStr = today();
@@ -523,13 +524,19 @@ export default function TasksSection({
 
   async function handleNewTask() {
     if (!newForm.title.trim()) return;
-    const task = await apiCreateTask(newForm);
+    // Call/Follow-up tasks live in the Call Queue, which shows items due today or
+    // earlier — so an empty due date defaults to today for those types.
+    const d = new Date();
+    const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const isCallish = newForm.type === 'call' || newForm.type === 'follow_up';
+    const payload = isCallish && !newForm.due_date ? { ...newForm, due_date: localToday } : newForm;
+    const task = await apiCreateTask(payload);
     if (task) {
       onTasksChange([task, ...tasks]);
-      showToast('Task created ✓');
+      showToast(newForm.type === 'call' ? '📞 Call added to the queue ✓' : 'Task created ✓');
     }
     setShowNewModal(false);
-    setNewForm({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal', status: 'open' });
+    setNewForm({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal', status: 'open', type: '' });
   }
 
   // ── Filtering ────────────────────────────────────────────────────────────
@@ -861,6 +868,17 @@ export default function TasksSection({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>{LABEL('Title *')}<input autoFocus value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleNewTask()} placeholder="Task name…" style={INPUT_STYLE} /></div>
               <div>{LABEL('Notes')}<textarea value={newForm.description} onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional details…" style={{ ...INPUT_STYLE, minHeight: 60, resize: 'none' }} /></div>
+              <div>{LABEL('Type')}
+                <select value={newForm.type} onChange={e => setNewForm(f => ({ ...f, type: e.target.value as typeof f.type }))} style={INPUT_STYLE}>
+                  <option value="">✓ To-Do</option>
+                  <option value="call">📞 Call</option>
+                  <option value="follow_up">🔄 Follow-up</option>
+                  <option value="email">✉️ Email</option>
+                </select>
+                {(newForm.type === 'call' || newForm.type === 'follow_up') && (
+                  <div style={{ fontSize: 11.5, color: '#a06a12', marginTop: 4 }}>📞 Shows in the Call Queue (due today unless you set a later date).</div>
+                )}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>{LABEL('Status')}
                   <select value={newForm.status} onChange={e => setNewForm(f => ({ ...f, status: e.target.value as StatusKey }))} style={INPUT_STYLE}>
