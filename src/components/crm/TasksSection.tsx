@@ -154,9 +154,23 @@ const GROUP_CFG = [
   { key: 'done',        label: 'Done',        color: '#22c55e', defaultOpen: false },
 ] as const;
 
+// Time-based buckets — the default "what do I do now" grouping for the table view.
+const URGENCY_CFG = [
+  { key: 'overdue', label: 'Overdue',   color: '#ef4444', defaultOpen: true  },
+  { key: 'today',   label: 'Today',     color: '#c9922c', defaultOpen: true  },
+  { key: 'week',    label: 'This Week', color: '#3b82f6', defaultOpen: true  },
+  { key: 'later',   label: 'Later',     color: '#8b5cf6', defaultOpen: true  },
+  { key: 'nodate',  label: 'No Date',   color: '#9ca3af', defaultOpen: false },
+  { key: 'done',    label: 'Done',      color: '#22c55e', defaultOpen: false },
+] as const;
+
 type StatusKey   = keyof typeof STATUS_CFG;
 type PriorityKey = keyof typeof PRIORITY_CFG;
 type ViewMode    = 'table' | 'board';
+type GroupMode   = 'urgency' | 'status';
+
+// today + n days as a YYYY-MM-DD string (matches how task.due_date is stored/compared).
+function addDaysStr(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 
 // Visual marker for typed tasks (calls/follow-ups/emails) in the list views.
 const TYPE_META: Record<string, { icon: string; label: string }> = {
@@ -248,6 +262,62 @@ function PriorityPill({ value, onChange }: { value: PriorityKey; onChange: (v: P
 }
 
 // ── Avatar ───────────────────────────────────────────────────────────────────
+// Inline due-date pill with one-tap reschedule — the table row's power move.
+// Menu uses fixed positioning so it escapes the group card's overflow:hidden clip.
+function DuePill({ value, overdue, isToday, onChange }: { value?: string; overdue?: boolean; isToday?: boolean; onChange: (v: string | null) => void }) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pos) return;
+    const close = () => setPos(null);
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setPos(null); };
+    document.addEventListener('mousedown', h);
+    window.addEventListener('scroll', close, true);
+    return () => { document.removeEventListener('mousedown', h); window.removeEventListener('scroll', close, true); };
+  }, [pos]);
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pos) { setPos(null); return; }
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPos({ top: r.bottom + 4, left: Math.max(8, r.left) });
+  };
+  const quick = [{ label: 'Today', days: 0 }, { label: 'Tomorrow', days: 1 }, { label: 'In 3 days', days: 3 }, { label: 'Next week', days: 7 }];
+  const pick = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); onChange(d.toISOString().slice(0, 10)); setPos(null); };
+  const color = overdue ? '#dc2626' : isToday ? '#a8741a' : value ? '#6b7280' : '#c7ccd1';
+  const bg = overdue ? '#fef2f2' : isToday ? '#fdf6e8' : 'transparent';
+  return (
+    <div ref={ref} style={{ display: 'inline-block' }} onClick={e => e.stopPropagation()}>
+      <button onClick={toggle} title="Reschedule"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 6, border: '1px solid transparent', background: bg, color, fontSize: 12, fontWeight: overdue ? 700 : 500, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+        onMouseEnter={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+        onMouseLeave={e => (e.currentTarget.style.borderColor = 'transparent')}>
+        📅 {value ? fmtDate(value) : 'No date'}
+      </button>
+      {pos && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.18)', padding: 6, zIndex: 1000, minWidth: 156 }}>
+          {quick.map(q => (
+            <button key={q.label} onClick={() => pick(q.days)}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: '#374151', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              {q.label}
+            </button>
+          ))}
+          <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
+          <input type="date" value={value ?? ''} onChange={e => { onChange(e.target.value || null); setPos(null); }}
+            style={{ width: '100%', padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
+          {value && (
+            <button onClick={() => { onChange(null); setPos(null); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', marginTop: 4, borderRadius: 6, border: 'none', background: 'transparent', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+              Clear date
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Avatar({ profile }: { profile?: Profile }) {
   if (!profile) return <span style={{ fontSize: 12, color: '#9ca3af' }}>—</span>;
   const color = avatarColor(profile.id);
@@ -457,6 +527,9 @@ export default function TasksSection({
   businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete,
 }: Props) {
   const [view, setView] = useState<ViewMode>('table');
+  const [groupMode, setGroupMode] = useState<GroupMode>('urgency');
+  const [quickFilter, setQuickFilter] = useState<'' | 'overdue' | 'today' | 'week' | 'later' | 'nodate' | 'done'>('');
+  const [mineOnly, setMineOnly] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -468,8 +541,20 @@ export default function TasksSection({
   const [showNewModal, setShowNewModal] = useState(false);
   const [newForm, setNewForm] = useState({ title: '', description: '', due_date: '', assigned_to: currentUserId ?? '', client_id: '', priority: 'normal' as PriorityKey, status: 'open' as StatusKey, type: '' as '' | 'call' | 'follow_up' | 'email' });
   const quickAddRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const todayStr = today();
+  const weekStr = addDaysStr(7);
+
+  // Which time-bucket a task falls in (drives the default grouping, stats, and quick filters).
+  function urgencyOf(t: Task): string {
+    if (t.status === 'done') return 'done';
+    if (!t.due_date) return 'nodate';
+    if (t.due_date < todayStr) return 'overdue';
+    if (t.due_date === todayStr) return 'today';
+    if (t.due_date <= weekStr) return 'week';
+    return 'later';
+  }
 
   // ── API helpers ──────────────────────────────────────────────────────────
   async function apiCreateTask(data: Partial<Task> & { title: string }): Promise<Task | null> {
@@ -518,9 +603,23 @@ export default function TasksSection({
     showToast('Task deleted');
   }
 
-  async function handleQuickAdd(status: StatusKey) {
+  // Quick-add fields depend on the active grouping: in status mode the group IS the
+  // status; in urgency mode the group implies a due date instead.
+  function quickAddFieldsFor(grpKey: string): Partial<Task> {
+    if (groupMode === 'status') return { status: grpKey as StatusKey };
+    switch (grpKey) {
+      case 'today':   return { status: 'open', due_date: todayStr };
+      case 'week':    return { status: 'open', due_date: addDaysStr(3) };
+      case 'later':   return { status: 'open', due_date: addDaysStr(14) };
+      case 'overdue': return { status: 'open', due_date: todayStr };
+      case 'done':    return { status: 'done' };
+      default:        return { status: 'open' }; // nodate
+    }
+  }
+
+  async function handleQuickAdd(fields: Partial<Task>) {
     if (!quickAddTitle.trim()) { setQuickAddGroup(null); return; }
-    const task = await apiCreateTask({ title: quickAddTitle.trim(), status, priority: 'normal' });
+    const task = await apiCreateTask({ title: quickAddTitle.trim(), priority: 'normal', ...fields });
     if (task) {
       onTasksChange([task, ...tasks]);
       showToast('Task created ✓');
@@ -547,15 +646,33 @@ export default function TasksSection({
   }
 
   // ── Filtering ────────────────────────────────────────────────────────────
-  const filtered = tasks.filter(t => {
+  const scoped = mineOnly && currentUserId ? tasks.filter(t => t.assigned_to === currentUserId) : tasks;
+  const filtered = scoped.filter(t => {
     if (priorityFilter && t.priority !== priorityFilter) return false;
     if (assigneeFilter && t.assigned_to !== assigneeFilter) return false;
+    if (quickFilter && urgencyOf(t) !== quickFilter) return false;
     if (search && !t.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
   const profileById = Object.fromEntries(profiles.map(p => [p.id, p]));
-  const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < todayStr).length;
+  const overdueCt = scoped.filter(t => urgencyOf(t) === 'overdue').length;
+  const todayCt   = scoped.filter(t => urgencyOf(t) === 'today').length;
+  const weekCt    = scoped.filter(t => urgencyOf(t) === 'week').length;
+
+  // Keyboard: N = new task, / = focus search (ignored while typing or when a modal is open).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (showNewModal || detailTask || contactPopup) return;
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); }
+      else if (e.key.toLowerCase() === 'n') { e.preventDefault(); setShowNewModal(true); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showNewModal, detailTask, contactPopup]);
 
   // ── Table Row ────────────────────────────────────────────────────────────
   function TableRow({ task: t }: { task: Task }) {
@@ -607,7 +724,8 @@ export default function TasksSection({
                 <span style={{ fontSize: 11, color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
               </button>
             ) : null}
-            {t.due_date ? <span>📅 {fmtDate(t.due_date)}</span> : <span style={{ color: '#d1d5db' }}>No date</span>}
+            <DuePill value={t.due_date} overdue={!!isOverdue} isToday={t.due_date === todayStr && t.status !== 'done'}
+              onChange={v => handleUpdateTask(t.id, { due_date: v ?? '' })} />
           </div>
         )}
       </div>
@@ -615,17 +733,17 @@ export default function TasksSection({
   }
 
   // ── Quick-add row ─────────────────────────────────────────────────────────
-  function QuickAddRow({ status }: { status: StatusKey }) {
-    return quickAddGroup === status ? (
+  function QuickAddRow({ groupKey }: { groupKey: string }) {
+    return quickAddGroup === groupKey ? (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: '1px solid #f3f4f6', background: '#fafbff' }}>
         <div style={{ width: 16, height: 16, borderRadius: 4, border: '2px solid #d1d5db', flexShrink: 0 }} />
         <input ref={quickAddRef} autoFocus value={quickAddTitle}
           onChange={e => setQuickAddTitle(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(status); if (e.key === 'Escape') setQuickAddGroup(null); }}
+          onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(quickAddFieldsFor(groupKey)); if (e.key === 'Escape') setQuickAddGroup(null); }}
           onBlur={() => { if (!quickAddTitle.trim()) setQuickAddGroup(null); }}
           placeholder="Task name…"
           style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: '#111', background: 'transparent', fontFamily: "'DM Sans',sans-serif" }} />
-        <button onClick={() => handleQuickAdd(status)}
+        <button onClick={() => handleQuickAdd(quickAddFieldsFor(groupKey))}
           style={{ padding: '3px 12px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
           Add
         </button>
@@ -635,7 +753,7 @@ export default function TasksSection({
         </button>
       </div>
     ) : (
-      <button onClick={() => { setQuickAddGroup(status); setQuickAddTitle(''); }}
+      <button onClick={() => { setQuickAddGroup(groupKey); setQuickAddTitle(''); }}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, fontFamily: "'DM Sans',sans-serif', textAlign: 'left'" }}
         onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.color = '#6b7280'; }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}>
@@ -646,11 +764,17 @@ export default function TasksSection({
 
   // ── TABLE VIEW ───────────────────────────────────────────────────────────
   function TableView() {
+    const groups: readonly { key: string; label: string; color: string; defaultOpen: boolean }[] =
+      groupMode === 'urgency' ? URGENCY_CFG : GROUP_CFG;
+    const bucketOf = (t: Task) => (groupMode === 'urgency' ? urgencyOf(t) : t.status);
+    const narrowing = !!(quickFilter || search.trim() || priorityFilter || mineOnly || assigneeFilter);
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {GROUP_CFG.map(grp => {
-          const groupTasks = filtered.filter(t => t.status === grp.key);
-          const isCollapsed = collapsed[grp.key] ?? grp.defaultOpen === false;
+        {groups.map(grp => {
+          const groupTasks = filtered.filter(t => bucketOf(t) === grp.key);
+          if (narrowing && groupTasks.length === 0) return null;
+          const isCollapsed = narrowing ? false : (collapsed[grp.key] ?? grp.defaultOpen === false);
+          const canQuickAdd = groupMode === 'status' || (grp.key !== 'overdue' && grp.key !== 'done');
           return (
             <div key={grp.key} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
               {/* Group header */}
@@ -680,12 +804,17 @@ export default function TasksSection({
                   )}
 
                   {groupTasks.map(t => <TableRow key={t.id} task={t} />)}
-                  <QuickAddRow status={grp.key as StatusKey} />
+                  {canQuickAdd && <QuickAddRow groupKey={grp.key} />}
                 </>
               )}
             </div>
           );
         })}
+        {narrowing && filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
+            No tasks match your filters.
+          </div>
+        )}
       </div>
     );
   }
@@ -738,11 +867,11 @@ export default function TasksSection({
                   <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', border: '2px solid #c9922c' }}>
                     <input ref={quickAddRef} autoFocus value={quickAddTitle}
                       onChange={e => setQuickAddTitle(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(grp.key as StatusKey); if (e.key === 'Escape') setQuickAddGroup(null); }}
+                      onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd({ status: grp.key as StatusKey }); if (e.key === 'Escape') setQuickAddGroup(null); }}
                       placeholder="Task name… (Enter to add)"
                       style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, color: '#111', fontFamily: "'DM Sans',sans-serif", background: 'transparent' }} />
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                      <button onClick={() => handleQuickAdd(grp.key as StatusKey)}
+                      <button onClick={() => handleQuickAdd({ status: grp.key as StatusKey })}
                         style={{ flex: 1, padding: '5px 0', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Add</button>
                       <button onClick={() => setQuickAddGroup(null)}
                         style={{ padding: '5px 10px', borderRadius: 6, background: '#f3f4f6', color: '#6b7280', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
@@ -771,9 +900,7 @@ export default function TasksSection({
   const INPUT_STYLE: React.CSSProperties = { padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', boxSizing: 'border-box', background: '#fafafa' };
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const openCt   = tasks.filter(t => t.status === 'open').length;
-  const inProgCt = tasks.filter(t => t.status === 'in_progress').length;
-  const doneCt   = tasks.filter(t => t.status === 'done').length;
+  const doneCt = scoped.filter(t => t.status === 'done').length;
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
@@ -793,8 +920,21 @@ export default function TasksSection({
           ))}
         </div>
 
+        {/* Grouping toggle (table view only) */}
+        {view === 'table' && (
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 3, gap: 2 }}>
+            {([['urgency', '⏱ Urgency'], ['status', '◪ Status']] as [GroupMode, string][]).map(([g, lbl]) => (
+              <button key={g} onClick={() => setGroupMode(g)}
+                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
+                  background: groupMode === g ? '#fff' : 'transparent', color: groupMode === g ? '#111' : '#6b7280', boxShadow: groupMode === g ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Search */}
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search tasks…"
+        <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search tasks…  ( / )"
           style={{ padding: '7px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', background: '#fff', fontFamily: "'DM Sans',sans-serif", width: isMobile ? '100%' : 200 }} />
 
         {/* Priority filter */}
@@ -813,25 +953,38 @@ export default function TasksSection({
           </select>
         )}
 
+        {currentUserId && (
+          <button onClick={() => setMineOnly(m => !m)} title="Show only tasks assigned to me"
+            style={{ padding: '7px 12px', borderRadius: 8, border: `1px solid ${mineOnly ? '#c9922c' : '#e5e7eb'}`, background: mineOnly ? '#fdf6e8' : '#fff', color: mineOnly ? '#a8741a' : '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
+            {mineOnly ? '👤 Mine' : '👥 Everyone'}
+          </button>
+        )}
+
         <button onClick={() => setShowNewModal(true)}
           style={{ marginLeft: 'auto', padding: '8px 18px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
-          + New Task
+          + New Task <span style={{ opacity: 0.7, fontWeight: 600 }}>N</span>
         </button>
       </div>
 
-      {/* Stats strip */}
+      {/* Stats strip — tap a card to filter the list to that bucket */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
-        {[
-          { label: 'Open',        val: openCt,        color: '#3b82f6' },
-          { label: 'In Progress', val: inProgCt,       color: '#f59e0b' },
-          { label: 'Overdue',     val: overdueCt,      color: '#ef4444' },
-          { label: 'Done',        val: doneCt,         color: '#22c55e' },
-        ].map(s => (
-          <div key={s.label} style={{ background: '#fff', borderRadius: 10, padding: '12px 16px', border: '1px solid #e5e7eb', borderLeft: `4px solid ${s.color}` }}>
-            <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 3, fontWeight: 600 }}>{s.label}</div>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.val}</div>
-          </div>
-        ))}
+        {([
+          { key: 'overdue', label: 'Overdue',   val: overdueCt, color: '#ef4444' },
+          { key: 'today',   label: 'Due Today', val: todayCt,   color: '#c9922c' },
+          { key: 'week',    label: 'This Week', val: weekCt,    color: '#3b82f6' },
+          { key: 'done',    label: 'Done',      val: doneCt,    color: '#22c55e' },
+        ] as { key: 'overdue' | 'today' | 'week' | 'done'; label: string; val: number; color: string }[]).map(s => {
+          const active = quickFilter === s.key;
+          return (
+            <button key={s.label} onClick={() => setQuickFilter(active ? '' : s.key)}
+              style={{ textAlign: 'left', background: '#fff', borderRadius: 10, padding: '12px 16px', border: `1px solid ${active ? s.color : '#e5e7eb'}`, borderLeft: `4px solid ${s.color}`, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: active ? `0 2px 12px ${s.color}22` : 'none', transition: 'all .12s' }}>
+              <div style={{ fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: active ? s.color : '#9ca3af', marginBottom: 3, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {s.label}{active && <span>✓</span>}
+              </div>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', lineHeight: 1 }}>{s.val}</div>
+            </button>
+          );
+        })}
       </div>
 
       {/* Main view */}
