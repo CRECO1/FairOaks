@@ -154,7 +154,7 @@ const GROUP_CFG = [
   { key: 'done',        label: 'Done',        color: '#22c55e', defaultOpen: false },
 ] as const;
 
-// Time-based buckets — the default "what do I do now" grouping for the table view.
+// Time-based buckets — the default "what do I do now" grouping for the board.
 const URGENCY_CFG = [
   { key: 'overdue', label: 'Overdue',   color: '#ef4444', defaultOpen: true  },
   { key: 'today',   label: 'Today',     color: '#c9922c', defaultOpen: true  },
@@ -166,7 +166,6 @@ const URGENCY_CFG = [
 
 type StatusKey   = keyof typeof STATUS_CFG;
 type PriorityKey = keyof typeof PRIORITY_CFG;
-type ViewMode    = 'table' | 'board';
 type GroupMode   = 'urgency' | 'status';
 
 // today + n days as a YYYY-MM-DD string (matches how task.due_date is stored/compared).
@@ -526,11 +525,12 @@ export default function TasksSection({
   tasks, tasksLoading, profiles, clients, isAdmin, isMobile,
   businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete,
 }: Props) {
-  const [view, setView] = useState<ViewMode>('table');
   const [groupMode, setGroupMode] = useState<GroupMode>('urgency');
   const [quickFilter, setQuickFilter] = useState<'' | 'overdue' | 'today' | 'week' | 'later' | 'nodate' | 'done'>('');
   const [mineOnly, setMineOnly] = useState(false);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({ done: true });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkMenu, setBulkMenu] = useState<'reschedule' | 'reassign' | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
@@ -628,6 +628,58 @@ export default function TasksSection({
     setQuickAddGroup(null);
   }
 
+  // ── Bulk selection actions ─────────────────────────────────────────────────
+  function toggleSelect(id: string) {
+    setSelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }
+  async function bulkApply(updates: Partial<Task>) {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    await Promise.all(ids.map(id => apiUpdateTask(id, updates)));
+    if (updates.status === 'done' && onTaskComplete) tasks.filter(t => selected.has(t.id) && t.client_id).forEach(t => onTaskComplete({ ...t, ...updates }));
+    onTasksChange(tasks.map(t => {
+      if (!selected.has(t.id)) return t;
+      const next = { ...t, ...updates };
+      if (updates.assigned_to !== undefined) next.assignee = profiles.find(p => p.id === updates.assigned_to);
+      return next;
+    }));
+    setSelected(new Set()); setBulkMenu(null);
+    showToast(`${ids.length} task${ids.length === 1 ? '' : 's'} updated ✓`);
+  }
+  async function bulkDelete() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    await Promise.all(ids.map(id => apiDeleteTask(id)));
+    onTasksChange(tasks.filter(t => !selected.has(t.id)));
+    setSelected(new Set()); setBulkMenu(null);
+    showToast(`${ids.length} task${ids.length === 1 ? '' : 's'} deleted`);
+  }
+
+  // ── Drag-to-reschedule / restatus (board) ──────────────────────────────────
+  function bucketDropFields(key: string, task: Task): Partial<Task> {
+    if (groupMode === 'status') return { status: key as StatusKey };
+    const reopen: Partial<Task> = task.status === 'done' ? { status: 'open' } : {};
+    switch (key) {
+      case 'overdue': return { due_date: addDaysStr(-1), ...reopen };
+      case 'today':   return { due_date: todayStr, ...reopen };
+      case 'week':    return { due_date: addDaysStr(3), ...reopen };
+      case 'later':   return { due_date: addDaysStr(14), ...reopen };
+      case 'nodate':  return { due_date: '', ...reopen };
+      case 'done':    return { status: 'done' };
+      default:        return {};
+    }
+  }
+  async function handleColumnDrop(colKey: string, taskId: string) {
+    setDragOverCol(null);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const alreadyThere = groupMode === 'status' ? task.status === colKey : urgencyOf(task) === colKey;
+    if (alreadyThere) return;
+    const updates = bucketDropFields(colKey, task);
+    if (Object.keys(updates).length === 0) return;
+    await handleUpdateTask(taskId, updates);
+  }
+
   async function handleNewTask() {
     if (!newForm.title.trim()) return;
     // Call/Follow-up tasks live in the Call Queue, which shows items due today or
@@ -674,187 +726,81 @@ export default function TasksSection({
     return () => window.removeEventListener('keydown', onKey);
   }, [showNewModal, detailTask, contactPopup]);
 
-  // ── Table Row ────────────────────────────────────────────────────────────
-  function TableRow({ task: t }: { task: Task }) {
-    const isOverdue = t.status !== 'done' && t.due_date && t.due_date < todayStr;
-    const assignee = t.assignee ?? profileById[t.assigned_to ?? ''];
-    const contact = t.client ?? clients.find(c => c.id === t.client_id);
-    return (
-      <div onClick={() => setDetailTask(t)}
-        style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr auto auto' : '1fr 120px 120px 100px 130px', gap: 0, alignItems: 'center', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', transition: 'background .12s' }}
-        onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-        {/* Task name */}
-        <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <button title="Mark done" onClick={e => { e.stopPropagation(); handleUpdateTask(t.id, { status: t.status === 'done' ? 'open' : 'done' }); }}
-            style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 4, border: `2px solid ${t.status === 'done' ? '#22c55e' : '#d1d5db'}`, background: t.status === 'done' ? '#22c55e' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {t.status === 'done' && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
-          </button>
-          {t.type && TYPE_META[t.type] && (
-            <span title={TYPE_META[t.type].label} style={{ flexShrink: 0, fontSize: 13, lineHeight: 1 }}>{TYPE_META[t.type].icon}</span>
-          )}
-          <span style={{ fontSize: 13, fontWeight: 500, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {t.title}
-          </span>
-          {isOverdue && !isMobile && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: '#dc2626', background: '#fee2e2', padding: '1px 6px', borderRadius: 6 }}>OVERDUE</span>}
-        </div>
-        {/* Assignee */}
-        {!isMobile && (
-          <div style={{ padding: '10px 12px' }}>
-            <Avatar profile={assignee} />
-          </div>
-        )}
-        {/* Status */}
-        <div style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
-          <StatusPill value={t.status} onChange={v => handleUpdateTask(t.id, { status: v })} />
-        </div>
-        {/* Priority */}
-        {!isMobile && (
-          <div style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
-            <PriorityPill value={t.priority} onChange={v => handleUpdateTask(t.id, { priority: v })} />
-          </div>
-        )}
-        {/* Due date + contact */}
-        {!isMobile && (
-          <div style={{ padding: '10px 12px', fontSize: 12, color: isOverdue ? '#dc2626' : '#6b7280', fontWeight: isOverdue ? 700 : 400 }}>
-            {contact ? (
-              <button onClick={e => { e.stopPropagation(); const full = clients.find(c => c.id === t.client_id); setContactPopup(full ?? null); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#f1f5f9', border: 'none', borderRadius: 6, padding: '2px 7px', marginBottom: 4, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: '100%' }}>
-                <span style={{ fontSize: 11 }}>👤</span>
-                <span style={{ fontSize: 11, color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
-              </button>
-            ) : null}
-            <DuePill value={t.due_date} overdue={!!isOverdue} isToday={t.due_date === todayStr && t.status !== 'done'}
-              onChange={v => handleUpdateTask(t.id, { due_date: v ?? '' })} />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ── Quick-add row ─────────────────────────────────────────────────────────
-  function QuickAddRow({ groupKey }: { groupKey: string }) {
-    return quickAddGroup === groupKey ? (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: '1px solid #f3f4f6', background: '#fafbff' }}>
-        <div style={{ width: 16, height: 16, borderRadius: 4, border: '2px solid #d1d5db', flexShrink: 0 }} />
-        <input ref={quickAddRef} autoFocus value={quickAddTitle}
-          onChange={e => setQuickAddTitle(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(quickAddFieldsFor(groupKey)); if (e.key === 'Escape') setQuickAddGroup(null); }}
-          onBlur={() => { if (!quickAddTitle.trim()) setQuickAddGroup(null); }}
-          placeholder="Task name…"
-          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 13, color: '#111', background: 'transparent', fontFamily: "'DM Sans',sans-serif" }} />
-        <button onClick={() => handleQuickAdd(quickAddFieldsFor(groupKey))}
-          style={{ padding: '3px 12px', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-          Add
-        </button>
-        <button onClick={() => setQuickAddGroup(null)}
-          style={{ padding: '3px 8px', borderRadius: 6, background: '#f3f4f6', color: '#6b7280', border: 'none', fontSize: 12, cursor: 'pointer' }}>
-          ✕
-        </button>
-      </div>
-    ) : (
-      <button onClick={() => { setQuickAddGroup(groupKey); setQuickAddTitle(''); }}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 12, fontFamily: "'DM Sans',sans-serif', textAlign: 'left'" }}
-        onMouseEnter={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.color = '#6b7280'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#9ca3af'; }}>
-        <span style={{ fontSize: 14 }}>+</span> Add task
-      </button>
-    );
-  }
-
-  // ── TABLE VIEW ───────────────────────────────────────────────────────────
-  function TableView() {
-    const groups: readonly { key: string; label: string; color: string; defaultOpen: boolean }[] =
-      groupMode === 'urgency' ? URGENCY_CFG : GROUP_CFG;
-    const bucketOf = (t: Task) => (groupMode === 'urgency' ? urgencyOf(t) : t.status);
-    const narrowing = !!(quickFilter || search.trim() || priorityFilter || mineOnly || assigneeFilter);
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {groups.map(grp => {
-          const groupTasks = filtered.filter(t => bucketOf(t) === grp.key);
-          if (narrowing && groupTasks.length === 0) return null;
-          const isCollapsed = narrowing ? false : (collapsed[grp.key] ?? grp.defaultOpen === false);
-          const canQuickAdd = groupMode === 'status' || (grp.key !== 'overdue' && grp.key !== 'done');
-          return (
-            <div key={grp.key} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
-              {/* Group header */}
-              <div onClick={() => setCollapsed(c => ({ ...c, [grp.key]: !isCollapsed }))}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: '#fafafa', borderBottom: isCollapsed ? 'none' : '1px solid #f0f0f0', userSelect: 'none' }}>
-                <div style={{ width: 4, height: 22, borderRadius: 3, background: grp.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>{grp.label}</span>
-                <span style={{ fontSize: 12, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{groupTasks.length}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af' }}>{isCollapsed ? '▶' : '▼'}</span>
-              </div>
-
-              {!isCollapsed && (
-                <>
-                  {/* Column headers */}
-                  {!isMobile && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px 100px 130px', borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
-                      {['Task', 'Assignee', 'Status', 'Priority', 'Due / Contact'].map(h => (
-                        <div key={h} style={{ padding: '6px 14px', fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700 }}>{h}</div>
-                      ))}
-                    </div>
-                  )}
-
-                  {groupTasks.length === 0 && quickAddGroup !== grp.key && (
-                    <div style={{ padding: '18px 14px', color: '#d1d5db', fontSize: 13, fontStyle: 'italic' }}>
-                      No {grp.label.toLowerCase()} tasks
-                    </div>
-                  )}
-
-                  {groupTasks.map(t => <TableRow key={t.id} task={t} />)}
-                  {canQuickAdd && <QuickAddRow groupKey={grp.key} />}
-                </>
-              )}
-            </div>
-          );
-        })}
-        {narrowing && filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}>
-            No tasks match your filters.
-          </div>
-        )}
-      </div>
-    );
-  }
+  // Close the bulk-action menu on an outside click.
+  useEffect(() => {
+    if (!bulkMenu) return;
+    const h = () => setBulkMenu(null);
+    const t = window.setTimeout(() => document.addEventListener('click', h), 0);
+    return () => { window.clearTimeout(t); document.removeEventListener('click', h); };
+  }, [bulkMenu]);
 
   // ── BOARD VIEW ────────────────────────────────────────────────────────────
   function BoardView() {
+    const groups: readonly { key: string; label: string; color: string; defaultOpen: boolean }[] =
+      groupMode === 'urgency' ? URGENCY_CFG : GROUP_CFG;
+    const bucketOf = (t: Task) => (groupMode === 'urgency' ? urgencyOf(t) : t.status);
+    const canAdd = (k: string) => groupMode === 'status' || (k !== 'overdue' && k !== 'done');
     return (
-      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: 14, alignItems: 'start' }}>
-        {GROUP_CFG.map(grp => {
-          const groupTasks = filtered.filter(t => t.status === grp.key);
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${groups.length}, minmax(240px, 1fr))`, gap: 14, alignItems: 'start', overflowX: 'auto', paddingBottom: 6 }}>
+        {groups.map(grp => {
+          const groupTasks = filtered.filter(t => bucketOf(t) === grp.key);
+          const isDropTarget = dragOverCol === grp.key;
           return (
-            <div key={grp.key} style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            <div key={grp.key}
+              onDragOver={e => { e.preventDefault(); if (dragOverCol !== grp.key) setDragOverCol(grp.key); }}
+              onDragLeave={e => { if (e.currentTarget === e.target) setDragOverCol(c => (c === grp.key ? null : c)); }}
+              onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); if (id) handleColumnDrop(grp.key, id); }}
+              style={{ background: isDropTarget ? '#fdf6e8' : '#f8fafc', borderRadius: 12, border: `1px solid ${isDropTarget ? '#c9922c' : '#e5e7eb'}`, overflow: 'hidden', transition: 'background .12s, border-color .12s', minWidth: 0 }}>
               {/* Column header */}
               <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '3px solid ' + grp.color }}>
-                <span style={{ width: 10, height: 10, borderRadius: '50%', background: grp.color, display: 'inline-block' }} />
+                <span style={{ width: 10, height: 10, borderRadius: '50%', background: grp.color, display: 'inline-block', flexShrink: 0 }} />
                 <span style={{ fontWeight: 700, fontSize: 13, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>{grp.label}</span>
                 <span style={{ fontSize: 11, color: '#9ca3af', background: '#fff', borderRadius: 10, padding: '1px 7px', fontWeight: 600, marginLeft: 'auto' }}>{groupTasks.length}</span>
               </div>
 
               {/* Cards */}
-              <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 44 }}>
+                {groupTasks.length === 0 && (
+                  <div style={{ padding: '14px 8px', color: isDropTarget ? '#c9922c' : '#cbd5e1', fontSize: 12, fontStyle: 'italic', textAlign: 'center' }}>
+                    {isDropTarget ? 'Drop to move here' : 'Nothing here'}
+                  </div>
+                )}
                 {groupTasks.map(t => {
                   const isOverdue = t.status !== 'done' && t.due_date && t.due_date < todayStr;
                   const assignee = t.assignee ?? profileById[t.assigned_to ?? ''];
                   const pc = PRIORITY_CFG[t.priority];
+                  const isSelected = selected.has(t.id);
+                  const contact = t.client ?? clients.find(c => c.id === t.client_id);
                   return (
-                    <div key={t.id} onClick={() => setDetailTask(t)}
-                      style={{ background: '#fff', borderRadius: 10, padding: '12px 14px', border: `1px solid ${isOverdue ? '#fecaca' : '#e5e7eb'}`, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.04)', transition: 'box-shadow .15s, transform .1s' }}
-                      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.1)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)'; e.currentTarget.style.transform = 'none'; }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none', marginBottom: 8, lineHeight: 1.4 }}>
-                        {t.type && TYPE_META[t.type] && <span title={TYPE_META[t.type].label} style={{ marginRight: 6 }}>{TYPE_META[t.type].icon}</span>}
-                        {t.title}
+                    <div key={t.id} draggable
+                      onDragStart={e => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
+                      onClick={() => setDetailTask(t)}
+                      style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', border: `1px solid ${isSelected ? '#c9922c' : isOverdue ? '#fecaca' : '#e5e7eb'}`, boxShadow: isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)', cursor: 'grab', transition: 'box-shadow .15s' }}
+                      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.12)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.boxShadow = isSelected ? '0 0 0 2px #fdf6e8' : '0 1px 3px rgba(0,0,0,.04)'; }}>
+                      {/* Select + title */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <input type="checkbox" checked={isSelected} onClick={e => e.stopPropagation()} onChange={() => toggleSelect(t.id)}
+                          title="Select" style={{ marginTop: 2, flexShrink: 0, width: 14, height: 14, cursor: 'pointer', accentColor: '#c9922c' }} />
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none', lineHeight: 1.4 }}>
+                          {t.type && TYPE_META[t.type] && <span title={TYPE_META[t.type].label} style={{ marginRight: 6 }}>{TYPE_META[t.type].icon}</span>}
+                          {t.title}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
-                        <span style={{ ...pc, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" } as React.CSSProperties}>
-                          {pc.label}
-                        </span>
+                      {/* Contact */}
+                      {contact && (
+                        <button onClick={e => { e.stopPropagation(); const full = clients.find(c => c.id === t.client_id); setContactPopup(full ?? null); }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#f1f5f9', border: 'none', borderRadius: 6, padding: '2px 7px', margin: '8px 0 0 22px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", maxWidth: 'calc(100% - 22px)' }}>
+                          <span style={{ fontSize: 10 }}>👤</span>
+                          <span style={{ fontSize: 11, color: '#374151', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{contact.first_name} {contact.last_name}</span>
+                        </button>
+                      )}
+                      {/* Footer: priority · reschedule · assignee */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 22 }}>
+                        <span style={{ ...pc, padding: '2px 8px', borderRadius: 10, fontSize: 10, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" } as React.CSSProperties}>{pc.label}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {t.due_date && <span style={{ fontSize: 11, color: isOverdue ? '#dc2626' : '#9ca3af', fontWeight: isOverdue ? 700 : 400 }}>📅 {fmtDate(t.due_date)}</span>}
+                          <DuePill value={t.due_date} overdue={!!isOverdue} isToday={t.due_date === todayStr && t.status !== 'done'}
+                            onChange={v => handleUpdateTask(t.id, { due_date: v ?? '' })} />
                           <Avatar profile={assignee} />
                         </div>
                       </div>
@@ -863,15 +809,15 @@ export default function TasksSection({
                 })}
 
                 {/* Board quick-add */}
-                {quickAddGroup === grp.key ? (
+                {canAdd(grp.key) && (quickAddGroup === grp.key ? (
                   <div style={{ background: '#fff', borderRadius: 10, padding: '10px 12px', border: '2px solid #c9922c' }}>
                     <input ref={quickAddRef} autoFocus value={quickAddTitle}
                       onChange={e => setQuickAddTitle(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd({ status: grp.key as StatusKey }); if (e.key === 'Escape') setQuickAddGroup(null); }}
-                      placeholder="Task name… (Enter to add)"
+                      onKeyDown={e => { if (e.key === 'Enter') handleQuickAdd(quickAddFieldsFor(grp.key)); if (e.key === 'Escape') setQuickAddGroup(null); }}
+                      placeholder="Task name… (Enter)"
                       style={{ width: '100%', border: 'none', outline: 'none', fontSize: 13, color: '#111', fontFamily: "'DM Sans',sans-serif", background: 'transparent' }} />
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                      <button onClick={() => handleQuickAdd({ status: grp.key as StatusKey })}
+                      <button onClick={() => handleQuickAdd(quickAddFieldsFor(grp.key))}
                         style={{ flex: 1, padding: '5px 0', borderRadius: 6, background: '#c9922c', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Add</button>
                       <button onClick={() => setQuickAddGroup(null)}
                         style={{ padding: '5px 10px', borderRadius: 6, background: '#f3f4f6', color: '#6b7280', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
@@ -884,7 +830,7 @@ export default function TasksSection({
                     onMouseLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.color = '#9ca3af'; }}>
                     + Add task
                   </button>
-                )}
+                ))}
               </div>
             </div>
           );
@@ -898,6 +844,9 @@ export default function TasksSection({
     <label style={{ fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700, display: 'block', marginBottom: 5, fontFamily: "'DM Sans',sans-serif" }}>{s}</label>
   );
   const INPUT_STYLE: React.CSSProperties = { padding: '9px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', boxSizing: 'border-box', background: '#fafafa' };
+  const BULK_BTN: React.CSSProperties = { padding: '7px 12px', borderRadius: 8, border: 'none', background: 'rgba(255,255,255,.10)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' };
+  const BULK_MENU: React.CSSProperties = { position: 'absolute', bottom: '100%', left: 0, marginBottom: 6, background: '#fff', color: '#111', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.2)', padding: 6, minWidth: 152, zIndex: 460 };
+  const BULK_MENU_ITEM: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', borderRadius: 6, border: 'none', background: 'transparent', color: '#374151', fontSize: 13, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 
   // ── Render ────────────────────────────────────────────────────────────────
   const doneCt = scoped.filter(t => t.status === 'done').length;
@@ -907,31 +856,16 @@ export default function TasksSection({
 
       {/* Top bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
-        {/* View toggle */}
+        {/* Grouping toggle — how the board columns are organized */}
         <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 3, gap: 2 }}>
-          {(['table', 'board'] as ViewMode[]).map(v => (
-            <button key={v} onClick={() => setView(v)}
-              style={{ padding: '5px 14px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
-                background: view === v ? '#fff' : 'transparent',
-                color: view === v ? '#111' : '#6b7280',
-                boxShadow: view === v ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
-              {v === 'table' ? '☰ Table' : '⊞ Board'}
+          {([['urgency', '⏱ Urgency'], ['status', '◪ Status']] as [GroupMode, string][]).map(([g, lbl]) => (
+            <button key={g} onClick={() => setGroupMode(g)}
+              style={{ padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
+                background: groupMode === g ? '#fff' : 'transparent', color: groupMode === g ? '#111' : '#6b7280', boxShadow: groupMode === g ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
+              {lbl}
             </button>
           ))}
         </div>
-
-        {/* Grouping toggle (table view only) */}
-        {view === 'table' && (
-          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 3, gap: 2 }}>
-            {([['urgency', '⏱ Urgency'], ['status', '◪ Status']] as [GroupMode, string][]).map(([g, lbl]) => (
-              <button key={g} onClick={() => setGroupMode(g)}
-                style={{ padding: '5px 12px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", transition: 'all .15s',
-                  background: groupMode === g ? '#fff' : 'transparent', color: groupMode === g ? '#111' : '#6b7280', boxShadow: groupMode === g ? '0 1px 4px rgba(0,0,0,.1)' : 'none' }}>
-                {lbl}
-              </button>
-            ))}
-          </div>
-        )}
 
         {/* Search */}
         <input ref={searchRef} value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍  Search tasks…  ( / )"
@@ -993,7 +927,44 @@ export default function TasksSection({
           <div style={{ fontSize: 24, marginBottom: 8 }}>⏳</div>
           Loading tasks…
         </div>
-      ) : view === 'table' ? <TableView /> : <BoardView />}
+      ) : <BoardView />}
+
+      {/* Bulk action bar — appears when cards are selected */}
+      {selected.size > 0 && (
+        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 450, display: 'flex', alignItems: 'center', gap: 8, background: '#111827', color: '#fff', borderRadius: 14, padding: '10px 12px 10px 16px', boxShadow: '0 12px 40px rgba(0,0,0,.35)', flexWrap: 'wrap', maxWidth: 'calc(100vw - 24px)' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>{selected.size} selected</span>
+          <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.18)' }} />
+          <button onClick={() => bulkApply({ status: 'done' })} style={BULK_BTN}>✓ Complete</button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setBulkMenu(m => (m === 'reschedule' ? null : 'reschedule'))} style={BULK_BTN}>📅 Reschedule ▾</button>
+            {bulkMenu === 'reschedule' && (
+              <div style={BULK_MENU}>
+                {([['Today', 0], ['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7]] as [string, number][]).map(([lbl, n]) => (
+                  <button key={lbl} onClick={() => bulkApply({ due_date: addDaysStr(n) })} style={BULK_MENU_ITEM}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{lbl}</button>
+                ))}
+                <div style={{ borderTop: '1px solid #f3f4f6', margin: '4px 0' }} />
+                <button onClick={() => bulkApply({ due_date: '' })} style={{ ...BULK_MENU_ITEM, color: '#dc2626' }}>Clear date</button>
+              </div>
+            )}
+          </div>
+          {isAdmin && (
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setBulkMenu(m => (m === 'reassign' ? null : 'reassign'))} style={BULK_BTN}>👤 Reassign ▾</button>
+              {bulkMenu === 'reassign' && (
+                <div style={{ ...BULK_MENU, maxHeight: 240, overflowY: 'auto' }}>
+                  {profiles.map(p => (
+                    <button key={p.id} onClick={() => bulkApply({ assigned_to: p.id })} style={BULK_MENU_ITEM}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{p.first_name} {p.last_name}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button onClick={bulkDelete} style={{ ...BULK_BTN, color: '#fca5a5' }}>🗑 Delete</button>
+          <button onClick={() => { setSelected(new Set()); setBulkMenu(null); }} style={{ ...BULK_BTN, background: 'transparent' }}>Clear</button>
+        </div>
+      )}
 
       {/* Contact quick-view popup */}
       {contactPopup && (
