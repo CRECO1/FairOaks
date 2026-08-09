@@ -238,7 +238,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
   }
 
   return (
-    <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 12, alignItems: 'flex-start', minHeight: 500 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, minmax(236px, 1fr))`, gap: 14, overflowX: 'auto', paddingBottom: 8, alignItems: 'start' }}>
       {STAGES.map(stage => {
         const col = STAGE_COLORS[stage];
         const stageDeals = deals.filter(d => d.stage === stage);
@@ -248,27 +248,28 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
         return (
           <div
             key={stage}
-            onDragOver={e => { e.preventDefault(); setDragOverStage(stage); }}
-            onDragLeave={() => setDragOverStage(null)}
+            onDragOver={e => { e.preventDefault(); if (dragOverStage !== stage) setDragOverStage(stage); }}
+            onDragLeave={e => { if (e.currentTarget === e.target) setDragOverStage(null); }}
             onDrop={() => handleDrop(stage)}
             style={{
-              minWidth: 240, width: 240, flexShrink: 0,
-              background: isDragOver ? col.bg : '#f3f4f6',
-              border: `2px solid ${isDragOver ? col.dot : '#e5e7eb'}`,
-              borderRadius: 10,
-              transition: 'border-color 0.15s, background 0.15s',
+              minWidth: 0,
+              background: isDragOver ? col.bg : '#f8fafc',
+              border: `1px solid ${isDragOver ? col.dot : '#e5e7eb'}`,
+              borderRadius: 12,
+              overflow: 'hidden',
+              transition: 'border-color .12s, background .12s',
             }}
           >
             {/* Column header */}
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid #e5e7eb' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ padding: '11px 14px', borderBottom: `3px solid ${col.dot}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 10, height: 10, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#111' }}>{stage}</span>
-                <span style={{ marginLeft: 'auto', background: '#e5e7eb', borderRadius: 10, padding: '1px 8px', fontSize: 12, fontWeight: 600, color: '#6b7280' }}>{stageDeals.length}</span>
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#111', fontFamily: "'DM Sans',sans-serif" }}>{stage}</span>
+                <span style={{ marginLeft: 'auto', background: '#fff', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>{stageDeals.length}</span>
               </div>
               {totalVal > 0 && (
-                <div style={{ fontSize: 12, color: '#6b7280', paddingLeft: 18 }}>
-                  ${totalVal.toLocaleString()} total
+                <div style={{ fontSize: 11.5, color: '#6b7280', paddingLeft: 18, marginTop: 3, fontWeight: 600 }}>
+                  ${totalVal.toLocaleString()}
                 </div>
               )}
             </div>
@@ -285,23 +286,23 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                   style={{
                     background: '#fff',
                     border: `1px solid ${draggedDealId === deal.id ? col.dot : '#e5e7eb'}`,
-                    borderRadius: 8,
+                    borderRadius: 10,
                     padding: '10px 12px',
                     cursor: 'grab',
                     opacity: draggedDealId === deal.id ? 0.5 : 1,
-                    boxShadow: '0 1px 3px rgba(0,0,0,.06)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,.04)',
                     transition: 'opacity 0.15s, box-shadow 0.15s',
                     userSelect: 'none',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,.12)')}
-                  onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.06)')}
+                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.12)')}
+                  onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)')}
                 >
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#111', marginBottom: 5 }}>{deal.client}</div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5, color: '#111', marginBottom: 5, lineHeight: 1.35 }}>{deal.client}</div>
                   {deal.property && (
-                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</div>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>
+                    <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '1px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600 } as React.CSSProperties}>
                       {deal.type.split(' ')[0]}
                     </span>
                     {deal.value > 0 && (
@@ -316,17 +317,18 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                   )}
                 </div>
               ))}
-              {stageDeals.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '28px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                  <div style={{ fontSize: 22, opacity: 0.25 }}>📋</div>
-                  <div style={{ fontSize: 13, color: '#d1d5db', fontWeight: 500 }}>No deals here</div>
+              {stageDeals.length === 0 && (isDragOver ? (
+                <div style={{ textAlign: 'center', padding: '26px 12px', color: col.dot, fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>Drop to move here</div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '22px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: '#cbd5e1', fontStyle: 'italic' }}>Nothing here</div>
                   {onAddDeal && (
-                    <button onClick={onAddDeal} style={{ fontSize: 12, color: '#c9922c', background: 'none', border: '1px dashed #fde68a', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, marginTop: 2 }}>
+                    <button onClick={onAddDeal} style={{ fontSize: 12, color: '#c9922c', background: 'none', border: '1px dashed #fde68a', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>
                       + Add Deal
                     </button>
                   )}
                 </div>
-              )}
+              ))}
             </div>
           </div>
         );
