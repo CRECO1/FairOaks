@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react';
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Session } from '@supabase/supabase-js';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
@@ -472,6 +472,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Today's Calls work-queue (now a sub-tab inside the Tasks page)
   const [callSkippedIds, setCallSkippedIds] = useState<Set<string>>(new Set());
   const [callUpcomingOpen, setCallUpcomingOpen] = useState(false);
+  // Power-dialer: an optional note + a follow-up-timing override applied to the
+  // NEXT disposition. null timing = use the disposition's default cadence.
+  const [callNote, setCallNote] = useState('');
+  const [callFollowUpDays, setCallFollowUpDays] = useState<number | 'none' | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
   const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls'>('tasks');
@@ -1451,29 +1455,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 1) Complete the current call task (sets completed_at + status='done')
       await completeTask(task.id);
 
-      // 2) Log the call activity on the client's timeline
+      // 2) Log the call activity on the client's timeline (fold in the agent's note)
       const dispLabel = disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : 'No answer';
-      const note = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
-      await logActivity(task.client_id, 'call', note);
+      const jotted = callNote.trim();
+      const base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
+      await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base);
 
-      // 3) Auto-create the next follow-up task (same field pattern as saveTask)
-      const addDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : 7;
-      const nextType: 'call' | 'follow_up' = disposition === 'connected' ? 'follow_up' : 'call';
-      const nextTitle = disposition === 'no_answer' ? 'Call back — no answer' : disposition === 'voicemail' ? 'Follow up — left voicemail' : 'Follow up';
-      const d = new Date(); d.setDate(d.getDate() + addDays);
-      const nextDue = d.toISOString().slice(0, 10);
-      await supabase.from('crm_tasks').insert([{
-        client_id: task.client_id,
-        agent_id: profile!.id,
-        type: nextType,
-        title: nextTitle,
-        due_date: nextDue,
-        notes: '',
-        business_unit: businessUnit,
-        status: 'open',
-      }]);
+      // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
+      //    A chip override (callFollowUpDays) beats the disposition's default cadence.
+      if (callFollowUpDays !== 'none') {
+        const defaultDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : 7;
+        const addDays = typeof callFollowUpDays === 'number' ? callFollowUpDays : defaultDays;
+        const nextType: 'call' | 'follow_up' = disposition === 'connected' ? 'follow_up' : 'call';
+        const nextTitle = disposition === 'no_answer' ? 'Call back — no answer' : disposition === 'voicemail' ? 'Follow up — left voicemail' : 'Follow up';
+        const d = new Date(); d.setDate(d.getDate() + addDays);
+        const nextDue = d.toISOString().slice(0, 10);
+        await supabase.from('crm_tasks').insert([{
+          client_id: task.client_id,
+          agent_id: profile!.id,
+          type: nextType,
+          title: nextTitle,
+          due_date: nextDue,
+          notes: jotted,
+          business_unit: businessUnit,
+          status: 'open',
+        }]);
+      }
 
-      // 4) Refresh from server so counts/state stay correct, and advance
+      // 4) Reset the per-call inputs, bump the counter, refresh, and advance
+      setCallNote(''); setCallFollowUpDays(null);
       setCallsDoneThisSession(n => n + 1);
       await loadAllTasks();
     } finally {
@@ -1484,6 +1494,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   function skipCall(taskId: string) {
     setCallSkippedIds(prev => { const next = new Set(prev); next.add(taskId); return next; });
   }
+
+  // ── Call Queue (lifted to component scope so keyboard shortcuts can act on it) ──
+  const callQueue = useMemo(() => {
+    const t0 = today();
+    return allTasks
+      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
+      .sort((a, b) => a.due_date.localeCompare(b.due_date));
+  }, [allTasks, callSkippedIds]);
+  const callUpcomingList = useMemo(() => {
+    const t0 = today();
+    return allTasks
+      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id))
+      .sort((a, b) => a.due_date.localeCompare(b.due_date));
+  }, [allTasks, callSkippedIds]);
+  const callCurrent = callQueue[0] ?? null;
+
+  // Reset the per-call note + follow-up override whenever the active call changes.
+  useEffect(() => { setCallNote(''); setCallFollowUpDays(null); }, [callCurrent?.id]);
+
+  // Keyboard shortcuts for power-dialing: C connected, V voicemail, N no answer, S skip.
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || !callCurrent) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      if (callActionInFlight || !callCurrent) return;
+      const k = e.key.toLowerCase();
+      if (k === 'c')      { e.preventDefault(); dispositionCall(callCurrent, 'connected'); }
+      else if (k === 'v') { e.preventDefault(); dispositionCall(callCurrent, 'voicemail'); }
+      else if (k === 'n') { e.preventDefault(); dispositionCall(callCurrent, 'no_answer'); }
+      else if (k === 's') { e.preventDefault(); skipCall(callCurrent.id); }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [page, tasksSubTab, callCurrent, callActionInFlight, callNote, callFollowUpDays]);
 
   // ── Activity Tracking ─────────────────────────────────────────────────────────
   async function loadClientActivities(clientId: string) {
@@ -4413,17 +4459,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Tasks tab → Call Queue sub-view (was the standalone Today's Calls page) ── */}
           {page === 'tasks' && tasksSubTab === 'calls' && (() => {
             const t0 = today();
-            // Queue: agent-scoped call/follow-up tasks (allTasks is already .eq(agent_id)/.is(completed_at,null)),
-            // due today or earlier (overdue included), oldest due first, skipped removed.
-            const queue = allTasks
-              .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
-              .sort((a, b) => a.due_date.localeCompare(b.due_date));
-            // Future-dated calls/follow-ups — not due yet, shown in a collapsed "Upcoming" list
-            // so a call scheduled for a later date doesn't feel lost before its due date arrives.
-            const upcoming = allTasks
-              .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id))
-              .sort((a, b) => a.due_date.localeCompare(b.due_date));
-            const current = queue[0] ?? null;
+            // Queue / upcoming / current live at component scope (callQueue …) so the
+            // keyboard shortcuts and this render stay in lock-step; alias them here.
+            const queue = callQueue;
+            const upcoming = callUpcomingList;
+            const current = callCurrent;
             const doneCt = callsDoneThisSession;
             const totalCt = doneCt + queue.length;
             const pct = totalCt > 0 ? Math.round((doneCt / totalCt) * 100) : 100;
@@ -4433,16 +4473,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
             return (
               <div>
-                {/* Header + progress */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 12 }}>
+                {/* Header + live stats */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>📞 Today's Calls</h2>
-                    <p style={{ fontSize: 14, color: '#6b7280' }}>{doneCt} of {totalCt} call{totalCt === 1 ? '' : 's'} done today</p>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>📞 Today&apos;s Calls</h2>
+                    <p style={{ fontSize: 14, color: '#6b7280' }}>
+                      {queue.length === 0 ? 'All caught up for today' : `${queue.length} call${queue.length === 1 ? '' : 's'} to go`}
+                      {doneCt > 0 ? ` · ${doneCt} done` : ''}
+                    </p>
                   </div>
-                  <button className="crm-btn" onClick={() => { loadAllTasks(); loadClients(); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {[{ n: doneCt, l: 'Done', c: '#16a34a' }, { n: queue.length, l: 'Left', c: '#c9922c' }, { n: upcoming.length, l: 'Upcoming', c: '#6b7280' }].map(s => (
+                      <div key={s.l} style={{ textAlign: 'center', minWidth: 54, padding: '6px 12px', borderRadius: 10, background: '#fff', border: '1px solid #eee' }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: s.c, lineHeight: 1 }}>{s.n}</div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{s.l}</div>
+                      </div>
+                    ))}
+                    <button className="crm-btn" onClick={() => { loadAllTasks(); loadClients(); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
+                  </div>
                 </div>
-                <div style={{ height: 8, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 24 }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: '#c9922c', transition: 'width .3s ease' }} />
+                <div style={{ height: 8, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 22 }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#c9922c,#e0b458)', transition: 'width .3s ease' }} />
                 </div>
 
                 {!current ? (
@@ -4456,52 +4507,104 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const c = clientFor(current);
                   const phone = phoneFor(c);
                   const isOverdue = !!current.due_date && current.due_date < t0;
+                  const deal = c ? deals.find(d => d.client_id === c.id) ?? null : null;
+                  const fmtDay = (s?: string | null) => s ? new Date(s.length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                  const TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
+                    Buyer: { bg: '#eff6ff', fg: '#2563eb' }, Seller: { bg: '#f0fdf4', fg: '#16a34a' },
+                    Tenant: { bg: '#fef3c7', fg: '#b45309' }, 'Landlord/Investor': { bg: '#faf5ff', fg: '#7e22ce' },
+                    Agent: { bg: '#f1f5f9', fg: '#475569' }, Broker: { bg: '#f1f5f9', fg: '#475569' },
+                  };
+                  const tcolor = c ? (TYPE_COLORS[c.type] ?? { bg: '#f1f5f9', fg: '#475569' }) : null;
+                  const followChips: { label: string; val: number | 'none' | null }[] = [
+                    { label: 'Auto', val: null }, { label: 'Tomorrow', val: 1 },
+                    { label: 'In 3 days', val: 3 }, { label: 'Next week', val: 7 }, { label: 'None', val: 'none' },
+                  ];
+                  const kbdStyle: React.CSSProperties = { marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' };
                   return (
                     <div>
                       {/* Current call card */}
-                      <div style={{ background: '#fff', borderRadius: 12, border: `1px solid ${isOverdue ? '#fecaca' : '#e5e7eb'}`, padding: '22px 24px', marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                      <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${isOverdue ? '#fecaca' : '#e8e8e8'}`, padding: '22px 24px', marginBottom: 20, boxShadow: '0 2px 10px rgba(0,0,0,.05)' }}>
+                        {/* Name · type · overdue */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
                           {c ? (
-                            <button onClick={() => { setPage('contacts'); setActiveClient(c); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111', textAlign: 'left' }}>
+                            <button onClick={() => { setPage('contacts'); setActiveClient(c); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#111', textAlign: 'left' }}>
                               {nameFor(c)}
                             </button>
                           ) : (
-                            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{nameFor(c)}</span>
+                            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#111' }}>{nameFor(c)}</span>
                           )}
+                          {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
                           {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>OVERDUE</span>}
                         </div>
 
+                        {/* Location · tags */}
+                        {c && (c.city || (c.tags && c.tags.length > 0)) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, fontSize: 13, color: '#6b7280' }}>
+                            {c.city && <span>📍 {c.city}{c.state ? `, ${c.state}` : ''}</span>}
+                            {(c.tags ?? []).slice(0, 5).map(tag => (
+                              <span key={tag} style={{ padding: '1px 8px', borderRadius: 10, background: '#f3f4f6', color: '#4b5563', fontSize: 11, fontWeight: 600 }}>{tag}</span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Click-to-call */}
                         {phone ? (
-                          <a href={`tel:${phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 22, fontWeight: 700, color: '#c9922c', textDecoration: 'none', padding: '10px 18px', borderRadius: 10, background: '#fdf6e8', border: '1px solid #f0e2c0', marginBottom: 16 }}>
+                          <a href={`tel:${phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 22, fontWeight: 700, color: '#c9922c', textDecoration: 'none', padding: '10px 18px', borderRadius: 10, background: '#fdf6e8', border: '1px solid #f0e2c0', marginBottom: 14 }}>
                             📞 {phone}
                           </a>
                         ) : (
-                          <div style={{ fontSize: 15, color: '#9ca3af', fontStyle: 'italic', marginBottom: 16 }}>No phone on file</div>
+                          <div style={{ fontSize: 15, color: '#9ca3af', fontStyle: 'italic', marginBottom: 14 }}>No phone on file</div>
                         )}
 
+                        {/* Task title · notes · meta */}
                         <div style={{ fontSize: 15, fontWeight: 600, color: '#111', marginBottom: 4 }}>{current.title}</div>
-                        {current.notes && <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.5, marginBottom: 4 }}>{current.notes}</div>}
-                        <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                          {current.type === 'follow_up' ? '📝 Follow-up' : '📞 Call'} · Due {new Date(current.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {current.notes && <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.5, marginBottom: 6 }}>{current.notes}</div>}
+                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#9ca3af' }}>
+                          <span>{current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due {fmtDay(current.due_date)}</span>
+                          <span>🕐 {c?.last_touched_at ? `Last touch ${fmtDay(c.last_touched_at)}` : 'No prior contact'}</span>
+                          {deal && (
+                            <button onClick={() => { setPage('deals'); setActiveDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>
+                              📄 {deal.property || deal.type}{deal.stage ? ` · ${deal.stage}` : ''}
+                            </button>
+                          )}
                         </div>
 
-                        {/* Disposition buttons */}
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 20 }}>
+                        {/* Note + next-follow-up scheduling */}
+                        <div style={{ marginTop: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
+                          <input value={callNote} onChange={e => setCallNote(e.target.value)} placeholder="Add a quick note — saved to the timeline & the next follow-up…"
+                            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: "'DM Sans',sans-serif", marginBottom: 10, boxSizing: 'border-box' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, marginRight: 2 }}>Next follow-up:</span>
+                            {followChips.map(chip => {
+                              const active = callFollowUpDays === chip.val;
+                              return (
+                                <button key={chip.label} onClick={() => setCallFollowUpDays(chip.val)}
+                                  style={{ padding: '4px 11px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                                    border: `1px solid ${active ? '#c9922c' : '#e5e7eb'}`, background: active ? '#fdf6e8' : '#fff', color: active ? '#a8741a' : '#6b7280' }}>
+                                  {chip.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Disposition buttons (with keyboard shortcuts) */}
+                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18, alignItems: 'center' }}>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'connected')}
-                            style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-                            ✓ Connected
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                            ✓ Connected <span style={kbdStyle}>C</span>
                           </button>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'voicemail')}
-                            style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-                            📼 Left Voicemail
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                            📼 Voicemail <span style={kbdStyle}>V</span>
                           </button>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'no_answer')}
-                            style={{ padding: '10px 18px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-                            ✕ No Answer
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                            ✕ No Answer <span style={kbdStyle}>N</span>
                           </button>
                           <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
-                            style={{ padding: '10px 18px', borderRadius: 8, border: 'none', background: 'none', color: '#9ca3af', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', marginLeft: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
-                            Skip →
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: 'none', background: 'none', color: '#9ca3af', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', marginLeft: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+                            Skip <span style={kbdStyle}>S</span>
                           </button>
                         </div>
                       </div>
@@ -4516,7 +4619,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               const tOverdue = !!t.due_date && t.due_date < t0;
                               return (
                                 <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                                  <span style={{ fontSize: 14 }}>{t.type === 'follow_up' ? '📝' : '📞'}</span>
+                                  <span style={{ fontSize: 14 }}>{t.type === 'follow_up' ? '🔄' : '📞'}</span>
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</div>
                                     <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
