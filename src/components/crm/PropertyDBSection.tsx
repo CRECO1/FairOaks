@@ -111,6 +111,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   const [active, setActive]     = useState<Property | null>(null);
   const [view, setView]         = useState<'rows' | 'cards' | 'map'>('rows');
   const [sort, setSort]         = useState<{ key: string; dir: 1 | -1 }>({ key: '', dir: 1 });
+  const [sourceFilter, setSourceFilter]   = useState('');
+  const [listingFilter, setListingFilter] = useState('');
+  const [page, setPage]         = useState(1);
+  const PAGE_SIZE = 50;
 
   const authHeaders = useMemo<Record<string, string>>(
     () => {
@@ -151,11 +155,22 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
     return properties.filter(p => {
       if (assetFilter && p.asset_type !== assetFilter) return false;
       if (statusFilter && p.vacancy_status !== statusFilter) return false;
+      if (sourceFilter) {
+        const s = (p.source || '').toLowerCase();
+        if (sourceFilter === 'loopnet' && !s.includes('loopnet')) return false;
+        if (sourceFilter === 'crexi' && !s.includes('crexi')) return false;
+        if (sourceFilter === 'broker' && (s.includes('loopnet') || s.includes('crexi'))) return false;
+      }
+      if (listingFilter) {
+        const lt = (p.listing_type || '').toLowerCase();
+        if (listingFilter === 'lease' && !(lt.includes('lease') || lt.includes('both'))) return false;
+        if (listingFilter === 'sale'  && !(lt.includes('sale')  || lt.includes('both'))) return false;
+      }
       if (!q) return true;
       return [p.name, p.address, p.city, p.submarket, p.listing_company, p.listing_agent_name]
         .filter(Boolean).join(' ').toLowerCase().includes(q);
     });
-  }, [properties, search, assetFilter, statusFilter]);
+  }, [properties, search, assetFilter, statusFilter, sourceFilter, listingFilter]);
 
   const rateNum = (p: Property): number => {
     if (p.sale_price != null) return p.sale_price;
@@ -183,6 +198,14 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
       return 0;
     });
   }, [filtered, sort]); // eslint-disable-line
+
+  // Render-side pagination: the list/cards views draw only the current page so
+  // the DOM stays light at 1000s of rows. The map view still plots every match.
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const pageClamped = Math.min(page, totalPages);
+  const paged = useMemo(() => sorted.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE), [sorted, pageClamped]);
+  // Any filter/search/sort change resets to page 1.
+  useEffect(() => { setPage(1); }, [search, assetFilter, statusFilter, sourceFilter, listingFilter, sort]);
 
   const sortTh = (key: string, label: string, align: 'left' | 'right' = 'left') => (
     <th onClick={() => setSort(s => (s.key === key ? { key, dir: (s.dir === 1 ? -1 : 1) as 1 | -1 } : { key, dir: 1 }))}
@@ -213,6 +236,17 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
           <option value="">All Statuses</option>
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={listingFilter} onChange={e => setListingFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }}>
+          <option value="">Lease &amp; Sale</option>
+          <option value="lease">For Lease</option>
+          <option value="sale">For Sale</option>
+        </select>
+        <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} style={{ ...inputStyle, ...(isMobile ? { flex: '1 1 0', minWidth: 0 } : {}) }} title="Where the listing came from">
+          <option value="">All Sources</option>
+          <option value="broker">Broker / Calls</option>
+          <option value="loopnet">LoopNet</option>
+          <option value="crexi">Crexi</option>
         </select>
         <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', ...(isMobile ? { width: '100%' } : {}) }}>
           {(['rows', 'cards', 'map'] as const).map(v => (
@@ -265,7 +299,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
             </button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {sorted.map(p => {
+            {paged.map(p => {
               const as = assetStyle(p.asset_type);
               const st = statusPill(p.vacancy_status);
               const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
@@ -324,7 +358,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               </tr>
             </thead>
             <tbody>
-              {sorted.map(p => {
+              {paged.map(p => {
                 const as = assetStyle(p.asset_type);
                 const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
                 const st = statusPill(p.vacancy_status);
@@ -369,7 +403,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
       {view === 'cards' && (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
-        {sorted.map(p => {
+        {paged.map(p => {
           const as = assetStyle(p.asset_type);
           const price = p.listing_type === 'Sale' || p.sale_price ? fmt$(p.sale_price) : fmtRate(p.asking_rate);
           return (
@@ -419,6 +453,19 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
           );
         })}
       </div>
+      )}
+
+      {/* Pagination (list + cards; the map plots all matches) */}
+      {(view === 'rows' || view === 'cards') && !loading && sorted.length > PAGE_SIZE && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginTop: 18, fontFamily: "'DM Sans',sans-serif" }}>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={pageClamped <= 1}
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: pageClamped <= 1 ? '#f9fafb' : '#fff', color: pageClamped <= 1 ? '#c7cbd1' : '#374151', fontSize: 13, fontWeight: 700, cursor: pageClamped <= 1 ? 'default' : 'pointer' }}>← Prev</button>
+          <span style={{ fontSize: 13, color: '#6b7280', minWidth: 150, textAlign: 'center' }}>
+            {(pageClamped - 1) * PAGE_SIZE + 1}–{Math.min(pageClamped * PAGE_SIZE, sorted.length)} of {sorted.length.toLocaleString()} · page {pageClamped}/{totalPages}
+          </span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={pageClamped >= totalPages}
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: pageClamped >= totalPages ? '#f9fafb' : '#fff', color: pageClamped >= totalPages ? '#c7cbd1' : '#374151', fontSize: 13, fontWeight: 700, cursor: pageClamped >= totalPages ? 'default' : 'pointer' }}>Next →</button>
+        </div>
       )}
 
       {view === 'map' && !loading && (
