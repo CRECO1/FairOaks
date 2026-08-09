@@ -471,6 +471,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
   // Today's Calls work-queue (now a sub-tab inside the Tasks page)
   const [callSkippedIds, setCallSkippedIds] = useState<Set<string>>(new Set());
+  const [callUpcomingOpen, setCallUpcomingOpen] = useState(false);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
   const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls'>('tasks');
@@ -4417,6 +4418,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             const queue = allTasks
               .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
               .sort((a, b) => a.due_date.localeCompare(b.due_date));
+            // Future-dated calls/follow-ups — not due yet, shown in a collapsed "Upcoming" list
+            // so a call scheduled for a later date doesn't feel lost before its due date arrives.
+            const upcoming = allTasks
+              .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id))
+              .sort((a, b) => a.due_date.localeCompare(b.due_date));
             const current = queue[0] ?? null;
             const doneCt = callsDoneThisSession;
             const totalCt = doneCt + queue.length;
@@ -4526,6 +4532,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   );
                 })()}
+
+                {/* Upcoming — future-dated calls/follow-ups (collapsed by default) */}
+                {upcoming.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <button
+                      onClick={() => setCallUpcomingOpen(o => !o)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 0', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontWeight: 600, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: "'DM Sans',sans-serif" }}>
+                      <span style={{ fontSize: 10 }}>{callUpcomingOpen ? '▾' : '▸'}</span>
+                      Upcoming — {upcoming.length}
+                    </button>
+                    {callUpcomingOpen && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+                        {upcoming.map(t => {
+                          const tc = clientFor(t);
+                          return (
+                            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                              <span style={{ fontSize: 14 }}>{t.type === 'follow_up' ? '🔄' : '📞'}</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                              </div>
+                              <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{new Date(t.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })()}

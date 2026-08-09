@@ -158,6 +158,13 @@ type StatusKey   = keyof typeof STATUS_CFG;
 type PriorityKey = keyof typeof PRIORITY_CFG;
 type ViewMode    = 'table' | 'board';
 
+// Visual marker for typed tasks (calls/follow-ups/emails) in the list views.
+const TYPE_META: Record<string, { icon: string; label: string }> = {
+  call:      { icon: '📞', label: 'Call' },
+  follow_up: { icon: '🔄', label: 'Follow-up' },
+  email:     { icon: '✉️', label: 'Email' },
+};
+
 function today() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(d?: string) {
   if (!d) return '—';
@@ -566,6 +573,9 @@ export default function TasksSection({
             style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 4, border: `2px solid ${t.status === 'done' ? '#22c55e' : '#d1d5db'}`, background: t.status === 'done' ? '#22c55e' : 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {t.status === 'done' && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
           </button>
+          {t.type && TYPE_META[t.type] && (
+            <span title={TYPE_META[t.type].label} style={{ flexShrink: 0, fontSize: 13, lineHeight: 1 }}>{TYPE_META[t.type].icon}</span>
+          )}
           <span style={{ fontSize: 13, fontWeight: 500, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {t.title}
           </span>
@@ -707,6 +717,7 @@ export default function TasksSection({
                       onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,.1)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
                       onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,.04)'; e.currentTarget.style.transform = 'none'; }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: t.status === 'done' ? '#9ca3af' : '#111', textDecoration: t.status === 'done' ? 'line-through' : 'none', marginBottom: 8, lineHeight: 1.4 }}>
+                        {t.type && TYPE_META[t.type] && <span title={TYPE_META[t.type].label} style={{ marginRight: 6 }}>{TYPE_META[t.type].icon}</span>}
                         {t.title}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
