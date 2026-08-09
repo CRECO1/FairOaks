@@ -478,6 +478,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // NEXT disposition. null timing = use the disposition's default cadence.
   const [callNote, setCallNote] = useState('');
   const [callFollowUpDays, setCallFollowUpDays] = useState<number | 'none' | null>(null);
+  // Call briefing: the current contact's recent activity (attempt history + timeline).
+  const [callActivities, setCallActivities] = useState<CRMActivity[]>([]);
+  const [callActivitiesClientId, setCallActivitiesClientId] = useState<string | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
   const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls'>('tasks');
@@ -1514,6 +1517,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Reset the per-call note + follow-up override whenever the active call changes.
   useEffect(() => { setCallNote(''); setCallFollowUpDays(null); }, [callCurrent?.id]);
+
+  // Load the current contact's recent activity (attempt history + timeline) for the briefing.
+  useEffect(() => {
+    const cid = callCurrent?.client_id;
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || !cid) { setCallActivities([]); setCallActivitiesClientId(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('crm_client_activities')
+        .select('*')
+        .eq('client_id', cid)
+        .order('created_at', { ascending: false })
+        .limit(8);
+      if (!cancelled) { setCallActivities((data ?? []) as CRMActivity[]); setCallActivitiesClientId(cid); }
+    })();
+    return () => { cancelled = true; };
+  }, [callCurrent?.client_id, page, tasksSubTab]);
 
   // Keyboard shortcuts for power-dialing: C connected, V voicemail, N no answer, S skip.
   useEffect(() => {
@@ -4522,6 +4542,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     { label: 'In 3 days', val: 3 }, { label: 'Next week', val: 7 }, { label: 'None', val: 'none' },
                   ];
                   const kbdStyle: React.CSSProperties = { marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' };
+                  // Call briefing — the current contact's recent activity (attempt history + timeline).
+                  const briefingReady = !!c && callActivitiesClientId === c.id;
+                  const acts = briefingReady ? callActivities : [];
+                  const priorCalls = acts.filter(a => a.type === 'call');
+                  const lastCall = priorCalls[0] ?? null;
+                  const lastOutcome = lastCall ? (lastCall.note.split(' — ')[1] ?? '') : '';
+                  const outcomeIcon = /connected/i.test(lastOutcome) ? '✓' : /voicemail/i.test(lastOutcome) ? '📼' : /no answer/i.test(lastOutcome) ? '✕' : '📞';
+                  const ACT_ICON: Record<string, string> = { call: '📞', email: '✉️', meeting: '🤝', note: '📝', deal_update: '📄' };
                   return (
                     <div>
                       {/* Current call card */}
@@ -4566,10 +4594,43 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <span>🕐 {c?.last_touched_at ? `Last touch ${fmtDay(c.last_touched_at)}` : 'No prior contact'}</span>
                           {deal && (
                             <button onClick={() => { setPage('deals'); setActiveDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>
-                              📄 {deal.property || deal.type}{deal.stage ? ` · ${deal.stage}` : ''}
+                              📄 {deal.property || deal.type}{deal.stage ? ` · ${deal.stage}` : ''}{deal.value > 0 ? ` · $${Number(deal.value).toLocaleString()}` : ''}
                             </button>
                           )}
                         </div>
+
+                        {/* Call briefing: attempt history + recent activity */}
+                        {c && (
+                          <div style={{ marginTop: 14, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '11px 14px' }}>
+                            {!briefingReady ? (
+                              <div style={{ fontSize: 12, color: '#9ca3af' }}>Loading history…</div>
+                            ) : (
+                              <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: acts.length ? 10 : 0 }}>
+                                  {priorCalls.length > 0 ? (
+                                    <>
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 20, padding: '2px 10px' }}>Attempt #{priorCalls.length + 1}</span>
+                                      {lastCall && <span style={{ fontSize: 12, color: '#6b7280' }}>Last: {outcomeIcon} {lastOutcome || 'Call'} · {fmtDay(lastCall.created_at)}</span>}
+                                    </>
+                                  ) : (
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, padding: '2px 10px' }}>✨ First call</span>
+                                  )}
+                                </div>
+                                {acts.length > 0 && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                    {acts.slice(0, 3).map(a => (
+                                      <div key={a.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12 }}>
+                                        <span style={{ flexShrink: 0 }}>{ACT_ICON[a.type] ?? '•'}</span>
+                                        <span style={{ flex: 1, minWidth: 0, color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.note}</span>
+                                        <span style={{ flexShrink: 0, color: '#9ca3af' }}>{fmtDay(a.created_at)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
 
                         {/* Note + next-follow-up scheduling */}
                         <div style={{ marginTop: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
