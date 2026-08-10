@@ -1,0 +1,236 @@
+[
+  {
+    "page": 1,
+    "fx": 0.2666805555555556,
+    "fy": 0.13320707070707072,
+    "fw": 0.16339869281045752,
+    "type": "text",
+    "field_key": "effective_date",
+    "label": "Effective / start date"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.16873737373737385,
+    "fw": 0.2696078431372549,
+    "type": "text",
+    "field_key": "tenant_name",
+    "label": "Tenant name"
+  },
+  {
+    "page": 1,
+    "fx": 0.7267124183006535,
+    "fy": 0.16873737373737385,
+    "fw": 0.0392156862745098,
+    "type": "text",
+    "field_key": "building",
+    "label": "Bldg #"
+  },
+  {
+    "page": 1,
+    "fx": 0.8140702614379084,
+    "fy": 0.16873737373737385,
+    "fw": 0.06209150326797386,
+    "type": "text",
+    "field_key": "suite",
+    "label": "Suite #"
+  },
+  {
+    "page": 1,
+    "fx": 0.3142565359477124,
+    "fy": 0.27704545454545493,
+    "fw": 0.16339869281045752,
+    "type": "text",
+    "field_key": "effective_date",
+    "label": "Effective / start date"
+  },
+  {
+    "page": 1,
+    "fx": 0.7125669934640522,
+    "fy": 0.27704545454545493,
+    "fw": 0.042483660130718956,
+    "type": "text",
+    "field_key": "term_months",
+    "label": "Term (months)"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.2948106060606065,
+    "fw": 0.16339869281045752,
+    "type": "text",
+    "field_key": "end_date",
+    "label": "Lease end date"
+  },
+  {
+    "page": 1,
+    "fx": 0.5394403594771242,
+    "fy": 0.3612752525252531,
+    "fw": 0.06862745098039216,
+    "type": "text",
+    "field_key": "rentable_area",
+    "label": "Rentable area (sf)"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.3790404040404046,
+    "fw": 0.08496732026143791,
+    "type": "text",
+    "field_key": "floor",
+    "label": "Floor"
+  },
+  {
+    "page": 1,
+    "fx": 0.313062091503268,
+    "fy": 0.3790404040404046,
+    "fw": 0.0392156862745098,
+    "type": "text",
+    "field_key": "building",
+    "label": "Bldg #"
+  },
+  {
+    "page": 1,
+    "fx": 0.4004199346405229,
+    "fy": 0.3790404040404046,
+    "fw": 0.06209150326797386,
+    "type": "text",
+    "field_key": "suite",
+    "label": "Suite #"
+  },
+  {
+    "page": 1,
+    "fx": 0.36981045751633984,
+    "fy": 0.42773989898989956,
+    "fw": 0.06209150326797386,
+    "type": "text",
+    "field_key": "suite",
+    "label": "Suite #"
+  },
+  {
+    "page": 1,
+    "fx": 0.46050245098039205,
+    "fy": 0.42773989898989956,
+    "fw": 0.09477124183006536,
+    "type": "text",
+    "field_key": "monthly_rent",
+    "label": "Monthly rent ($)"
+  },
+  {
+    "page": 1,
+    "fx": 0.23468300653594773,
+    "fy": 0.494204545454546,
+    "fw": 0.09477124183006536,
+    "type": "text",
+    "field_key": "security_deposit",
+    "label": "Security deposit ($)"
+  },
+  {
+    "page": 6,
+    "fx": 0.5065359477124183,
+    "fy": 0.26844696969696985,
+    "fw": 0.2696078431372549,
+    "type": "text",
+    "field_key": "tenant_name",
+    "label": "Tenant name"
+  },
+  {
+    "page": 6,
+    "fx": 0.6941094771241829,
+    "fy": 0.28612373737373753,
+    "fw": 0.0392156862745098,
+    "type": "text",
+    "field_key": "building",
+    "label": "Bldg #"
+  },
+  {
+    "page": 6,
+    "fx": 0.7631486928104575,
+    "fy": 0.28612373737373753,
+    "fw": 0.06209150326797386,
+    "type": "text",
+    "field_key": "suite",
+    "label": "Suite #"
+  },
+  {
+    "page": 6,
+    "fx": 0.544124183006536,
+    "fy": 0.3214772727272729,
+    "fw": 0.2696078431372549,
+    "type": "text",
+    "field_key": "tenant_name",
+    "label": "Tenant name"
+  },
+  {
+    "page": 6,
+    "fx": 0.5547418300653595,
+    "fy": 0.33915404040404057,
+    "fw": 0.1503267973856209,
+    "type": "text",
+    "field_key": "tenant_phone",
+    "label": "Tenant phone"
+  },
+  {
+    "page": 6,
+    "fx": 0.553109477124183,
+    "fy": 0.35683080808080825,
+    "fw": 0.22058823529411764,
+    "type": "text",
+    "field_key": "tenant_email",
+    "label": "Tenant email"
+  },
+  {
+    "page": 6,
+    "fx": 0.11437908496732026,
+    "fy": 0.8265025252525253,
+    "fw": 0.10457516339869281,
+    "type": "text",
+    "field_key": "exec_day",
+    "label": "Day"
+  },
+  {
+    "page": 6,
+    "fx": 0.2746968954248366,
+    "fy": 0.8265025252525253,
+    "fw": 0.24509803921568626,
+    "type": "text",
+    "field_key": "exec_month",
+    "label": "Month"
+  },
+  {
+    "page": 7,
+    "fx": 0.11437908496732026,
+    "fy": 0.2401641414141416,
+    "fw": 0.2696078431372549,
+    "type": "text",
+    "field_key": "tenant_name",
+    "label": "Tenant name"
+  },
+  {
+    "page": 7,
+    "fx": 0.1568627450980392,
+    "fy": 0.290757575757576,
+    "fw": 0.2696078431372549,
+    "type": "text",
+    "field_key": "tenant_name",
+    "label": "Tenant name"
+  },
+  {
+    "page": 8,
+    "fx": 0.7790702614379085,
+    "fy": 0.19525252525252537,
+    "fw": 0.0392156862745098,
+    "type": "text",
+    "field_key": "building",
+    "label": "Bldg #"
+  },
+  {
+    "page": 8,
+    "fx": 0.11437908496732026,
+    "fy": 0.21301767676767697,
+    "fw": 0.06209150326797386,
+    "type": "text",
+    "field_key": "suite",
+    "label": "Suite #"
+  }
+]

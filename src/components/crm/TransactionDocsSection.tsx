@@ -25,12 +25,13 @@ interface Props {
   deals?: DealLite[];
   onNewDeal?: () => void;
   onToast: (msg: string) => void;
+  agentPrefill?: Record<string, string>;
   isMobile?: boolean;
 }
 
 const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
-export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, isMobile = false }: Props) {
+export default function TransactionDocsSection({ businessUnit, isAdmin, authToken, deals, onNewDeal, onToast, agentPrefill, isMobile = false }: Props) {
   const [forms, setForms] = useState<Form[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -191,6 +192,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
           deals={deals}
           dealId={editing.dealId}
           businessUnit={businessUnit}
+          fieldPrefill={agentPrefill}
           onToast={onToast}
           isMobile={isMobile}
           onClose={() => setEditing(null)}

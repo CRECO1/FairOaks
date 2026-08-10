@@ -52,7 +52,7 @@ const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 // substantive contact for EVERY deal type, so it leads every packet.
 const IABS_FORM = 'Information About Brokerage Services (IABS)';
 const FORM_PACKETS: { key: string; label: string; match: string[]; forms: string[] }[] = [
-  { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
+  { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Commercial Lease', 'Commercial Lease Guaranty'] },
   { key: '8000_lease', label: '8000 Fair Oaks Plaza lease', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Building Lease Agreement'] },
   { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
   { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
@@ -733,6 +733,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     ndPacketsTouched.current = false;
     setNdPackets(defaultPacketKeys(nd.type, nd.property));
   }, [showAddDeal]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The agent's own contact info, seeded into blank forms by field_key (e.g. the IABS agent row).
+  const agentPrefill = useMemo(() => profile ? {
+    agent_name: `${profile.first_name} ${profile.last_name}`.trim(),
+    agent_license: profile.license || '',
+    agent_email: profile.email || '',
+    agent_phone: profile.phone || '',
+  } : undefined, [profile]);
   // New client form
   const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
   // Invite form
@@ -7160,6 +7167,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               deals={deals}
               onNewDeal={() => setShowAddDeal(true)}
               onToast={showToast}
+              agentPrefill={agentPrefill}
               isMobile={isMobile}
             />
           )}
@@ -10432,6 +10440,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           deals={deals}
           dealId={activeDeal?.id}
           businessUnit={businessUnit}
+          fieldPrefill={agentPrefill}
           onToast={showToast}
           isMobile={isMobile}
           onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); }}

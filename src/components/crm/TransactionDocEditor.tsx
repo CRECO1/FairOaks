@@ -45,7 +45,7 @@ const winAnsi = (s: string): string =>
 interface DealLite { id: string; client?: string; property?: string; type?: string; }
 
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, businessUnit, submissionId, isMobile = false, onToast, onClose, onSaved,
+  form, url, authToken, isAdmin, deals, dealId, businessUnit, submissionId, fieldPrefill, isMobile = false, onToast, onClose, onSaved,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -55,6 +55,7 @@ export default function TransactionDocEditor({
   dealId?: string;
   businessUnit?: string;
   submissionId?: string;
+  fieldPrefill?: Record<string, string>;  // field_key → value, seeded into a blank form (e.g. the agent's own info)
   isMobile?: boolean;
   onToast?: (msg: string) => void;
   onClose: () => void;
@@ -132,13 +133,13 @@ export default function TransactionDocEditor({
         if (cancelled || !Array.isArray(json.fields)) return;
         setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null }) => ({
           id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
-          value: '', size: 11, type: r.type === 'check' ? 'check' : 'text',
+          value: (r.field_key && fieldPrefill?.[r.field_key]) || '', size: 11, type: r.type === 'check' ? 'check' : 'text',
           fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
         })));
       } catch { /* no template yet */ }
     })();
     return () => { cancelled = true; };
-  }, [form.id, authToken, submissionId]);
+  }, [form.id, authToken, submissionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Add a field on click ────────────────────────────────────────────────────
   const onPageClick = useCallback((e: React.MouseEvent, pd: PageDim) => {
