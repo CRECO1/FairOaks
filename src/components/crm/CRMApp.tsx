@@ -48,11 +48,14 @@ const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 // Curated form packets by use-case. `match` = deal types the packet is suggested
 // for. `forms` = crm_forms.name (exact). Starting a packet attaches a blank,
 // pre-linked submission for each form so the agent just fills them.
+// IABS (Information About Brokerage Services) is legally required at first
+// substantive contact for EVERY deal type, so it leads every packet.
+const IABS_FORM = 'Information About Brokerage Services (IABS)';
 const FORM_PACKETS: { key: string; label: string; match: string[]; forms: string[] }[] = [
-  { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: ['Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
-  { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: ['Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
-  { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: ['Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
-  { key: 'sublease', label: 'Sublease packet', match: ['Tenant Lease'], forms: ['Commercial Sublease', 'Commercial Lease Guaranty'] },
+  { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
+  { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
+  { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
+  { key: 'sublease', label: 'Sublease packet', match: ['Tenant Lease'], forms: [IABS_FORM, 'Commercial Sublease', 'Commercial Lease Guaranty'] },
 ];
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
@@ -708,6 +711,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
+  // Closing-form packets to attach when the deal is created (keys into FORM_PACKETS).
+  const [ndPackets, setNdPackets] = useState<string[]>([]);
+  // Opening the New Deal modal pre-selects the packet matching the current deal type.
+  useEffect(() => {
+    if (!showAddDeal) return;
+    const first = FORM_PACKETS.find(p => p.match.includes(nd.type));
+    setNdPackets(first ? [first.key] : []);
+  }, [showAddDeal]); // eslint-disable-line react-hooks/exhaustive-deps
   // New client form
   const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
   // Invite form
@@ -1004,10 +1015,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDealFormPicker(false);
     setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
   }, [authGet]); // eslint-disable-line
-  const startPacket = useCallback(async (pkt: typeof FORM_PACKETS[number]) => {
-    if (!activeDeal) return;
-    showToast(`Attaching ${pkt.label}…`);
-    let forms = crmForms;
+  // Attach a packet's forms (blank, pre-linked submissions) to any deal by id.
+  // Skips any form name not in the library (e.g. before its PDF is uploaded).
+  // Returns how many were attached; pass formsCache to avoid a refetch per call.
+  const attachPacketToDeal = useCallback(async (dealId: string, pkt: typeof FORM_PACKETS[number], formsCache?: typeof crmForms) => {
+    let forms = formsCache ?? crmForms;
     if (!forms.length) {
       try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); forms = j.forms ?? []; setCrmForms(forms); } catch { /* ignore */ }
     }
@@ -1018,12 +1030,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     for (const name of pkt.forms) {
       const form = byName.get(name);
       if (!form) continue;
-      const res = await fetch('/api/crm/form-submissions', { method: 'POST', headers: h, body: JSON.stringify({ form_id: form.id, deal_id: activeDeal.id, business_unit: businessUnit, title: form.name, values: [] }) });
+      const res = await fetch('/api/crm/form-submissions', { method: 'POST', headers: h, body: JSON.stringify({ form_id: form.id, deal_id: dealId, business_unit: businessUnit, title: form.name, values: [] }) });
       if (res.ok) n++;
     }
+    return n;
+  }, [crmForms, session?.access_token, businessUnit, authGet]);
+
+  const startPacket = useCallback(async (pkt: typeof FORM_PACKETS[number]) => {
+    if (!activeDeal) return;
+    showToast(`Attaching ${pkt.label}…`);
+    const n = await attachPacketToDeal(activeDeal.id, pkt);
     await loadDealForms(activeDeal.id);
     showToast(n ? `✓ Attached ${n} form${n === 1 ? '' : 's'} to the deal` : 'Could not attach the packet');
-  }, [activeDeal, crmForms, session?.access_token, businessUnit, loadDealForms, authGet]); // eslint-disable-line
+  }, [activeDeal, attachPacketToDeal, loadDealForms]); // eslint-disable-line
 
   const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
@@ -1783,7 +1802,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function createDeal() {
     if (!nd.client_id) { showToast('Please select a client first.'); return; }
     setSaving(true);
-    const { error } = await supabase.from('crm_deals').insert([{
+    const { data: created, error } = await supabase.from('crm_deals').insert([{
       client_id: nd.client_id,
       client: nd.client,
       client_email: nd.client_email,
@@ -1796,13 +1815,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       stage: 'Prospect',
       last_touch: today(),
       business_unit: businessUnit,
-    }]);
-    if (error) { showToast('Error: ' + error.message); } else {
-      showToast('Deal created: ' + nd.client);
-      setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
-      setShowAddDeal(false);
-      loadDeals(profile!);
+    }]).select('id').single();
+    if (error) { showToast('Error: ' + error.message); setSaving(false); return; }
+    // Attach the selected closing-form packet(s) to the new deal.
+    let attached = 0;
+    const pkts = FORM_PACKETS.filter(p => ndPackets.includes(p.key));
+    if (created?.id && pkts.length) {
+      let forms = crmForms;
+      if (!forms.length) {
+        try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); forms = j.forms ?? []; setCrmForms(forms); } catch { /* ignore */ }
+      }
+      for (const pkt of pkts) attached += await attachPacketToDeal(created.id, pkt, forms);
     }
+    showToast(attached ? `Deal created — ${attached} form${attached === 1 ? '' : 's'} attached` : 'Deal created: ' + nd.client);
+    setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
+    setNdPackets([]);
+    setShowAddDeal(false);
+    loadDeals(profile!);
     setSaving(false);
   }
 
@@ -8040,11 +8069,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Add Deal Modal ── */}
       {showAddDeal && (
-        <div className="overlay" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }}>
+        <div className="overlay" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); setNdPackets([]); }}>
           <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 26px', background: '#111', color: '#fff', display: 'flex', alignItems: 'center', borderRadius: '12px 12px 0 0' }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 600, flex: 1 }}>New Deal</h3>
-              <button className="crm-icon-btn" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
+              <button className="crm-icon-btn" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); setNdPackets([]); }} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer' }}>✕</button>
             </div>
             <div className="modal-body" style={{ padding: '22px 26px' }}>
 
@@ -8102,10 +8131,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Deal Type *</label>
-                  <select className="crm-input" style={{ marginTop: 4 }} value={nd.type} onChange={e => setNd({ ...nd, type: e.target.value })}>
+                  <select className="crm-input" style={{ marginTop: 4 }} value={nd.type} onChange={e => { const t = e.target.value; setNd({ ...nd, type: t }); const first = FORM_PACKETS.find(p => p.match.includes(t)); setNdPackets(first ? [first.key] : []); }}>
                     {DEAL_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
+                {(() => {
+                  const matches = FORM_PACKETS.filter(p => p.match.includes(nd.type));
+                  if (!matches.length) return null;
+                  return (
+                    <div style={{ gridColumn: '1/-1' }}>
+                      <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Closing forms to start</label>
+                      <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {matches.map(pkt => {
+                          const on = ndPackets.includes(pkt.key);
+                          return (
+                            <label key={pkt.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', border: `1px solid ${on ? '#c9922c' : '#e5e7eb'}`, background: on ? '#fffdf6' : '#fff', borderRadius: 8, cursor: 'pointer' }}>
+                              <input type="checkbox" checked={on} onChange={e => setNdPackets(prev => e.target.checked ? [...prev, pkt.key] : prev.filter(k => k !== pkt.key))} style={{ marginTop: 3, accentColor: '#c9922c' }} />
+                              <span style={{ minWidth: 0 }}>
+                                <span style={{ fontWeight: 700, fontSize: 13, color: '#1a1a1a' }}>{pkt.label}</span>
+                                <span style={{ display: 'block', fontSize: 12, color: '#6b7280', marginTop: 2, lineHeight: 1.4 }}>{pkt.forms.join('  ·  ')}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 6 }}>Blank, pre-linked copies attach to the deal so agents just fill them in.</div>
+                    </div>
+                  );
+                })()}
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Property Address</label>
                   <input className="crm-input" style={{ marginTop: 4 }} placeholder="123 Main St, City, State" value={nd.property} onChange={e => setNd({ ...nd, property: e.target.value })} />
@@ -8120,7 +8173,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
-                <button className="crm-btn crm-btn-ghost" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); }}>Cancel</button>
+                <button className="crm-btn crm-btn-ghost" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); setNdPackets([]); }}>Cancel</button>
                 <button className="crm-btn crm-btn-gold" onClick={createDeal} disabled={saving || !nd.client_id}>{saving ? 'Creating…' : 'Create Deal'}</button>
               </div>
             </div>
