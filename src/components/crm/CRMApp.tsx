@@ -199,29 +199,34 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
 }) {
   if (isMobile) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         {STAGES.map(stage => {
           const col = STAGE_COLORS[stage];
           const stageDeals = deals.filter(d => d.stage === stage);
           if (stageDeals.length === 0) return null;
+          const totalVal = stageDeals.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
           return (
             <div key={stage}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: col.dot, flexShrink: 0 }} />
-                <span style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: 1 }}>{stage}</span>
-                <span style={{ background: '#e5e7eb', borderRadius: 10, padding: '1px 7px', fontSize: 12, fontWeight: 600, color: '#6b7280' }}>{stageDeals.length}</span>
+              {/* Stage header (colored accent) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, paddingLeft: 10, borderLeft: `3px solid ${col.dot}` }}>
+                <span style={{ fontWeight: 700, fontSize: 13, color: '#111' }}>{stage}</span>
+                <span style={{ background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>{stageDeals.length}</span>
+                {totalVal > 0 && <span style={{ marginLeft: 'auto', fontSize: 12, color: '#6b7280', fontWeight: 600 }}>${totalVal.toLocaleString()}</span>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {stageDeals.map(deal => (
                   <div key={deal.id} onClick={() => openDeal(deal)}
-                    style={{ background: '#fff', border: `1px solid ${col.border}`, borderRadius: 10, padding: '12px 14px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.06)' }}>
+                    style={{ background: '#fff', border: '1px solid #e5e7eb', borderLeft: `3px solid ${col.dot}`, borderRadius: 10, padding: '11px 14px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#111', marginBottom: 4 }}>{deal.client}</div>
-                    {deal.property && <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6 }}>{deal.property}</div>}
+                    {deal.property && <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</div>}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((s: string) => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>
+                      <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((s: string) => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>
                         {deal.type.split(' ')[0]}
                       </span>
-                      {deal.value > 0 && <span style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>}
+                      {deal.value > 0 && <span style={{ fontSize: 13, color: '#374151', fontWeight: 700 }}>{fmtVal(deal)}</span>}
+                      {deal.earned_commission != null && deal.earned_commission > 0 && (
+                        <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
+                      )}
                       {isAdmin && <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 'auto' }}>👤 {agentName(deal.agent_id)}</span>}
                     </div>
                   </div>
@@ -4655,19 +4660,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18, alignItems: 'center' }}>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'connected')}
                             style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-                            ✓ Connected <span style={kbdStyle}>C</span>
+                            ✓ Connected {!isMobile && <span style={kbdStyle}>C</span>}
                           </button>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'voicemail')}
                             style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-                            📼 Voicemail <span style={kbdStyle}>V</span>
+                            📼 Voicemail {!isMobile && <span style={kbdStyle}>V</span>}
                           </button>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'no_answer')}
                             style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
-                            ✕ No Answer <span style={kbdStyle}>N</span>
+                            ✕ No Answer {!isMobile && <span style={kbdStyle}>N</span>}
                           </button>
                           <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
                             style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: 'none', background: 'none', color: '#9ca3af', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', marginLeft: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
-                            Skip <span style={kbdStyle}>S</span>
+                            Skip {!isMobile && <span style={kbdStyle}>S</span>}
                           </button>
                         </div>
                       </div>

@@ -896,7 +896,7 @@ export default function TasksSection({
 
         <button onClick={() => setShowNewModal(true)}
           style={{ marginLeft: 'auto', padding: '8px 18px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>
-          + New Task <span style={{ opacity: 0.7, fontWeight: 600 }}>N</span>
+          + New Task {!isMobile && <span style={{ opacity: 0.7, fontWeight: 600 }}>N</span>}
         </button>
       </div>
 
