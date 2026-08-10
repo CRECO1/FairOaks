@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
       extractErrors: r.extractErrors,
       inserted: r.inserted,
       dupSkipped: r.dupSkipped,
+      photosAdded: r.photosAdded,
       geocoded: geo.geocoded,
       enriched: enr.enriched,
       model: r.model,
