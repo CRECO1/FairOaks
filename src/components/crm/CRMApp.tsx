@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic';
 const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
+import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import ActivitySection from '@/components/crm/ActivitySection';
 import MentionTextarea from '@/components/crm/MentionTextarea';
 
@@ -503,7 +504,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callActivitiesClientId, setCallActivitiesClientId] = useState<string | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
-  const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls'>('tasks');
+  const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls' | 'leases'>('tasks');
 
   // Kanban drag state
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
@@ -4564,9 +4565,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   📞 &nbsp;Call Queue
                   {callDue > 0 && <span style={{ background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>{callDue}</span>}
                 </button>
+                <button onClick={() => setTasksSubTab('leases')}
+                  style={{ padding: isMobile ? '12px 16px' : '9px 16px', minHeight: isMobile ? 44 : undefined, fontSize: 14, fontWeight: 600, border: 'none', borderBottom: `2px solid ${tasksSubTab === 'leases' ? '#c9922c' : 'transparent'}`, background: 'none', color: tasksSubTab === 'leases' ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                  🔑 &nbsp;Lease Renewals
+                </button>
               </div>
             );
           })()}
+
+          {page === 'tasks' && tasksSubTab === 'leases' && (
+            <LeaseExpirationsSection
+              authToken={session?.access_token}
+              onToast={showToast}
+              onCreated={() => loadAllTasks()}
+            />
+          )}
 
           {/* ── Tasks tab → Call Queue sub-view (was the standalone Today's Calls page) ── */}
           {page === 'tasks' && tasksSubTab === 'calls' && (() => {
