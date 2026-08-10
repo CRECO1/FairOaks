@@ -53,10 +53,22 @@ const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 const IABS_FORM = 'Information About Brokerage Services (IABS)';
 const FORM_PACKETS: { key: string; label: string; match: string[]; forms: string[] }[] = [
   { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
+  { key: '8000_lease', label: '8000 Fair Oaks Plaza lease', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Building Lease Agreement', 'Commercial Lease Guaranty'] },
   { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
   { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
   { key: 'sublease', label: 'Sublease packet', match: ['Tenant Lease'], forms: [IABS_FORM, 'Commercial Sublease', 'Commercial Lease Guaranty'] },
 ];
+// 8000 Fair Oaks Plaza deals use our own Building Lease Agreement, not the TXR
+// Commercial Lease. Pre-select the 8000 packet when the address is at 8000 Fair Oaks.
+const IS_8000_ADDR = /8000\s+fair\s+oaks|fair\s+oaks\s+(parkway|pkwy)/i;
+function defaultPacketKeys(type: string, property: string): string[] {
+  const matches = FORM_PACKETS.filter(p => p.match.includes(type));
+  if (!matches.length) return [];
+  const pick = IS_8000_ADDR.test(property || '')
+    ? (matches.find(p => p.key === '8000_lease') ?? matches[0])
+    : (matches.find(p => p.key !== '8000_lease') ?? matches[0]);
+  return [pick.key];
+}
 const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
 const CLIENT_TYPES = ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor', 'Agent', 'Broker'] as const;
 const ASSET_TYPES = ['Home', 'Condo', 'Multi-Family', 'Land', 'Industrial', 'Flex/Warehouse', 'Retail', 'Office', 'Storage'] as const;
@@ -713,11 +725,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
   // Closing-form packets to attach when the deal is created (keys into FORM_PACKETS).
   const [ndPackets, setNdPackets] = useState<string[]>([]);
-  // Opening the New Deal modal pre-selects the packet matching the current deal type.
+  const ndPacketsTouched = useRef(false); // once the agent picks packets, stop auto-defaulting
+  // Opening the New Deal modal pre-selects the packet matching the deal type
+  // (and the 8000 Fair Oaks lease when the address is at 8000 Fair Oaks).
   useEffect(() => {
     if (!showAddDeal) return;
-    const first = FORM_PACKETS.find(p => p.match.includes(nd.type));
-    setNdPackets(first ? [first.key] : []);
+    ndPacketsTouched.current = false;
+    setNdPackets(defaultPacketKeys(nd.type, nd.property));
   }, [showAddDeal]); // eslint-disable-line react-hooks/exhaustive-deps
   // New client form
   const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
@@ -8131,7 +8145,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Deal Type *</label>
-                  <select className="crm-input" style={{ marginTop: 4 }} value={nd.type} onChange={e => { const t = e.target.value; setNd({ ...nd, type: t }); const first = FORM_PACKETS.find(p => p.match.includes(t)); setNdPackets(first ? [first.key] : []); }}>
+                  <select className="crm-input" style={{ marginTop: 4 }} value={nd.type} onChange={e => { const t = e.target.value; setNd({ ...nd, type: t }); ndPacketsTouched.current = false; setNdPackets(defaultPacketKeys(t, nd.property)); }}>
                     {DEAL_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
@@ -8146,7 +8160,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           const on = ndPackets.includes(pkt.key);
                           return (
                             <label key={pkt.key} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', border: `1px solid ${on ? '#c9922c' : '#e5e7eb'}`, background: on ? '#fffdf6' : '#fff', borderRadius: 8, cursor: 'pointer' }}>
-                              <input type="checkbox" checked={on} onChange={e => setNdPackets(prev => e.target.checked ? [...prev, pkt.key] : prev.filter(k => k !== pkt.key))} style={{ marginTop: 3, accentColor: '#c9922c' }} />
+                              <input type="checkbox" checked={on} onChange={e => { ndPacketsTouched.current = true; setNdPackets(prev => e.target.checked ? [...prev, pkt.key] : prev.filter(k => k !== pkt.key)); }} style={{ marginTop: 3, accentColor: '#c9922c' }} />
                               <span style={{ minWidth: 0 }}>
                                 <span style={{ fontWeight: 700, fontSize: 13, color: '#1a1a1a' }}>{pkt.label}</span>
                                 <span style={{ display: 'block', fontSize: 12, color: '#6b7280', marginTop: 2, lineHeight: 1.4 }}>{pkt.forms.join('  ·  ')}</span>
@@ -8161,7 +8175,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })()}
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Property Address</label>
-                  <input className="crm-input" style={{ marginTop: 4 }} placeholder="123 Main St, City, State" value={nd.property} onChange={e => setNd({ ...nd, property: e.target.value })} />
+                  <input className="crm-input" style={{ marginTop: 4 }} placeholder="123 Main St, City, State" value={nd.property} onChange={e => { const property = e.target.value; setNd({ ...nd, property }); if (!ndPacketsTouched.current) setNdPackets(defaultPacketKeys(nd.type, property)); }} />
                 </div>
                 <div>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Deal Value ($)</label>
