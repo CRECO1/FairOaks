@@ -492,9 +492,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>No listings yet</div>
           {isAdmin && <div style={{ fontSize: 13 }}>Click <strong>+ New Listing</strong> to add your first property.</div>}
         </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 16 }}>
-          {filtered.map(l => {
+      ) : (() => {
+        const DEAL_STATUSES = ['leased', 'sold'];
+        const ours = filtered.filter(l => !DEAL_STATUSES.includes(l.status ?? ''));
+        const dealProps = filtered.filter(l => DEAL_STATUSES.includes(l.status ?? ''));
+        const gridStyle: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 16 };
+        const renderCard = (l: Listing) => {
             const sc = STATUS_CFG[l.status ?? 'active'] ?? STATUS_CFG.active;
             const tc = TYPE_COLORS[l.type ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
             const agent = profiles.find(p => p.id === l.listing_agent_id);
@@ -556,9 +559,25 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 </div>
               </div>
             );
-          })}
-        </div>
-      )}
+        };
+        const section = (title: string, items: Listing[], hint: string) => (
+          <div style={{ marginBottom: 26 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 700, color: '#111' }}>{title}</div>
+              <span style={{ fontSize: 12, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{items.length}</span>
+            </div>
+            {items.length === 0
+              ? <div style={{ fontSize: 13, color: '#9ca3af', fontStyle: 'italic', padding: '4px 0' }}>{hint}</div>
+              : <div style={gridStyle}>{items.map(renderCard)}</div>}
+          </div>
+        );
+        return (
+          <div>
+            {section('🏢 Our Listings', ours, 'No active listings yet — click + New Listing to add one.')}
+            {section('🤝 Deal Properties', dealProps, 'Properties from your closed lease & purchase deals show here — mark a listing Leased or Sold, or promote a deal.')}
+          </div>
+        );
+      })()}
 
       {/* ── Detail Panel ──────────────────────────────────────────────────────── */}
       {active && (

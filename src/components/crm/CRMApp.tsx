@@ -1174,6 +1174,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDocUploading(false);
   }
 
+  // Promote this deal's property into a Property Workspace folder + jump to it.
+  async function promoteDealToWorkspace(deal: Deal) {
+    try {
+      const res = await fetch('/api/crm/listings/from-deal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ deal_id: deal.id }),
+      });
+      const j = await res.json();
+      if (!res.ok) { showToast(j.error || 'Could not create folder'); return; }
+      showToast(j.created ? '📁 Property folder created ✓' : '📁 Opening property folder');
+      setPage('properties');
+      setPropertiesTab('listings');
+    } catch { showToast('Could not create folder'); }
+  }
+
   async function deleteDoc(doc: DealDoc, dealId: string) {
     if (!confirm(`Remove "${doc.name}"? This cannot be undone.`)) return;
     const res = await fetch('/api/crm/docs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docId: doc.id }) });
@@ -7785,6 +7801,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Docs tab */}
               {dealTab === 'docs' && (
                 <div>
+                  {/* Promote this deal's property into a shareable Property Workspace folder */}
+                  <button onClick={() => promoteDealToWorkspace(activeDeal)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '10px 14px', marginBottom: 18, borderRadius: 10, border: '1px dashed #c9922c', background: '#fdf6e9', color: '#a06a12', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                    📁 Add this property to Property Workspaces
+                  </button>
                   {/* CRM Forms (Transaction Docs) tied to this deal */}
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
