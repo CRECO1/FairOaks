@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
+import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Completed/in-progress form instances (crm_form_submissions): stores the field
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
     q = q.eq('deal_id', dealId);
   }
   if (listingId) {
-    if (!(await assertOwnsResource('crm_listings', listingId, ctx))) return notFound('Listing not found');
+    if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
     q = q.eq('listing_id', listingId);
   }
   const { data, error } = await q;
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
   if (deal_id && !(await assertOwnsResource('crm_deals', deal_id, ctx))) {
     return notFound('Deal not found');
   }
-  if (listing_id && !(await assertOwnsResource('crm_listings', listing_id, ctx))) {
+  if (listing_id && !(await assertCanAccessListing(listing_id, ctx))) {
     return notFound('Listing not found');
   }
   const unit = isAdminRole(ctx.role)

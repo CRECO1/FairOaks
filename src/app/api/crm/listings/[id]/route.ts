@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','listing_agent_id'];
+const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','listing_agent_id','assigned_agent_ids','is_restricted'];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const caller = await getCrmUser(req);

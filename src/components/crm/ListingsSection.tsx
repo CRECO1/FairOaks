@@ -22,6 +22,8 @@ interface Listing {
   description?: string;
   notes?: string;
   listing_agent_id?: string;
+  assigned_agent_ids?: string[];
+  is_restricted?: boolean;
   created_at: string;
   updated_at?: string;
 }
@@ -129,7 +131,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Detail panel
   const [active, setActive]     = useState<Listing | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'photos'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'photos' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -152,6 +154,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [listingForms, setListingForms] = useState<FormSubmission[]>([]);
   const [formPicker, setFormPicker] = useState(false);
   const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string } | null>(null);
+
+  // Team / sharing state for the open listing.
+  const [teamOwner, setTeamOwner] = useState('');
+  const [teamAssigned, setTeamAssigned] = useState<string[]>([]);
+  const [teamRestricted, setTeamRestricted] = useState(false);
+  const [teamSaving, setTeamSaving] = useState(false);
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -218,6 +226,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setListingForms([]);
     loadListingForms(l.id);
     loadCrmForms();
+    setTeamOwner(l.listing_agent_id ?? '');
+    setTeamAssigned(l.assigned_agent_ids ?? []);
+    setTeamRestricted(!!l.is_restricted);
   }
 
   function closePanel() { setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
@@ -240,6 +251,22 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setActive(listing);
     setDirty(false);
     onToast('Listing saved ✓');
+  }
+
+  async function saveTeam() {
+    if (!active) return;
+    setTeamSaving(true);
+    const res = await fetch(`/api/crm/listings/${active.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ listing_agent_id: teamOwner || null, assigned_agent_ids: teamAssigned, is_restricted: teamRestricted }),
+    });
+    setTeamSaving(false);
+    if (!res.ok) { onToast('Error saving team'); return; }
+    const { listing } = await res.json();
+    setListings(prev => prev.map(l => l.id === active.id ? listing : l));
+    setActive(listing);
+    onToast('Sharing saved ✓');
   }
 
   // ── Delete listing ──────────────────────────────────────────────────────────
@@ -554,8 +581,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0 }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'photos', label: '🖼 Photos' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'photos')}
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'photos', label: '🖼 Photos' }, { k: 'team', label: '🔗 Team' }].map(t => (
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'photos' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -712,6 +739,44 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       </div>
                     );
                   })()}
+                </div>
+              )}
+
+              {/* ── Team tab (sharing) ── */}
+              {activeTab === 'team' && (
+                <div>
+                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>Owner</div>
+                  <select value={teamOwner} onChange={e => setTeamOwner(e.target.value)} style={{ ...INP, marginBottom: 20, fontSize: 15 }}>
+                    <option value="">— Unassigned —</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                  </select>
+
+                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>Shared with</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 20 }}>
+                    {profiles.filter(p => p.id !== teamOwner).map(p => {
+                      const on = teamAssigned.includes(p.id);
+                      return (
+                        <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 8, border: `1px solid ${on ? '#c9922c' : '#eef0f2'}`, background: on ? '#fdf6e9' : '#fff', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={on} onChange={() => setTeamAssigned(a => on ? a.filter(x => x !== p.id) : [...a, p.id])} style={{ accentColor: '#c9922c' }} />
+                          <span style={{ fontSize: 14, color: '#374151', fontWeight: 500 }}>{p.first_name} {p.last_name}</span>
+                        </label>
+                      );
+                    })}
+                    {profiles.filter(p => p.id !== teamOwner).length === 0 && <div style={{ fontSize: 13, color: '#9ca3af' }}>No other teammates in this workspace.</div>}
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 10, border: '1px solid #eef0f2', background: '#f8fafc', cursor: 'pointer', marginBottom: 20 }}>
+                    <input type="checkbox" checked={teamRestricted} onChange={e => setTeamRestricted(e.target.checked)} style={{ accentColor: '#c9922c', marginTop: 2 }} />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>🔒 Restricted folder</div>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>When on, only the owner, the teammates above, and admins can see and open this property. Off = visible to the whole team.</div>
+                    </div>
+                  </label>
+
+                  <button onClick={saveTeam} disabled={teamSaving}
+                    style={{ width: '100%', padding: '11px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: teamSaving ? 'default' : 'pointer', opacity: teamSaving ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                    {teamSaving ? 'Saving…' : 'Save sharing'}
+                  </button>
                 </div>
               )}
             </div>
