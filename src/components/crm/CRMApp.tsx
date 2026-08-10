@@ -9,7 +9,6 @@ import SocialMediaSection from '@/components/crm/SocialMediaSection';
 import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
 import PropertyDBSection from '@/components/crm/PropertyDBSection';
 import TransactionDocsSection from '@/components/crm/TransactionDocsSection';
-import IntegrationHealthCard from '@/components/crm/IntegrationHealthCard';
 import dynamic from 'next/dynamic';
 
 const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
@@ -3319,13 +3318,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 ))}
               </div>
-
-              {/* ── System health (admin) ── */}
-              {isAdmin && (
-                <div style={{ marginBottom: 14 }}>
-                  <IntegrationHealthCard authToken={session?.access_token} />
-                </div>
-              )}
 
               {/* ── Pipeline by Stage chart ── */}
               {deals.length > 0 && (() => {
