@@ -45,7 +45,7 @@ const winAnsi = (s: string): string =>
 interface DealLite { id: string; client?: string; property?: string; type?: string; }
 
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, businessUnit, submissionId, fieldPrefill, isMobile = false, onToast, onClose, onSaved,
+  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, onToast, onClose, onSaved,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -53,6 +53,7 @@ export default function TransactionDocEditor({
   isAdmin?: boolean;
   deals?: DealLite[];
   dealId?: string;
+  listingId?: string;  // when set, the doc saves into this property's folder (deal picker hidden)
   businessUnit?: string;
   submissionId?: string;
   fieldPrefill?: Record<string, string>;  // field_key → value, seeded into a blank form (e.g. the agent's own info)
@@ -274,7 +275,7 @@ export default function TransactionDocEditor({
       if (authToken) h.Authorization = `Bearer ${authToken}`;
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST', headers: h,
-        body: JSON.stringify({ form_id: form.id, deal_id: dealSel || null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
+        body: JSON.stringify({ form_id: form.id, deal_id: listingId ? null : (dealSel || null), listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
       });
       if (res.ok) {
         const j = await res.json();
@@ -292,7 +293,7 @@ export default function TransactionDocEditor({
       onToast?.('Could not save');
     }
     finally { setBusy(false); }
-  }, [build, fields, dealSel, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
+  }, [build, fields, dealSel, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
 
   const toolBtn = (t: typeof tool, label: string) => (
     <button onClick={() => setTool(t)}
@@ -341,14 +342,14 @@ export default function TransactionDocEditor({
             ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {isAdmin && !isMobile && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
-          {deals && deals.length > 0 && (
+          {!listingId && deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
               style={{ padding: isMobile ? '11px 10px' : '8px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
               <option value="">— Link to a deal —</option>
               {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
             </select>
           )}
-          <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : '💾 Save')}</button>
+          <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (listingId ? '💾 Save to property' : dealSel ? '💾 Save to deal' : '💾 Save')}</button>
           <button onClick={download} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
           {!isMobile && <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
         </div>

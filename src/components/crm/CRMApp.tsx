@@ -740,6 +740,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     agent_email: profile.email || '',
     agent_phone: profile.phone || '',
   } : undefined, [profile]);
+  // Client + property info from a deal, seeded into a blank form by field_key
+  // (e.g. the 8000 lease's tenant_name / tenant_email / tenant_phone / suite / building).
+  const dealPrefill = useCallback((deal: Deal | null): Record<string, string> => {
+    if (!deal) return {};
+    const client = clients.find(c => c.id === deal.client_id);
+    const name = client ? (client.business_name?.trim() || `${client.first_name} ${client.last_name}`.trim()) : (deal.client || '');
+    const email = deal.client_email || client?.email || '';
+    const phone = deal.client_phone || client?.phone || client?.cell_phone || '';
+    const prop = deal.property || '';
+    const suite = (prop.match(/(?:ste|suite)\.?\s*#?\s*([0-9A-Za-z-]+)/i) || [])[1] || '';
+    const building = (prop.match(/(?:bldg|building)\.?\s*#?\s*([0-9A-Za-z-]+)/i) || [])[1] || '';
+    const out: Record<string, string> = {};
+    if (name) out.tenant_name = name;
+    if (email) out.tenant_email = email;
+    if (phone) out.tenant_phone = phone;
+    if (suite) out.suite = suite;
+    if (building) out.building = building;
+    return out;
+  }, [clients]);
   // New client form
   const [nc, setNc] = useState({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
   // Invite form
@@ -10440,7 +10459,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           deals={deals}
           dealId={activeDeal?.id}
           businessUnit={businessUnit}
-          fieldPrefill={agentPrefill}
+          fieldPrefill={{ ...agentPrefill, ...dealPrefill(activeDeal) }}
           onToast={showToast}
           isMobile={isMobile}
           onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); }}

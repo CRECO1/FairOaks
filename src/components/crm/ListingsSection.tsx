@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,7 +129,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Detail panel
   const [active, setActive]     = useState<Listing | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'files'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'photos'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -143,6 +144,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [creating, setCreating] = useState(false);
+
+  // Transaction-doc forms in the open listing's folder.
+  interface FormTemplate { id: string; name: string; form_code?: string; category?: string }
+  interface FormSubmission { id: string; form_id?: string; title?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
+  const [crmForms, setCrmForms] = useState<FormTemplate[]>([]);
+  const [listingForms, setListingForms] = useState<FormSubmission[]>([]);
+  const [formPicker, setFormPicker] = useState(false);
+  const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string } | null>(null);
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -166,6 +175,29 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setFilesLoading(false);
   }, [authToken]); // eslint-disable-line
 
+  const loadListingForms = useCallback(async (listingId: string) => {
+    const res = await fetch(`/api/crm/form-submissions?listing_id=${listingId}`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    setListingForms(json.submissions ?? []);
+  }, [authToken]); // eslint-disable-line
+
+  const loadCrmForms = useCallback(async () => {
+    const res = await fetch(`/api/crm/forms?business_unit=${businessUnit}`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    setCrmForms(json.forms ?? []);
+  }, [businessUnit, authToken]); // eslint-disable-line
+
+  // Fetch the blank template's signed URL, then open the fillable editor bound to this property.
+  const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string) => {
+    setFormPicker(false);
+    try {
+      const res = await fetch(`/api/crm/forms/${form.id}/url`, { headers: authHeaders });
+      const json = await res.json();
+      if (!json.url) { onToast('Could not open form'); return; }
+      setEditorDoc({ id: form.id, name: form.name, url: json.url, submissionId });
+    } catch { onToast('Could not open form'); }
+  }, [authToken, onToast]); // eslint-disable-line
+
   // ── Open / close listing ────────────────────────────────────────────────────
 
   function openListing(l: Listing) {
@@ -183,9 +215,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setDirty(false);
     setFiles([]);
     loadFiles(l.id);
+    setListingForms([]);
+    loadListingForms(l.id);
+    loadCrmForms();
   }
 
-  function closePanel() { setActive(null); setFiles([]); setDirty(false); }
+  function closePanel() { setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
 
   // ── Save listing ────────────────────────────────────────────────────────────
 
@@ -519,8 +554,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0 }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'files', label: '📁 Files' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'files')}
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'photos', label: '🖼 Photos' }].map(t => (
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'photos')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -536,9 +571,35 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 <FormFields form={editForm} onChange={f => { setEditForm(f); setDirty(true); }} />
               )}
 
-              {/* ── Files tab ── */}
-              {activeTab === 'files' && (
+              {/* ── Documents tab (fillable forms + uploaded files) ── */}
+              {activeTab === 'documents' && (
                 <div>
+                  {/* Transaction-doc forms bound to this property */}
+                  <div style={{ marginBottom: 22 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction Docs</div>
+                      <button onClick={() => { loadCrmForms(); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                    </div>
+                    {listingForms.length === 0 ? (
+                      <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {listingForms.map(f => (
+                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '10px 14px' }}>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
+                            </div>
+                            {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
+                            <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
                   {/* Upload row */}
                   {isAdmin && (
                     <div style={{ background: '#f8fafc', border: '1px dashed #d1d5db', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
@@ -627,6 +688,32 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   )}
                 </div>
               )}
+
+              {/* ── Photos tab ── */}
+              {activeTab === 'photos' && (
+                <div>
+                  {(() => {
+                    const photos = files.filter(f => f.category === 'photo');
+                    if (filesLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 14 }}>Loading…</div>;
+                    if (photos.length === 0) return (
+                      <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
+                        <div style={{ fontSize: 32, marginBottom: 8 }}>🖼</div>
+                        <div style={{ fontSize: 13 }}>No photos yet. Upload images in the Documents tab with category “Photos”.</div>
+                      </div>
+                    );
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                        {photos.map(f => (
+                          <a key={f.id} href={f.url || '#'} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid #eef0f2', aspectRatio: '4 / 3', background: '#f3f4f6' }}>
+                            {f.url ? <img src={f.url} alt={f.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* Panel footer */}
@@ -670,6 +757,52 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Form picker: choose a transaction-doc template for this property ── */}
+      {formPicker && active && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+          onClick={e => { if (e.target === e.currentTarget) setFormPicker(false); }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Fill a form — {active.name}</h3>
+              <button onClick={() => setFormPicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+            </div>
+            {crmForms.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No form templates found for this workspace.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '60vh', overflowY: 'auto' }}>
+                {crmForms.map(fm => (
+                  <button key={fm.id} onClick={() => openFormEditor({ id: fm.id, name: fm.name })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid #eef0f2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+                    <span style={{ fontSize: 18 }}>📄</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{fm.name}</div>
+                      {(fm.form_code || fm.category) && <div style={{ fontSize: 12, color: '#9ca3af' }}>{[fm.category, fm.form_code].filter(Boolean).join(' · ')}</div>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Fillable transaction-doc editor, bound to the open property ── */}
+      {editorDoc && active && (
+        <TransactionDocEditor
+          form={{ id: editorDoc.id, name: editorDoc.name }}
+          url={editorDoc.url}
+          authToken={authToken}
+          isAdmin={isAdmin}
+          listingId={active.id}
+          businessUnit={businessUnit}
+          submissionId={editorDoc.submissionId}
+          onToast={onToast}
+          onClose={() => setEditorDoc(null)}
+          onSaved={() => { if (active) loadListingForms(active.id); onToast('Saved to property ✓'); }}
+        />
       )}
     </div>
   );

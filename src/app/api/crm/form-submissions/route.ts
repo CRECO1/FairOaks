@@ -13,15 +13,20 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const dealId = req.nextUrl.searchParams.get('deal_id');
+  const listingId = req.nextUrl.searchParams.get('listing_id');
   const supabase = adminClient();
   let q = supabase
     .from('crm_form_submissions')
-    .select('id, form_id, deal_id, title, filled_path, status, created_at, updated_at, crm_forms(name, form_code)')
+    .select('id, form_id, deal_id, listing_id, title, filled_path, status, created_at, updated_at, crm_forms(name, form_code)')
     .order('updated_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) {
     if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
     q = q.eq('deal_id', dealId);
+  }
+  if (listingId) {
+    if (!(await assertOwnsResource('crm_listings', listingId, ctx))) return notFound('Listing not found');
+    q = q.eq('listing_id', listingId);
   }
   const { data, error } = await q;
   if (error) { console.error('[api/form-submissions] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
@@ -40,7 +45,7 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const body = await req.json().catch(() => ({}));
-  const { form_id, deal_id, title, values, pdfBase64, business_unit, submission_id } = body;
+  const { form_id, deal_id, listing_id, title, values, pdfBase64, business_unit, submission_id } = body;
   if (!form_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();
 
@@ -48,9 +53,12 @@ export async function POST(req: NextRequest) {
   if (submission_id && !(await assertOwnsResource('crm_form_submissions', submission_id, ctx))) {
     return notFound('Submission not found');
   }
-  // Agents can't file a submission against another workspace's deal or unit.
+  // Agents can't file a submission against another workspace's deal, listing, or unit.
   if (deal_id && !(await assertOwnsResource('crm_deals', deal_id, ctx))) {
     return notFound('Deal not found');
+  }
+  if (listing_id && !(await assertOwnsResource('crm_listings', listing_id, ctx))) {
+    return notFound('Listing not found');
   }
   const unit = isAdminRole(ctx.role)
     ? (business_unit || ctx.businessUnit || 'commercial')
@@ -69,6 +77,7 @@ export async function POST(req: NextRequest) {
   const base = {
     form_id,
     deal_id: deal_id || null,
+    listing_id: listing_id || null,
     business_unit: unit,
     title: title || null,
     values: values ?? [],
