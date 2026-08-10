@@ -136,6 +136,7 @@ export interface PropertyRecord {
   divisible: boolean | null;
   highlights: string[] | null;
   brochure_url: string | null;
+  flyer_url: string | null;
   available_date: string | null;
   address_key: string | null;
 }

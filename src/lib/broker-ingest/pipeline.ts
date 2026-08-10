@@ -8,7 +8,13 @@
 import { getBrokerAccessToken, listMessageIds, fetchEmail } from './gmail';
 import { extractListing, MODEL } from './extract';
 import { upsertProperties } from './upsert';
-import type { Extraction, PropertyRecord } from './types';
+import type { Extraction, GmailImage, PropertyRecord } from './types';
+
+/** The flyer is almost always the largest image (logos/signatures/pixels are tiny). */
+function pickFlyer(images: GmailImage[]): GmailImage | undefined {
+  if (!images.length) return undefined;
+  return images.reduce((a, b) => (b.data.length > a.data.length ? b : a));
+}
 
 /**
  * Default Gmail search: broker blasts almost always contain an unsubscribe footer,
@@ -38,6 +44,7 @@ export interface PipelineResult {
   inserted: number;
   dupSkipped: number;
   skippedNoAddress: number;
+  photosAdded: number;
   model: string;
   /** The de-duplicated records that were (or, on a dry run, would be) inserted. */
   wouldInsert: PropertyRecord[];
@@ -54,7 +61,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const ids = await listMessageIds(token, query, limit);
   log(`Scanning ${ids.length} message(s)...`);
 
-  const extractions: Extraction[] = [];
+  const items: Array<{ extraction: Extraction; flyer?: GmailImage }> = [];
   let nonListings = 0;
   let extractErrors = 0;
 
@@ -74,7 +81,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
         log(`  [${i}/${ids.length}] not a listing — "${email.subject.slice(0, 60)}"`);
         continue;
       }
-      extractions.push(ex);
+      items.push({ extraction: ex, flyer: pickFlyer(email.images) });
       log(
         `  [${i}/${ids.length}] LISTING — ${ex.name ?? ex.address ?? '(no name)'} ` +
           `[${ex.asset_type ?? 'Office'}${ex.size_sf ? `, ${ex.size_sf} SF` : ''}]`,
@@ -85,16 +92,17 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     }
   }
 
-  const up = await upsertProperties(extractions, { commit });
+  const up = await upsertProperties(items, { commit });
 
   return {
     scanned: ids.length,
-    listings: extractions.length,
+    listings: items.length,
     nonListings,
     extractErrors,
     inserted: up.inserted,
     dupSkipped: up.dupSkipped,
     skippedNoAddress: up.skippedNoAddress,
+    photosAdded: up.photosAdded,
     model: MODEL,
     wouldInsert: up.records,
   };

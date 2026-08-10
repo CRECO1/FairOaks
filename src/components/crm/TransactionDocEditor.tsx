@@ -16,6 +16,8 @@ interface Field {
   value: string;
   size: number;             // font size in PDF points
   type: 'text' | 'check';
+  fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
+  label?: string;           // human label, shown as the blank's placeholder
 }
 // Only the PDF's own point dimensions are kept — the rendered pixel size is now
 // decided by CSS (width:100% capped at RENDER_W, with a matching aspect-ratio).
@@ -128,9 +130,10 @@ export default function TransactionDocEditor({
         const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
         const json = await res.json();
         if (cancelled || !Array.isArray(json.fields)) return;
-        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string }) => ({
+        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null }) => ({
           id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
           value: '', size: 11, type: r.type === 'check' ? 'check' : 'text',
+          fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
         })));
       } catch { /* no template yet */ }
     })();
@@ -200,7 +203,12 @@ export default function TransactionDocEditor({
     };
   }, []);
 
-  const updateVal = (id: string, value: string) => setFields(fs => fs.map(f => f.id === id ? { ...f, value } : f));
+  // Typing in a field also fills every other field that shares its fieldKey — so a
+  // tenant name / suite / date entered once propagates to all its occurrences.
+  const updateVal = (id: string, value: string) => setFields(fs => {
+    const key = fs.find(f => f.id === id)?.fieldKey;
+    return fs.map(f => (f.id === id || (key && f.fieldKey === key)) ? { ...f, value } : f);
+  });
   const delField = (id: string) => { setFields(fs => fs.filter(f => f.id !== id)); setSelected(null); };
 
   // ── Generate filled PDF ─────────────────────────────────────────────────────
@@ -243,7 +251,7 @@ export default function TransactionDocEditor({
     try {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) h.Authorization = `Bearer ${authToken}`;
-      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type })) };
+      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, field_key: f.fieldKey ?? null, label: f.label ?? null })) };
       const res = await fetch(`/api/crm/forms/${form.id}/fields`, { method: 'PUT', headers: h, body: JSON.stringify(payload) });
       onToast?.(res.ok ? '✓ Field layout saved for this form' : 'Could not save the layout');
     } catch { onToast?.('Could not save the layout'); }
@@ -403,6 +411,8 @@ export default function TransactionDocEditor({
                 <input
                   className="pdf-fill-input"
                   value={f.value}
+                  placeholder={f.label || ''}
+                  title={f.label || ''}
                   onChange={e => updateVal(f.id, e.target.value)}
                   onMouseDown={e => e.stopPropagation()}
                   onTouchStart={e => e.stopPropagation()}

@@ -10,9 +10,12 @@
  * guarantees a uniform key set (unused fields are null).
  */
 
-import type { Extraction, PropertyRecord } from './types';
+import { createHash } from 'crypto';
+import type { Extraction, GmailImage, PropertyRecord } from './types';
 
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
+/** Public bucket for property flyer thumbnails (same bucket admin uploads use). */
+const FLYER_BUCKET = 'images';
 
 /** created_by / owner for inserted rows (the broker-blast account's CRM user). */
 export const CREATED_BY = '47668cbf-25c1-480a-baa0-af65fb663dd7';
@@ -108,9 +111,41 @@ export function toRecord(e: Extraction): PropertyRecord {
     divisible: e.divisible ?? null,
     highlights: e.highlights ?? null,
     brochure_url: e.brochure_url ?? null,
+    flyer_url: null, // set later from the email's flyer image (upload → public URL)
     available_date: e.available_date ?? null,
     address_key: dedupKey(e.name, e.address) || null,
   };
+}
+
+/** Upload a broker flyer image to the public bucket; returns its public URL (or null). */
+async function uploadFlyer(flyer: GmailImage): Promise<string | null> {
+  try {
+    const ext = (flyer.mimeType.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+    const hash = createHash('md5').update(flyer.data).digest('hex').slice(0, 20);
+    const path = `property-flyers/${hash}.${ext}`;
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${FLYER_BUCKET}/${path}`, {
+      method: 'POST',
+      headers: { ...serviceHeaders(), 'Content-Type': flyer.mimeType, 'x-upsert': 'true' },
+      body: Buffer.from(flyer.data, 'base64'),
+    });
+    if (!res.ok && res.status !== 409) {
+      console.error('[flyer upload]', res.status, (await res.text()).slice(0, 160));
+      return null;
+    }
+    return `${SUPABASE_URL}/storage/v1/object/public/${FLYER_BUCKET}/${path}`;
+  } catch (err) {
+    console.error('[flyer upload] error', (err as Error).message);
+    return null;
+  }
+}
+
+/** PATCH just the flyer_url on an existing row (used to backfill photos onto dups). */
+async function patchFlyerUrl(id: string, url: string): Promise<void> {
+  await fetch(`${SUPABASE_URL}/rest/v1/crm_prospective_properties?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...serviceHeaders(), Prefer: 'return=minimal' },
+    body: JSON.stringify({ flyer_url: url }),
+  });
 }
 
 /**
@@ -143,6 +178,32 @@ export async function fetchExistingKeys(): Promise<Set<string>> {
   return set;
 }
 
+interface ExistingRow { id: string; flyer_url: string | null; }
+
+/**
+ * Like fetchExistingKeys, but also returns a key → { id, flyer_url } map so the
+ * upsert can backfill a flyer photo onto an existing row that has none.
+ */
+async function fetchExistingRows(): Promise<{ seen: Set<string>; byKey: Map<string, ExistingRow> }> {
+  const seen = new Set<string>();
+  const byKey = new Map<string, ExistingRow>();
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/crm_prospective_properties?select=id,name,address,size_sf,city,listing_company,flyer_url&business_unit=eq.commercial`,
+    { headers: serviceHeaders() },
+  );
+  if (!res.ok) return { seen, byKey };
+  const rows: Array<{ id: string; name: string | null; address: string | null; size_sf: number | null; city: string | null; listing_company: string | null; flyer_url: string | null }> = await res.json();
+  const add = (k: string | null, row: ExistingRow) => { if (!k) return; seen.add(k); if (!byKey.has(k)) byKey.set(k, row); };
+  for (const r of rows ?? []) {
+    const row: ExistingRow = { id: r.id, flyer_url: r.flyer_url };
+    add(dedupKey(r.name, r.address), row);
+    add(compositeKey(r.size_sf, r.city, r.listing_company), row);
+    const nk = normalizeAddress(r.name);
+    add(nk ? 'name:' + nk : null, row);
+  }
+  return { seen, byKey };
+}
+
 export interface UpsertResult {
   /** How many rows were actually written (0 on a dry run). */
   inserted: number;
@@ -150,44 +211,66 @@ export interface UpsertResult {
   dupSkipped: number;
   /** Rows dropped because they had neither an address nor a name. */
   skippedNoAddress: number;
+  /** Flyer photos uploaded + attached (new inserts + backfilled dups). */
+  photosAdded: number;
   /** The de-duplicated records that were (or on a dry run, would be) inserted. */
   records: PropertyRecord[];
 }
 
 /**
- * Dedup a batch of extractions against the DB (and against each other) and, when
- * commit=true, bulk-insert the survivors. Idempotent + safe to re-run.
+ * Dedup a batch of extracted listings (each optionally carrying its broker flyer
+ * image) against the DB and against each other; when commit=true, bulk-insert the
+ * survivors with their flyer photo attached. A dup that matches an existing row
+ * missing a flyer gets one uploaded + patched on (the backfill path). Idempotent.
  */
 export async function upsertProperties(
-  extractions: Extraction[],
+  items: Array<{ extraction: Extraction; flyer?: GmailImage }>,
   opts: { commit: boolean },
 ): Promise<UpsertResult> {
-  const existing = await fetchExistingKeys();
+  const { seen: existing, byKey } = await fetchExistingRows();
   const seen = new Set<string>(existing);
   const toInsert: PropertyRecord[] = [];
   let dupSkipped = 0;
   let skippedNoAddress = 0;
+  let photosAdded = 0;
 
-  for (const e of extractions) {
+  // Upload each distinct flyer at most once per run (same content → same path anyway).
+  const uploadCache = new Map<GmailImage, string | null>();
+  const doUpload = async (flyer: GmailImage): Promise<string | null> => {
+    if (uploadCache.has(flyer)) return uploadCache.get(flyer)!;
+    const url = await uploadFlyer(flyer);
+    uploadCache.set(flyer, url);
+    return url;
+  };
+
+  for (const { extraction: e, flyer } of items) {
     const rec = toRecord(e);
-    if (!rec.address && !rec.name) {
-      skippedNoAddress++;
-      continue;
-    }
+    if (!rec.address && !rec.name) { skippedNoAddress++; continue; }
     const key = dedupKey(rec.name, rec.address);
-    if (!key) {
-      skippedNoAddress++;
-      continue;
-    }
+    if (!key) { skippedNoAddress++; continue; }
     const ck = compositeKey(rec.size_sf, rec.city, rec.listing_company);
     const nk = rec.name ? 'name:' + normalizeAddress(rec.name) : null;
+
     if (seen.has(key) || (ck && seen.has(ck)) || (nk && seen.has(nk))) {
       dupSkipped++;
+      // Backfill: attach a flyer to an existing row that has none.
+      if (flyer && opts.commit) {
+        const row = byKey.get(key) ?? (ck ? byKey.get(ck) : undefined) ?? (nk ? byKey.get(nk) : undefined);
+        if (row && !row.flyer_url) {
+          const url = await doUpload(flyer);
+          if (url) { await patchFlyerUrl(row.id, url); row.flyer_url = url; photosAdded++; }
+        }
+      }
       continue;
     }
     seen.add(key);
     if (ck) seen.add(ck);
     if (nk) seen.add(nk);
+    // New listing: attach its flyer photo before insert.
+    if (flyer && opts.commit) {
+      const url = await doUpload(flyer);
+      if (url) { rec.flyer_url = url; photosAdded++; }
+    }
     toInsert.push(rec);
   }
 
@@ -207,6 +290,7 @@ export async function upsertProperties(
     inserted: opts.commit ? toInsert.length : 0,
     dupSkipped,
     skippedNoAddress,
+    photosAdded,
     records: toInsert,
   };
 }
