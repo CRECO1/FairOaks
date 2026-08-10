@@ -1488,6 +1488,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setCallViewTasks((data ?? []) as CRMTask[]);
   }
 
+  // Load the Tasks page's data whenever it becomes active by ANY path — a nav click,
+  // the initial #tasks page load, or browser back/forward. Previously only the nav
+  // buttons' onClick loaded it, so arriving any other way showed an empty tab until
+  // you clicked out and back in.
+  useEffect(() => {
+    if (page === 'tasks' && session) {
+      loadTasks(); loadAllTasks(); loadProfiles(); loadClients();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, session, businessUnit]);
+
   async function saveTask() {
     if (!taskClientId || !taskForm.due_date || !taskForm.title.trim()) return;
     const { data, error } = await supabase.from('crm_tasks').insert([{
