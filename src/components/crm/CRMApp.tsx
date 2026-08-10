@@ -53,7 +53,7 @@ const STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 const IABS_FORM = 'Information About Brokerage Services (IABS)';
 const FORM_PACKETS: { key: string; label: string; match: string[]; forms: string[] }[] = [
   { key: 'lease', label: 'Lease packet', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Commercial Lease', 'Commercial Lease Application', 'Commercial Lease Guaranty', "Commercial Landlord's Rules & Regulations"] },
-  { key: '8000_lease', label: '8000 Fair Oaks Plaza lease', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Building Lease Agreement', 'Commercial Lease Guaranty'] },
+  { key: '8000_lease', label: '8000 Fair Oaks Plaza lease', match: ['Tenant Lease', 'Landlord Listing'], forms: [IABS_FORM, 'Building Lease Agreement'] },
   { key: 'improved', label: 'Improved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Improved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1', 'Commercial Contract Exhibit 2'] },
   { key: 'unimproved', label: 'Unimproved-property purchase', match: ['Buyer Purchase', 'Seller Listing'], forms: [IABS_FORM, 'Commercial Contract — Unimproved Property', 'Commercial Contract Financing Addendum', 'Commercial Contract Exhibit 1'] },
   { key: 'sublease', label: 'Sublease packet', match: ['Tenant Lease'], forms: [IABS_FORM, 'Commercial Sublease', 'Commercial Lease Guaranty'] },
