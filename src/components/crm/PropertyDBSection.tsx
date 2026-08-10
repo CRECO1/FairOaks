@@ -102,6 +102,35 @@ function statusPill(s?: string) {
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
+// Live property thumbnail for quick visual ID. Prefers a real photo on the record,
+// then Google Street View, then a satellite view, then a placeholder — each falls
+// through to the next on load error (Street View returns 404 where it has no
+// coverage; both Google endpoints 403 until their APIs are enabled on the key).
+function PropertyThumb({ p, height }: { p: Property; height: number }) {
+  const KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const lat = typeof p.latitude === 'number' ? p.latitude : null;
+  const lng = typeof p.longitude === 'number' ? p.longitude : null;
+  const photos = p.photos;
+  const firstPhoto = Array.isArray(photos) && typeof photos[0] === 'string' ? (photos[0] as string) : undefined;
+  const sources: string[] = [];
+  if (firstPhoto) sources.push(firstPhoto);
+  else if (typeof p.flyer_url === 'string' && p.flyer_url) sources.push(p.flyer_url);
+  if (KEY && lat != null && lng != null) {
+    sources.push(`https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${lat},${lng}&fov=80&return_error_code=true&key=${KEY}`);
+    sources.push(`https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=18&size=640x360&maptype=satellite&markers=color:0xc9922c%7C${lat},${lng}&key=${KEY}`);
+  }
+  const [idx, setIdx] = useState(0);
+  const src = sources[idx];
+  if (!src) {
+    return <div style={{ height, width: '100%', background: 'linear-gradient(135deg,#eef1f4,#e2e6ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c2c8cf', fontSize: Math.round(height * 0.3) }}>🏢</div>;
+  }
+  return (
+    <img src={src} alt={p.name || p.address || 'property'} loading="lazy"
+      onError={() => setIdx(i => i + 1)}
+      style={{ display: 'block', width: '100%', height, objectFit: 'cover', background: '#f3f4f6' }} />
+  );
+}
+
 export default function PropertyDBSection({ businessUnit, authToken, onToast, onCount, isMobile = false }: Props) {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -308,7 +337,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               return (
                 <button key={p.id} onClick={() => setActive(p)}
                   style={{ textAlign: 'left', width: '100%', background: '#fff', border: '1px solid #eef0f2', borderLeft: `4px solid ${as.color}`, borderRadius: 12, padding: '14px 15px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 1px 3px rgba(0,0,0,.05)' }}>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start' }}>
+                    <div style={{ width: 54, height: 54, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                      <PropertyThumb p={p} height={54} />
+                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.25 }}>{p.name || p.address || '—'}</div>
                       {loc && <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2 }}>{loc}</div>}
@@ -370,9 +402,16 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                     style={{ borderTop: '1px solid #f4f5f7', cursor: 'pointer', background: '#fff' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')}
                     onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-                    <td style={{ padding: '12px 12px 12px 16px', verticalAlign: 'top' }}>
-                      <div style={{ ...ell, fontWeight: 600, color: '#1a1a1a', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
-                      <div style={{ ...ell, color: '#9ca3af', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
+                    <td style={{ padding: '10px 12px 10px 16px', verticalAlign: 'top' }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                        <div style={{ width: 42, height: 42, borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
+                          <PropertyThumb p={p} height={42} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ ...ell, fontWeight: 600, color: '#1a1a1a', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
+                          <div style={{ ...ell, color: '#9ca3af', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
+                        </div>
+                      </div>
                     </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top', color: '#374151', fontSize: 13 }}>
                       <div style={ell} title={p.submarket || ''}>{p.submarket || muted}</div>
@@ -418,6 +457,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,.09)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
               onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,.04)'; e.currentTarget.style.transform = 'none'; }}
             >
+              <PropertyThumb p={p} height={148} />
               <div style={{ height: 4, background: as.color }} />
               <div style={{ padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
