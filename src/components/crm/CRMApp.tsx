@@ -504,6 +504,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callActivitiesClientId, setCallActivitiesClientId] = useState<string | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
+  // Admins can view/work another agent's Call Queue ('' = your own).
+  const [callViewAgentId, setCallViewAgentId] = useState('');
+  const [callViewTasks, setCallViewTasks] = useState<CRMTask[]>([]);
   const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls' | 'leases'>('tasks');
 
   // Kanban drag state
@@ -1473,6 +1476,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setAllTasks((data ?? []) as CRMTask[]);
   }
 
+  // Load another agent's open call/follow-up tasks (admin agent-switcher on the Call Queue).
+  async function loadCallView(agentId: string) {
+    if (!agentId) { setCallViewTasks([]); return; }
+    const { data } = await supabase
+      .from('crm_tasks')
+      .select('*')
+      .eq('agent_id', agentId)
+      .is('completed_at', null)
+      .order('due_date', { ascending: true });
+    setCallViewTasks((data ?? []) as CRMTask[]);
+  }
+
   async function saveTask() {
     if (!taskClientId || !taskForm.due_date || !taskForm.title.trim()) return;
     const { data, error } = await supabase.from('crm_tasks').insert([{
@@ -1545,7 +1560,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const dispLabel = disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : 'No answer';
       const jotted = callNote.trim();
       const base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
-      await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base);
+      // Property-based prospecting calls have no linked contact — skip the timeline log.
+      if (task.client_id) await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base);
 
       // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
       //    A chip override (callFollowUpDays) beats the disposition's default cadence.
@@ -1553,25 +1569,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const defaultDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : 7;
         const addDays = typeof callFollowUpDays === 'number' ? callFollowUpDays : defaultDays;
         const nextType: 'call' | 'follow_up' = disposition === 'connected' ? 'follow_up' : 'call';
-        const nextTitle = disposition === 'no_answer' ? 'Call back — no answer' : disposition === 'voicemail' ? 'Follow up — left voicemail' : 'Follow up';
+        const baseTitle = disposition === 'no_answer' ? 'Call back — no answer' : disposition === 'voicemail' ? 'Follow up — left voicemail' : 'Follow up';
+        // Carry the property/subject into the follow-up when there's no contact to anchor it.
+        const nextTitle = task.client_id ? baseTitle : `${baseTitle} — ${(task.title || '').replace(/^🏢\s*/, '').slice(0, 90)}`;
         const d = new Date(); d.setDate(d.getDate() + addDays);
         const nextDue = d.toISOString().slice(0, 10);
         await supabase.from('crm_tasks').insert([{
           client_id: task.client_id,
-          agent_id: profile!.id,
+          // Keep the follow-up in the SAME agent's queue (an admin may be working someone else's calls).
+          agent_id: task.agent_id ?? profile!.id,
           type: nextType,
           title: nextTitle,
           due_date: nextDue,
-          notes: jotted,
+          notes: jotted || (task.notes ?? ''),
           business_unit: businessUnit,
           status: 'open',
         }]);
       }
 
-      // 4) Reset the per-call inputs, bump the counter, refresh, and advance
+      // 4) Reset the per-call inputs, bump the counter, refresh the queue in view, and advance
       setCallNote(''); setCallFollowUpDays(null);
       setCallsDoneThisSession(n => n + 1);
-      await loadAllTasks();
+      if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
     } finally {
       setCallActionInFlight(false);
     }
@@ -1581,19 +1600,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setCallSkippedIds(prev => { const next = new Set(prev); next.add(taskId); return next; });
   }
 
-  // ── Call Queue (lifted to component scope so keyboard shortcuts can act on it) ──
+  // ── Call Queue ── your own (allTasks) unless an admin is viewing another agent
+  //    (callViewAgentId → callViewTasks). Lifted so keyboard shortcuts can act on it.
+  const callSource = callViewAgentId ? callViewTasks : allTasks;
   const callQueue = useMemo(() => {
     const t0 = today();
-    return allTasks
+    return callSource
       .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [allTasks, callSkippedIds]);
+  }, [callSource, callSkippedIds]);
   const callUpcomingList = useMemo(() => {
     const t0 = today();
-    return allTasks
+    return callSource
       .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id))
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [allTasks, callSkippedIds]);
+  }, [callSource, callSkippedIds]);
   const callCurrent = callQueue[0] ?? null;
 
   // Reset the per-call note + follow-up override whenever the active call changes.
@@ -4601,20 +4622,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Header + live stats */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>📞 Today&apos;s Calls</h2>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>
+                      📞 {callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s Calls` : 'Today’s Calls'}
+                    </h2>
                     <p style={{ fontSize: 14, color: '#6b7280' }}>
                       {queue.length === 0 ? 'All caught up for today' : `${queue.length} call${queue.length === 1 ? '' : 's'} to go`}
                       {doneCt > 0 ? ` · ${doneCt} done` : ''}
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {isAdmin && (
+                      <select value={callViewAgentId} title="View another agent's calls"
+                        onChange={e => { const id = e.target.value; setCallViewAgentId(id); setCallsDoneThisSession(0); if (id) loadCallView(id); else loadAllTasks(); }}
+                        style={{ padding: '7px 10px', border: `1px solid ${callViewAgentId ? '#c9922c' : '#e5e7eb'}`, borderRadius: 8, fontSize: 13, background: callViewAgentId ? '#fdf6e8' : '#fff', color: callViewAgentId ? '#a8741a' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                        <option value="">👤 My calls</option>
+                        {profiles.filter(p => p.id !== profile?.id).map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+                      </select>
+                    )}
                     {[{ n: doneCt, l: 'Done', c: '#16a34a' }, { n: queue.length, l: 'Left', c: '#c9922c' }, { n: upcoming.length, l: 'Upcoming', c: '#6b7280' }].map(s => (
                       <div key={s.l} style={{ textAlign: 'center', minWidth: 54, padding: '6px 12px', borderRadius: 10, background: '#fff', border: '1px solid #eee' }}>
                         <div style={{ fontSize: 20, fontWeight: 800, color: s.c, lineHeight: 1 }}>{s.n}</div>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{s.l}</div>
                       </div>
                     ))}
-                    <button className="crm-btn" onClick={() => { loadAllTasks(); loadClients(); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
+                    <button className="crm-btn" onClick={() => { if (callViewAgentId) loadCallView(callViewAgentId); else loadAllTasks(); loadClients(); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
                   </div>
                 </div>
                 <div style={{ height: 8, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 22 }}>
@@ -4664,7 +4695,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {nameFor(c)}
                             </button>
                           ) : (
-                            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#111' }}>{nameFor(c)}</span>
+                            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', lineHeight: 1.2 }}>{current.title ? current.title.replace(/^🏢\s*/, '') : nameFor(c)}</span>
                           )}
                           {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
                           {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>OVERDUE</span>}
@@ -4690,7 +4721,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
 
                         {/* Task title · notes · meta */}
-                        <div style={{ fontSize: 15, fontWeight: 600, color: '#111', marginBottom: 4 }}>{current.title}</div>
+                        {c && <div style={{ fontSize: 15, fontWeight: 600, color: '#111', marginBottom: 4 }}>{current.title}</div>}
                         {current.notes && <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.5, marginBottom: 6 }}>{current.notes}</div>}
                         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#9ca3af' }}>
                           <span>{current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due {fmtDay(current.due_date)}</span>
