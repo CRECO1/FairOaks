@@ -41,11 +41,15 @@ interface ListingFile {
 
 interface Profile { id: string; first_name: string; last_name: string; role?: string; }
 
+interface Contact { id: string; first_name: string; last_name: string; business_name?: string; email?: string; phone?: string; cell_phone?: string; type?: string }
+interface ListingContact { id: string; role?: string; client_id: string; crm_clients?: Contact | null }
+
 interface Props {
   businessUnit: string;
   isAdmin: boolean;
   authToken?: string;
   profiles: Profile[];
+  clients: Contact[];
   onToast: (msg: string) => void;
 }
 
@@ -122,7 +126,7 @@ const BLANK_FORM = {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, onToast }: Props) {
+export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast }: Props) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -131,7 +135,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Detail panel
   const [active, setActive]     = useState<Listing | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'photos' | 'team'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -160,6 +164,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [teamAssigned, setTeamAssigned] = useState<string[]>([]);
   const [teamRestricted, setTeamRestricted] = useState(false);
   const [teamSaving, setTeamSaving] = useState(false);
+
+  // Contacts linked to the open listing.
+  const [listingContacts, setListingContacts] = useState<ListingContact[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactRole, setContactRole] = useState('Landlord');
+  const [addingContact, setAddingContact] = useState(false);
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -195,6 +205,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setCrmForms(json.forms ?? []);
   }, [businessUnit, authToken]); // eslint-disable-line
 
+  const loadListingContacts = useCallback(async (listingId: string) => {
+    const res = await fetch(`/api/crm/listing-contacts?listing_id=${listingId}`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    setListingContacts(json.contacts ?? []);
+  }, [authToken]); // eslint-disable-line
+
   // Fetch the blank template's signed URL, then open the fillable editor bound to this property.
   const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string) => {
     setFormPicker(false);
@@ -229,6 +245,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setTeamOwner(l.listing_agent_id ?? '');
     setTeamAssigned(l.assigned_agent_ids ?? []);
     setTeamRestricted(!!l.is_restricted);
+    setListingContacts([]);
+    setContactSearch('');
+    loadListingContacts(l.id);
   }
 
   function closePanel() { setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
@@ -267,6 +286,27 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setListings(prev => prev.map(l => l.id === active.id ? listing : l));
     setActive(listing);
     onToast('Sharing saved ✓');
+  }
+
+  async function addContact(clientId: string) {
+    if (!active) return;
+    setAddingContact(true);
+    const res = await fetch('/api/crm/listing-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ listing_id: active.id, client_id: clientId, role: contactRole }),
+    });
+    setAddingContact(false);
+    setContactSearch('');
+    if (!res.ok) { onToast('Could not add contact'); return; }
+    const { contact } = await res.json();
+    setListingContacts(prev => [...prev.filter(c => c.id !== contact.id), contact]);
+    onToast('Contact added ✓');
+  }
+
+  async function removeContact(id: string) {
+    setListingContacts(prev => prev.filter(c => c.id !== id));
+    await fetch(`/api/crm/listing-contacts?id=${id}`, { method: 'DELETE', headers: authHeaders });
   }
 
   // ── Delete listing ──────────────────────────────────────────────────────────
@@ -600,8 +640,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0 }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'photos', label: '🖼 Photos' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'photos' | 'team')}
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -758,6 +798,70 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       </div>
                     );
                   })()}
+                </div>
+              )}
+
+              {/* ── Contacts tab ── */}
+              {activeTab === 'contacts' && (
+                <div>
+                  {/* Add a contact */}
+                  <div style={{ background: '#f8fafc', border: '1px solid #eef0f2', borderRadius: 10, padding: '14px 16px', marginBottom: 18 }}>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: contactSearch.trim() ? 10 : 0, flexWrap: 'wrap' }}>
+                      <select value={contactRole} onChange={e => setContactRole(e.target.value)} style={{ ...INP, width: 'auto', flex: 'none', fontSize: 15 }}>
+                        {['Landlord','Tenant','Buyer','Seller','Listing Agent','Co-broker','Attorney','Property Mgr','Vendor','Other'].map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <input value={contactSearch} onChange={e => setContactSearch(e.target.value)} placeholder="🔍  Search contacts to add…" style={{ ...INP, flex: 1, minWidth: 150, fontSize: 15 }} />
+                    </div>
+                    {contactSearch.trim() && (() => {
+                      const q = contactSearch.toLowerCase();
+                      const linked = new Set(listingContacts.map(c => c.client_id));
+                      const matches = clients.filter(c => !linked.has(c.id) && `${c.first_name} ${c.last_name} ${c.business_name ?? ''}`.toLowerCase().includes(q)).slice(0, 20);
+                      return (
+                        <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #eef0f2', borderRadius: 8, background: '#fff' }}>
+                          {matches.length === 0 ? (
+                            <div style={{ padding: 12, fontSize: 13, color: '#9ca3af' }}>No matches.</div>
+                          ) : matches.map(c => (
+                            <button key={c.id} onClick={() => addContact(c.id)} disabled={addingContact}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{c.first_name} {c.last_name}</span>
+                              {c.business_name && <span style={{ fontSize: 12, color: '#9ca3af' }}>· {c.business_name}</span>}
+                              {c.type && <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af' }}>{c.type}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Linked contacts */}
+                  {listingContacts.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
+                      <div style={{ fontSize: 13 }}>No contacts linked yet. Add the landlord, tenant, agents, attorney, etc. above.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {listingContacts.map(lc => {
+                        const c = lc.crm_clients;
+                        const name = c ? `${c.first_name} ${c.last_name}` : 'Contact';
+                        const phone = c?.phone || c?.cell_phone || '';
+                        return (
+                          <div key={lc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{name}</span>
+                                {lc.role && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 20, padding: '1px 8px' }}>{lc.role}</span>}
+                              </div>
+                              {(c?.business_name || phone || c?.email) && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[c?.business_name, phone, c?.email].filter(Boolean).join(' · ')}</div>}
+                            </div>
+                            {phone && <a href={`tel:${phone}`} title="Call" style={{ fontSize: 13, color: '#16a34a', textDecoration: 'none', border: '1px solid #bbf7d0', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>📞</a>}
+                            {c?.email && <a href={`mailto:${c.email}`} title="Email" style={{ fontSize: 13, color: '#2563eb', textDecoration: 'none', border: '1px solid #bfdbfe', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>✉️</a>}
+                            {isAdmin && <button onClick={() => removeContact(lc.id)} title="Remove" style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>🗑</button>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -7180,6 +7180,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   isAdmin={isAdmin}
                   authToken={session?.access_token}
                   profiles={profiles}
+                  clients={clients}
                   onToast={showToast}
                 />
               )}
