@@ -170,6 +170,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [contactSearch, setContactSearch] = useState('');
   const [contactRole, setContactRole] = useState('Landlord');
   const [addingContact, setAddingContact] = useState(false);
+  const [flyerBusy, setFlyerBusy] = useState(false);
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -307,6 +308,21 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   async function removeContact(id: string) {
     setListingContacts(prev => prev.filter(c => c.id !== id));
     await fetch(`/api/crm/listing-contacts?id=${id}`, { method: 'DELETE', headers: authHeaders });
+  }
+
+  // Generate a branded one-page PDF flyer from this property's data + photos.
+  async function generateFlyer() {
+    if (!active) return;
+    setFlyerBusy(true);
+    try {
+      const res = await fetch(`/api/crm/listings/${active.id}/flyer`, { headers: authHeaders });
+      if (!res.ok) { onToast('Could not generate flyer'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { onToast('Could not generate flyer'); }
+    finally { setFlyerBusy(false); }
   }
 
   // ── Delete listing ──────────────────────────────────────────────────────────
@@ -636,7 +652,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     </div>
                   )}
                 </div>
-                <button onClick={closePanel} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, flexShrink: 0, lineHeight: 1 }}>✕</button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <button onClick={generateFlyer} disabled={flyerBusy} title="Generate a branded PDF flyer"
+                    style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #f0e2c4', background: '#fdf6e9', color: '#a06a12', fontSize: 12.5, fontWeight: 700, cursor: flyerBusy ? 'default' : 'pointer', opacity: flyerBusy ? 0.6 : 1, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" }}>
+                    {flyerBusy ? '…' : '📄 Flyer'}
+                  </button>
+                  <button onClick={closePanel} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+                </div>
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0 }}>
