@@ -4625,7 +4625,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             const totalCt = doneCt + queue.length;
             const pct = totalCt > 0 ? Math.round((doneCt / totalCt) * 100) : 100;
             const clientFor = (t: CRMTask) => clients.find(c => c.id === t.client_id) ?? null;
-            const nameFor = (c: Client | null) => c ? (c.business_name ? `${c.first_name} ${c.last_name} — ${c.business_name}` : `${c.first_name} ${c.last_name}`) : 'Unknown contact';
+            const nameFor = (c: Client | null) => {
+              if (!c) return 'Unknown contact';
+              const person = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
+              if (person && c.business_name) return `${person} — ${c.business_name}`;
+              return person || c.business_name || 'Contact'; // company-only contacts render without a leading dash
+            };
             const phoneFor = (c: Client | null) => c ? (c.phone || c.cell_phone || '') : '';
 
             return (
