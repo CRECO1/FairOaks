@@ -102,31 +102,19 @@ function statusPill(s?: string) {
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
 
-// Live property thumbnail for quick visual ID. Prefers a real photo on the record,
-// then Google Street View, then a satellite view, then a placeholder — each falls
-// through to the next on load error (Street View returns 404 where it has no
-// coverage; both Google endpoints 403 until their APIs are enabled on the key).
+// Property thumbnail for quick visual ID. Uses a real photo stored on the record
+// (photos[0] or flyer_url — e.g. a saved broker flyer); otherwise a placeholder.
 function PropertyThumb({ p, height }: { p: Property; height: number }) {
-  const KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-  const lat = typeof p.latitude === 'number' ? p.latitude : null;
-  const lng = typeof p.longitude === 'number' ? p.longitude : null;
   const photos = p.photos;
   const firstPhoto = Array.isArray(photos) && typeof photos[0] === 'string' ? (photos[0] as string) : undefined;
-  const sources: string[] = [];
-  if (firstPhoto) sources.push(firstPhoto);
-  else if (typeof p.flyer_url === 'string' && p.flyer_url) sources.push(p.flyer_url);
-  if (KEY && lat != null && lng != null) {
-    sources.push(`https://maps.googleapis.com/maps/api/streetview?size=640x360&location=${lat},${lng}&fov=80&return_error_code=true&key=${KEY}`);
-    sources.push(`https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=18&size=640x360&maptype=satellite&markers=color:0xc9922c%7C${lat},${lng}&key=${KEY}`);
-  }
-  const [idx, setIdx] = useState(0);
-  const src = sources[idx];
-  if (!src) {
+  const src = firstPhoto || (typeof p.flyer_url === 'string' && p.flyer_url ? p.flyer_url : '');
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
     return <div style={{ height, width: '100%', background: 'linear-gradient(135deg,#eef1f4,#e2e6ea)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#c2c8cf', fontSize: Math.round(height * 0.3) }}>🏢</div>;
   }
   return (
     <img src={src} alt={p.name || p.address || 'property'} loading="lazy"
-      onError={() => setIdx(i => i + 1)}
+      onError={() => setFailed(true)}
       style={{ display: 'block', width: '100%', height, objectFit: 'cover', background: '#f3f4f6' }} />
   );
 }
