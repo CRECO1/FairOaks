@@ -15,6 +15,7 @@ const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionD
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
+import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
 import MentionTextarea from '@/components/crm/MentionTextarea';
 
@@ -705,7 +706,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // Task Manager (full Tasks page)
-  const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan'>('propertydb');
+  const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan' | 'matchmaker'>('propertydb');
   const [propertyDbCount, setPropertyDbCount] = useState<number | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -7205,8 +7206,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <div>
               {/* Sub-tabs */}
               <div className="crm-tabs-scroll" style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: isMobile ? 16 : 24 }}>
-                {[{ k: 'listings', label: '🏢 Listings' }, { k: 'propertydb', label: '🗂️ Property DB' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
-                  <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan')}
+                {[{ k: 'listings', label: '🏢 Listings' }, { k: 'propertydb', label: '🗂️ Property DB' }, { k: 'matchmaker', label: '🎯 Matchmaker' }, { k: 'floorplan', label: '📐 Floor Plan' }].map(t => (
+                  <button key={t.k} onClick={() => setPropertiesTab(t.k as 'propertydb' | 'listings' | 'floorplan' | 'matchmaker')}
                     style={{ padding: isMobile ? '12px 14px' : '10px 22px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: propertiesTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${propertiesTab === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -2, transition: 'all .15s' }}>
                     {t.label}
                     {t.k === 'propertydb' && propertyDbCount != null && (
@@ -7234,6 +7235,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   profiles={profiles}
                   clients={clients}
                   onToast={showToast}
+                />
+              )}
+              {propertiesTab === 'matchmaker' && (
+                <MatchmakerSection
+                  businessUnit={businessUnit}
+                  onToast={showToast}
+                  currentUserId={profile?.id}
                 />
               )}
               {propertiesTab === 'floorplan' && (
