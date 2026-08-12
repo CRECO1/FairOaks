@@ -14,7 +14,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
   const PW = 612, PH = 792, M = 72, RIGHT = PW - M;
   const BODY = 10.5, TITLE = 15;
-  const lh = BODY * 1.34;
+  const lh = BODY * 1.3;
   const LABELW = 138, VALX = M + LABELW;      // label column | value column
   const ink = rgb(0.09, 0.09, 0.12);
   const lineCol = rgb(0.45, 0.45, 0.5);
@@ -104,7 +104,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   }
   // Label:value row — label wraps in the left column, value in the right; the row
   // is as tall as the taller side, and never splits across a page.
-  function row(label, valueParts, gap = 8) {
+  function row(label, valueParts, gap = 5) {
     const lblN = flowCol([{ b: label }], M, VALX - 8, y, { dry: true }).lines;
     const valN = flowCol(valueParts, VALX, RIGHT, y, { dry: true }).lines;
     const n = Math.max(lblN, valN);
@@ -119,6 +119,13 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     ensure(size * 1.6);
     page.drawText(text, { x: (PW - w) / 2, y, size, font, color: color || ink });
     y -= size * 1.7;
+  }
+  function centeredField(key, size) {
+    const w = FW[key], x = (PW - w) / 2;
+    ensure(size * 1.7);
+    page.drawLine({ start: { x, y: y - 1.5 }, end: { x: x + w, y: y - 1.5 }, thickness: 0.6, color: lineCol });
+    recordField(key, x, y, w);
+    y -= size * 1.9;
   }
   function sigLine(labelX, label, from, to, rowY) {
     page.drawText(label, { x: labelX, y: rowY, size: BODY, font: times, color: ink });
@@ -140,10 +147,11 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     y -= 22;
   }
   centered('LETTER OF INTENT TO LEASE', TITLE, bold);
+  spacer(2);
+  centeredField('property_address', BODY + 1);
   spacer(10);
 
-  block([{ f: 'loi_date' }], 12);
-  block([{ b: 'RE:  Letter of Intent to Lease — ' }, { f: 'property_address' }], 14);
+  block([{ b: 'Date:  ' }, { f: 'loi_date' }], 12);
   block(['Dear ', { f: 'landlord_name' }, ','], 12);
   block(['We are pleased to issue this Letter of Intent (“LOI”) on behalf of our client for lease space in the building known as ', { f: 'building_name' }, ' (the “Building”) on the following terms:'], 14);
 
@@ -175,23 +183,23 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   block(['This Letter of Intent is non-binding on either party until an actual lease agreement is drafted, agreed upon, and executed by both parties.'], 8);
   block(['Should the above be acceptable to you, please indicate your acceptance by executing this Letter of Intent in the space provided below.'], 14);
 
+  // ── Sign-off + signature — reserved so it never splits, tuned to fit page 2 ────
+  spacer(4);
+  ensure(170);
   block(['Sincerely,'], 4);
-  spacer(16);
-  ensure(lh);
-  drawFieldInline('agent_name', M, y, FW.agent_name); y -= lh + 3;
-  block([{ f: 'agent_phone' }, '        ', { f: 'agent_email' }], 8);
-
-  // ── Two-column signature block ───────────────────────────────────────────────
   spacer(10);
-  ensure(110);
+  drawFieldInline('agent_name', M, y, FW.agent_name); y -= lh + 3;
+  block([{ f: 'agent_phone' }, '        ', { f: 'agent_email' }], 6);
+
+  spacer(6);
   const colR = M + 250;
   page.drawText('AGREED TO & ACCEPTED BY TENANT:', { x: M, y, size: 9.5, font: bold, color: ink });
   page.drawText('AGREED TO & ACCEPTED BY LANDLORD:', { x: colR, y, size: 9.5, font: bold, color: ink });
-  y -= 28;
+  y -= 24;
   for (const lab of ['By:', 'Its:', 'Date:']) {
     sigLine(M, lab, M + 34, colR - 22, y);
     sigLine(colR, lab, colR + 34, RIGHT, y);
-    y -= 26;
+    y -= 24;
   }
 
   // ── save ──────────────────────────────────────────────────────────────────────
