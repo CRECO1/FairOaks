@@ -34,13 +34,16 @@ const { loadBranding, drawHeader, drawFooter, CONTENT_BOTTOM } = require('../lib
   let page, y, pageIndex = -1;
   const fields = [];
 
-  // ── The deal's terms: label : default value. Every one is an editable field. ──
+  // ── The terms: label : default value. Every one is an editable field. ──
+  // Purchase Price and Earnest Money are deliberately ILLUSTRATIVE, not the real
+  // figures from the deal this was transcribed from — this template is visible to
+  // every commercial agent. Don't restore the original numbers.
   const TERMS = [
     ['seller', 'Seller:', 'Fair Oaks Executive Plaza LLC'],
     ['purchaser', 'Purchaser:', 'Partners Holdings – Legacy Founder LLC /or assigns'],
     ['property', 'Property:', 'CB 4709C BLK LOT 8000 8000 FAIR OAKS PKWY AT FAIR OAKS RANCH'],
-    ['purchase_price', 'Purchase Price:', '$4,000,000. Four million'],
-    ['earnest_money', 'Earnest Money:', 'The earnest money will be ($40,000.00) and escrowed within 3 business days of fully executed purchase and sales agreement.'],
+    ['purchase_price', 'Purchase Price:', '$6,000,000. Six million'],
+    ['earnest_money', 'Earnest Money:', 'The earnest money will be ($60,000.00) and escrowed within 3 business days of fully executed purchase and sales agreement.'],
     ['title_company', 'Title Company:', 'Alamo Title Company, Closing Agent Nefi Miramontes'],
     ['title_policy', 'Title Policy:', 'Seller will pay for all costs associated with the title policy and escrow fees at closing.'],
     ['survey', 'Survey:', 'Sellers will pay for an updated survey during the feasibility period if required'],

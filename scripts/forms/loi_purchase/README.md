@@ -14,6 +14,13 @@ Defaults live in `crm_form_fields.default_value`; the Transaction Doc editor see
 each field's starting text from it (an agent prefill still wins, so
 `agent_name`/`agent_email`/`agent_phone` fill with the logged-in sender).
 
+> **Purchase Price and Earnest Money are illustrative, not real.** This template is
+> visible to every commercial agent, so those two carry placeholder figures
+> ($6,000,000 / $60,000.00) rather than the actuals from the deal it was transcribed
+> from. Don't restore the original numbers. Note the other dollar figures — the
+> $25,000 feasibility extension and the $1,000 option fee — are still the source
+> deal's; blank or change them the same way if they shouldn't be shared.
+
 Long values are recorded as **one field per wrapped line** (`option_fee_l1`,
 `option_fee_l2`, …). The editor renders every field as a single-line `<input>` and
 the filled-PDF builder draws it as one unwrapped line, so per-line fields keep what

@@ -97,7 +97,7 @@
     "type": "text",
     "field_key": "purchase_price",
     "label": "Purchase Price",
-    "default": "$4,000,000. Four million"
+    "default": "$6,000,000. Six million"
   },
   {
     "page": 1,
@@ -107,7 +107,7 @@
     "type": "text",
     "field_key": "earnest_money_l1",
     "label": "Earnest Money (line 1)",
-    "default": "The earnest money will be ($40,000.00) and escrowed within 3 business days"
+    "default": "The earnest money will be ($60,000.00) and escrowed within 3 business days"
   },
   {
     "page": 1,
