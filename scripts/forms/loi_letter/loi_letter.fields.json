@@ -1,0 +1,173 @@
+[
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.19507575757575757,
+    "fw": 0.21241830065359477,
+    "type": "text",
+    "field_key": "loi_date",
+    "label": "LOI date"
+  },
+  {
+    "page": 1,
+    "fx": 0.3521388888888889,
+    "fy": 0.2279924242424243,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "property_address",
+    "label": "Property address"
+  },
+  {
+    "page": 1,
+    "fx": 0.15200408496732026,
+    "fy": 0.2634343434343436,
+    "fw": 0.24509803921568626,
+    "type": "text",
+    "field_key": "landlord_name",
+    "label": "Recipient / landlord name"
+  },
+  {
+    "page": 1,
+    "fx": 0.18352124183006535,
+    "fy": 0.31411616161616185,
+    "fw": 0.28594771241830064,
+    "type": "text",
+    "field_key": "building_name",
+    "label": "Building name"
+  },
+  {
+    "page": 1,
+    "fx": 0.44804330065359477,
+    "fy": 0.349558080808081,
+    "fw": 0.0915032679738562,
+    "type": "text",
+    "field_key": "rentable_sf",
+    "label": "Rentable SF"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.3951893939393941,
+    "fw": 0.32679738562091504,
+    "type": "text",
+    "field_key": "lease_term",
+    "label": "Lease term"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.4230555555555557,
+    "fw": 0.19607843137254902,
+    "type": "text",
+    "field_key": "commencement_date",
+    "label": "Lease commencement"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.4509217171717173,
+    "fw": 0.19607843137254902,
+    "type": "text",
+    "field_key": "rent_commencement_date",
+    "label": "Rent commencement"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.47878787878787893,
+    "fw": 0.14052287581699346,
+    "type": "text",
+    "field_key": "rental_rate",
+    "label": "Rental rate ($/SF)"
+  },
+  {
+    "page": 1,
+    "fx": 0.5194754901960784,
+    "fy": 0.47878787878787893,
+    "fw": 0.07516339869281045,
+    "type": "text",
+    "field_key": "escalation",
+    "label": "Annual escalation"
+  },
+  {
+    "page": 1,
+    "fx": 0.5318374183006537,
+    "fy": 0.5066540404040405,
+    "fw": 0.13071895424836602,
+    "type": "text",
+    "field_key": "first_month_rent",
+    "label": "First month’s rent"
+  },
+  {
+    "page": 1,
+    "fx": 0.7391437908496732,
+    "fy": 0.5345202020202021,
+    "fw": 0.13071895424836602,
+    "type": "text",
+    "field_key": "security_deposit",
+    "label": "Security deposit"
+  },
+  {
+    "page": 1,
+    "fx": 0.4937834967320261,
+    "fy": 0.5801515151515152,
+    "fw": 0.11437908496732026,
+    "type": "text",
+    "field_key": "opex",
+    "label": "Operating expenses (NNN)"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.6080176767676768,
+    "fw": 0.19607843137254902,
+    "type": "text",
+    "field_key": "parking",
+    "label": "Parking"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.6358838383838384,
+    "fw": 0.49019607843137253,
+    "type": "text",
+    "field_key": "ti_allowance",
+    "label": "TI allowance"
+  },
+  {
+    "page": 2,
+    "fx": 0.33986928104575165,
+    "fy": 0.5804040404040401,
+    "fw": 0.19607843137254902,
+    "type": "text",
+    "field_key": "broker_fee",
+    "label": "Broker fee"
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.8388636363636363,
+    "fw": 0.3431372549019608,
+    "type": "text",
+    "field_key": "agent_name",
+    "label": "Your name (broker)"
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.8604166666666664,
+    "fw": 0.17973856209150327,
+    "type": "text",
+    "field_key": "agent_phone",
+    "label": "Your phone"
+  },
+  {
+    "page": 2,
+    "fx": 0.29840686274509803,
+    "fy": 0.8604166666666664,
+    "fw": 0.2777777777777778,
+    "type": "text",
+    "field_key": "agent_email",
+    "label": "Your email"
+  }
+]
