@@ -1,0 +1,155 @@
+[
+  {
+    "page": 1,
+    "fx": 0.29248366013071897,
+    "fy": 0.1849747474747475,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "property_address",
+    "label": "Property / premises address"
+  },
+  {
+    "page": 1,
+    "fx": 0.1586781045751634,
+    "fy": 0.2201388888888889,
+    "fw": 0.1568627450980392,
+    "type": "text",
+    "field_key": "loi_date",
+    "label": "LOI date"
+  },
+  {
+    "page": 1,
+    "fx": 0.18981781045751633,
+    "fy": 0.2480050505050506,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "property_address",
+    "label": "Property / premises address"
+  },
+  {
+    "page": 1,
+    "fx": 0.3855261437908497,
+    "fy": 0.35631313131313164,
+    "fw": 0.09477124183006536,
+    "type": "text",
+    "field_key": "rentable_sf",
+    "label": "Rentable SF"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.37407828282828315,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "property_address",
+    "label": "Property / premises address"
+  },
+  {
+    "page": 1,
+    "fx": 0.7039665032679738,
+    "fy": 0.37407828282828315,
+    "fw": 0.08496732026143791,
+    "type": "text",
+    "field_key": "rear_sf",
+    "label": "Rear (limited-use) SF"
+  },
+  {
+    "page": 1,
+    "fx": 0.49578022875816985,
+    "fy": 0.4620959595959599,
+    "fw": 0.22875816993464052,
+    "type": "text",
+    "field_key": "storage_term",
+    "label": "Storage-period term"
+  },
+  {
+    "page": 1,
+    "fx": 0.4719493464052289,
+    "fy": 0.5014141414141418,
+    "fw": 0.22875816993464052,
+    "type": "text",
+    "field_key": "lease_term",
+    "label": "Primary lease term"
+  },
+  {
+    "page": 1,
+    "fx": 0.45240767973856216,
+    "fy": 0.571666666666667,
+    "fw": 0.1568627450980392,
+    "type": "text",
+    "field_key": "storage_rent",
+    "label": "Storage-period base rent"
+  },
+  {
+    "page": 1,
+    "fx": 0.43526797385620924,
+    "fy": 0.5932196969696972,
+    "fw": 0.1568627450980392,
+    "type": "text",
+    "field_key": "lease_rent",
+    "label": "Long-term base rent"
+  },
+  {
+    "page": 1,
+    "fx": 0.6312140522875818,
+    "fy": 0.5932196969696972,
+    "fw": 0.07516339869281045,
+    "type": "text",
+    "field_key": "escalation",
+    "label": "Annual escalation"
+  },
+  {
+    "page": 1,
+    "fx": 0.5661192810457516,
+    "fy": 0.6553535353535356,
+    "fw": 0.1568627450980392,
+    "type": "text",
+    "field_key": "storage_rent",
+    "label": "Storage-period base rent"
+  },
+  {
+    "page": 2,
+    "fx": 0.3248080065359477,
+    "fy": 0.8503282828282832,
+    "fw": 0.16339869281045752,
+    "type": "text",
+    "field_key": "expiration_date",
+    "label": "Offer expiration date"
+  },
+  {
+    "page": 3,
+    "fx": 0.11437908496732026,
+    "fy": 0.12382575757575764,
+    "fw": 0.3431372549019608,
+    "type": "text",
+    "field_key": "agent_name",
+    "label": "Your name (submitting broker)"
+  },
+  {
+    "page": 3,
+    "fx": 0.11437908496732026,
+    "fy": 0.14664141414141427,
+    "fw": 0.16993464052287582,
+    "type": "text",
+    "field_key": "agent_phone",
+    "label": "Your phone"
+  },
+  {
+    "page": 3,
+    "fx": 0.2963235294117647,
+    "fy": 0.14664141414141427,
+    "fw": 0.27450980392156865,
+    "type": "text",
+    "field_key": "agent_email",
+    "label": "Your email"
+  },
+  {
+    "page": 3,
+    "fx": 0.20956535947712418,
+    "fy": 0.3008585858585861,
+    "fw": 0.35947712418300654,
+    "type": "text",
+    "field_key": "landlord_name",
+    "label": "Landlord name / title"
+  }
+]
