@@ -451,7 +451,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // ── Form fields (shared by new + edit) ─────────────────────────────────────
 
-  function FormFields({ form, onChange }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void }) {
+  // Rendered by CALLING it inline — {renderForm(...)} — never as <FormFields/>.
+  // As a nested COMPONENT it got a new identity every render, so React remounted
+  // its inputs on each keystroke and stole focus. Called as a plain function, the
+  // returned elements reconcile in place and the field keeps focus.
+  function renderForm({ form, onChange }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void }) {
     const set = (k: keyof typeof BLANK_FORM, v: string) => onChange({ ...form, [k]: v });
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -675,9 +679,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
 
               {/* ── Info tab ── */}
-              {activeTab === 'info' && (
-                <FormFields form={editForm} onChange={f => { setEditForm(f); setDirty(true); }} />
-              )}
+              {activeTab === 'info' && renderForm({ form: editForm, onChange: f => { setEditForm(f); setDirty(true); } })}
 
               {/* ── Documents tab (fillable forms + uploaded files) ── */}
               {activeTab === 'documents' && (
@@ -956,7 +958,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, margin: 0, color: '#111' }}>New Listing</h3>
               <button onClick={() => setShowNew(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
-            <FormFields form={newForm} onChange={setNewForm} />
+            {renderForm({ form: newForm, onChange: setNewForm })}
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
               <button onClick={() => setShowNew(false)}
                 style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
