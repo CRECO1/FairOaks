@@ -6,11 +6,13 @@
 // the logged-in agent (see CRMApp agentPrefill).
 const fs = require('fs');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const { loadBranding, drawHeader, drawFooter, CONTENT_BOTTOM } = require('../lib/branding');
 
 (async () => {
   const doc = await PDFDocument.create();
   const times = await doc.embedFont(StandardFonts.TimesRoman);
   const bold  = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const { logo, italic } = await loadBranding(doc);
 
   const PW = 612, PH = 792;         // US Letter
   const M = 72;                     // 1" margins
@@ -40,8 +42,12 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     agent_name: 210, agent_phone: 104, agent_email: 168, landlord_name: 220,
   };
 
-  function newPage() { page = doc.addPage([PW, PH]); pageIndex++; y = PH - M; }
-  function ensure(h) { if (y - h < M) newPage(); }
+  function newPage() {
+    page = doc.addPage([PW, PH]); pageIndex++;
+    drawFooter(page, { times, italic, PW, M });
+    y = pageIndex === 0 ? drawHeader(page, { logo, times, PW, M }) : PH - M;
+  }
+  function ensure(h) { if (y - h < CONTENT_BOTTOM) newPage(); }
 
   // record a field at draw-time; convert to the CRM's top-left fractions,
   // matching TransactionDocEditor's stamp math (x = fx*W + 2 ; y = H - fy*H + 2).
@@ -137,20 +143,8 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     page.drawLine({ start: { x: lineFrom, y: rowY - 1.5 }, end: { x: lineTo, y: rowY - 1.5 }, thickness: 0.7, color: lineCol });
   }
 
-  // ── Page 1: letterhead + title ──────────────────────────────────────────────
+  // ── Page 1: branded logo header (drawn by newPage) + title ──────────────────
   newPage();
-  {
-    const brand = 'CRECO';
-    const bw = bold.widthOfTextAtSize(brand, 17);
-    page.drawText(brand, { x: (PW - bw) / 2, y, size: 17, font: bold, color: GOLD });
-    y -= 15;
-    const info = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015   •   (210) 817-3443   •   crecotx.com';
-    const iw = times.widthOfTextAtSize(info, 8.5);
-    page.drawText(info, { x: (PW - iw) / 2, y, size: 8.5, font: times, color: GRAY });
-    y -= 8;
-    page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 1.2, color: GOLD });
-    y -= 22;
-  }
   centered('LETTER OF INTENT TO LEASE', TITLE, bold);
   spacer(2);
   centeredField('property_address', BODY + 1);

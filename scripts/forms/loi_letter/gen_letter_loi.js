@@ -6,15 +6,17 @@
 // auto-fills from the logged-in agent (CRMApp agentPrefill).
 const fs = require('fs');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+const { loadBranding, drawHeader, drawFooter, CONTENT_BOTTOM } = require('../lib/branding');
 
 (async () => {
   const doc = await PDFDocument.create();
   const times = await doc.embedFont(StandardFonts.TimesRoman);
   const bold  = await doc.embedFont(StandardFonts.TimesRomanBold);
+  const { logo, italic } = await loadBranding(doc);
 
   const PW = 612, PH = 792, M = 72, RIGHT = PW - M;
   const BODY = 10.5, TITLE = 15;
-  const lh = BODY * 1.3;
+  const lh = BODY * 1.26;
   const LABELW = 138, VALX = M + LABELW;      // label column | value column
   const ink = rgb(0.09, 0.09, 0.12);
   const lineCol = rgb(0.45, 0.45, 0.5);
@@ -43,8 +45,12 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     agent_name: 210, agent_phone: 110, agent_email: 170,
   };
 
-  function newPage() { page = doc.addPage([PW, PH]); pageIndex++; y = PH - M; }
-  function ensure(h) { if (y - h < M) newPage(); }
+  function newPage() {
+    page = doc.addPage([PW, PH]); pageIndex++;
+    drawFooter(page, { times, italic, PW, M });
+    y = pageIndex === 0 ? drawHeader(page, { logo, times, PW, M }) : PH - M;
+  }
+  function ensure(h) { if (y - h < CONTENT_BOTTOM) newPage(); }
   function recordField(key, x, baselineY, w) {
     fields.push({ page: pageIndex + 1, fx: (x - 2) / PW, fy: (PH + 2 - baselineY) / PH, fw: w / PW, type: 'text', field_key: key, label: LABELS[key] || key });
   }
@@ -104,7 +110,7 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
   }
   // Label:value row — label wraps in the left column, value in the right; the row
   // is as tall as the taller side, and never splits across a page.
-  function row(label, valueParts, gap = 5) {
+  function row(label, valueParts, gap = 4) {
     const lblN = flowCol([{ b: label }], M, VALX - 8, y, { dry: true }).lines;
     const valN = flowCol(valueParts, VALX, RIGHT, y, { dry: true }).lines;
     const n = Math.max(lblN, valN);
@@ -132,20 +138,8 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
     page.drawLine({ start: { x: from, y: rowY - 1.5 }, end: { x: to, y: rowY - 1.5 }, thickness: 0.7, color: lineCol });
   }
 
-  // ── Letterhead ──────────────────────────────────────────────────────────────
+  // ── Page 1: branded logo header (drawn by newPage) + title ──────────────────
   newPage();
-  {
-    const brand = 'CRECO';
-    const bw = bold.widthOfTextAtSize(brand, 17);
-    page.drawText(brand, { x: (PW - bw) / 2, y, size: 17, font: bold, color: GOLD });
-    y -= 15;
-    const info = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015   •   (210) 817-3443   •   crecotx.com';
-    const iw = times.widthOfTextAtSize(info, 8.5);
-    page.drawText(info, { x: (PW - iw) / 2, y, size: 8.5, font: times, color: GRAY });
-    y -= 8;
-    page.drawLine({ start: { x: M, y }, end: { x: RIGHT, y }, thickness: 1.2, color: GOLD });
-    y -= 22;
-  }
   centered('LETTER OF INTENT TO LEASE', TITLE, bold);
   spacer(2);
   centeredField('property_address', BODY + 1);
