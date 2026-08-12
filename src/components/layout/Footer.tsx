@@ -102,6 +102,12 @@ export function Footer() {
                 <ul className="space-y-3">
                   <li><Link href="/team" className="text-body-sm text-white/60 transition-colors hover:text-gold">Our Team</Link></li>
                   <li><Link href="/services" className="text-body-sm text-white/60 transition-colors hover:text-gold">Services</Link></li>
+                  <li>
+                    <a href="https://www.crecotx.com" target="_blank" rel="noopener noreferrer"
+                      className="text-body-sm text-white/60 transition-colors hover:text-gold">
+                      Commercial Real Estate
+                    </a>
+                  </li>
                   <li><Link href="/contact" className="text-body-sm text-white/60 transition-colors hover:text-gold">Contact Us</Link></li>
                   <li><Link href="/careers" className="text-body-sm text-white/60 transition-colors hover:text-gold">Careers</Link></li>
                 </ul>

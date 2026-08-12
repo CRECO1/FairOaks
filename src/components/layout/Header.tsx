@@ -15,6 +15,7 @@ const navLinks = [
   { href: '/blog', label: 'Blog' },
   { href: '/market-reports', label: 'Market Reports' },
   { href: '/services', label: 'Services' },
+  { href: 'https://www.crecotx.com', label: 'Commercial', external: true },
   { href: '/team', label: 'About' },
   { href: '/contact', label: 'Contact' },
 ];
@@ -78,25 +79,42 @@ export function Header({ variant = 'default' }: HeaderProps) {
           {/* Desktop Navigation */}
           {variant !== 'minimal' && (
             <div className="hidden items-center gap-5 lg:flex ml-8">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={cn(
-                    'relative whitespace-nowrap text-body-sm font-semibold transition-colors',
-                    isTransparent
-                      ? 'text-white hover:text-gold-light'
-                      : 'text-primary hover:text-gold',
-                    pathname === link.href && 'text-gold'
-                  )}
-                  style={textShadowStyle}
-                >
-                  {link.label}
-                  {pathname === link.href && (
-                    <span className="absolute -bottom-1 left-0 h-0.5 w-full bg-gold" />
-                  )}
-                </Link>
-              ))}
+              {navLinks.map((link) => {
+                const cls = cn(
+                  'relative whitespace-nowrap text-body-sm font-semibold transition-colors',
+                  isTransparent
+                    ? 'text-white hover:text-gold-light'
+                    : 'text-primary hover:text-gold',
+                  pathname === link.href && 'text-gold'
+                );
+                if (link.external) {
+                  return (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={cls}
+                      style={textShadowStyle}
+                    >
+                      {link.label}
+                    </a>
+                  );
+                }
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={cls}
+                    style={textShadowStyle}
+                  >
+                    {link.label}
+                    {pathname === link.href && (
+                      <span className="absolute -bottom-1 left-0 h-0.5 w-full bg-gold" />
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           )}
 
@@ -147,20 +165,37 @@ export function Header({ variant = 'default' }: HeaderProps) {
         <div className="fixed inset-0 top-20 z-40 bg-white lg:hidden">
           <Container>
             <nav className="flex flex-col py-8">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsMenuOpen(false)}
-                  className={cn(
-                    'border-b border-border py-4 text-heading font-medium text-primary transition-colors',
-                    'hover:text-gold',
-                    pathname === link.href && 'text-gold'
-                  )}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              {navLinks.map((link) => {
+                const cls = cn(
+                  'border-b border-border py-4 text-heading font-medium text-primary transition-colors',
+                  'hover:text-gold',
+                  pathname === link.href && 'text-gold'
+                );
+                if (link.external) {
+                  return (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setIsMenuOpen(false)}
+                      className={cls}
+                    >
+                      {link.label}
+                    </a>
+                  );
+                }
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setIsMenuOpen(false)}
+                    className={cls}
+                  >
+                    {link.label}
+                  </Link>
+                );
+              })}
               <div className="mt-8 space-y-4">
                 {/* Quiz CTA - Highlighted */}
                 <Button

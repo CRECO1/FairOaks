@@ -73,6 +73,7 @@ import { getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
 import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';
 import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
+import { CommercialCallout } from '@/components/sections/CommercialCallout';
 
 const DEMO_TESTIMONIALS = [
   { id: '1', client_name: 'The Martinez Family', client_location: 'Fair Oaks Ranch, TX', quote: 'Fair Oaks Realty Group made buying our dream home effortless. They knew every neighborhood and found us the perfect fit on the first try.', rating: 5 },
@@ -326,6 +327,9 @@ export default async function HomePage() {
           </div>
         </Container>
       </section>
+
+      {/* ── Commercial (CRECO) ───────────────────────────────────────── */}
+      <CommercialCallout />
 
       {/* ── Why Us ───────────────────────────────────────────────────── */}
       <section className="section-luxury bg-primary text-white">
