@@ -56,6 +56,8 @@ interface Property {
   latitude?: number | null;
   longitude?: number | null;
   created_at?: string;
+  updated_at?: string;
+  last_status_at?: string;
   [k: string]: unknown;
 }
 
@@ -101,6 +103,37 @@ function statusPill(s?: string) {
   return { bg: '#f1f5f9', color: '#64748b' };
 }
 const muted = <span style={{ color: '#d1d5db' }}>—</span>;
+
+// "Last updated" freshness for a Property DB record. Lets the broker glance at
+// how current the data is when calling on a listing ("added to my site ~3d ago").
+// Uses updated_at (bumped when the ingestion re-sees a listing), falling back to
+// created_at. Green = fresh, slate = recent, amber = aging (worth re-verifying).
+function freshness(p: Property): { label: string; full: string; bg: string; color: string } | null {
+  const iso = (p.updated_at as string) || (p.created_at as string);
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  const label = days <= 0 ? 'Today' : days === 1 ? 'Yesterday'
+    : days < 7 ? `${days}d ago` : days < 31 ? `${Math.floor(days / 7)}w ago`
+    : days < 365 ? `${Math.floor(days / 30)}mo ago` : `${Math.floor(days / 365)}y ago`;
+  const tone = days <= 7 ? { bg: '#ecfdf5', color: '#15803d' }
+    : days <= 45 ? { bg: '#f1f5f9', color: '#64748b' }
+    : { bg: '#fff7ed', color: '#b45309' };
+  const full = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return { label, full, ...tone };
+}
+
+function UpdatedChip({ p, compact }: { p: Property; compact?: boolean }) {
+  const f = freshness(p);
+  if (!f) return null;
+  return (
+    <span title={`Data last updated ${f.full}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: compact ? 10.5 : 11, fontWeight: 600, background: f.bg, color: f.color, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+      🕒 {f.label}
+    </span>
+  );
+}
 
 // Property thumbnail for quick visual ID. Uses a real photo stored on the record
 // (photos[0] or flyer_url — e.g. a saved broker flyer); otherwise a placeholder.
@@ -205,6 +238,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         case 'size': return p.size_sf ?? -1;
         case 'rate': return rateNum(p);
         case 'status': return (p.vacancy_status || '').toLowerCase();
+        case 'updated': return p.updated_at ? new Date(p.updated_at as string).getTime() : (p.created_at ? new Date(p.created_at as string).getTime() : 0);
         default: return 0;
       }
     };
@@ -306,6 +340,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
               <option value="size">Size</option>
               <option value="rate">Rate / Price</option>
               <option value="status">Status</option>
+              <option value="updated">Last updated</option>
             </select>
             <button
               onClick={() => setSort(s => ({ key: s.key || 'name', dir: (s.dir === 1 ? -1 : 1) as 1 | -1 }))}
@@ -340,6 +375,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                     {p.vacancy_status && <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20 }}>{p.vacancy_status}</span>}
                     {p.size_sf ? <span style={{ fontSize: 12.5, color: '#374151' }}>{fmtSf(p.size_sf)}</span> : null}
                     {avail ? <span style={{ fontSize: 12, color: '#9ca3af' }}>{fmtSf(avail)} avail</span> : null}
+                    <span style={{ marginLeft: 'auto' }}><UpdatedChip p={p} compact /></span>
                   </div>
                   {(p.submarket || p.county || p.listing_company || p.listing_agent_name) && (
                     <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid #f3f4f6', fontSize: 12, color: '#9ca3af', display: 'flex', flexWrap: 'wrap', gap: '3px 12px' }}>
@@ -356,14 +392,15 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
 
       {view === 'rows' && !loading && filtered.length > 0 && !isMobile && (
         <div style={{ overflowX: 'auto', border: '1px solid #eef0f2', borderRadius: 12, background: '#fff' }}>
-          <table style={{ width: '100%', minWidth: 960, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
+          <table style={{ width: '100%', minWidth: 1040, borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'DM Sans',sans-serif" }}>
             <colgroup>
-              <col style={{ width: '26%' }} />
+              <col style={{ width: '24%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '11%' }} />
               <col style={{ width: '13%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '15%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '9%' }} />
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
@@ -375,6 +412,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 {sortTh('rate', 'Rate / Price', 'right')}
                 <th style={{ padding: '12px 12px', fontWeight: 700, color: '#9ca3af' }}>Broker</th>
                 {sortTh('status', 'Status')}
+                {sortTh('updated', 'Updated')}
               </tr>
             </thead>
             <tbody>
@@ -384,6 +422,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                 const st = statusPill(p.vacancy_status);
                 const loc = [p.address, cityLine(p)].filter(Boolean).join(' · ');
                 const avail = p.available_sf && p.available_sf !== p.size_sf ? p.available_sf : null;
+                const fresh = freshness(p);
                 const ell: React.CSSProperties = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
                 return (
                   <tr key={p.id} onClick={() => setActive(p)}
@@ -419,6 +458,14 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                     </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
                       {p.vacancy_status ? <span style={{ display: 'inline-block', maxWidth: '100%', ...ell, fontSize: 10.5, fontWeight: 700, letterSpacing: .3, textTransform: 'uppercase', color: st.color, background: st.bg, padding: '3px 9px', borderRadius: 20 }} title={p.vacancy_status}>{p.vacancy_status}</span> : muted}
+                    </td>
+                    <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
+                      {fresh ? (
+                        <div title={`Data last updated ${fresh.full}`}>
+                          <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: fresh.color, background: fresh.bg, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>{fresh.label}</span>
+                          <div style={{ color: '#9ca3af', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap' }}>{fresh.full}</div>
+                        </div>
+                      ) : muted}
                     </td>
                   </tr>
                 );
@@ -469,6 +516,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                     </span>
                   )}
                   {p.size_sf ? <span style={{ fontSize: 12, color: '#374151' }}>{fmtSf(p.size_sf)}</span> : null}
+                  <UpdatedChip p={p} compact />
                   {price ? <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: '#c9922c' }}>{price}</span> : null}
                 </div>
                 {(p.listing_company || p.listing_agent_name) && (
@@ -659,8 +707,12 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
           )}
 
           <div style={{ fontSize: 11, color: '#c0c4cc', borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
-            {p.source ? `Source: ${p.source}` : ''}{p.source && p.created_at ? ' · ' : ''}
-            {p.created_at ? `Added ${new Date(p.created_at as string).toLocaleDateString()}` : ''}
+            {[
+              p.source ? `Source: ${p.source}` : '',
+              p.created_at ? `Added ${new Date(p.created_at as string).toLocaleDateString()}` : '',
+              (p.updated_at && (!p.created_at || new Date(p.updated_at as string).getTime() - new Date(p.created_at as string).getTime() > 86_400_000))
+                ? `Updated ${new Date(p.updated_at as string).toLocaleDateString()}` : '',
+            ].filter(Boolean).join('  ·  ')}
           </div>
         </div>
       </div>
