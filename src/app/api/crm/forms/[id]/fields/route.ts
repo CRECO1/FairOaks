@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({ fields: data ?? [] });
 }
 
-interface IncomingField { page: number; fx: number; fy: number; fw: number; h?: number; type?: string; label?: string; field_key?: string; }
+interface IncomingField { page: number; fx: number; fy: number; fw: number; h?: number; type?: string; label?: string; field_key?: string; default_value?: string | null; }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await getCrmAdmin(req);
@@ -31,6 +31,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       form_id: id, page: f.page ?? 1,
       x: f.fx, y: f.fy, w: f.fw, h: f.h ?? 0.022,
       type: f.type ?? 'text', label: f.label ?? null, field_key: f.field_key ?? null, sort: i,
+      // The template's starting text (e.g. the standard LOI terms). The editor
+      // seeds it as the field's value; PUT round-trips it so re-saving a layout
+      // doesn't wipe the defaults.
+      default_value: f.default_value ?? null,
     }));
     const { error } = await supabase.from('crm_form_fields').insert(rows);
     if (error) { console.error('[api/form-fields] PUT', error); return NextResponse.json({ error: 'Save failed' }, { status: 500 }); }

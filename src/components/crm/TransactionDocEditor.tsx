@@ -18,6 +18,7 @@ interface Field {
   type: 'text' | 'check';
   fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
   label?: string;           // human label, shown as the blank's placeholder
+  defaultValue?: string;    // template's starting text, kept so re-saving the layout preserves it
 }
 // Only the PDF's own point dimensions are kept — the rendered pixel size is now
 // decided by CSS (width:100% capped at RENDER_W, with a matching aspect-ratio).
@@ -132,10 +133,15 @@ export default function TransactionDocEditor({
         const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
         const json = await res.json();
         if (cancelled || !Array.isArray(json.fields)) return;
-        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null }) => ({
+        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null; default_value?: string | null }) => ({
           id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
-          value: (r.field_key && fieldPrefill?.[r.field_key]) || '', size: 11, type: r.type === 'check' ? 'check' : 'text',
+          // A template may ship starting text (default_value) — e.g. the standard
+          // LOI terms, which the agent then edits. The logged-in agent's own info
+          // still wins, so agent_name/phone/email fill with the real sender.
+          value: (r.field_key && fieldPrefill?.[r.field_key]) || r.default_value || '',
+          size: 11, type: r.type === 'check' ? 'check' : 'text',
           fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
+          defaultValue: r.default_value ?? undefined,
         })));
       } catch { /* no template yet */ }
     })();
@@ -253,7 +259,7 @@ export default function TransactionDocEditor({
     try {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) h.Authorization = `Bearer ${authToken}`;
-      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, field_key: f.fieldKey ?? null, label: f.label ?? null })) };
+      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, field_key: f.fieldKey ?? null, label: f.label ?? null, default_value: f.defaultValue ?? null })) };
       const res = await fetch(`/api/crm/forms/${form.id}/fields`, { method: 'PUT', headers: h, body: JSON.stringify(payload) });
       onToast?.(res.ok ? '✓ Field layout saved for this form' : 'Could not save the layout');
     } catch { onToast?.('Could not save the layout'); }

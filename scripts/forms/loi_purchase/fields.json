@@ -1,0 +1,432 @@
+[
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.19759344039919577,
+    "fw": 0.2777777777777778,
+    "type": "text",
+    "field_key": "loi_date",
+    "label": "Letter date",
+    "default": "January 28, 2026"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.23450000605576143,
+    "fw": 0.5228758169934641,
+    "type": "text",
+    "field_key": "addressee_name",
+    "label": "Addressee — name",
+    "default": "FAIR OAKS EXECUTIVE PLAZA LLC"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.2512045515103069,
+    "fw": 0.5228758169934641,
+    "type": "text",
+    "field_key": "addressee_addr1",
+    "label": "Addressee — street",
+    "default": "8000 FAIR OAKS PKWY STE 102"
+  },
+  {
+    "page": 1,
+    "fx": 0.11437908496732026,
+    "fy": 0.2679090969648524,
+    "fw": 0.5228758169934641,
+    "type": "text",
+    "field_key": "addressee_addr2",
+    "label": "Addressee — city, state ZIP",
+    "default": "FAIR OAKS RANCH, TX 78015-4742"
+  },
+  {
+    "page": 1,
+    "fx": 0.16339869281045752,
+    "fy": 0.30229041009616553,
+    "fw": 0.7156862745098039,
+    "type": "text",
+    "field_key": "re_line",
+    "label": "Re: line",
+    "default": "Letter of Intent to Purchase – 8000 Fair Oaks Pkwy, Fair Oaks Ranch, TX 78015"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.3852828343385898,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "seller",
+    "label": "Seller",
+    "default": "Fair Oaks Executive Plaza LLC"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.4083005111062666,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "purchaser",
+    "label": "Purchaser",
+    "default": "Partners Holdings – Legacy Founder LLC /or assigns"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.4313181878739434,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "property_l1",
+    "label": "Property (line 1)",
+    "default": "CB 4709C BLK LOT 8000 8000 FAIR OAKS PKWY AT FAIR OAKS"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.44802273332848885,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "property_l2",
+    "label": "Property (line 2)",
+    "default": "RANCH"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.4710404100961656,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "purchase_price",
+    "label": "Purchase Price",
+    "default": "$4,000,000. Four million"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.4940580868638424,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "earnest_money_l1",
+    "label": "Earnest Money (line 1)",
+    "default": "The earnest money will be ($40,000.00) and escrowed within 3 business days"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.5107626323183878,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "earnest_money_l2",
+    "label": "Earnest Money (line 2)",
+    "default": "of fully executed purchase and sales agreement."
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.5337803090860646,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "title_company",
+    "label": "Title Company",
+    "default": "Alamo Title Company, Closing Agent Nefi Miramontes"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.5567979858537414,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "title_policy_l1",
+    "label": "Title Policy (line 1)",
+    "default": "Seller will pay for all costs associated with the title policy and escrow fees at"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.5735025313082869,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "title_policy_l2",
+    "label": "Title Policy (line 2)",
+    "default": "closing."
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.5965202080759635,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "survey",
+    "label": "Survey",
+    "default": "Sellers will pay for an updated survey during the feasibility period if required"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.6195378848436404,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "possession",
+    "label": "Possession",
+    "default": "Purchaser will take possession of the Property at Closing with funding."
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.6425555616113171,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "feasibility_period_l1",
+    "label": "Feasibility Period (line 1)",
+    "default": "forty-five (45) days from time of fully executed purchase and sales"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.6592601070658627,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "feasibility_period_l2",
+    "label": "Feasibility Period (line 2)",
+    "default": "agreement, with the option to extend feasibility by an additional 20 days by"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.675964652520408,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "feasibility_period_l3",
+    "label": "Feasibility Period (line 3)",
+    "default": "depositing an additional $25,000.00 of hard earnest money (applicable"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.6926691979749535,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "feasibility_period_l4",
+    "label": "Feasibility Period (line 4)",
+    "default": "towards the purchase price)."
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.7156868747426303,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "closing_schedule",
+    "label": "Closing Schedule",
+    "default": "The Property will be closed within thirty (30) days after feasibility"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.7387045515103071,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "option_fee_l1",
+    "label": "Option Fee (line 1)",
+    "default": "Buyer will have the option to cancel contract at any time during the"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.7554090969648524,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "option_fee_l2",
+    "label": "Option Fee (line 2)",
+    "default": "feasibility period with an option fee of $1,000.00. If canceled during"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.772113642419398,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "option_fee_l3",
+    "label": "Option Fee (line 3)",
+    "default": "feasibility, option fee will be paid to the seller from the earnest money."
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.7951313191870747,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "environmental_l1",
+    "label": "Environmental (line 1)",
+    "default": "Seller to provide any and all recent environmental reports showing the"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.8118358646416202,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "environmental_l2",
+    "label": "Environmental (line 2)",
+    "default": "property is in clean condition."
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.8348535414092969,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "property_expenses_l1",
+    "label": "Property Expenses (line 1)",
+    "default": "The current taxes, interest, rents, and utilities, if any, will be prorated and"
+  },
+  {
+    "page": 1,
+    "fx": 0.3464052287581699,
+    "fy": 0.8515580868638425,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "property_expenses_l2",
+    "label": "Property Expenses (line 2)",
+    "default": "adjusted as of the date of closing."
+  },
+  {
+    "page": 2,
+    "fx": 0.3464052287581699,
+    "fy": 0.09343434343434344,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "purchasers_default_l1",
+    "label": "Purchaser’s Default (line 1)",
+    "default": "In the event Purchaser should fail to consummate the purchase of the"
+  },
+  {
+    "page": 2,
+    "fx": 0.3464052287581699,
+    "fy": 0.11013888888888891,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "purchasers_default_l2",
+    "label": "Purchaser’s Default (line 2)",
+    "default": "Property, Seller’s sole remedy will be the retention of the Earnest Money."
+  },
+  {
+    "page": 2,
+    "fx": 0.3464052287581699,
+    "fy": 0.1331565656565657,
+    "fw": 0.5326797385620915,
+    "type": "text",
+    "field_key": "time_of_essence",
+    "label": "Time is of the essence",
+    "default": "This proposal expires on February 3rd, 2026 at 5:00 PM Central Time."
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.36304292929292953,
+    "fw": 0.42483660130718953,
+    "type": "text",
+    "field_key": "agent_name",
+    "label": "Your name (broker)",
+    "default": "Zachary A. Stovall"
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.379747474747475,
+    "fw": 0.42483660130718953,
+    "type": "text",
+    "field_key": "agent_email",
+    "label": "Your email",
+    "default": "zack@crecotx.com"
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.3964520202020205,
+    "fw": 0.42483660130718953,
+    "type": "text",
+    "field_key": "agent_phone",
+    "label": "Your phone",
+    "default": "(210) 355-8683"
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.4964898989898993,
+    "fw": 0.4803921568627451,
+    "type": "text",
+    "field_key": "seller_1_name",
+    "label": "Seller signatory 1 — name",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.18627450980392157,
+    "fy": 0.5267929292929296,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "seller_1_by",
+    "label": "Seller 1 — BY",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.18627450980392157,
+    "fy": 0.5570959595959599,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "seller_1_its",
+    "label": "Seller 1 — Its",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.18627450980392157,
+    "fy": 0.5873989898989902,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "seller_1_date",
+    "label": "Seller 1 — Date",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.11437908496732026,
+    "fy": 0.6682070707070711,
+    "fw": 0.4803921568627451,
+    "type": "text",
+    "field_key": "seller_2_name",
+    "label": "Seller signatory 2 — name",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.18627450980392157,
+    "fy": 0.6985101010101014,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "seller_2_by",
+    "label": "Seller 2 — BY",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.18627450980392157,
+    "fy": 0.7288131313131316,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "seller_2_its",
+    "label": "Seller 2 — Its",
+    "default": ""
+  },
+  {
+    "page": 2,
+    "fx": 0.18627450980392157,
+    "fy": 0.7591161616161619,
+    "fw": 0.4084967320261438,
+    "type": "text",
+    "field_key": "seller_2_date",
+    "label": "Seller 2 — Date",
+    "default": ""
+  }
+]
