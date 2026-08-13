@@ -66,6 +66,8 @@ export async function POST(req: NextRequest) {
     const { data: copy, error } = await supabase.from('crm_form_submissions').insert({
       form_id: src.form_id, deal_id: src.deal_id, listing_id: src.listing_id, business_unit: src.business_unit,
       title: `${src.title || 'Document'} (copy)`, values: src.values ?? [], status: 'saved', filled_path, created_by: ctx.userId,
+      // Carry the editable source so a copied builder doc (e.g. an LOI) stays re-editable.
+      builder_data: src.builder_data ?? null,
     }).select().single();
     if (error) { console.error('[api/form-submissions] copy', error); return NextResponse.json({ error: 'Copy failed' }, { status: 500 }); }
     return NextResponse.json({ submission: copy });
