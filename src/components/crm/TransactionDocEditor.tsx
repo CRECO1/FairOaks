@@ -281,7 +281,7 @@ export default function TransactionDocEditor({
       if (authToken) h.Authorization = `Bearer ${authToken}`;
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST', headers: h,
-        body: JSON.stringify({ form_id: form.id, deal_id: listingId ? null : (dealSel || null), listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
+        body: JSON.stringify({ form_id: form.id, deal_id: dealSel || null, listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
       });
       if (res.ok) {
         const j = await res.json();
@@ -355,7 +355,7 @@ export default function TransactionDocEditor({
               {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
             </select>
           )}
-          <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (listingId ? '💾 Save to property' : dealSel ? '💾 Save to deal' : '💾 Save')}</button>
+          <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : listingId ? '💾 Save to property' : '💾 Save')}</button>
           <button onClick={download} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
           {!isMobile && <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
         </div>
