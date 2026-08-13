@@ -44,6 +44,20 @@ interface Profile { id: string; first_name: string; last_name: string; role?: st
 interface Contact { id: string; first_name: string; last_name: string; business_name?: string; email?: string; phone?: string; cell_phone?: string; type?: string }
 interface ListingContact { id: string; role?: string; client_id: string; crm_clients?: Contact | null }
 
+interface Deal {
+  id: string; client: string; client_email?: string | null; client_phone?: string | null;
+  client_id?: string | null; type?: string; property?: string; value?: number | null;
+  stage?: string; agent_id?: string | null; listing_id?: string | null; business_unit?: string;
+  created_at?: string; last_touch?: string;
+}
+const DEAL_TYPES = ['Tenant Lease', 'Buyer Purchase', 'Landlord Listing', 'Seller Listing'];
+const DEAL_STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
+const STAGE_CHIP: Record<string, { bg: string; color: string }> = {
+  Prospect: { bg: '#f1f5f9', color: '#475569' }, Active: { bg: '#dbeafe', color: '#1d4ed8' },
+  LOI: { bg: '#fef3c7', color: '#b45309' }, 'In Contract': { bg: '#e0e7ff', color: '#4338ca' },
+  Closed: { bg: '#dcfce7', color: '#15803d' }, Lost: { bg: '#fee2e2', color: '#dc2626' },
+};
+
 interface Props {
   businessUnit: string;
   isAdmin: boolean;
@@ -135,7 +149,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Detail panel
   const [active, setActive]     = useState<Listing | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'photos' | 'contacts' | 'team'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -171,6 +185,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [contactRole, setContactRole] = useState('Landlord');
   const [addingContact, setAddingContact] = useState(false);
   const [flyerBusy, setFlyerBusy] = useState(false);
+
+  // Deals-at-this-property tab
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [dealForms, setDealForms] = useState<Record<string, FormSubmission[]>>({});
+  const [allDeals, setAllDeals] = useState<Deal[]>([]);
+  const [showNewDeal, setShowNewDeal] = useState(false);
+  const [showLinkDeal, setShowLinkDeal] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [dealClientSearch, setDealClientSearch] = useState('');
+  const [newDeal, setNewDeal] = useState({ client: '', client_email: '', client_phone: '', client_id: '', type: 'Tenant Lease', stage: 'Prospect' });
+  const [dealBusy, setDealBusy] = useState(false);
+  const [formDealId, setFormDealId] = useState<string | null>(null); // which deal a form editor is bound to
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -212,6 +238,26 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setListingContacts(json.contacts ?? []);
   }, [authToken]); // eslint-disable-line
 
+  const loadDealForms = useCallback(async (dealId: string) => {
+    const res = await fetch(`/api/crm/form-submissions?deal_id=${dealId}`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    setDealForms(prev => ({ ...prev, [dealId]: json.submissions ?? [] }));
+  }, [authToken]); // eslint-disable-line
+
+  const loadDeals = useCallback(async (listingId: string) => {
+    const res = await fetch(`/api/crm/deals?listing_id=${listingId}`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    const ds: Deal[] = json.deals ?? [];
+    setDeals(ds);
+    ds.forEach(d => loadDealForms(d.id));
+  }, [authToken, loadDealForms]); // eslint-disable-line
+
+  const loadAllDeals = useCallback(async () => {
+    const res = await fetch(`/api/crm/deals`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    setAllDeals(json.deals ?? []);
+  }, [authToken]); // eslint-disable-line
+
   // Fetch the blank template's signed URL, then open the fillable editor bound to this property.
   const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string) => {
     setFormPicker(false);
@@ -249,6 +295,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setListingContacts([]);
     setContactSearch('');
     loadListingContacts(l.id);
+    setDeals([]);
+    setDealForms({});
+    loadDeals(l.id);
   }
 
   function closePanel() { setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
@@ -309,6 +358,48 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setListingContacts(prev => prev.filter(c => c.id !== id));
     await fetch(`/api/crm/listing-contacts?id=${id}`, { method: 'DELETE', headers: authHeaders });
   }
+
+  // ── Deals at this property ────────────────────────────────────────────────────
+  async function createDeal() {
+    if (!active) return;
+    if (!newDeal.client.trim()) { onToast('Client name required'); return; }
+    setDealBusy(true);
+    const res = await fetch('/api/crm/deals', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ ...newDeal, property: active.name || active.address || '', listing_id: active.id, agent_id: active.listing_agent_id || null, business_unit: businessUnit }),
+    });
+    setDealBusy(false);
+    if (!res.ok) { onToast('Could not create deal'); return; }
+    setShowNewDeal(false);
+    setNewDeal({ client: '', client_email: '', client_phone: '', client_id: '', type: 'Tenant Lease', stage: 'Prospect' });
+    setDealClientSearch('');
+    loadDeals(active.id);
+    onToast('Deal created ✓');
+  }
+
+  async function linkDeal(dealId: string) {
+    if (!active) return;
+    const res = await fetch(`/api/crm/deals?id=${dealId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ listing_id: active.id }),
+    });
+    if (!res.ok) { onToast('Could not link deal'); return; }
+    setShowLinkDeal(false); setLinkSearch('');
+    loadDeals(active.id);
+    onToast('Deal linked ✓');
+  }
+
+  async function unlinkDeal(dealId: string) {
+    if (!active || !window.confirm('Remove this deal from the property? The deal itself is not deleted.')) return;
+    const res = await fetch(`/api/crm/deals?id=${dealId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ listing_id: null }),
+    });
+    if (res.ok) { setDeals(prev => prev.filter(d => d.id !== dealId)); onToast('Deal unlinked'); }
+  }
+
+  function fillFormForDeal(dealId: string) { setFormDealId(dealId); loadCrmForms(); setFormPicker(true); }
+  function editDealForm(dealId: string, form: { id: string; name: string }, submissionId: string) { setFormDealId(dealId); openFormEditor(form, submissionId); }
 
   // Generate a branded one-page PDF flyer from this property's data + photos.
   async function generateFlyer() {
@@ -666,8 +757,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0 }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'photos' | 'contacts' | 'team')}
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -688,7 +779,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction Docs</div>
-                      <button onClick={() => { loadCrmForms(); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                      <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
                     </div>
                     {listingForms.length === 0 ? (
                       <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
@@ -702,7 +793,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                             </div>
                             {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
-                            <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                            <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
                           </div>
                         ))}
                       </div>
@@ -796,6 +887,67 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       })()}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ── Deals tab (deals at this property + their documents) ── */}
+              {activeTab === 'deals' && (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Deals at this Property</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => { loadAllDeals(); setShowLinkDeal(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>🔗 Link deal</button>
+                      <button onClick={() => setShowNewDeal(true)} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ New deal</button>
+                    </div>
+                  </div>
+                  {deals.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af' }}>
+                      <div style={{ fontSize: 34, marginBottom: 8 }}>💼</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3, color: '#6b7280' }}>No deals at this property yet</div>
+                      <div style={{ fontSize: 13 }}>Start a deal to draft LOIs, leases &amp; condition reports here — then send them for signature.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {deals.map(d => {
+                        const agent = profiles.find(p => p.id === d.agent_id);
+                        const chip = STAGE_CHIP[d.stage || 'Prospect'] || STAGE_CHIP.Prospect;
+                        const docs = dealForms[d.id] ?? [];
+                        return (
+                          <div key={d.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fbfbfa', borderBottom: docs.length ? '1px solid #f3f4f6' : 'none' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>{d.client || 'Unnamed'}</span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, background: chip.bg, color: chip.color, padding: '2px 9px', borderRadius: 20 }}>{d.stage || 'Prospect'}</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                                  {d.type || '—'}{d.value ? ` · ${fmt$(d.value)}` : ''}{agent ? ` · ${agent.first_name} ${agent.last_name}` : ''}
+                                </div>
+                              </div>
+                              <button onClick={() => fillFormForDeal(d.id)} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                              <button onClick={() => unlinkDeal(d.id)} title="Remove from property" style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 7, color: '#9ca3af', fontSize: 13, cursor: 'pointer', padding: '5px 8px', flexShrink: 0 }}>✕</button>
+                            </div>
+                            {docs.length > 0 && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px' }}>
+                                {docs.map(f => (
+                                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '8px 12px' }}>
+                                    <span style={{ fontSize: 17, flexShrink: 0 }}>📄</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                                      <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
+                                    </div>
+                                    {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>PDF ↗</a>}
+                                    <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11.5, color: '#c0c4cc', marginTop: 14, textAlign: 'center' }}>Forms filled here attach to the deal and show on this property. “Send for signature” lights up once e-signing is enabled.</div>
                 </div>
               )}
 
@@ -972,6 +1124,84 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       )}
 
       {/* ── Form picker: choose a transaction-doc template for this property ── */}
+      {/* New Deal at this property */}
+      {showNewDeal && active && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowNewDeal(false); }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>New Deal — {active.name}</h3>
+              <button onClick={() => setShowNewDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                {LBL('Client *')}
+                <input style={INP} value={newDeal.client} onChange={e => setNewDeal({ ...newDeal, client: e.target.value, client_id: '' })} placeholder="Client or company name" />
+                {newDeal.client.trim().length >= 2 && !newDeal.client_id && (() => {
+                  const q = newDeal.client.toLowerCase();
+                  const matches = clients.filter(c => `${c.first_name} ${c.last_name} ${c.business_name ?? ''}`.toLowerCase().includes(q)).slice(0, 5);
+                  return matches.length ? (
+                    <div style={{ border: '1px solid #eef0f2', borderRadius: 8, marginTop: 4, overflow: 'hidden' }}>
+                      {matches.map(c => {
+                        const nm = c.business_name || `${c.first_name} ${c.last_name}`.trim();
+                        return (
+                          <button key={c.id} onClick={() => setNewDeal({ ...newDeal, client: nm, client_email: c.email || '', client_phone: c.phone || c.cell_phone || '', client_id: c.id })}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: "'DM Sans',sans-serif" }}>
+                            <span style={{ fontWeight: 600, color: '#1a1a1a' }}>{nm}</span>{c.email ? <span style={{ color: '#9ca3af' }}> · {c.email}</span> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null;
+                })()}
+                {newDeal.client_id ? <div style={{ fontSize: 11.5, color: '#15803d', marginTop: 4 }}>✓ Linked to contact{newDeal.client_email ? ` · ${newDeal.client_email}` : ''}</div> : null}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>{LBL('Type')}<select style={INP} value={newDeal.type} onChange={e => setNewDeal({ ...newDeal, type: e.target.value })}>{DEAL_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+                <div>{LBL('Stage')}<select style={INP} value={newDeal.stage} onChange={e => setNewDeal({ ...newDeal, stage: e.target.value })}>{DEAL_STAGES.map(s => <option key={s}>{s}</option>)}</select></div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button onClick={() => setShowNewDeal(false)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+              <button onClick={createDeal} disabled={dealBusy || !newDeal.client.trim()} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: dealBusy ? 'default' : 'pointer', opacity: dealBusy || !newDeal.client.trim() ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>{dealBusy ? 'Creating…' : 'Create deal'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Link an existing deal to this property */}
+      {showLinkDeal && active && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowLinkDeal(false); }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Link an existing deal</h3>
+              <button onClick={() => setShowLinkDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+            </div>
+            <input style={INP} value={linkSearch} onChange={e => setLinkSearch(e.target.value)} placeholder="🔍  Search deals by client or property…" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '55vh', overflowY: 'auto', marginTop: 12 }}>
+              {(() => {
+                const q = linkSearch.toLowerCase();
+                const list = allDeals.filter(d => d.listing_id !== active.id && `${d.client} ${d.property ?? ''}`.toLowerCase().includes(q)).slice(0, 40);
+                if (list.length === 0) return <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No other deals found.</div>;
+                return list.map(d => {
+                  const chip = STAGE_CHIP[d.stage || 'Prospect'] || STAGE_CHIP.Prospect;
+                  return (
+                    <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #eef0f2', borderRadius: 8, padding: '8px 12px' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a' }}>{d.client}<span style={{ fontSize: 11, fontWeight: 700, background: chip.bg, color: chip.color, padding: '1px 8px', borderRadius: 20, marginLeft: 8 }}>{d.stage}</span></div>
+                        <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{d.type || '—'}{d.property ? ` · ${d.property}` : ''}{d.listing_id ? ' · (linked elsewhere)' : ''}</div>
+                      </div>
+                      <button onClick={() => linkDeal(d.id)} style={{ fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', flexShrink: 0 }}>Link here</button>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {formPicker && active && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setFormPicker(false); }}>
@@ -1009,11 +1239,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           authToken={authToken}
           isAdmin={isAdmin}
           listingId={active.id}
+          dealId={formDealId ?? undefined}
           businessUnit={businessUnit}
           submissionId={editorDoc.submissionId}
           onToast={onToast}
-          onClose={() => setEditorDoc(null)}
-          onSaved={() => { if (active) loadListingForms(active.id); onToast('Saved to property ✓'); }}
+          onClose={() => { setEditorDoc(null); setFormDealId(null); }}
+          onSaved={() => { if (formDealId) loadDealForms(formDealId); if (active) loadListingForms(active.id); onToast(formDealId ? 'Saved to deal ✓' : 'Saved to property ✓'); }}
         />
       )}
     </div>
