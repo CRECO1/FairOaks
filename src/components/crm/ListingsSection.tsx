@@ -168,7 +168,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [creating, setCreating] = useState(false);
 
   // Transaction-doc forms in the open listing's folder.
-  interface FormTemplate { id: string; name: string; form_code?: string; category?: string }
+  interface FormTemplate { id: string; name: string; form_code?: string; category?: string; pinned?: boolean }
   interface FormSubmission { id: string; form_id?: string; title?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
   const [crmForms, setCrmForms] = useState<FormTemplate[]>([]);
   const [listingForms, setListingForms] = useState<FormSubmission[]>([]);
@@ -204,6 +204,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string; include: boolean }[]>([]);
   const [sendMsg, setSendMsg] = useState('');
   const [sendBusy, setSendBusy] = useState(false);
+  const [showMoreForms, setShowMoreForms] = useState(false);
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -269,7 +270,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     const res = await fetch(`/api/crm/envelopes?listing_id=${listingId}`, { headers: authHeaders });
     const json = await res.json().catch(() => ({}));
     const map: Record<string, Envelope> = {};
-    for (const e of (json.envelopes ?? [])) if (e.submission_id) map[e.submission_id] = e;
+    for (const e of (json.envelopes ?? [])) if (e.submission_id && !map[e.submission_id]) map[e.submission_id] = e; // GET is newest-first; keep the latest
     setEnvMap(map);
   }, [authToken]); // eslint-disable-line
 
@@ -457,6 +458,21 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (opts?.dealId) loadDealForms(opts.dealId);
     if (active) loadListingForms(active.id);
     onToast('Document deleted');
+  }
+
+  async function togglePin(fm: FormTemplate) {
+    const next = !fm.pinned;
+    setCrmForms(prev => prev.map(x => x.id === fm.id ? { ...x, pinned: next } : x)); // optimistic
+    const res = await fetch(`/api/crm/forms/${fm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ pinned: next }) });
+    if (!res.ok) { setCrmForms(prev => prev.map(x => x.id === fm.id ? { ...x, pinned: !next } : x)); onToast('Could not update'); }
+  }
+
+  async function copySubmission(id: string, opts?: { dealId?: string }) {
+    const res = await fetch('/api/crm/form-submissions', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ copy_from: id }) });
+    if (!res.ok) { onToast('Could not copy the document'); return; }
+    if (opts?.dealId) loadDealForms(opts.dealId);
+    if (active) loadListingForms(active.id);
+    onToast('Copy created ✓');
   }
 
   // Generate a branded one-page PDF flyer from this property's data + photos.
@@ -852,6 +868,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             </div>
                             {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
                             <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                            <button onClick={() => copySubmission(f.id)} title="Make a copy" style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
                             <button onClick={() => deleteSubmission(f.id)} title="Delete document" style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                           </div>
                         ))}
@@ -1001,13 +1018,19 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                       if (env) {
                                         const sg = env.crm_envelope_signers || [];
                                         const done = sg.filter(s => s.status === 'signed' || s.signed_at).length;
-                                        return env.status === 'completed' && env.executed_url
-                                          ? <a href={env.executed_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 7, padding: '5px 10px', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed ↗</a>
-                                          : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>;
+                                        return (
+                                          <>
+                                            {env.status === 'completed' && env.executed_url
+                                              ? <a href={env.executed_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 7, padding: '5px 10px', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed ↗</a>
+                                              : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>}
+                                            <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Resend for signature (e.g. after making edits)" style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 8px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>↻</button>
+                                          </>
+                                        );
                                       }
                                       return <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                                     })()}
                                     <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                                    <button onClick={() => copySubmission(f.id, { dealId: d.id })} title="Make a copy" style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
                                     <button onClick={() => deleteSubmission(f.id, { dealId: d.id })} title="Delete document" style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                                   </div>
                                 ))}
@@ -1273,7 +1296,29 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         </div>
       )}
 
-      {formPicker && active && (
+      {formPicker && active && (() => {
+        const pinnedForms = crmForms.filter(fm => fm.pinned);
+        const restForms = crmForms.filter(fm => !fm.pinned);
+        const primary = pinnedForms.length ? pinnedForms : crmForms;
+        const hasCurated = pinnedForms.length > 0;
+        const formRow = (fm: FormTemplate) => (
+          <div key={fm.id} style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
+            <button onClick={() => openFormEditor({ id: fm.id, name: fm.name })}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid #eef0f2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
+              <span style={{ fontSize: 18 }}>📄</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fm.name}</div>
+                {(fm.form_code || fm.category) && <div style={{ fontSize: 12, color: '#9ca3af' }}>{[fm.category, fm.form_code].filter(Boolean).join(' · ')}</div>}
+              </div>
+            </button>
+            {isAdmin && (
+              <button onClick={() => togglePin(fm)} title={fm.pinned ? 'Unpin from top' : 'Pin to top'}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: fm.pinned ? '#c9922c' : '#d1d5db', flexShrink: 0, padding: '0 4px' }}>{fm.pinned ? '★' : '☆'}</button>
+            )}
+          </div>
+        );
+        return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setFormPicker(false); }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
@@ -1284,23 +1329,25 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             {crmForms.length === 0 ? (
               <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No form templates found for this workspace.</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '60vh', overflowY: 'auto' }}>
-                {crmForms.map(fm => (
-                  <button key={fm.id} onClick={() => openFormEditor({ id: fm.id, name: fm.name })}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid #eef0f2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
-                    <span style={{ fontSize: 18 }}>📄</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{fm.name}</div>
-                      {(fm.form_code || fm.category) && <div style={{ fontSize: 12, color: '#9ca3af' }}>{[fm.category, fm.form_code].filter(Boolean).join(' · ')}</div>}
-                    </div>
-                  </button>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '62vh', overflowY: 'auto' }}>
+                {hasCurated && <div style={{ fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, padding: '0 2px 2px' }}>Your forms</div>}
+                {primary.map(formRow)}
+                {hasCurated && restForms.length > 0 && (
+                  <>
+                    <button onClick={() => setShowMoreForms(s => !s)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 13, fontWeight: 700, padding: '10px 2px 4px', fontFamily: "'DM Sans',sans-serif" }}>
+                      {showMoreForms ? '▾' : '▸'} More forms ({restForms.length})
+                    </button>
+                    {showMoreForms && restForms.map(formRow)}
+                  </>
+                )}
+                {isAdmin && !hasCurated && <div style={{ fontSize: 11.5, color: '#c0c4cc', padding: '8px 2px 0' }}>Tip: tap ☆ to pin the forms you use most — they stay at the top and the rest tuck into “More forms”.</div>}
               </div>
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Send for signature */}
       {sendModal && (

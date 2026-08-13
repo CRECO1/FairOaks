@@ -46,6 +46,31 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const body = await req.json().catch(() => ({}));
+
+  // Duplicate an existing submission (server-side copy of its values + PDF).
+  if (body.copy_from) {
+    if (!(await assertOwnsResource('crm_form_submissions', body.copy_from, ctx))) return notFound('Document not found');
+    const supabase = adminClient();
+    const { data: src } = await supabase.from('crm_form_submissions').select('*').eq('id', body.copy_from).single();
+    if (!src) return notFound('Document not found');
+    let filled_path: string | null = null;
+    if (src.filled_path) {
+      const { data: blob } = await supabase.storage.from('transaction-forms').download(src.filled_path);
+      if (blob) {
+        const bytes = Buffer.from(await blob.arrayBuffer());
+        const path = `submissions/${src.form_id}/${Date.now()}_${Math.round(Math.random() * 1e6)}.pdf`;
+        const { error: upErr } = await supabase.storage.from('transaction-forms').upload(path, bytes, { contentType: 'application/pdf', upsert: true });
+        if (!upErr) filled_path = path;
+      }
+    }
+    const { data: copy, error } = await supabase.from('crm_form_submissions').insert({
+      form_id: src.form_id, deal_id: src.deal_id, listing_id: src.listing_id, business_unit: src.business_unit,
+      title: `${src.title || 'Document'} (copy)`, values: src.values ?? [], status: 'saved', filled_path, created_by: ctx.userId,
+    }).select().single();
+    if (error) { console.error('[api/form-submissions] copy', error); return NextResponse.json({ error: 'Copy failed' }, { status: 500 }); }
+    return NextResponse.json({ submission: copy });
+  }
+
   const { form_id, deal_id, listing_id, title, values, pdfBase64, business_unit, submission_id } = body;
   if (!form_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();

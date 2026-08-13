@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_forms')
-    .select('id, name, form_code, category, page_count, storage_path, created_at')
+    .select('id, name, form_code, category, page_count, storage_path, created_at, pinned')
     .eq('business_unit', unit)
     .order('name', { ascending: true });
   if (error) {
