@@ -151,6 +151,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Detail panel
   const [active, setActive]     = useState<Listing | null>(null);
+  // Guards cross-listing races: openListing sets this to the listing being
+  // opened; each async loader drops its response if a different (or no) listing
+  // is active by the time it resolves — so A's docs/deals/envelopes can't paint
+  // into B's panel.
+  const activeListingIdRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
@@ -225,6 +230,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setFilesLoading(true);
     const res = await fetch(`/api/crm/listing-files?listing_id=${listingId}`, { headers: authHeaders });
     const json = await res.json();
+    if (activeListingIdRef.current !== listingId) return; // a different listing was opened mid-flight
     setFiles(json.files ?? []);
     setFilesLoading(false);
   }, [authToken]); // eslint-disable-line
@@ -232,6 +238,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const loadListingForms = useCallback(async (listingId: string) => {
     const res = await fetch(`/api/crm/form-submissions?listing_id=${listingId}`, { headers: authHeaders });
     const json = await res.json().catch(() => ({}));
+    if (activeListingIdRef.current !== listingId) return;
     setListingForms(json.submissions ?? []);
   }, [authToken]); // eslint-disable-line
 
@@ -244,6 +251,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const loadListingContacts = useCallback(async (listingId: string) => {
     const res = await fetch(`/api/crm/listing-contacts?listing_id=${listingId}`, { headers: authHeaders });
     const json = await res.json().catch(() => ({}));
+    if (activeListingIdRef.current !== listingId) return;
     setListingContacts(json.contacts ?? []);
   }, [authToken]); // eslint-disable-line
 
@@ -256,6 +264,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const loadDeals = useCallback(async (listingId: string) => {
     const res = await fetch(`/api/crm/deals?listing_id=${listingId}`, { headers: authHeaders });
     const json = await res.json().catch(() => ({}));
+    if (activeListingIdRef.current !== listingId) return;
     const ds: Deal[] = json.deals ?? [];
     setDeals(ds);
     ds.forEach(d => loadDealForms(d.id));
@@ -270,6 +279,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const loadEnvelopes = useCallback(async (listingId: string) => {
     const res = await fetch(`/api/crm/envelopes?listing_id=${listingId}`, { headers: authHeaders });
     const json = await res.json().catch(() => ({}));
+    if (activeListingIdRef.current !== listingId) return;
     const map: Record<string, Envelope> = {};
     for (const e of (json.envelopes ?? [])) if (e.submission_id && !map[e.submission_id]) map[e.submission_id] = e; // GET is newest-first; keep the latest
     setEnvMap(map);
@@ -289,6 +299,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // ── Open / close listing ────────────────────────────────────────────────────
 
   function openListing(l: Listing) {
+    activeListingIdRef.current = l.id;
     setActive(l);
     setActiveTab('info');
     setEditForm({
@@ -319,7 +330,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     loadEnvelopes(l.id);
   }
 
-  function closePanel() { setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
+  function closePanel() { activeListingIdRef.current = null; setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
 
   // ── Save listing ────────────────────────────────────────────────────────────
 
