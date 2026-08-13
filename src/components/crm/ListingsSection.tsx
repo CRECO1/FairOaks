@@ -448,6 +448,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     onToast(j.sent ? `📤 Sent to ${signers[0].email} ✓` : 'Envelope created');
   }
 
+  async function deleteSubmission(id: string, opts?: { dealId?: string }) {
+    const env = envMap[id];
+    if (env && env.status !== 'completed') { onToast('This document is out for signature — it can’t be deleted while signing is in progress.'); return; }
+    if (!window.confirm('Delete this document? This cannot be undone.')) return;
+    const res = await fetch(`/api/crm/form-submissions?id=${id}`, { method: 'DELETE', headers: authHeaders });
+    if (!res.ok) { onToast('Could not delete the document'); return; }
+    if (opts?.dealId) loadDealForms(opts.dealId);
+    if (active) loadListingForms(active.id);
+    onToast('Document deleted');
+  }
+
   // Generate a branded one-page PDF flyer from this property's data + photos.
   async function generateFlyer() {
     if (!active) return;
@@ -841,6 +852,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             </div>
                             {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
                             <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                            <button onClick={() => deleteSubmission(f.id)} title="Delete document" style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                           </div>
                         ))}
                       </div>
@@ -996,6 +1008,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                       return <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                                     })()}
                                     <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                                    <button onClick={() => deleteSubmission(f.id, { dealId: d.id })} title="Delete document" style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                                   </div>
                                 ))}
                               </div>

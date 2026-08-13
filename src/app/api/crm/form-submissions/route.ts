@@ -94,3 +94,17 @@ export async function POST(req: NextRequest) {
   if (res.error) { console.error('[api/form-submissions] save', res.error); return NextResponse.json({ error: 'Save failed' }, { status: 500 }); }
   return NextResponse.json({ submission: res.data });
 }
+
+export async function DELETE(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound('Document not found');
+  const supabase = adminClient();
+  const { data: sub } = await supabase.from('crm_form_submissions').select('filled_path').eq('id', id).maybeSingle();
+  if (sub?.filled_path) { await supabase.storage.from('transaction-forms').remove([sub.filled_path]); }
+  const { error } = await supabase.from('crm_form_submissions').delete().eq('id', id);
+  if (error) { console.error('[api/form-submissions] DELETE', error); return NextResponse.json({ error: 'Delete failed' }, { status: 500 }); }
+  return NextResponse.json({ ok: true });
+}
