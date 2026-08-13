@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, forbidden } from '@/lib/crm-auth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -65,6 +65,16 @@ async function getAllConnections(userId: string, anonKey: string, serviceRoleKey
   return results.filter((r): r is { accessToken: string; agentEmail: string | null } => r !== null);
 }
 
+/** How many Gmail connection rows a user has (regardless of token validity). Lets us
+ *  tell "never connected" apart from "connected but the token expired/was revoked". */
+async function countConnections(userId: string, anonKey: string, serviceRoleKey: string): Promise<number> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&select=id`, {
+    headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
+  });
+  const rows = await res.json();
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 function decodeBase64(encoded: string): string {
   return Buffer.from(encoded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
 }
@@ -111,27 +121,52 @@ function cleanBody(raw: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, clientId, clientEmail } = await req.json();
-    if (!userId || (!dealId && !clientId) || !clientEmail) {
-      return NextResponse.json({ error: 'userId, (dealId or clientId), clientEmail required' }, { status: 400 });
+    const { dealId, clientId, clientEmail } = await req.json();
+    if ((!dealId && !clientId) || !clientEmail) {
+      return NextResponse.json({ error: '(dealId or clientId) and clientEmail required' }, { status: 400 });
     }
 
-    const caller = await getCrmUser(req);
-    if (!caller) return unauthorized();
-    // Admins can sync Gmail for any agent's contacts; non-admins can only sync their own
-    if (caller.id !== userId) {
-      const adminUser = await getCrmAdmin(req);
-      if (!adminUser) return forbidden('Cannot access another user\'s Gmail connection');
+    const ctx = await getCrmContext(req);
+    if (!ctx) return unauthorized();
+
+    // Authorize by DEAL/CONTACT access, not Gmail ownership. Anyone who can READ a
+    // deal's emails (its agent, same-workspace teammates, or an admin — the same set
+    // RLS grants SELECT to) may refresh them. The mailbox we actually search — the
+    // deal/contact owner's, which holds the thread with the client — is derived from
+    // the row itself, never trusted from the request. The Gmail query is scoped to
+    // from:/to: the client, so no unrelated mail is ever exposed.
+    let ownerId: string;
+    if (dealId) {
+      const deal = await assertOwnsResource('crm_deals', dealId, ctx, { ownerColumns: ['agent_id'], requireOwner: false });
+      if (!deal) return forbidden('You do not have access to this deal');
+      ownerId = (deal.agent_id as string | null) ?? ctx.userId;
+    } else {
+      const client = await assertOwnsResource('crm_clients', clientId, ctx, { ownerColumns: ['agent_id'], requireOwner: false });
+      if (!client) return forbidden('You do not have access to this contact');
+      ownerId = (client.agent_id as string | null) ?? ctx.userId;
     }
+    const callerId = ctx.userId;
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    // Gather all Gmail connections to search — deal/contact owner first, then caller's accounts
-    const ownerConns = await getAllConnections(userId, anonKey, serviceRoleKey);
-    const callerConns = caller.id !== userId ? await getAllConnections(caller.id, anonKey, serviceRoleKey) : [];
+    // Search the deal/contact owner's Gmail (holds the client thread), plus — when the
+    // caller is a teammate rather than the owner — the caller's own accounts too, in
+    // case they also corresponded with the client directly.
+    const ownerConns = await getAllConnections(ownerId, anonKey, serviceRoleKey);
+    const callerConns = callerId !== ownerId ? await getAllConnections(callerId, anonKey, serviceRoleKey) : [];
     const allConns = [...ownerConns, ...callerConns];
-    if (allConns.length === 0) return NextResponse.json({ error: 'Gmail not connected' }, { status: 401 });
+    if (allConns.length === 0) {
+      // Distinguish "never connected" from "connected but token expired/revoked" so the
+      // toast tells the user to reconnect rather than showing a confusing generic error.
+      const rawRows = await countConnections(ownerId, anonKey, serviceRoleKey)
+        + (callerId !== ownerId ? await countConnections(callerId, anonKey, serviceRoleKey) : 0);
+      return NextResponse.json({
+        error: rawRows > 0
+          ? 'Gmail connection expired — reconnect your Google account in Settings, then sync again.'
+          : 'Gmail not connected',
+      }, { status: 401 });
+    }
 
     // Search every connected Gmail account and aggregate message stubs
     const query = encodeURIComponent(`from:${clientEmail} OR to:${clientEmail}`);
