@@ -40,11 +40,15 @@ export function resendConfig(businessUnit: string): { from: string; apiKey?: str
 
 export async function sendEsignEmail(
   businessUnit: string, to: string, subject: string, html: string,
+  attachments?: Array<{ filename: string; content: string }>,
 ): Promise<{ ok: boolean; error?: string }> {
   const { from, apiKey } = resendConfig(businessUnit);
   if (!apiKey) return { ok: false, error: 'RESEND API key not configured' };
   try {
-    const { error } = await new Resend(apiKey).emails.send({ from, to, subject, html });
+    const { error } = await new Resend(apiKey).emails.send({
+      from, to, subject, html,
+      ...(attachments && attachments.length ? { attachments } : {}),
+    });
     return error ? { ok: false, error: error.message } : { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -190,4 +194,57 @@ export async function appendCertificate(
   line('Each party consented to sign electronically (ESIGN/UETA). This certificate records the', font, 8.5, rgb(0.5, 0.52, 0.56));
   line('identity, timestamp, and network address captured at the time of each signature.', font, 8.5, rgb(0.5, 0.52, 0.56));
   return doc.save();
+}
+
+export interface ExecutedSigner {
+  name: string; email: string; role: string;
+  signedAt?: string | null; ip?: string | null;
+  signaturePng?: Uint8Array | null; typedName?: string;
+}
+
+// Assemble the fully-executed PDF: the original document, then a Signatures page
+// (each party's drawn/typed signature), then the Certificate of Completion.
+// Works for ANY source doc without per-template field placement.
+export async function buildExecutedPdf(
+  sourceBytes: Uint8Array,
+  info: { docTitle: string; envelopeId: string; signers: ExecutedSigner[] },
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const cursive = await doc.embedFont(StandardFonts.HelveticaOblique);
+
+  let page = doc.addPage([612, 792]);
+  const M = 56;
+  let y = 792 - 74;
+  page.drawRectangle({ x: 0, y: 792 - 46, width: 612, height: 46, color: rgb(0.788, 0.573, 0.173) });
+  page.drawText('Signatures', { x: M, y: 792 - 31, size: 18, font: bold, color: rgb(1, 1, 1) });
+  page.drawText(winAnsi(info.docTitle), { x: M, y, size: 11, font, color: rgb(0.3, 0.3, 0.34) });
+  y -= 34;
+
+  for (const s of info.signers) {
+    if (y < 150) { page = doc.addPage([612, 792]); y = 792 - 74; }
+    page.drawText(winAnsi(s.role.toUpperCase()), { x: M, y, size: 8.5, font: bold, color: rgb(0.62, 0.45, 0.13) });
+    y -= 8;
+    if (s.signaturePng) {
+      try {
+        const png = await doc.embedPng(s.signaturePng);
+        const w = Math.min(210, png.width * 0.5); const h = w * (png.height / png.width);
+        page.drawImage(png, { x: M, y: y - h + 6, width: w, height: Math.min(h, 54) });
+        y -= Math.min(h, 54);
+      } catch { y -= 26; }
+    } else {
+      page.drawText(winAnsi(s.typedName || s.name), { x: M, y: y - 20, size: 18, font: cursive, color: rgb(0.05, 0.05, 0.35) });
+      y -= 26;
+    }
+    page.drawLine({ start: { x: M, y }, end: { x: M + 270, y }, thickness: 0.7, color: rgb(0.5, 0.5, 0.55) });
+    y -= 13;
+    page.drawText(winAnsi(`${s.name}   ·   ${s.email}`), { x: M, y, size: 9.5, font, color: rgb(0.2, 0.2, 0.24) });
+    y -= 12;
+    page.drawText(winAnsi(`Signed electronically${s.signedAt ? '  ·  ' + new Date(s.signedAt).toUTCString() : ''}${s.ip ? '  ·  IP ' + s.ip : ''}`), { x: M, y, size: 8, font, color: rgb(0.5, 0.52, 0.56) });
+    y -= 30;
+  }
+
+  const withSigs = await doc.save();
+  return appendCertificate(withSigs, info);
 }

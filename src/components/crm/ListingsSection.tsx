@@ -57,6 +57,8 @@ const STAGE_CHIP: Record<string, { bg: string; color: string }> = {
   LOI: { bg: '#fef3c7', color: '#b45309' }, 'In Contract': { bg: '#e0e7ff', color: '#4338ca' },
   Closed: { bg: '#dcfce7', color: '#15803d' }, Lost: { bg: '#fee2e2', color: '#dc2626' },
 };
+interface EnvSigner { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; signed_at?: string | null; viewed_at?: string | null }
+interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; crm_envelope_signers?: EnvSigner[] }
 
 interface Props {
   businessUnit: string;
@@ -197,6 +199,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [newDeal, setNewDeal] = useState({ client: '', client_email: '', client_phone: '', client_id: '', type: 'Tenant Lease', stage: 'Prospect' });
   const [dealBusy, setDealBusy] = useState(false);
   const [formDealId, setFormDealId] = useState<string | null>(null); // which deal a form editor is bound to
+  const [envMap, setEnvMap] = useState<Record<string, Envelope>>({}); // submission_id -> envelope
+  const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string } | null>(null);
+  const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string; include: boolean }[]>([]);
+  const [sendMsg, setSendMsg] = useState('');
+  const [sendBusy, setSendBusy] = useState(false);
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -258,6 +265,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setAllDeals(json.deals ?? []);
   }, [authToken]); // eslint-disable-line
 
+  const loadEnvelopes = useCallback(async (listingId: string) => {
+    const res = await fetch(`/api/crm/envelopes?listing_id=${listingId}`, { headers: authHeaders });
+    const json = await res.json().catch(() => ({}));
+    const map: Record<string, Envelope> = {};
+    for (const e of (json.envelopes ?? [])) if (e.submission_id) map[e.submission_id] = e;
+    setEnvMap(map);
+  }, [authToken]); // eslint-disable-line
+
   // Fetch the blank template's signed URL, then open the fillable editor bound to this property.
   const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string) => {
     setFormPicker(false);
@@ -298,6 +313,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setDeals([]);
     setDealForms({});
     loadDeals(l.id);
+    setEnvMap({});
+    loadEnvelopes(l.id);
   }
 
   function closePanel() { setActive(null); setFiles([]); setListingForms([]); setDirty(false); }
@@ -400,6 +417,36 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   function fillFormForDeal(dealId: string) { setFormDealId(dealId); loadCrmForms(); setFormPicker(true); }
   function editDealForm(dealId: string, form: { id: string; name: string }, submissionId: string) { setFormDealId(dealId); openFormEditor(form, submissionId); }
+
+  function openSendModal(d: Deal, f: FormSubmission) {
+    const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
+    const agent = profiles.find(p => p.id === (active?.listing_agent_id || d.agent_id));
+    setSendSigners([
+      { role: 'client', name: d.client || '', email: d.client_email || '', include: true },
+      { role: 'landlord', name: landlord ? (landlord.business_name || `${landlord.first_name} ${landlord.last_name}`.trim()) : '', email: landlord?.email || '', include: !!landlord?.email },
+      { role: 'agent', name: agent ? `${agent.first_name} ${agent.last_name}`.trim() : '', email: '', include: false },
+    ]);
+    setSendMsg('');
+    setSendModal({ submissionId: f.id, dealId: d.id, title: f.title || f.crm_forms?.name || 'Document' });
+  }
+
+  async function sendForSignature() {
+    if (!sendModal) return;
+    const signers = sendSigners.filter(s => s.include && s.email.includes('@') && s.name.trim())
+      .map((s, i) => ({ signer_role: s.role, name: s.name.trim(), email: s.email.trim(), signing_order: i + 1 }));
+    if (signers.length === 0) { onToast('Add at least one signer with a valid email'); return; }
+    setSendBusy(true);
+    const res = await fetch('/api/crm/envelopes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ submission_id: sendModal.submissionId, deal_id: sendModal.dealId, listing_id: active?.id, title: sendModal.title, message: sendMsg, signers }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setSendBusy(false);
+    if (!res.ok) { onToast(j.error || 'Could not send for signature'); return; }
+    setSendModal(null);
+    if (active) loadEnvelopes(active.id);
+    onToast(j.sent ? `📤 Sent to ${signers[0].email} ✓` : 'Envelope created');
+  }
 
   // Generate a branded one-page PDF flyer from this property's data + photos.
   async function generateFlyer() {
@@ -937,6 +984,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                       <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                                     </div>
                                     {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>PDF ↗</a>}
+                                    {(() => {
+                                      const env = envMap[f.id];
+                                      if (env) {
+                                        const sg = env.crm_envelope_signers || [];
+                                        const done = sg.filter(s => s.status === 'signed' || s.signed_at).length;
+                                        return env.status === 'completed' && env.executed_url
+                                          ? <a href={env.executed_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 7, padding: '5px 10px', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed ↗</a>
+                                          : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>;
+                                      }
+                                      return <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
+                                    })()}
                                     <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
                                   </div>
                                 ))}
@@ -1227,6 +1285,41 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Send for signature */}
+      {sendModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+          onClick={e => { if (e.target === e.currentTarget) setSendModal(null); }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Send for signature</h3>
+              <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}><strong>{sendModal.title}</strong> — signers are emailed in order; each signs, then the next is notified. The executed copy is emailed to everyone.</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {sendSigners.map((s, i) => (
+                <div key={s.role} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', background: s.include ? '#fff' : '#fafafa' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: s.include ? 8 : 0, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={s.include} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, include: e.target.checked } : x))} style={{ accentColor: '#c9922c', width: 15, height: 15 }} />
+                    <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, color: '#6b7280' }}>{i + 1}. {s.role}</span>
+                  </label>
+                  {s.include && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input value={s.name} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} placeholder="Name" style={{ ...INP, fontSize: 14 }} />
+                      <input value={s.email} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, email: e.target.value } : x))} placeholder="Email" style={{ ...INP, fontSize: 14 }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+              <textarea value={sendMsg} onChange={e => setSendMsg(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', fontSize: 14 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button onClick={() => setSendModal(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
+              <button onClick={sendForSignature} disabled={sendBusy} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: sendBusy ? 'default' : 'pointer', opacity: sendBusy ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>{sendBusy ? 'Sending…' : '📤 Send for signature'}</button>
+            </div>
           </div>
         </div>
       )}
