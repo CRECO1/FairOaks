@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
       message ? `Message: ${message}` : '',
     ].filter(Boolean).join('\n');
 
-    const { data: newClient } = await supabase.from('crm_clients').insert([{
+    const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
       first_name,
       last_name,
       email,
@@ -148,7 +148,13 @@ export async function POST(req: NextRequest) {
       ...(city ? { city } : {}),
       ...(state ? { state } : {}),
     }]).select('id').single();
-    clientId = newClient?.id;
+    if (insertErr || !newClient) {
+      // Fail loud so the web form / Zapier retries instead of dropping the lead
+      // (and so we don't send the "added new contact" email for a lead we lost).
+      console.error('[webhook] lead insert failed:', insertErr?.message ?? insertErr);
+      return NextResponse.json({ error: 'Could not save lead' }, { status: 500 });
+    }
+    clientId = newClient.id;
   }
 
   // ── Notify team via email ─────────────────────────────────────────────────
