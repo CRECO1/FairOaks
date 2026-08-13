@@ -10,7 +10,7 @@
 // stores, so the existing e-sign send/stamp flow works with zero changes.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
-export interface LoiTermRow { label: string; value: string }
+export interface LoiTermRow { label: string; value: string; id?: string }
 export interface LoiSeller { entity: string; signatory: string }
 export interface LoiPurchaseData {
   loiDate: string;
