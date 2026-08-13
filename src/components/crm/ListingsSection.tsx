@@ -200,7 +200,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [dealBusy, setDealBusy] = useState(false);
   const [formDealId, setFormDealId] = useState<string | null>(null); // which deal a form editor is bound to
   const [envMap, setEnvMap] = useState<Record<string, Envelope>>({}); // submission_id -> envelope
-  const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string } | null>(null);
+  const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string; formId?: string } | null>(null);
+  const [sendSigFields, setSendSigFields] = useState<number | null>(null);
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string; include: boolean }[]>([]);
   const [sendMsg, setSendMsg] = useState('');
   const [sendBusy, setSendBusy] = useState(false);
@@ -428,7 +429,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       { role: 'agent', name: agent ? `${agent.first_name} ${agent.last_name}`.trim() : '', email: '', include: false },
     ]);
     setSendMsg('');
-    setSendModal({ submissionId: f.id, dealId: d.id, title: f.title || f.crm_forms?.name || 'Document' });
+    setSendSigFields(null);
+    setSendModal({ submissionId: f.id, dealId: d.id, title: f.title || f.crm_forms?.name || 'Document', formId: f.form_id });
+    // how many signature/initial/date fields the agent placed on this doc
+    fetch(`/api/crm/form-submissions/${f.id}`, { headers: authHeaders })
+      .then(r => r.json())
+      .then(j => { const vals = Array.isArray(j.submission?.values) ? j.submission.values : []; setSendSigFields(vals.filter((x: { type?: string }) => ['signature', 'initial', 'date'].includes(String(x.type))).length); })
+      .catch(() => setSendSigFields(0));
   }
 
   async function sendForSignature() {
@@ -1358,7 +1365,16 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Send for signature</h3>
               <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
-            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 16 }}><strong>{sendModal.title}</strong> — signers are emailed in order; each signs, then the next is notified. The executed copy is emailed to everyone.</div>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}><strong>{sendModal.title}</strong> — signers are emailed in order; each signs, then the next is notified. The executed copy is emailed to everyone.</div>
+            {sendSigFields !== null && (sendSigFields > 0 ? (
+              <div style={{ fontSize: 12.5, color: '#15803d', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>✒ {sendSigFields} signature field{sendSigFields === 1 ? '' : 's'} placed — signers will sign on the document itself.</div>
+            ) : (
+              <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ flex: 1, minWidth: 180 }}>No signature fields placed — signers will sign on an added Signatures page. To sign on the document’s own lines, place fields first.</span>
+                <button onClick={() => { const m = sendModal; setSendModal(null); if (m) editDealForm(m.dealId, { id: m.formId || '', name: m.title }, m.submissionId); }}
+                  style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Place fields</button>
+              </div>
+            ))}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {sendSigners.map((s, i) => (
                 <div key={s.role} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', background: s.include ? '#fff' : '#fafafa' }}>
