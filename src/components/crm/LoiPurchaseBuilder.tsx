@@ -10,6 +10,7 @@ import {
   renderLoiPurchase, DEFAULT_LOI_TERMS,
   type LoiPurchaseData, type LoiTermRow, type LoiSeller,
 } from '@/lib/loi-purchase-doc';
+import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 
 interface Prefill {
   agentName?: string; agentEmail?: string; agentPhone?: string;
@@ -70,20 +71,6 @@ function seedData(prefill?: Prefill): LoiPurchaseData {
     agentPhone: prefill?.agentPhone || '',
     sellers: [{ entity: prefill?.sellerName || '', signatory: '' }],
   };
-}
-
-// A borderless textarea that grows to fit its content, so edits flow like document text.
-function AutoText({ value, onChange, style, placeholder, bold }: { value: string; onChange: (v: string) => void; style?: React.CSSProperties; placeholder?: string; bold?: boolean }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const fit = () => { const el = ref.current; if (el) { el.style.height = '0px'; el.style.height = el.scrollHeight + 'px'; } };
-  useEffect(fit, [value]);
-  return (
-    <textarea
-      ref={ref} className="loi-ef" rows={1} value={value} placeholder={placeholder}
-      onChange={e => onChange(e.target.value)} onInput={fit}
-      style={{ font: 'inherit', fontWeight: bold ? 700 : undefined, color: 'inherit', border: 'none', outline: 'none', background: 'transparent', padding: '1px 3px', margin: 0, width: '100%', resize: 'none', overflow: 'hidden', boxSizing: 'border-box', lineHeight: 1.34, ...style }}
-    />
-  );
 }
 
 export default function LoiPurchaseBuilder({ formId, submissionId, listingId, dealId, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
@@ -172,8 +159,10 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 18px', background: '#fff', borderBottom: '1px solid #eef0f2', fontFamily: "'DM Sans',sans-serif" }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a' }}>Letter of Intent to Purchase</div>
-          <div style={{ fontSize: 12, color: '#9ca3af' }}>Edit directly on the letter · hover a term for ↑ ↓ ＋ ✕</div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>Edit on the letter · hover a term for ↑ ↓ ＋ ✕ · select text to <b>bold</b>/<i>italic</i> (⌘B / ⌘I)</div>
         </div>
+        <RtFormatButtons />
+        <div style={{ width: 1, height: 26, background: '#eef0f2' }} />
         <button onClick={() => save(false)} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Save</button>
         <button onClick={() => save(true)} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 800, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save & close'}</button>
         <button onClick={onClose} style={{ padding: '8px 10px', fontSize: 16, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
@@ -190,15 +179,15 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             <div style={{ borderBottom: '3px solid #1c1c1f', marginBottom: 22 }} />
 
             {/* Date / addressee / re */}
-            <div style={{ marginBottom: 16, maxWidth: 240 }}><AutoText value={data.loiDate} onChange={v => patch({ loiDate: v })} placeholder="Date" /></div>
+            <div style={{ marginBottom: 16, maxWidth: 240 }}><RichText value={data.loiDate} onChange={v => patch({ loiDate: v })} placeholder="Date" /></div>
             <div style={{ marginBottom: 14, maxWidth: 360 }}>
-              <AutoText value={data.addresseeName} onChange={v => patch({ addresseeName: v })} placeholder="Addressee name (seller)" />
-              <AutoText value={data.addresseeAddr1} onChange={v => patch({ addresseeAddr1: v })} placeholder="Street address" />
-              <AutoText value={data.addresseeAddr2} onChange={v => patch({ addresseeAddr2: v })} placeholder="City, State ZIP" />
+              <RichText value={data.addresseeName} onChange={v => patch({ addresseeName: v })} placeholder="Addressee name (seller)" />
+              <RichText value={data.addresseeAddr1} onChange={v => patch({ addresseeAddr1: v })} placeholder="Street address" />
+              <RichText value={data.addresseeAddr2} onChange={v => patch({ addresseeAddr2: v })} placeholder="City, State ZIP" />
             </div>
             <div style={{ display: 'flex', marginBottom: 20 }}>
               <span style={{ fontWeight: 700, flex: '0 0 30px' }}>Re:</span>
-              <div style={{ flex: 1 }}><AutoText value={data.reLine} onChange={v => patch({ reLine: v })} placeholder="Re: line" /></div>
+              <div style={{ flex: 1 }}><RichText value={data.reLine} onChange={v => patch({ reLine: v })} placeholder="Re: line" /></div>
             </div>
 
             <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, margin: '0 0 16px' }}>Letter of Intent to Purchase</div>
@@ -210,8 +199,8 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
                   <button title="Move up" onClick={() => moveTerm(i, -1)} disabled={i === 0} style={{ ...ctrlBtn, opacity: i === 0 ? 0.4 : 1 }}>↑</button>
                   <button title="Move down" onClick={() => moveTerm(i, 1)} disabled={i === data.terms.length - 1} style={{ ...ctrlBtn, opacity: i === data.terms.length - 1 ? 0.4 : 1 }}>↓</button>
                 </div>
-                <div style={{ flex: '0 0 150px' }}><AutoText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
-                <div style={{ flex: 1 }}><AutoText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>
+                <div style={{ flex: '0 0 150px' }}><RichText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
+                <div style={{ flex: 1 }}><RichText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>
                 <div className="loi-gutter" style={{ display: 'flex', gap: 3, paddingTop: 1, fontFamily: "'DM Sans',sans-serif" }}>
                   <button title="Add row below" onClick={() => addTermAfter(i)} style={{ ...ctrlBtn, color: '#a06a12' }}>＋</button>
                   <button title="Remove row" onClick={() => removeTerm(i)} style={{ ...ctrlBtn, color: '#dc2626' }}>✕</button>
@@ -223,7 +212,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {/* Other Stipulations */}
             <div style={{ marginBottom: 18 }}>
               <div style={{ fontWeight: 700, marginBottom: 2 }}>Other Stipulations:</div>
-              <AutoText value={data.additionalTerms} onChange={v => patch({ additionalTerms: v })} placeholder="Any additional terms that don’t fit the rows above…" />
+              <RichText multiline value={data.additionalTerms} onChange={v => patch({ additionalTerms: v })} placeholder="Any additional terms that don’t fit the rows above…" />
             </div>
 
             {/* Boilerplate */}
@@ -232,9 +221,9 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {/* Sign-off */}
             <div style={{ margin: '18px 0 6px' }}>Sincerely,</div>
             <div style={{ marginBottom: 22, maxWidth: 320 }}>
-              <AutoText value={data.agentName} onChange={v => patch({ agentName: v })} placeholder="Your name" />
-              <AutoText value={data.agentEmail} onChange={v => patch({ agentEmail: v })} placeholder="Your email" />
-              <AutoText value={data.agentPhone} onChange={v => patch({ agentPhone: v })} placeholder="Your phone" />
+              <RichText value={data.agentName} onChange={v => patch({ agentName: v })} placeholder="Your name" />
+              <RichText value={data.agentEmail} onChange={v => patch({ agentEmail: v })} placeholder="Your email" />
+              <RichText value={data.agentPhone} onChange={v => patch({ agentPhone: v })} placeholder="Your phone" />
             </div>
 
             {/* Seller acceptance */}
@@ -248,9 +237,9 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {data.sellers.map((s, i) => (
               <div key={i} style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, fontSize: 12.5, letterSpacing: 0.3, margin: '6px 0 10px' }}>AGREED TO &amp; ACCEPTED BY:</div>
-                <div style={{ maxWidth: 360, marginBottom: 12 }}><AutoText value={s.entity} onChange={v => setSeller(i, { entity: v })} placeholder={`Seller ${i + 1} — entity / name`} /><div style={{ borderBottom: '1px solid #9ca3af', marginTop: -2 }} /></div>
+                <div style={{ maxWidth: 360, marginBottom: 12 }}><RichText value={s.entity} onChange={v => setSeller(i, { entity: v })} placeholder={`Seller ${i + 1} — entity / name`} /><div style={{ borderBottom: '1px solid #9ca3af', marginTop: -2 }} /></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Signature:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
-                <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Name:</span><div style={{ flex: 1, marginLeft: 8, borderBottom: '1px solid #9ca3af' }}><AutoText value={s.signatory} onChange={v => setSeller(i, { signatory: v })} placeholder="printed name" /></div></div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Name:</span><div style={{ flex: 1, marginLeft: 8, borderBottom: '1px solid #9ca3af' }}><RichText value={s.signatory} onChange={v => setSeller(i, { signatory: v })} placeholder="printed name" /></div></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', maxWidth: 420 }}><span>Date:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
               </div>
             ))}

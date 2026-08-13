@@ -9,6 +9,7 @@
 // PlacedField coordinates (`sigFields`) in the exact shape crm_form_submissions.values
 // stores, so the existing e-sign send/stamp flow works with zero changes.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { parseRich, drawRichText, countRichLines, type RichFonts } from '@/lib/rich-text';
 
 export interface LoiTermRow { label: string; value: string; id?: string }
 export interface LoiSeller { entity: string; signatory: string }
@@ -91,6 +92,10 @@ export async function renderLoiPurchase(
   const times = await doc.embedFont(StandardFonts.TimesRoman);
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
   const italic = await doc.embedFont(StandardFonts.TimesRomanItalic);
+  const boldItalic = await doc.embedFont(StandardFonts.TimesRomanBoldItalic);
+  const rich: RichFonts = { reg: times, bold, ital: italic, boldItal: boldItalic };
+  // Editable values carry inline **bold**/*italic* markup; sanitize then parse to runs.
+  const runs = (s: string) => parseRich(sane(s));
   const logo = await doc.embedPng(logoBytes);
 
   let page!: PDFPage, y = 0, pageIndex = -1;
@@ -128,21 +133,23 @@ export async function renderLoiPurchase(
     lines.forEach((l, i) => page.drawText(l, { x: M, y: y - i * lh, size, font, color: ink }));
     y -= lines.length * lh + gap;
   }
-  // A left-aligned baked line (date, addressee, sign-off) — one drawn line per wrap.
+  // A left-aligned editable line (date, addressee, sign-off) — rich, one drawn line per wrap.
   function leftBlock(str: string, x: number, w: number, gap = 0) {
-    const lines = wrapText(str, times, BODY, w);
-    ensure(lines.length * lh + gap);
-    lines.forEach((l, i) => page.drawText(l, { x, y: y - i * lh, size: BODY, font: times, color: ink }));
-    y -= lines.length * lh + gap;
+    const r = runs(str);
+    const n = countRichLines(r, rich, BODY, w);
+    ensure(n * lh + gap);
+    drawRichText({ page, runs: r, x, y, size: BODY, lineHeight: lh, maxW: w, fonts: rich, color: ink });
+    y -= n * lh + gap;
   }
-  // Term row: bold label (left column) + value flowed in the right column. Never splits.
+  // Term row: bold label (left column) + rich value flowed in the right column. Never splits.
   function termRow(label: string, value: string, gap = 5) {
     const lblLines = wrapText(label, bold, BODY, LABELW - 8);
-    const valLines = wrapText(value, times, BODY, RIGHT - VALX);
-    const n = Math.max(lblLines.length, valLines.length);
+    const valRuns = runs(value);
+    const valCount = countRichLines(valRuns, rich, BODY, RIGHT - VALX);
+    const n = Math.max(lblLines.length, valCount);
     ensure(n * lh + gap);
     lblLines.forEach((l, i) => page.drawText(l, { x: M, y: y - i * lh, size: BODY, font: bold, color: ink }));
-    valLines.forEach((l, i) => page.drawText(l, { x: VALX, y: y - i * lh, size: BODY, font: times, color: ink }));
+    drawRichText({ page, runs: valRuns, x: VALX, y, size: BODY, lineHeight: lh, maxW: RIGHT - VALX, fonts: rich, color: ink });
     y -= n * lh + gap;
   }
 
@@ -175,7 +182,11 @@ export async function renderLoiPurchase(
     page.drawText('Other Stipulations:', { x: M, y, size: BODY, font: bold, color: ink });
     y -= lh + 2;
     for (const para of data.additionalTerms.split(/\n+/).map(s => s.trim()).filter(Boolean)) {
-      staticBlock(para, 6);
+      const r = runs(para);
+      const n = countRichLines(r, rich, BODY, RIGHT - M);
+      ensure(n * lh + 6);
+      drawRichText({ page, runs: r, x: M, y, size: BODY, lineHeight: lh, maxW: RIGHT - M, fonts: rich, color: ink });
+      y -= n * lh + 6;
     }
   }
 
@@ -202,7 +213,7 @@ export async function renderLoiPurchase(
     y -= 26;
     // Entity / name line (baked)
     page.drawLine({ start: { x: M, y: y - 1.5 }, end: { x: M + SIGW + 44, y: y - 1.5 }, thickness: 0.7, color: lineCol });
-    if (seller.entity) page.drawText(sane(seller.entity), { x: M + 2, y, size: BODY, font: times, color: ink });
+    if (seller.entity) drawRichText({ page, runs: runs(seller.entity), x: M + 2, y, size: BODY, lineHeight: lh, maxW: Infinity, fonts: rich, color: ink });
     y -= 24;
     const rows: Array<[string, 'signature' | 'name' | 'date']> = [['Signature:', 'signature'], ['Name:', 'name'], ['Date:', 'date']];
     for (const [lab, kind] of rows) {
@@ -210,7 +221,7 @@ export async function renderLoiPurchase(
       page.drawLine({ start: { x: LABX, y: y - 1.5 }, end: { x: LABX + SIGW, y: y - 1.5 }, thickness: 0.7, color: lineCol });
       if (kind === 'signature') recordSig(LABX, y, SIGW, 'signature', role);
       else if (kind === 'date') recordSig(LABX, y, SIGW, 'date', role);
-      else if (seller.signatory) page.drawText(sane(seller.signatory), { x: LABX + 2, y, size: BODY, font: times, color: ink });
+      else if (seller.signatory) drawRichText({ page, runs: runs(seller.signatory), x: LABX + 2, y, size: BODY, lineHeight: lh, maxW: Infinity, fonts: rich, color: ink });
       y -= 24;
     }
   }
