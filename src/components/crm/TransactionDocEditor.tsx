@@ -2,6 +2,8 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { parseRich, drawRichText, hasMarkup, type RichFonts } from '@/lib/rich-text';
+import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 
 // A zipForms-style fillable editor: renders a flat PDF's pages inline (pdf.js),
 // lets an agent drop text/check fields anywhere, type into them, then generates
@@ -235,6 +237,13 @@ export default function TransactionDocEditor({
     // load them for editing unless we explicitly ignore it.
     const doc = await PDFDocument.load(bytesRef.current, { ignoreEncryption: true });
     const font = await doc.embedFont(StandardFonts.Helvetica);
+    const rich: RichFonts = {
+      reg: font,
+      bold: await doc.embedFont(StandardFonts.HelveticaBold),
+      ital: await doc.embedFont(StandardFonts.HelveticaOblique),
+      boldItal: await doc.embedFont(StandardFonts.HelveticaBoldOblique),
+    };
+    const ink = rgb(0.06, 0.06, 0.1);
     const pgs = doc.getPages();
     for (const f of fields) {
       const pg = pgs[f.page - 1]; if (!pg) continue;
@@ -244,8 +253,14 @@ export default function TransactionDocEditor({
       // Baseline sits just above the blank line (detected fy = the underline),
       // matching where the on-screen field renders.
       const y = height - f.fy * height + 2;
-      const text = winAnsi(f.type === 'check' ? (f.value ? 'X' : '') : (f.value || ''));
-      if (text) pg.drawText(text, { x, y, size: f.size * 0.85, font, color: rgb(0.06, 0.06, 0.1) });
+      const size = f.size * 0.85;
+      if (f.type === 'check') { if (f.value) pg.drawText('X', { x, y, size, font, color: ink }); continue; }
+      const val = winAnsi(f.value || '');
+      if (!val) continue;
+      // Field values may carry inline **bold**/*italic* markup; plain values keep the
+      // single-drawText fast path so text extraction stays clean.
+      if (hasMarkup(val)) drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size, maxW: Infinity, fonts: rich, color: ink });
+      else pg.drawText(val, { x, y, size, font, color: ink });
     }
     return doc.save();
   }, [fields]);
@@ -347,6 +362,8 @@ export default function TransactionDocEditor({
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {toolBtn('text', '➕ Text field')}
               {toolBtn('check', '☑︎ Check')}
+              <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
+              <RtFormatButtons compact />
               <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
               <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>Signer:</span>
               <select value={sigRole} onChange={e => setSigRole(e.target.value as 'client' | 'landlord' | 'agent')} title="Which party will fill this signature/initial/date field"
@@ -460,19 +477,31 @@ export default function TransactionDocEditor({
                   display: 'flex', alignItems: isCheck ? 'center' : 'flex-end', touchAction: isSel ? 'none' : undefined,
                   background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
                   outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
-                <input
-                  className="pdf-fill-input"
-                  value={f.value}
-                  placeholder={f.label || ''}
-                  title={f.label || ''}
-                  onChange={e => updateVal(f.id, e.target.value)}
-                  onMouseDown={e => e.stopPropagation()}
-                  onTouchStart={e => e.stopPropagation()}
-                  onFocus={() => setSelected(f.id)}
-                  style={{ width: '100%', height: 'auto', minHeight: 0, boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
-                    fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
-                    textAlign: isCheck ? 'center' : 'left', padding: '0 2px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
-                />
+                {isCheck ? (
+                  <input
+                    className="pdf-fill-input"
+                    value={f.value}
+                    placeholder={f.label || ''}
+                    title={f.label || ''}
+                    onChange={e => updateVal(f.id, e.target.value)}
+                    onMouseDown={e => e.stopPropagation()}
+                    onTouchStart={e => e.stopPropagation()}
+                    onFocus={() => setSelected(f.id)}
+                    style={{ width: '100%', height: 'auto', minHeight: 0, boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
+                      fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
+                      textAlign: 'center', padding: '0 2px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
+                  />
+                ) : (
+                  <RichText
+                    value={f.value}
+                    onChange={v => updateVal(f.id, v)}
+                    placeholder={f.label || ''}
+                    onFocus={() => setSelected(f.id)}
+                    stopDrag
+                    style={{ width: '100%', minHeight: 0, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
+                      textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'nowrap', overflow: 'hidden' }}
+                  />
+                )}
                 {isSel && (
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}
                     onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
