@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ submission: copy });
   }
 
-  const { form_id, deal_id, listing_id, title, values, pdfBase64, business_unit, submission_id } = body;
+  const { form_id, deal_id, listing_id, title, values, pdfBase64, business_unit, submission_id, builder_data } = body;
   if (!form_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();
 
@@ -110,6 +110,9 @@ export async function POST(req: NextRequest) {
     status: 'saved',
     updated_at: new Date().toISOString(),
     ...(filled_path ? { filled_path } : {}),
+    // Editable source for builder-style docs (e.g. the LOI to Purchase term list),
+    // so the doc can be reopened and regenerated. Plain overlay forms never send it.
+    ...(builder_data !== undefined ? { builder_data } : {}),
   };
 
   const res = submission_id

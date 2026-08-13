@@ -2,6 +2,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
+import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
+
+// Forms whose form_code opens the dynamic term-list builder instead of the
+// coordinate-overlay editor.
+const LOI_PURCHASE_CODE = 'LOI-PURCHASE';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,6 +184,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [listingForms, setListingForms] = useState<FormSubmission[]>([]);
   const [formPicker, setFormPicker] = useState(false);
   const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string } | null>(null);
+  const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string } | null>(null);
 
   // Team / sharing state for the open listing.
   const [teamOwner, setTeamOwner] = useState('');
@@ -286,15 +292,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   }, [authToken]); // eslint-disable-line
 
   // Fetch the blank template's signed URL, then open the fillable editor bound to this property.
-  const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string) => {
+  const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string, formCode?: string) => {
     setFormPicker(false);
+    // The LOI to Purchase uses the dynamic term-list builder, not the overlay editor.
+    const code = formCode || crmForms.find(f => f.id === form.id)?.form_code;
+    if (code === LOI_PURCHASE_CODE) { setLoiDoc({ formId: form.id, name: form.name, submissionId }); return; }
     try {
       const res = await fetch(`/api/crm/forms/${form.id}/url`, { headers: authHeaders });
       const json = await res.json();
       if (!json.url) { onToast('Could not open form'); return; }
       setEditorDoc({ id: form.id, name: form.name, url: json.url, submissionId });
     } catch { onToast('Could not open form'); }
-  }, [authToken, onToast]); // eslint-disable-line
+  }, [authToken, onToast, crmForms]); // eslint-disable-line
 
   // ── Open / close listing ────────────────────────────────────────────────────
 
@@ -429,7 +438,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   }
 
   function fillFormForDeal(dealId: string) { setFormDealId(dealId); loadCrmForms(); setFormPicker(true); }
-  function editDealForm(dealId: string, form: { id: string; name: string }, submissionId: string) { setFormDealId(dealId); openFormEditor(form, submissionId); }
+  function editDealForm(dealId: string, form: { id: string; name: string }, submissionId: string, formCode?: string) { setFormDealId(dealId); openFormEditor(form, submissionId, formCode); }
 
   function openSendModal(d: Deal, f: FormSubmission) {
     const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
@@ -885,7 +894,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                             </div>
                             {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
-                            <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                            <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
                             <button onClick={() => copySubmission(f.id)} title="Make a copy" style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
                             <button onClick={() => deleteSubmission(f.id)} title="Delete document" style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                           </div>
@@ -1047,7 +1056,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                       }
                                       return <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                                     })()}
-                                    <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                                    <button onClick={() => editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
                                     <button onClick={() => copySubmission(f.id, { dealId: d.id })} title="Make a copy" style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
                                     <button onClick={() => deleteSubmission(f.id, { dealId: d.id })} title="Delete document" style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                                   </div>
@@ -1321,7 +1330,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const hasCurated = pinnedForms.length > 0;
         const formRow = (fm: FormTemplate) => (
           <div key={fm.id} style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
-            <button onClick={() => openFormEditor({ id: fm.id, name: fm.name })}
+            <button onClick={() => openFormEditor({ id: fm.id, name: fm.name }, undefined, fm.form_code)}
               style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: '1px solid #eef0f2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}
               onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')} onMouseLeave={e => (e.currentTarget.style.background = '#fff')}>
               <span style={{ fontSize: 18 }}>📄</span>
@@ -1382,7 +1391,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             ) : (
               <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ flex: 1, minWidth: 180 }}>No signature fields placed — signers will sign on an added Signatures page. To sign on the document’s own lines, place fields first.</span>
-                <button onClick={() => { const m = sendModal; setSendModal(null); if (m) editDealForm(m.dealId, { id: m.formId || '', name: m.title }, m.submissionId); }}
+                <button onClick={() => { const m = sendModal; setSendModal(null); if (m) editDealForm(m.dealId, { id: m.formId || '', name: m.title }, m.submissionId, crmForms.find(cf => cf.id === m.formId)?.form_code); }}
                   style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Place fields</button>
               </div>
             ))}
@@ -1427,6 +1436,34 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           onSaved={() => { if (formDealId) loadDealForms(formDealId); if (active) loadListingForms(active.id); onToast(formDealId ? 'Saved to deal ✓' : 'Saved to property ✓'); }}
         />
       )}
+
+      {/* ── LOI-to-Purchase term-list builder (dynamic, replaces the overlay editor) ── */}
+      {loiDoc && active && (() => {
+        const agent = profiles.find(p => p.id === active.listing_agent_id);
+        const deal = deals.find(d => d.id === formDealId);
+        const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
+        const propertyAddress = [active.address, active.city, active.state].filter(Boolean).join(', ') || active.name || '';
+        return (
+          <LoiPurchaseBuilder
+            formId={loiDoc.formId}
+            name={loiDoc.name}
+            submissionId={loiDoc.submissionId}
+            listingId={active.id}
+            dealId={formDealId ?? undefined}
+            businessUnit={businessUnit}
+            authToken={authToken}
+            prefill={{
+              agentName: agent ? `${agent.first_name} ${agent.last_name}`.trim() : '',
+              propertyAddress,
+              purchaser: deal?.client || '',
+              sellerName: landlord ? (landlord.business_name || `${landlord.first_name} ${landlord.last_name}`.trim()) : '',
+            }}
+            onToast={onToast}
+            onClose={() => { setLoiDoc(null); setFormDealId(null); }}
+            onSaved={() => { if (formDealId) loadDealForms(formDealId); if (active) loadListingForms(active.id); onToast(formDealId ? 'Saved to deal ✓' : 'Saved to property ✓'); }}
+          />
+        );
+      })()}
     </div>
   );
 }
