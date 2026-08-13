@@ -706,7 +706,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [editAgentSaving, setEditAgentSaving] = useState(false);
 
   // Task Manager (full Tasks page)
-  const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan' | 'matchmaker'>('propertydb');
+  const [propertiesTab, setPropertiesTab] = useState<'propertydb' | 'listings' | 'floorplan' | 'matchmaker'>(() => {
+    if (typeof window === 'undefined') return 'propertydb';
+    const saved = localStorage.getItem('creco_properties_tab');
+    return (saved === 'listings' || saved === 'floorplan' || saved === 'matchmaker' || saved === 'propertydb') ? saved : 'propertydb';
+  });
+  useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem('creco_properties_tab', propertiesTab); }, [propertiesTab]);
   const [propertyDbCount, setPropertyDbCount] = useState<number | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
