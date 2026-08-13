@@ -190,9 +190,9 @@ const { loadBranding, drawHeader, drawFooter, CONTENT_BOTTOM } = require('../lib
   page.drawText('AGREED TO & ACCEPTED BY TENANT:', { x: M, y, size: 9.5, font: bold, color: ink });
   page.drawText('AGREED TO & ACCEPTED BY LANDLORD:', { x: colR, y, size: 9.5, font: bold, color: ink });
   y -= 24;
-  for (const lab of ['By:', 'Its:', 'Date:']) {
-    sigLine(M, lab, M + 34, colR - 22, y);
-    sigLine(colR, lab, colR + 34, RIGHT, y);
+  for (const lab of ['Signature:', 'Name:', 'Date:']) {
+    sigLine(M, lab, M + 62, colR - 22, y);
+    sigLine(colR, lab, colR + 62, RIGHT, y);
     y -= 24;
   }
 

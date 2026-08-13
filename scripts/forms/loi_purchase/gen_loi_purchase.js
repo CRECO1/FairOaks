@@ -177,13 +177,13 @@ const { loadBranding, drawHeader, drawFooter, CONTENT_BOTTOM } = require('../lib
   fieldBlock('agent_phone', M, 260, '(210) 355-8683', 20);
 
   // ── Two seller acceptance blocks — blank, kept together on one page ──────────
-  const SIGW = 250, LABX = M + 44;
+  const SIGW = 250, LABX = M + 64;
   function acceptanceBlock(n) {
     ensure(5 * 24 + 16);
     page.drawText('AGREED TO & ACCEPTED BY:', { x: M, y, size: 9.5, font: bold, color: ink });
     y -= 26;
     blankField(`seller_${n}_name`, M, y, SIGW + 44); y -= 24;
-    for (const [lab, key] of [['BY:', `seller_${n}_by`], ['Its:', `seller_${n}_its`], ['Date:', `seller_${n}_date`]]) {
+    for (const [lab, key] of [['Signature:', `seller_${n}_by`], ['Name:', `seller_${n}_its`], ['Date:', `seller_${n}_date`]]) {
       page.drawText(lab, { x: M, y, size: BODY, font: times, color: ink });
       blankField(key, LABX, y, SIGW);
       y -= 24;
