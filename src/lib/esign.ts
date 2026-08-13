@@ -8,7 +8,7 @@
 // token generation, the audit log, and all pdf-lib signature stamping.
 // ─────────────────────────────────────────────────────────────────────────────
 import { randomBytes } from 'crypto';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, PDFImage } from 'pdf-lib';
 import { Resend } from 'resend';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -202,47 +202,67 @@ export interface ExecutedSigner {
   signaturePng?: Uint8Array | null; typedName?: string;
 }
 
-// Assemble the fully-executed PDF: the original document, then a Signatures page
-// (each party's drawn/typed signature), then the Certificate of Completion.
-// Works for ANY source doc without per-template field placement.
+// A signature/initial/date field the agent placed on the doc (from the submission).
+export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null }
+
+// Assemble the fully-executed PDF: stamp each signer's signature/initials/date onto
+// the fields the agent PLACED (inline, on the doc's own lines); any signer without
+// a placed field lands on an appended Signatures page; then the Certificate.
 export async function buildExecutedPdf(
   sourceBytes: Uint8Array,
-  info: { docTitle: string; envelopeId: string; signers: ExecutedSigner[] },
+  info: { docTitle: string; envelopeId: string; signers: ExecutedSigner[]; sigFields?: PlacedField[] },
 ): Promise<Uint8Array> {
   const doc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const cursive = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const pages = doc.getPages();
+  const initialsOf = (n: string) => (n || '').split(/\s+/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4);
 
-  let page = doc.addPage([612, 792]);
-  const M = 56;
-  let y = 792 - 74;
-  page.drawRectangle({ x: 0, y: 792 - 46, width: 612, height: 46, color: rgb(0.788, 0.573, 0.173) });
-  page.drawText('Signatures', { x: M, y: 792 - 31, size: 18, font: bold, color: rgb(1, 1, 1) });
-  page.drawText(winAnsi(info.docTitle), { x: M, y, size: 11, font, color: rgb(0.3, 0.3, 0.34) });
-  y -= 34;
+  // Embed each signer's drawn signature once.
+  const png = new Map<string, PDFImage | null>();
+  for (const s of info.signers) if (s.signaturePng) { try { png.set(s.email, await doc.embedPng(s.signaturePng)); } catch { png.set(s.email, null); } }
 
-  for (const s of info.signers) {
-    if (y < 150) { page = doc.addPage([612, 792]); y = 792 - 74; }
-    page.drawText(winAnsi(s.role.toUpperCase()), { x: M, y, size: 8.5, font: bold, color: rgb(0.62, 0.45, 0.13) });
-    y -= 8;
-    if (s.signaturePng) {
-      try {
-        const png = await doc.embedPng(s.signaturePng);
-        const w = Math.min(210, png.width * 0.5); const h = w * (png.height / png.width);
-        page.drawImage(png, { x: M, y: y - h + 6, width: w, height: Math.min(h, 54) });
-        y -= Math.min(h, 54);
-      } catch { y -= 26; }
+  // Inline stamping onto agent-placed fields.
+  const placed = (info.sigFields || []).filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(f.type));
+  const inline = new Set<string>();
+  for (const f of placed) {
+    const s = info.signers.find(x => (x.role || 'client') === (f.signerRole || 'client'));
+    if (!s) continue;
+    const pg = pages[(f.page || 1) - 1]; if (!pg) continue;
+    const { width, height } = pg.getSize();
+    const x = f.fx * width; const baseline = height - f.fy * height;
+    if (f.type === 'signature') {
+      const img = png.get(s.email);
+      if (img) { const w = Math.max(40, f.fw * width); const h = Math.min(w / (img.width / img.height), 38); pg.drawImage(img, { x, y: baseline, width: h * (img.width / img.height), height: h }); }
+      else pg.drawText(winAnsi(s.typedName || s.name), { x, y: baseline + 2, size: 15, font: cursive, color: rgb(0.05, 0.05, 0.35) });
+    } else if (f.type === 'initial') {
+      pg.drawText(winAnsi(initialsOf(s.typedName || s.name)), { x, y: baseline + 2, size: 12, font: cursive, color: rgb(0.05, 0.05, 0.35) });
     } else {
-      page.drawText(winAnsi(s.typedName || s.name), { x: M, y: y - 20, size: 18, font: cursive, color: rgb(0.05, 0.05, 0.35) });
-      y -= 26;
+      pg.drawText(winAnsi(s.signedAt ? new Date(s.signedAt).toLocaleDateString('en-US') : ''), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
     }
-    page.drawLine({ start: { x: M, y }, end: { x: M + 270, y }, thickness: 0.7, color: rgb(0.5, 0.5, 0.55) });
-    y -= 13;
-    page.drawText(winAnsi(`${s.name}   ·   ${s.email}`), { x: M, y, size: 9.5, font, color: rgb(0.2, 0.2, 0.24) });
-    y -= 12;
-    page.drawText(winAnsi(`Signed electronically${s.signedAt ? '  ·  ' + new Date(s.signedAt).toUTCString() : ''}${s.ip ? '  ·  IP ' + s.ip : ''}`), { x: M, y, size: 8, font, color: rgb(0.5, 0.52, 0.56) });
-    y -= 30;
+    inline.add(s.email);
+  }
+
+  // Fallback Signatures page for any signer with no placed field.
+  const pageSigners = info.signers.filter(s => !inline.has(s.email));
+  if (pageSigners.length) {
+    let page = doc.addPage([612, 792]);
+    const M = 56; let y = 792 - 74;
+    page.drawRectangle({ x: 0, y: 792 - 46, width: 612, height: 46, color: rgb(0.788, 0.573, 0.173) });
+    page.drawText('Signatures', { x: M, y: 792 - 31, size: 18, font: bold, color: rgb(1, 1, 1) });
+    page.drawText(winAnsi(info.docTitle), { x: M, y, size: 11, font, color: rgb(0.3, 0.3, 0.34) });
+    y -= 34;
+    for (const s of pageSigners) {
+      if (y < 150) { page = doc.addPage([612, 792]); y = 792 - 74; }
+      page.drawText(winAnsi(s.role.toUpperCase()), { x: M, y, size: 8.5, font: bold, color: rgb(0.62, 0.45, 0.13) }); y -= 8;
+      const img = png.get(s.email);
+      if (img) { const w = Math.min(210, img.width * 0.5); const h = Math.min(w * (img.height / img.width), 54); page.drawImage(img, { x: M, y: y - h + 6, width: w, height: h }); y -= h; }
+      else { page.drawText(winAnsi(s.typedName || s.name), { x: M, y: y - 20, size: 18, font: cursive, color: rgb(0.05, 0.05, 0.35) }); y -= 26; }
+      page.drawLine({ start: { x: M, y }, end: { x: M + 270, y }, thickness: 0.7, color: rgb(0.5, 0.5, 0.55) }); y -= 13;
+      page.drawText(winAnsi(`${s.name}   ·   ${s.email}`), { x: M, y, size: 9.5, font, color: rgb(0.2, 0.2, 0.24) }); y -= 12;
+      page.drawText(winAnsi(`Signed electronically${s.signedAt ? '  ·  ' + new Date(s.signedAt).toUTCString() : ''}${s.ip ? '  ·  IP ' + s.ip : ''}`), { x: M, y, size: 8, font, color: rgb(0.5, 0.52, 0.56) }); y -= 30;
+    }
   }
 
   const withSigs = await doc.save();

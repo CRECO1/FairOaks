@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, completedEmail, sendEsignEmail, buildExecutedPdf, type ExecutedSigner } from '@/lib/esign';
+import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, completedEmail, sendEsignEmail, buildExecutedPdf, type ExecutedSigner, type PlacedField } from '@/lib/esign';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so external
 // signers (no login) reach it. Uses the service-role client directly.
@@ -11,7 +11,7 @@ type Signer = {
   signing_order: number; status: string; access_token: string; signature_path: string | null;
   typed_name: string | null; signed_at: string | null; viewed_at: string | null; ip: string | null;
 };
-type Envelope = { id: string; title: string; business_unit: string; status: string; source_path: string | null; executed_path: string | null; created_by: string | null };
+type Envelope = { id: string; title: string; business_unit: string; status: string; source_path: string | null; executed_path: string | null; created_by: string | null; submission_id: string | null };
 
 function admin(): SupabaseClient {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
@@ -108,7 +108,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       if (s.signature_path) { const { data: pb } = await db.storage.from(SIGN_BUCKET).download(s.signature_path); if (pb) png = new Uint8Array(await pb.arrayBuffer()); }
       execSigners.push({ name: s.name, email: s.email, role: s.signer_role, signedAt: s.signed_at, ip: s.ip, signaturePng: png, typedName: s.typed_name || undefined });
     }
-    const executed = await buildExecutedPdf(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners });
+    let sigFields: PlacedField[] = [];
+    if (env.submission_id) {
+      const { data: sub } = await db.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
+      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string }> = Array.isArray(sub?.values) ? sub!.values : [];
+      sigFields = vals
+        .filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(String(f.type)))
+        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client' }));
+    }
+    const executed = await buildExecutedPdf(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });
     const execPath = `executed/${env.id}.pdf`;
     await db.storage.from(SIGN_BUCKET).upload(execPath, Buffer.from(executed), { contentType: 'application/pdf', upsert: true });
     await db.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);

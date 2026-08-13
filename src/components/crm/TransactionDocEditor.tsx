@@ -15,7 +15,8 @@ interface Field {
   fw: number;               // width fraction
   value: string;
   size: number;             // font size in PDF points
-  type: 'text' | 'check';
+  type: 'text' | 'check' | 'signature' | 'initial' | 'date';
+  signerRole?: 'client' | 'landlord' | 'agent';  // signature/initial/date placeholders belong to a party
   fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
   label?: string;           // human label, shown as the blank's placeholder
   defaultValue?: string;    // template's starting text, kept so re-saving the layout preserves it
@@ -66,7 +67,8 @@ export default function TransactionDocEditor({
   const [pages, setPages] = useState<PageDim[]>([]);
   const [fields, setFields] = useState<Field[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [tool, setTool] = useState<'text' | 'check' | 'select'>('select');
+  const [tool, setTool] = useState<'text' | 'check' | 'signature' | 'initial' | 'date' | 'select'>('select');
+  const [sigRole, setSigRole] = useState<'client' | 'landlord' | 'agent'>('client');
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
@@ -133,16 +135,21 @@ export default function TransactionDocEditor({
         const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
         const json = await res.json();
         if (cancelled || !Array.isArray(json.fields)) return;
-        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null; default_value?: string | null }) => ({
-          id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
-          // A template may ship starting text (default_value) — e.g. the standard
-          // LOI terms, which the agent then edits. The logged-in agent's own info
-          // still wins, so agent_name/phone/email fill with the real sender.
-          value: (r.field_key && fieldPrefill?.[r.field_key]) || r.default_value || '',
-          size: 11, type: r.type === 'check' ? 'check' : 'text',
-          fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
-          defaultValue: r.default_value ?? undefined,
-        })));
+        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null; default_value?: string | null; signer_role?: string | null }) => {
+          const t = String(r.type || 'text');
+          const type: Field['type'] = t === 'check' ? 'check' : t === 'signature' ? 'signature' : t === 'initial' ? 'initial' : (t === 'date' || t === 'date_signed') ? 'date' : 'text';
+          return {
+            id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
+            // A template may ship starting text (default_value) — e.g. the standard
+            // LOI terms, which the agent then edits. The logged-in agent's own info
+            // still wins, so agent_name/phone/email fill with the real sender.
+            value: (r.field_key && fieldPrefill?.[r.field_key]) || r.default_value || '',
+            size: 11, type,
+            signerRole: (r.signer_role as Field['signerRole']) ?? undefined,
+            fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
+            defaultValue: r.default_value ?? undefined,
+          };
+        }));
       } catch { /* no template yet */ }
     })();
     return () => { cancelled = true; };
@@ -155,7 +162,9 @@ export default function TransactionDocEditor({
     const fx = (e.clientX - rect.left) / rect.width;
     const fy = (e.clientY - rect.top) / rect.height;
     const id = nextId();
-    setFields(f => [...f, { id, page: pd.num, fx, fy, fw: tool === 'check' ? 0.03 : 0.28, value: tool === 'check' ? '✔' : '', size: 11, type: tool }]);
+    const isSig = tool === 'signature' || tool === 'initial' || tool === 'date';
+    const fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : 0.28;
+    setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' ? '✔' : '', size: 11, type: tool, signerRole: isSig ? sigRole : undefined }]);
     setSelected(id);
     setTool('select');
   }, [tool]);
@@ -229,6 +238,7 @@ export default function TransactionDocEditor({
     const pgs = doc.getPages();
     for (const f of fields) {
       const pg = pgs[f.page - 1]; if (!pg) continue;
+      if (f.type === 'signature' || f.type === 'initial' || f.type === 'date') continue; // signer placeholders — stamped at signing time
       const { width, height } = pg.getSize();
       const x = f.fx * width + 2;
       // Baseline sits just above the blank line (detected fy = the underline),
@@ -259,7 +269,7 @@ export default function TransactionDocEditor({
     try {
       const h: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) h.Authorization = `Bearer ${authToken}`;
-      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, field_key: f.fieldKey ?? null, label: f.label ?? null, default_value: f.defaultValue ?? null })) };
+      const payload = { fields: fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signer_role: f.signerRole ?? null, field_key: f.fieldKey ?? null, label: f.label ?? null, default_value: f.defaultValue ?? null })) };
       const res = await fetch(`/api/crm/forms/${form.id}/fields`, { method: 'PUT', headers: h, body: JSON.stringify(payload) });
       onToast?.(res.ok ? '✓ Field layout saved for this form' : 'Could not save the layout');
     } catch { onToast?.('Could not save the layout'); }
@@ -334,9 +344,21 @@ export default function TransactionDocEditor({
 
         {!isMobile && (
           <>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
               {toolBtn('text', '➕ Text field')}
               {toolBtn('check', '☑︎ Check')}
+              <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
+              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>Signer:</span>
+              <select value={sigRole} onChange={e => setSigRole(e.target.value as 'client' | 'landlord' | 'agent')} title="Which party will fill this signature/initial/date field"
+                style={{ padding: '7px 8px', fontSize: 12.5, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+                <option value="client">Client</option>
+                <option value="landlord">Landlord</option>
+                <option value="agent">Agent</option>
+              </select>
+              {toolBtn('signature', '✒ Signature')}
+              {toolBtn('initial', '✎ Initials')}
+              {toolBtn('date', '📅 Date')}
+              <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
               {toolBtn('select', '↖︎ Select / move')}
             </div>
             <div style={{ fontSize: 12, color: '#9ca3af' }}>{fields.length} field{fields.length === 1 ? '' : 's'} · {tool !== 'select' ? 'click a page to place' : 'drag to move, click ✕ to delete'}</div>
@@ -403,10 +425,32 @@ export default function TransactionDocEditor({
             {fields.filter(f => f.page === pd.num).map(f => {
               const isSel = selected === f.id;
               const isCheck = f.type === 'check';
+              const isSig = f.type === 'signature' || f.type === 'initial' || f.type === 'date';
               // Pin the box BOTTOM to the detected underline (fy) via translateY(-100%),
               // and keep it one tight line tall so adjacent blanks don't merge into a block.
               // The 11px floor keeps the box tappable once the page scales down.
               const em = f.size * 0.85;
+              if (isSig) {
+                const role = f.signerRole || 'client';
+                const rc = role === 'landlord' ? '#2563eb' : role === 'agent' ? '#16a34a' : '#c9922c';
+                const kind = f.type === 'signature' ? 'Signature' : f.type === 'initial' ? 'Initials' : 'Date';
+                const glyph = f.type === 'signature' ? '✒' : f.type === 'initial' ? '✎' : '📅';
+                return (
+                  <div key={f.id}
+                    onMouseDown={e => onDragStart(e, f)} onTouchStart={e => onTouchDragStart(e, f)}
+                    title={`${role} — ${kind} · filled when ${role} signs`}
+                    style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
+                      height: `max(16px, ${cqw(em * 1.6)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 3, overflow: 'hidden',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: isSel ? 'none' : undefined, cursor: 'move',
+                      background: `${rc}22`, border: `1.5px dashed ${rc}`, outline: isSel ? `2px solid ${rc}` : 'none' }}>
+                    <span style={{ fontSize: `max(7px, ${cqw(6.5)})`, fontWeight: 700, color: rc, textTransform: 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 3px', pointerEvents: 'none' }}>{glyph} {role} {kind}</span>
+                    {isSel && (
+                      <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete field"
+                        style={{ position: 'absolute', top: isMobile ? -13 : -9, right: isMobile ? -13 : -9, width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
+                    )}
+                  </div>
+                );
+              }
               return (
               <div key={f.id}
                 onMouseDown={e => onDragStart(e, f)}
