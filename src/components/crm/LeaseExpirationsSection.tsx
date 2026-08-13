@@ -9,7 +9,7 @@ interface LeaseClient {
 }
 
 const DEFAULT_LEAD_DAYS = 120;
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function daysBetween(fromISO: string, toISO: string) {
   return Math.round((new Date(toISO + 'T12:00:00').getTime() - new Date(fromISO + 'T12:00:00').getTime()) / 86400000);
 }

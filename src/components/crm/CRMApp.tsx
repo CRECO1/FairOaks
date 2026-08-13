@@ -94,7 +94,7 @@ const CLIENT_TYPE_COLORS: Record<string, string> = {
   'Broker':   'background:#f1f5f9;color:#334155',
 };
 
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
 function fmtPhone(v: string): string {
   const digits = v.replace(/\D/g, '').slice(0, 10);

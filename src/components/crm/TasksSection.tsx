@@ -178,7 +178,7 @@ const TYPE_META: Record<string, { icon: string; label: string }> = {
   email:     { icon: '✉️', label: 'Email' },
 };
 
-function today() { return new Date().toISOString().split('T')[0]; }
+function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function fmtDate(d?: string) {
   if (!d) return '—';
   const dt = new Date(d + 'T12:00:00');
