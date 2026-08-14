@@ -16,12 +16,13 @@ export async function GET(req: NextRequest) {
   const submissionId = req.nextUrl.searchParams.get('submission_id');
   const supabase = adminClient();
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, executed_path, created_at, completed_at, crm_envelope_signers(id, signer_role, name, email, signing_order, status, viewed_at, signed_at)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, created_at, completed_at, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) q = q.eq('deal_id', dealId);
   if (listingId) q = q.eq('listing_id', listingId);
   if (submissionId) q = q.eq('submission_id', submissionId);
+  if (req.nextUrl.searchParams.get('pending')) q = q.in('status', ['sent', 'in_progress']); // global dashboard: out-for-signature only
   const { data, error } = await q;
   if (error) { console.error('[api/envelopes] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
   const envelopes = await Promise.all((data ?? []).map(async (e) => {
@@ -93,21 +94,95 @@ export async function POST(req: NextRequest) {
   });
 }
 
-// Cancel (void) a pending signature request — signers can no longer sign, but the
-// document stays put so it can be edited and re-sent.
+// Manage a signature request: cancel it, nudge the current signer, fix a pending
+// signer's email, or add another signer — without creating a duplicate envelope.
+interface SignerRow { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; access_token: string; signed_at: string | null }
+
 export async function PATCH(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const b = await req.json().catch(() => ({}));
-  if (!b.envelope_id || b.action !== 'void') return NextResponse.json({ error: 'envelope_id and action:"void" required' }, { status: 400 });
+  const action = b.action as string;
+  if (!b.envelope_id) return NextResponse.json({ error: 'envelope_id required' }, { status: 400 });
   const supabase = adminClient();
-  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status').eq('id', b.envelope_id).maybeSingle();
+  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status, title, message').eq('id', b.envelope_id).maybeSingle();
   if (!env) return notFound('Signature request not found');
   if (!isAdminRole(ctx.role) && env.business_unit !== ctx.businessUnit) return notFound('Signature request not found');
-  if (env.status === 'completed') return NextResponse.json({ error: 'This document is already fully signed.' }, { status: 400 });
-  if (env.status === 'voided') return NextResponse.json({ ok: true });
-  const { error } = await supabase.from('crm_envelopes').update({ status: 'voided', updated_at: new Date().toISOString() }).eq('id', b.envelope_id);
-  if (error) { console.error('[api/envelopes] void', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
-  await logEvent(supabase, b.envelope_id, null, 'voided', { actor: ctx.userId });
-  return NextResponse.json({ ok: true });
+
+  // ── Cancel (void) ──
+  if (action === 'void') {
+    if (env.status === 'completed') return NextResponse.json({ error: 'This document is already fully signed.' }, { status: 400 });
+    if (env.status === 'voided') return NextResponse.json({ ok: true });
+    const { error } = await supabase.from('crm_envelopes').update({ status: 'voided', updated_at: new Date().toISOString() }).eq('id', env.id);
+    if (error) { console.error('[api/envelopes] void', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
+    await logEvent(supabase, env.id, null, 'voided', { actor: ctx.userId });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (env.status === 'completed' || env.status === 'voided') {
+    return NextResponse.json({ error: `This request is ${env.status} and can no longer be changed.` }, { status: 400 });
+  }
+
+  const { data: prof } = await supabase.from('crm_profiles').select('first_name, last_name').eq('id', ctx.userId).maybeSingle();
+  const senderName = prof ? `${prof.first_name ?? ''} ${prof.last_name ?? ''}`.trim() || 'Your broker' : 'Your broker';
+  const loadSigners = async (): Promise<SignerRow[]> => {
+    const { data } = await supabase.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');
+    return (data ?? []) as SignerRow[];
+  };
+  const invite = (s: { name: string; email: string; access_token: string }) => {
+    const { subject, html } = inviteEmail(env.business_unit, { signerName: s.name, docTitle: env.title, senderName, url: signUrl(s.access_token), message: env.message || undefined });
+    return sendEsignEmail(env.business_unit, s.email, subject, html);
+  };
+
+  // ── Nudge the current pending signer (no new envelope) ──
+  if (action === 'nudge') {
+    const signers = await loadSigners();
+    const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
+    if (!current) return NextResponse.json({ error: 'No one is waiting to sign.' }, { status: 400 });
+    const r = await invite(current);
+    if (current.status === 'pending') await supabase.from('crm_envelope_signers').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', current.id);
+    await logEvent(supabase, env.id, current.id, 'sent', { actor: ctx.userId, meta: { nudge: true, to: current.email } });
+    return NextResponse.json({ ok: r.ok, to: current.email });
+  }
+
+  // ── Fix a pending signer's name/email; resend if they're the current signer ──
+  if (action === 'update_signer') {
+    if (!b.signer_id) return NextResponse.json({ error: 'signer_id required' }, { status: 400 });
+    const signers = await loadSigners();
+    const signer = signers.find(s => s.id === b.signer_id);
+    if (!signer) return notFound('Signer not found');
+    if (signer.status === 'signed' || signer.signed_at) return NextResponse.json({ error: 'That signer has already signed.' }, { status: 400 });
+    const patch: Record<string, string> = {};
+    if (typeof b.name === 'string' && b.name.trim()) patch.name = b.name.trim();
+    if (typeof b.email === 'string' && b.email.includes('@')) patch.email = b.email.trim().toLowerCase();
+    if (!Object.keys(patch).length) return NextResponse.json({ error: 'Give a name or a valid email' }, { status: 400 });
+    await supabase.from('crm_envelope_signers').update(patch).eq('id', signer.id);
+    await logEvent(supabase, env.id, signer.id, 'signer_updated', { actor: ctx.userId });
+    const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
+    let resent = false;
+    if (current && current.id === signer.id) resent = (await invite({ name: patch.name || signer.name, email: patch.email || signer.email, access_token: signer.access_token })).ok;
+    return NextResponse.json({ ok: true, resent });
+  }
+
+  // ── Add another signer at the end of the order ──
+  if (action === 'add_signer') {
+    if (!b.name || !b.email || !String(b.email).includes('@')) return NextResponse.json({ error: 'Signer needs a name and a valid email' }, { status: 400 });
+    const signers = await loadSigners();
+    const nextOrder = signers.reduce((m, s) => Math.max(m, s.signing_order), 0) + 1;
+    const { data: created, error } = await supabase.from('crm_envelope_signers').insert({
+      envelope_id: env.id, signer_role: b.role || 'client', name: String(b.name).trim(), email: String(b.email).trim().toLowerCase(),
+      signing_order: nextOrder, status: 'pending', access_token: genToken(),
+    }).select('id, name, email, access_token').single();
+    if (error) { console.error('[api/envelopes] add_signer', error); return NextResponse.json({ error: 'Could not add signer' }, { status: 500 }); }
+    await logEvent(supabase, env.id, created.id, 'signer_added', { actor: ctx.userId, meta: { to: created.email } });
+    // If everyone before them already signed, this new signer is up next — email now.
+    if (!signers.some(s => s.status !== 'signed' && !s.signed_at)) {
+      await supabase.from('crm_envelope_signers').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', created.id);
+      await invite(created);
+      await supabase.from('crm_envelopes').update({ status: 'in_progress', updated_at: new Date().toISOString() }).eq('id', env.id);
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }

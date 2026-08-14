@@ -15,6 +15,7 @@ const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionD
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
+import EsignPanel from '@/components/crm/EsignPanel';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -459,7 +460,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormPicker, setDealFormPicker] = useState(false);
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
-  const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'intel' | 'commission'>('overview');
+  const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
   const [commissionLoading, setCommissionLoading] = useState(false);
   const [commissionSaving, setCommissionSaving] = useState(false);
@@ -7347,10 +7348,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               </div>
               {/* Tabs */}
               <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
-                {(['overview', 'client', 'emails', 'docs', 'intel', 'commission'] as const).map(t => (
+                {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => setDealTab(t)}
                     style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
-                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
+                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'esign' ? '✍️ E-Sign' : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
@@ -7975,6 +7976,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       })}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* ── E-Sign tab ── */}
+              {dealTab === 'esign' && (
+                <div style={{ padding: '4px 2px' }}>
+                  <EsignPanel
+                    dealId={activeDeal.id}
+                    clients={clients}
+                    dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
+                    agentName={profile ? `${profile.first_name} ${profile.last_name}`.trim() : ''}
+                    agentEmail={session?.user?.email}
+                    authToken={session?.access_token}
+                    showToast={showToast}
+                  />
                 </div>
               )}
 
