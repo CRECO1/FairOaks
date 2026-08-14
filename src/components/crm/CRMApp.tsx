@@ -14,6 +14,7 @@ import dynamic from 'next/dynamic';
 const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
+import DealMeetings from '@/components/crm/DealMeetings';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -7397,6 +7398,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   </div>
 
+                  {/* ── Meetings — log meetings + tag attendee contacts (silent) ── */}
+                  <div style={{ marginTop: 18 }}>
+                    <DealMeetings dealId={activeDeal.id} clients={clients} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
+                  </div>
+
                   {/* ── Loss Reason Banner ── */}
                   {activeDeal.stage === 'Lost' && (
                     <div style={{ marginTop: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -9083,6 +9089,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         Log {newActivity.type.charAt(0).toUpperCase() + newActivity.type.slice(1)}
                       </button>
                     </div>
+                  </div>
+
+                  {/* Meetings this contact was tagged in, across deals (read-only reverse view) */}
+                  <div style={{ marginTop: 10, marginBottom: 16 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>🤝 Meetings tagged in</div>
+                    <DealMeetings clientId={c.id} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
                   </div>
 
                   {/* Activity feed — manual activities + campaign sends merged chronologically */}
