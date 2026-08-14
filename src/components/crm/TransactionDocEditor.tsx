@@ -4,6 +4,12 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { parseRich, drawRichText, hasMarkup, type RichFonts } from '@/lib/rich-text';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
+import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
+
+// The Letter of Intent to Purchase is a dynamic term-list doc, not a fixed overlay
+// form — whichever surface opens it (deals page, property, Transaction Docs library),
+// hand it to the builder so it never gets filled as flat fields.
+const LOI_PURCHASE_FORM_ID = 'b58b11d1-c5fb-4861-97c5-97b0ab1026fb';
 
 // A zipForms-style fillable editor: renders a flat PDF's pages inline (pdf.js),
 // lets an agent drop text/check fields anywhere, type into them, then generates
@@ -86,8 +92,13 @@ export default function TransactionDocEditor({
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
   const drag = useRef<{ id: string; sx: number; sy: number; ofx: number; ofy: number; pw: number; ph: number } | null>(null);
 
+  // The LOI to Purchase is delegated to the builder (see the early return below) —
+  // skip all overlay PDF/field loading for it.
+  const isLoi = form.id === LOI_PURCHASE_FORM_ID;
+
   // ── Load PDF + measure pages ────────────────────────────────────────────────
   useEffect(() => {
+    if (isLoi) return;
     let cancelled = false;
     (async () => {
       try {
@@ -115,10 +126,11 @@ export default function TransactionDocEditor({
       }
     })();
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, isLoi]);
 
   // ── Load fields: a saved submission's values (re-edit) or the blank template ─
   useEffect(() => {
+    if (isLoi) return;
     let cancelled = false;
     (async () => {
       try {
@@ -337,6 +349,32 @@ export default function TransactionDocEditor({
     padding: isMobile ? '11px 14px' : '8px 16px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap',
     fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
   };
+
+  // Delegate the Letter of Intent to Purchase to its dynamic builder, regardless of
+  // which surface opened it — so it's never filled as flat overlay fields.
+  if (isLoi) {
+    return (
+      <LoiPurchaseBuilder
+        formId={form.id}
+        name={form.name}
+        submissionId={submissionId}
+        listingId={listingId}
+        dealId={dealSel || dealId || undefined}
+        businessUnit={businessUnit ?? 'commercial'}
+        authToken={authToken}
+        prefill={{
+          agentName: fieldPrefill?.agent_name,
+          agentEmail: fieldPrefill?.agent_email,
+          agentPhone: fieldPrefill?.agent_phone,
+          propertyAddress: fieldPrefill?.property,
+          purchaser: fieldPrefill?.purchaser,
+        }}
+        onToast={m => onToast?.(m)}
+        onClose={onClose}
+        onSaved={() => onSaved?.()}
+      />
+    );
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.55)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>

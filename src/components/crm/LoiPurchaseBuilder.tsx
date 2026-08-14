@@ -73,6 +73,47 @@ function seedData(prefill?: Prefill): LoiPurchaseData {
   };
 }
 
+// Recover an LOI that was filled in the OLD overlay editor (submission.values keyed by
+// field_key, one field per wrapped line) into the builder's term model — so re-opening
+// such a doc shows what the agent already entered instead of blank defaults.
+function reconstructFromOverlay(values: unknown, base: LoiPurchaseData): LoiPurchaseData | null {
+  if (!Array.isArray(values) || !values.length) return null;
+  const arr = values as Array<{ fieldKey?: string; type?: string; value?: string }>;
+  if (!arr.some(v => v.fieldKey)) return null;   // builder submissions store sig fields (no fieldKey)
+  const byKey: Record<string, Array<{ line: number; value: string }>> = {};
+  for (const v of arr) {
+    if (!v.fieldKey || (v.type && v.type !== 'text')) continue;
+    const m = String(v.fieldKey).match(/^(.*?)(?:_l(\d+))?$/);
+    const bk = m?.[1] ?? v.fieldKey;
+    const line = m?.[2] ? parseInt(m[2], 10) : 0;
+    (byKey[bk] ||= []).push({ line, value: v.value || '' });
+  }
+  const get = (k: string) => (byKey[k] || []).sort((a, b) => a.line - b.line).map(x => x.value).filter(Boolean).join(' ').trim();
+  const TERM_KEYS: Array<[string, string]> = [
+    ['seller', 'Seller:'], ['purchaser', 'Purchaser:'], ['property', 'Property:'], ['purchase_price', 'Purchase Price:'],
+    ['earnest_money', 'Earnest Money:'], ['title_company', 'Title Company:'], ['title_policy', 'Title Policy:'],
+    ['survey', 'Survey:'], ['possession', 'Possession:'], ['feasibility_period', 'Feasibility Period:'],
+    ['closing_schedule', 'Closing Schedule:'], ['option_fee', 'Option Fee:'], ['environmental', 'Environmental:'],
+    ['property_expenses', 'Property Expenses:'], ['purchasers_default', "Purchaser's Default:"], ['time_of_essence', 'Time is of the essence:'],
+  ];
+  const terms = TERM_KEYS.map(([k, label]) => ({ id: newId(), label, value: get(k) })).filter(t => t.value);
+  if (!terms.length) return null;
+  const s2e = get('seller_2_name'), s2s = get('seller_2_its');
+  return {
+    ...base,
+    loiDate: get('loi_date') || base.loiDate,
+    addresseeName: get('addressee_name') || base.addresseeName,
+    addresseeAddr1: get('addressee_addr1') || base.addresseeAddr1,
+    addresseeAddr2: get('addressee_addr2') || base.addresseeAddr2,
+    reLine: get('re_line') || base.reLine,
+    terms,
+    agentName: get('agent_name') || base.agentName,
+    agentEmail: get('agent_email') || base.agentEmail,
+    agentPhone: get('agent_phone') || base.agentPhone,
+    sellers: [{ entity: get('seller_1_name'), signatory: get('seller_1_its') }, ...(s2e || s2s ? [{ entity: s2e, signatory: s2s }] : [])],
+  };
+}
+
 export default function LoiPurchaseBuilder({ formId, submissionId, listingId, dealId, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
   const [data, setData] = useState<LoiPurchaseData>(() => seedData(prefill));
   const [savedId, setSavedId] = useState<string | undefined>(submissionId);
@@ -88,13 +129,18 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
       try {
         const r = await fetch(`/api/crm/form-submissions/${submissionId}`, { headers: authHeaders });
         const j = await r.json();
+        if (cancelled) return;
         const bd = j?.submission?.builder_data;
-        if (!cancelled && bd && Array.isArray(bd.terms)) {
+        if (bd && Array.isArray(bd.terms)) {
           setData({
             ...seedData(prefill), ...bd,
             terms: bd.terms.map((t: LoiTermRow) => ({ id: t.id || newId(), label: t.label || '', value: t.value || '' })),
             sellers: bd.sellers?.length ? bd.sellers : [{ entity: '', signatory: '' }],
           });
+        } else {
+          // No builder_data — recover values from a doc filled in the old overlay editor.
+          const recon = reconstructFromOverlay(j?.submission?.values, seedData(prefill));
+          if (recon) setData(recon);
         }
       } catch { /* fall back to seeded defaults */ }
       finally { if (!cancelled) setLoading(false); }
