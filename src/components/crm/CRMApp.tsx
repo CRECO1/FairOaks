@@ -16,6 +16,7 @@ import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
 import EsignPanel from '@/components/crm/EsignPanel';
+import EsignDashboard from '@/components/crm/EsignDashboard';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -439,7 +440,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'activity'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'activity'] as const;
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -2668,7 +2669,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
-    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', activity: 'Activity Log',
+    agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', activity: 'Activity Log',
   };
 
   // ── UI ────────────────────────────────────────────────────────────────────────
@@ -2872,6 +2873,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           )}
           <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}>🏢 &nbsp;Properties</button>
           <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
+          <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}>✍️ &nbsp;E-Sign</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -3039,6 +3041,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
                 <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}>🏢 &nbsp;Properties</button>
                 <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
+                <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}>✍️ &nbsp;E-Sign</button>
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -7272,6 +7275,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               onToast={showToast}
               agentPrefill={agentPrefill}
               isMobile={isMobile}
+            />
+          )}
+
+          {page === 'esign' && (
+            <EsignDashboard
+              authToken={session?.access_token}
+              showToast={showToast}
+              onOpenDeal={(dealId) => { const d = deals.find(x => x.id === dealId); if (d) { openDeal(d); setDealTab('esign'); } else { setPage('deals'); showToast('Open the deal from All Deals'); } }}
             />
           )}
 
