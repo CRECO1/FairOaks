@@ -250,9 +250,9 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {/* Terms */}
             {data.terms.map((t, i) => (
               <div key={t.id} className="loi-row" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 6, position: 'relative' }}>
-                <div className="loi-gutter" style={{ position: 'absolute', left: -78, top: 0, display: 'flex', flexDirection: 'column', gap: 2, fontFamily: "'DM Sans',sans-serif" }} title="Reorder this term">
-                  <button className="loi-ctrl" title="Move term up" onClick={() => moveTerm(i, -1)} disabled={i === 0} style={{ ...ctrlBtn, opacity: i === 0 ? 0.35 : 1 }}>↑</button>
-                  <button className="loi-ctrl" title="Move term down" onClick={() => moveTerm(i, 1)} disabled={i === data.terms.length - 1} style={{ ...ctrlBtn, opacity: i === data.terms.length - 1 ? 0.35 : 1 }}>↓</button>
+                <div className="loi-gutter" style={{ position: 'absolute', left: -60, top: 1, display: 'flex', gap: 3, fontFamily: "'DM Sans',sans-serif" }} title="Reorder this term">
+                  <button className="loi-ctrl" title="Move term up" onClick={() => moveTerm(i, -1)} disabled={i === 0} style={{ ...ctrlBtn, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                  <button className="loi-ctrl" title="Move term down" onClick={() => moveTerm(i, 1)} disabled={i === data.terms.length - 1} style={{ ...ctrlBtn, opacity: i === data.terms.length - 1 ? 0.3 : 1 }}>↓</button>
                 </div>
                 <div style={{ flex: '0 0 150px', minWidth: 0 }}><RichText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
                 <div style={{ flex: 1, minWidth: 0 }}><RichText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>

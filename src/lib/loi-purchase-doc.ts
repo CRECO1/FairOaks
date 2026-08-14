@@ -37,7 +37,6 @@ export const DEFAULT_LOI_TERMS: LoiTermRow[] = [
   { label: 'Property:', value: '' },
   { label: 'Purchase Price:', value: '' },
   { label: 'Earnest Money:', value: 'The earnest money will be ($________) and escrowed within 3 business days of fully executed purchase and sales agreement.' },
-  { label: 'Commission:', value: 'Seller shall pay a real estate commission of ____% of the purchase price to CRECO Commercial at closing, pursuant to a separate written agreement.' },
   { label: 'Title Company:', value: '' },
   { label: 'Title Policy:', value: 'Seller will pay for all costs associated with the title policy and escrow fees at closing.' },
   { label: 'Survey:', value: 'Seller will pay for an updated survey during the feasibility period if required.' },
@@ -48,6 +47,7 @@ export const DEFAULT_LOI_TERMS: LoiTermRow[] = [
   { label: 'Environmental:', value: 'Seller to provide any and all recent environmental reports showing the property is in clean condition.' },
   { label: 'Property Expenses:', value: 'The current taxes, interest, rents, and utilities, if any, will be prorated and adjusted as of the date of closing.' },
   { label: "Purchaser's Default:", value: "In the event Purchaser should fail to consummate the purchase of the Property, Seller's sole remedy will be the retention of the Earnest Money." },
+  { label: 'Commission:', value: 'Seller shall pay a real estate commission of ____% of the purchase price to CRECO Commercial at closing, pursuant to a separate written agreement.' },
   { label: 'Time is of the essence:', value: 'This proposal expires on ____________ at 5:00 PM Central Time.' },
 ];
 
