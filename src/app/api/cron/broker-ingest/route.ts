@@ -15,12 +15,54 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Resend } from 'resend';
 import { runPipeline } from '@/lib/broker-ingest';
 import { geocodeMissing } from '@/lib/broker-ingest/geocode';
 import { enrichMissing } from '@/lib/broker-ingest/enrich';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+
+const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
+// Recipient for broker-ingest failure alerts. Defaults to the owner; override
+// per-environment with BROKER_INGEST_ALERT_EMAIL.
+const ALERT_EMAIL = process.env.BROKER_INGEST_ALERT_EMAIL ?? 'zack@crecotx.com';
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Best-effort failure alert: emails the owner when the crawl fails, so a broken
+ * run surfaces immediately instead of only appearing as a failed Vercel cron.
+ * Never throws — an email problem must not mask the underlying failure.
+ */
+async function sendFailureAlert(summary: string, details: string[]): Promise<void> {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const items = details.map((d) => `<li style="margin:4px 0;color:#333">${escHtml(d)}</li>`).join('');
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: ALERT_EMAIL,
+      subject: '⚠️ Property DB auto-crawl is failing (broker-ingest)',
+      html: `
+        <div style="font-family:sans-serif;max-width:600px">
+          <h2 style="color:#b00020;margin-bottom:4px">Property DB auto-crawl failed</h2>
+          <p style="color:#333">${escHtml(summary)}</p>
+          <p style="color:#333;margin-bottom:4px"><strong>New broker listings are not being added</strong> until this is resolved.</p>
+          <ul style="padding-left:18px">${items}</ul>
+          <p style="color:#555">Most common cause: the Anthropic API account is out of credits — check
+            <a href="https://console.anthropic.com/settings/billing">Anthropic Plans &amp; Billing</a>.</p>
+          <p style="color:#999;font-size:12px">Fair Oaks CRM · GET /api/cron/broker-ingest · runs 4×/day Central</p>
+        </div>
+      `,
+    });
+    if (error) console.error('broker-ingest: Resend rejected the alert email:', error);
+  } catch (mailErr) {
+    console.error('broker-ingest: alert email failed to send:', mailErr);
+  }
+}
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -53,6 +95,10 @@ export async function GET(req: NextRequest) {
       console.error(
         `broker-ingest ALERT: extraction failing — ${r.extractErrors}/${r.scanned} emails errored, 0 inserted.${detail}`,
       );
+      await sendFailureAlert(
+        `The crawl scanned ${r.scanned} email(s) but extraction failed on ${r.extractErrors} of them and inserted 0 new listings.`,
+        r.errorSample.length ? r.errorSample : ['No error detail was captured.'],
+      );
       return NextResponse.json(
         {
           error:
@@ -70,11 +116,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Geocode any newly-ingested (or previously un-geocoded) properties so they
-    // show on the Property DB map. Bounded per run to stay within cron time.
-    const geo = await geocodeMissing(25);
-    // Derive County + Submarket from city/zip so those columns stay populated.
-    const enr = await enrichMissing();
+    // Geocode + enrich are non-critical polish (map pins, County/Submarket).
+    // Never fail or alert the ingest over them — log and continue.
+    let geocoded = 0;
+    let enriched = 0;
+    try {
+      geocoded = (await geocodeMissing(25)).geocoded;
+      enriched = (await enrichMissing()).enriched;
+    } catch (secErr) {
+      console.error('broker-ingest: geocode/enrich failed (non-fatal):', secErr);
+    }
     return NextResponse.json({
       scanned: r.scanned,
       listings: r.listings,
@@ -83,12 +134,15 @@ export async function GET(req: NextRequest) {
       inserted: r.inserted,
       dupSkipped: r.dupSkipped,
       photosAdded: r.photosAdded,
-      geocoded: geo.geocoded,
-      enriched: enr.enriched,
+      geocoded,
+      enriched,
       model: r.model,
     });
   } catch (err) {
     console.error('broker-ingest cron error:', err);
+    await sendFailureAlert('The broker-ingest pipeline threw an error before completing.', [
+      (err as Error).message ?? 'Unknown error',
+    ]);
     return NextResponse.json({ error: (err as Error).message ?? 'ingest failed' }, { status: 500 });
   }
 }
