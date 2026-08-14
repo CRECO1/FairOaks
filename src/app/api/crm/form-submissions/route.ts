@@ -134,6 +134,15 @@ export async function DELETE(req: NextRequest) {
   const supabase = adminClient();
   const { data: sub } = await supabase.from('crm_form_submissions').select('filled_path').eq('id', id).maybeSingle();
   if (sub?.filled_path) { await supabase.storage.from('transaction-forms').remove([sub.filled_path]); }
+  // Cancel + clean up any signature request on this document (voids pending signers by
+  // removing the envelope, so their sign links stop working) before deleting the row.
+  const { data: envs } = await supabase.from('crm_envelopes').select('id, executed_path').eq('submission_id', id);
+  for (const e of envs ?? []) {
+    await supabase.from('crm_envelope_events').delete().eq('envelope_id', e.id);
+    await supabase.from('crm_envelope_signers').delete().eq('envelope_id', e.id);
+    if (e.executed_path) await supabase.storage.from('transaction-forms').remove([e.executed_path]);
+    await supabase.from('crm_envelopes').delete().eq('id', e.id);
+  }
   const { error } = await supabase.from('crm_form_submissions').delete().eq('id', id);
   if (error) { console.error('[api/form-submissions] DELETE', error); return NextResponse.json({ error: 'Delete failed' }, { status: 500 }); }
   return NextResponse.json({ ok: true });

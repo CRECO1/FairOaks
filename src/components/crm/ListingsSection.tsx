@@ -478,13 +478,25 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   async function deleteSubmission(id: string, opts?: { dealId?: string }) {
     const env = envMap[id];
-    if (env && env.status !== 'completed') { onToast('This document is out for signature — it can’t be deleted while signing is in progress.'); return; }
-    if (!window.confirm('Delete this document? This cannot be undone.')) return;
+    const outForSig = !!(env && env.status !== 'completed' && env.status !== 'voided');
+    const msg = outForSig
+      ? 'This document is out for signature. Deleting it will CANCEL the pending signature request (the signers can no longer sign) and remove the document. Continue?'
+      : 'Delete this document? This cannot be undone.';
+    if (!window.confirm(msg)) return;
     const res = await fetch(`/api/crm/form-submissions?id=${id}`, { method: 'DELETE', headers: authHeaders });
     if (!res.ok) { onToast('Could not delete the document'); return; }
     if (opts?.dealId) loadDealForms(opts.dealId);
     if (active) loadListingForms(active.id);
     onToast('Document deleted');
+  }
+
+  // Cancel a pending signature request without deleting the doc (so it can be edited + re-sent).
+  async function voidEnvelope(envelopeId: string) {
+    if (!window.confirm('Cancel this signature request? The signers will no longer be able to sign. The document stays so you can edit and re-send it.')) return;
+    const res = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ envelope_id: envelopeId, action: 'void' }) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); onToast(j.error || 'Could not cancel the request'); return; }
+    if (active) loadEnvelopes(active.id);
+    onToast('Signature request cancelled');
   }
 
   async function togglePin(fm: FormTemplate) {
@@ -1042,15 +1054,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                     {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>PDF ↗</a>}
                                     {(() => {
                                       const env = envMap[f.id];
-                                      if (env) {
+                                      if (env && env.status !== 'voided') {
                                         const sg = env.crm_envelope_signers || [];
                                         const done = sg.filter(s => s.status === 'signed' || s.signed_at).length;
+                                        const pending = env.status !== 'completed';
                                         return (
                                           <>
                                             {env.status === 'completed' && env.executed_url
                                               ? <a href={env.executed_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 7, padding: '5px 10px', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed ↗</a>
                                               : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>}
                                             <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Resend for signature (e.g. after making edits)" style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 8px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>↻</button>
+                                            {pending && <button onClick={() => voidEnvelope(env.id)} title="Cancel the signature request" style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⊘</button>}
                                           </>
                                         );
                                       }

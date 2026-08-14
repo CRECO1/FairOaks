@@ -92,3 +92,22 @@ export async function POST(req: NextRequest) {
     sent,
   });
 }
+
+// Cancel (void) a pending signature request — signers can no longer sign, but the
+// document stays put so it can be edited and re-sent.
+export async function PATCH(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const b = await req.json().catch(() => ({}));
+  if (!b.envelope_id || b.action !== 'void') return NextResponse.json({ error: 'envelope_id and action:"void" required' }, { status: 400 });
+  const supabase = adminClient();
+  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status').eq('id', b.envelope_id).maybeSingle();
+  if (!env) return notFound('Signature request not found');
+  if (!isAdminRole(ctx.role) && env.business_unit !== ctx.businessUnit) return notFound('Signature request not found');
+  if (env.status === 'completed') return NextResponse.json({ error: 'This document is already fully signed.' }, { status: 400 });
+  if (env.status === 'voided') return NextResponse.json({ ok: true });
+  const { error } = await supabase.from('crm_envelopes').update({ status: 'voided', updated_at: new Date().toISOString() }).eq('id', b.envelope_id);
+  if (error) { console.error('[api/envelopes] void', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
+  await logEvent(supabase, b.envelope_id, null, 'voided', { actor: ctx.userId });
+  return NextResponse.json({ ok: true });
+}
