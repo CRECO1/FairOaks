@@ -88,23 +88,31 @@ function reconstructFromOverlay(values: unknown, base: LoiPurchaseData): LoiPurc
     const line = m?.[2] ? parseInt(m[2], 10) : 0;
     (byKey[bk] ||= []).push({ line, value: v.value || '' });
   }
+  const has = (k: string) => k in byKey;
   const get = (k: string) => (byKey[k] || []).sort((a, b) => a.line - b.line).map(x => x.value).filter(Boolean).join(' ').trim();
-  const TERM_KEYS: Array<[string, string]> = [
-    ['seller', 'Seller:'], ['purchaser', 'Purchaser:'], ['property', 'Property:'], ['purchase_price', 'Purchase Price:'],
-    ['earnest_money', 'Earnest Money:'], ['title_company', 'Title Company:'], ['title_policy', 'Title Policy:'],
-    ['survey', 'Survey:'], ['possession', 'Possession:'], ['feasibility_period', 'Feasibility Period:'],
-    ['closing_schedule', 'Closing Schedule:'], ['option_fee', 'Option Fee:'], ['environmental', 'Environmental:'],
-    ['property_expenses', 'Property Expenses:'], ['purchasers_default', "Purchaser's Default:"], ['time_of_essence', 'Time is of the essence:'],
-  ];
-  const terms = TERM_KEYS.map(([k, label]) => ({ id: newId(), label, value: get(k) })).filter(t => t.value);
-  if (!terms.length) return null;
+  // Old-template term label → its field_key. Note the old form had NO Commission row.
+  const LABEL_TO_KEY: Record<string, string> = {
+    'Seller:': 'seller', 'Purchaser:': 'purchaser', 'Property:': 'property', 'Purchase Price:': 'purchase_price',
+    'Earnest Money:': 'earnest_money', 'Title Company:': 'title_company', 'Title Policy:': 'title_policy', 'Survey:': 'survey',
+    'Possession:': 'possession', 'Feasibility Period:': 'feasibility_period', 'Closing Schedule:': 'closing_schedule',
+    'Option Fee:': 'option_fee', 'Environmental:': 'environmental', 'Property Expenses:': 'property_expenses',
+    "Purchaser's Default:": 'purchasers_default', 'Time is of the essence:': 'time_of_essence',
+  };
+  if (!Object.values(LABEL_TO_KEY).some(k => has(k))) return null;   // not a recoverable overlay LOI
+  // Start from the STANDARD term list — so Commission (and any newer standard row the old
+  // form lacked) still appears — and fill each with the agent's recovered value where the
+  // old form carried that field.
+  const terms = base.terms.map(t => {
+    const k = LABEL_TO_KEY[t.label];
+    return { id: newId(), label: t.label, value: k && has(k) ? get(k) : t.value };
+  });
   const s2e = get('seller_2_name'), s2s = get('seller_2_its');
   return {
     ...base,
     loiDate: get('loi_date') || base.loiDate,
-    addresseeName: get('addressee_name') || base.addresseeName,
-    addresseeAddr1: get('addressee_addr1') || base.addresseeAddr1,
-    addresseeAddr2: get('addressee_addr2') || base.addresseeAddr2,
+    addresseeName: has('addressee_name') ? get('addressee_name') : base.addresseeName,
+    addresseeAddr1: has('addressee_addr1') ? get('addressee_addr1') : base.addresseeAddr1,
+    addresseeAddr2: has('addressee_addr2') ? get('addressee_addr2') : base.addresseeAddr2,
     reLine: get('re_line') || base.reLine,
     terms,
     agentName: get('agent_name') || base.agentName,
@@ -188,7 +196,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
 
   const twoSellers = data.sellers.length > 1;
   const SIGLINE: React.CSSProperties = { flex: 1, borderBottom: '1px solid #9ca3af', height: 15, marginLeft: 8 };
-  const ctrlBtn: React.CSSProperties = { fontSize: 11, lineHeight: 1, color: '#9ca3af', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 5, cursor: 'pointer', padding: '2px 4px' };
+  const ctrlBtn: React.CSSProperties = { fontSize: 13, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid #e6d3a2', borderRadius: 5, cursor: 'pointer', padding: '3px 5px' };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,18,20,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
@@ -197,8 +205,9 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
         .loi-ef:hover { background: #f5f5f3; }
         .loi-ef:focus { background: #fff8e6; box-shadow: inset 0 0 0 1px #ecd9a8; }
         .loi-ef::placeholder { color: #b9bcc2; font-style: italic; }
-        .loi-row .loi-gutter { opacity: 0; transition: opacity .12s; }
+        .loi-row .loi-gutter { opacity: 0.65; transition: opacity .12s; }
         .loi-row:hover .loi-gutter { opacity: 1; }
+        .loi-ctrl:hover { background: #efe4c6 !important; border-color: #d9c085 !important; color: #7a5410 !important; }
       `}</style>
 
       {/* Toolbar */}
@@ -241,12 +250,12 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {/* Terms */}
             {data.terms.map((t, i) => (
               <div key={t.id} className="loi-row" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 6, position: 'relative' }}>
-                <div className="loi-gutter" style={{ position: 'absolute', left: -74, top: 0, display: 'flex', gap: 3, fontFamily: "'DM Sans',sans-serif" }}>
-                  <button title="Move up" onClick={() => moveTerm(i, -1)} disabled={i === 0} style={{ ...ctrlBtn, opacity: i === 0 ? 0.4 : 1 }}>↑</button>
-                  <button title="Move down" onClick={() => moveTerm(i, 1)} disabled={i === data.terms.length - 1} style={{ ...ctrlBtn, opacity: i === data.terms.length - 1 ? 0.4 : 1 }}>↓</button>
+                <div className="loi-gutter" style={{ position: 'absolute', left: -78, top: 0, display: 'flex', flexDirection: 'column', gap: 2, fontFamily: "'DM Sans',sans-serif" }} title="Reorder this term">
+                  <button className="loi-ctrl" title="Move term up" onClick={() => moveTerm(i, -1)} disabled={i === 0} style={{ ...ctrlBtn, opacity: i === 0 ? 0.35 : 1 }}>↑</button>
+                  <button className="loi-ctrl" title="Move term down" onClick={() => moveTerm(i, 1)} disabled={i === data.terms.length - 1} style={{ ...ctrlBtn, opacity: i === data.terms.length - 1 ? 0.35 : 1 }}>↓</button>
                 </div>
-                <div style={{ flex: '0 0 150px' }}><RichText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
-                <div style={{ flex: 1 }}><RichText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>
+                <div style={{ flex: '0 0 150px', minWidth: 0 }}><RichText bold value={t.label} onChange={v => setTerm(i, { label: v })} placeholder="Label" /></div>
+                <div style={{ flex: 1, minWidth: 0 }}><RichText value={t.value} onChange={v => setTerm(i, { value: v })} placeholder="Value" /></div>
                 <div className="loi-gutter" style={{ display: 'flex', gap: 3, paddingTop: 1, fontFamily: "'DM Sans',sans-serif" }}>
                   <button title="Add row below" onClick={() => addTermAfter(i)} style={{ ...ctrlBtn, color: '#a06a12' }}>＋</button>
                   <button title="Remove row" onClick={() => removeTerm(i)} style={{ ...ctrlBtn, color: '#dc2626' }}>✕</button>
