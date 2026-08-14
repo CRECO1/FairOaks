@@ -40,6 +40,36 @@ export async function GET(req: NextRequest) {
 
   try {
     const r = await runPipeline({ query, limit, commit: true });
+
+    // Guard: if we scanned emails but extraction failed on (nearly) all of them
+    // and nothing was inserted, the pipeline is systemically broken — Anthropic
+    // credits exhausted, bad API key, retired model, or API outage — not merely
+    // "no new listings". Fail loud (500 + console.error) so the cron registers as
+    // failed instead of silently returning 200 with a frozen count, which once
+    // hid a multi-day outage (2026-08-14: Anthropic credits ran out).
+    const failureRate = r.scanned > 0 ? r.extractErrors / r.scanned : 0;
+    if (r.scanned >= 3 && failureRate >= 0.5 && r.inserted === 0) {
+      const detail = r.errorSample.length ? ` Sample: ${r.errorSample.join(' | ')}` : '';
+      console.error(
+        `broker-ingest ALERT: extraction failing — ${r.extractErrors}/${r.scanned} emails errored, 0 inserted.${detail}`,
+      );
+      return NextResponse.json(
+        {
+          error:
+            'broker-ingest extraction is failing on nearly every email (0 inserted) — likely Anthropic credits/API key/model. Check Anthropic billing.',
+          scanned: r.scanned,
+          listings: r.listings,
+          nonListings: r.nonListings,
+          extractErrors: r.extractErrors,
+          inserted: r.inserted,
+          dupSkipped: r.dupSkipped,
+          errorSample: r.errorSample,
+          model: r.model,
+        },
+        { status: 500 },
+      );
+    }
+
     // Geocode any newly-ingested (or previously un-geocoded) properties so they
     // show on the Property DB map. Bounded per run to stay within cron time.
     const geo = await geocodeMissing(25);

@@ -41,6 +41,8 @@ export interface PipelineResult {
   listings: number;
   nonListings: number;
   extractErrors: number;
+  /** Up to 5 distinct fetch/extract error messages seen this run (for alerting). */
+  errorSample: string[];
   inserted: number;
   dupSkipped: number;
   skippedNoAddress: number;
@@ -64,6 +66,11 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const items: Array<{ extraction: Extraction; flyer?: GmailImage }> = [];
   let nonListings = 0;
   let extractErrors = 0;
+  const errorSample: string[] = [];
+  const noteError = (msg: string) => {
+    const m = (msg || 'unknown error').slice(0, 300);
+    if (errorSample.length < 5 && !errorSample.includes(m)) errorSample.push(m);
+  };
 
   let i = 0;
   for (const id of ids) {
@@ -71,6 +78,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     const email = await fetchEmail(token, id, maxImages);
     if (!email) {
       extractErrors++;
+      noteError(`fetch failed (message ${id})`);
       log(`  [${i}/${ids.length}] fetch failed (${id})`);
       continue;
     }
@@ -88,6 +96,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
       );
     } catch (err) {
       extractErrors++;
+      noteError((err as Error).message);
       log(`  [${i}/${ids.length}] extract error — ${(err as Error).message}`);
     }
   }
@@ -99,6 +108,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     listings: items.length,
     nonListings,
     extractErrors,
+    errorSample,
     inserted: up.inserted,
     dupSkipped: up.dupSkipped,
     skippedNoAddress: up.skippedNoAddress,
