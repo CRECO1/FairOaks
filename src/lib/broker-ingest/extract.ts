@@ -10,8 +10,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ASSET_TYPES, type AssetType, type Extraction, type FetchedEmail } from './types';
 
-/** Vision-capable, cost-effective; overridable via BROKER_INGEST_MODEL. */
-export const MODEL = process.env.BROKER_INGEST_MODEL || 'claude-sonnet-4-6';
+/** Haiku: vision-capable + the cheapest tier, to keep the crawl's API spend low.
+ *  Overridable via BROKER_INGEST_MODEL (set to a Sonnet id if extraction quality
+ *  on messy flyers regresses). */
+export const MODEL = process.env.BROKER_INGEST_MODEL || 'claude-haiku-4-5-20251001';
 
 let _client: Anthropic | null = null;
 function client(): Anthropic {

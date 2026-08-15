@@ -33,7 +33,7 @@ export async function checkIntegrationHealth(): Promise<IntegrationHealth> {
   let anthropic: IntegrationHealth['anthropic'] = { status: 'ok' };
   try {
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    await client.messages.create({ model: process.env.BROKER_INGEST_MODEL || 'claude-sonnet-4-6', max_tokens: 1, messages: [{ role: 'user', content: '.' }] });
+    await client.messages.create({ model: process.env.BROKER_INGEST_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 1, messages: [{ role: 'user', content: '.' }] });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     anthropic = { status: /credit|balance/i.test(msg) ? 'low_credit' : 'error', detail: msg.slice(0, 160) };

@@ -41,18 +41,6 @@
       "schedule": "0 13 * * *"
     },
     {
-      "path": "/api/cron/broker-ingest",
-      "schedule": "30 15 * * *"
-    },
-    {
-      "path": "/api/cron/broker-ingest",
-      "schedule": "30 18 * * *"
-    },
-    {
-      "path": "/api/cron/broker-ingest",
-      "schedule": "0 22 * * *"
-    },
-    {
       "path": "/api/cron/lease-expirations",
       "schedule": "0 12 * * *"
     },
