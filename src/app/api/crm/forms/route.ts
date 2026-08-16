@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // List the transaction-doc form templates (crm_forms) for a business unit.
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
-  const unit = req.nextUrl.searchParams.get('business_unit') ?? 'commercial';
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const unit = isAdminRole(ctx.role) ? (req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_forms')

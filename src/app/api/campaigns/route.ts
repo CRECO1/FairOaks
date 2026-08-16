@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const supabase = adminClient();
-  const unit = new URL(req.url).searchParams.get('unit');
 
   let campaignQuery = supabase
     .from('crm_campaigns')
     .select(`*, enrollment_count:crm_campaign_enrollments(count)`)
     .order('created_at', { ascending: false })
     .limit(500);
-  if (unit) campaignQuery = campaignQuery.eq('business_unit', unit);
+  if (isAdminRole(ctx.role)) {
+    const unit = new URL(req.url).searchParams.get('unit');
+    if (unit) campaignQuery = campaignQuery.eq('business_unit', unit);
+  } else {
+    campaignQuery = campaignQuery.eq('business_unit', ctx.businessUnit);
+  }
 
   const [{ data, error }, { data: sends }] = await Promise.all([
     campaignQuery,
@@ -54,11 +58,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const body = await req.json();
-  const { name, description, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, created_by, sender_agent_id, business_unit } = body;
+  const { name, description, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, business_unit } = body;
 
   if (!name || !type || !frequency) {
     return NextResponse.json({ error: 'name, type, and frequency are required' }, { status: 400 });
@@ -95,9 +99,9 @@ export async function POST(req: NextRequest) {
     email_subject: email_subject ?? null,
     email_body: email_body ?? null,
     sms_body: sms_body ?? null,
-    created_by: created_by ?? null,
+    created_by: ctx.userId,
     sender_agent_id: sender_agent_id || null,
-    business_unit: business_unit ?? 'residential',
+    business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),
   }]).select().single();
 
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }

@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const caller = await getCrmUser();
-  if (!caller) return forbidden('Not authenticated');
+  const ctx = await getCrmContext(req);
+  if (!ctx) return forbidden('Not authenticated');
 
-  // Allow user to update their own profile; admin can update any
-  if (caller.id !== id) {
-    const { data: callerProfile } = await adminClient().from('crm_profiles').select('role').eq('id', caller.id).single();
-    if (callerProfile?.role !== 'admin' && callerProfile?.role !== 'super_admin') return forbidden('Cannot update another agent\'s profile');
-  }
+  const isAdmin = isAdminRole(ctx.role);
+  // Only admins may edit another agent's profile.
+  if (ctx.userId !== id && !isAdmin) return forbidden('Cannot update another agent\'s profile');
 
   const body = await req.json();
 
-  // Only allow safe profile fields — never role, never id
-  const allowed = ['first_name', 'last_name', 'phone', 'license', 'email', 'business_unit'];
+  // Safe fields — never role, never id. email + business_unit are ADMIN-ONLY:
+  // business_unit is the horizontal workspace boundary every scoped guard trusts,
+  // so an agent must not be able to move their own profile into the other unit.
+  const allowed = isAdmin
+    ? ['first_name', 'last_name', 'phone', 'license', 'email', 'business_unit']
+    : ['first_name', 'last_name', 'phone', 'license'];
   const update: Record<string, string> = {};
   for (const key of allowed) {
     if (key in body && body[key] !== undefined) {

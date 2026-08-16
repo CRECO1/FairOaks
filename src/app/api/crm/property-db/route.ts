@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Read-side for the broker-ingested Property DB (crm_prospective_properties).
 // The write-side is src/lib/broker-ingest/* (the 4x/day Gmail → CRM pipeline).
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
-  const unit = req.nextUrl.searchParams.get('business_unit') ?? 'commercial';
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const unit = isAdminRole(ctx.role) ? (req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
   // PostgREST caps a single response at 1000 rows, so page through until the
   // whole table is fetched — the Property DB is well past 1000 listings now.

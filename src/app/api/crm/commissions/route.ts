@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { searchParams } = req.nextUrl;
-  const businessUnit = searchParams.get('business_unit') ?? 'commercial';
+  // Non-admins are pinned to their own workspace; admins may pass ?business_unit= to view either.
+  const businessUnit = isAdminRole(ctx.role) ? (searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const agentId      = searchParams.get('agent_id');
   const status       = searchParams.get('status');
   const year         = searchParams.get('year');
@@ -32,8 +33,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const body = await req.json();
   const {
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     .upsert({
       deal_id,
       agent_id:        agent_id    ?? null,
-      business_unit:   business_unit ?? 'commercial',
+      business_unit:   isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial'),
       sale_price:      sp,
       deal_type:       deal_type   ?? null,
       commission_rate: rate,
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
       close_date:      close_date   ?? null,
       paid_date:       paid_date    ?? null,
       notes:           notes        ?? null,
-      created_by:      caller.id,
+      created_by:      ctx.userId,
     }, { onConflict: 'deal_id', ignoreDuplicates: false })
     .select()
     .single();

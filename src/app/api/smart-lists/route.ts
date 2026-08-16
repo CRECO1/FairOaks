@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmUser, getCrmAdmin, getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const supabase = adminClient();
-  const unit = new URL(req.url).searchParams.get('unit');
-
   let query = supabase.from('crm_smart_lists').select('*').order('created_at', { ascending: false });
-  if (unit) query = query.eq('business_unit', unit);
+  if (isAdminRole(ctx.role)) {
+    const unit = new URL(req.url).searchParams.get('unit');
+    if (unit) query = query.eq('business_unit', unit);
+  } else {
+    query = query.eq('business_unit', ctx.businessUnit);
+  }
 
   const { data, error } = await query;
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
@@ -18,11 +21,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const body = await req.json();
-  const { name, filters, created_by, is_shared, business_unit } = body;
+  const { name, filters, is_shared, business_unit } = body;
 
   if (!name) {
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -37,9 +40,9 @@ export async function POST(req: NextRequest) {
     .insert([{
       name,
       filters,
-      created_by: created_by ?? null,
+      created_by: ctx.userId,
       is_shared: is_shared ?? false,
-      business_unit: business_unit ?? 'residential',
+      business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),
     }])
     .select()
     .single();

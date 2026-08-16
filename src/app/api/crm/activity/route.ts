@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 function toUnit(v: string | null) {
@@ -7,14 +7,16 @@ function toUnit(v: string | null) {
 }
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { searchParams } = req.nextUrl;
-  const unit      = toUnit(searchParams.get('unit'));
+  // Non-admins are pinned to their own workspace (the auto-stats below aggregate
+  // by business_unit only, so a client-supplied ?unit= would leak the other unit's counts).
+  const unit      = isAdminRole(ctx.role) ? toUnit(searchParams.get('unit')) : toUnit(ctx.businessUnit);
   const weekStart = searchParams.get('week_start');
   const allTime   = searchParams.get('all') === 'true';
-  const agentId   = caller.id;
+  const agentId   = ctx.userId;
 
   const supabase = adminClient();
 
@@ -94,8 +96,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const body = await req.json();
   const {
@@ -111,9 +113,9 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from('crm_activity_logs')
     .upsert({
-      agent_id: caller.id,
+      agent_id: ctx.userId,
       log_date,
-      business_unit: toUnit(business_unit),
+      business_unit: isAdminRole(ctx.role) ? toUnit(business_unit) : toUnit(ctx.businessUnit),
       calls_block_protected: calls_block_protected ?? false,
       prospecting_calls:     prospecting_calls ?? 0,
       conversations:         conversations ?? 0,

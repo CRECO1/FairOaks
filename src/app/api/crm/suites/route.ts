@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const VALID_UNITS = ['residential', 'commercial'] as const;
@@ -17,9 +17,9 @@ function toStatus(val: unknown): SuiteStatus {
 // GET /api/crm/suites?unit=commercial&building=bldg1
 // Returns the saved per-suite overrides. Any authenticated CRM user may read.
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
-  const unit = toUnit(req.nextUrl.searchParams.get('unit'));
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const unit = isAdminRole(ctx.role) ? toUnit(req.nextUrl.searchParams.get('unit')) : toUnit(ctx.businessUnit);
   const building = req.nextUrl.searchParams.get('building') || 'bldg1';
   const supabase = adminClient();
   const { data, error } = await supabase
