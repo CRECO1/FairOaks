@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_action_plan_enrollments')
@@ -19,10 +20,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
   const body = await req.json();
   const { client_ids, agent_id } = body;
 
@@ -55,10 +57,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
   const body = await req.json();
   const { client_id } = body;
 

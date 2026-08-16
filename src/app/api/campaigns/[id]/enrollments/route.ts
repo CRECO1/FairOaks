@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 /**
@@ -43,11 +43,12 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
   return now.toISOString();
 }
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_campaigns', id, ctx))) return notFound('Campaign not found');
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_campaign_enrollments')
@@ -59,11 +60,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
-  const { client_ids, enrolled_by } = await req.json();
+  if (!(await assertOwnsResource('crm_campaigns', id, ctx))) return notFound('Campaign not found');
+  const { client_ids } = await req.json();
   if (!client_ids?.length) return NextResponse.json({ error: 'client_ids required' }, { status: 400 });
 
   const supabase = adminClient();
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const rows = (client_ids as string[]).map((client_id) => ({
     campaign_id: id,
     client_id,
-    enrolled_by: enrolled_by ?? null,
+    enrolled_by: ctx.userId,
     next_send_at,
     active: true,
     org_id: campaign.org_id,
@@ -94,10 +96,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   const { id } = await params;
+  if (!(await assertOwnsResource('crm_campaigns', id, ctx))) return notFound('Campaign not found');
   const { client_id } = await req.json();
   const supabase = adminClient();
   const { error } = await supabase

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
 
@@ -46,10 +46,11 @@ function computeNextStepAt(delayDays: number): string {
 // Called right after enrollment so the first email fires instantly rather
 // than waiting up to 15 minutes for the cron job.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const authCtx = await getCrmContext(req);
+  if (!authCtx) return unauthorized();
 
   const { id: planId } = await params;
+  if (!(await assertOwnsResource('crm_action_plans', planId, authCtx))) return notFound('Plan not found');
   const { client_id, agent_id } = await req.json();
 
   if (!client_id || !agent_id) {
@@ -86,11 +87,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Fetch the client
   const { data: client } = await supabase
     .from('crm_clients')
-    .select('id, first_name, last_name, email, type, agent_id, unsubscribe_token, unsubscribed_at')
+    .select('id, first_name, last_name, email, type, agent_id, business_unit, unsubscribe_token, unsubscribed_at')
     .eq('id', client_id)
     .single();
 
   if (!client) return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+  if (!isAdminRole(authCtx.role) && client.business_unit !== authCtx.businessUnit) return notFound('Client not found');
   if (client.unsubscribed_at) return NextResponse.json({ skipped: true, reason: 'unsubscribed' });
   if (!client.email) return NextResponse.json({ skipped: true, reason: 'no email' });
 
