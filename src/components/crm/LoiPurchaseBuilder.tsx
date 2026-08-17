@@ -127,6 +127,8 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
   const [savedId, setSavedId] = useState<string | undefined>(submissionId);
   const [loading, setLoading] = useState(!!submissionId);
   const [busy, setBusy] = useState(false);
+  const [edits, setEdits] = useState<{ id: string; summary: string; editor: string; created_at: string }[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const logoRef = useRef<Uint8Array | null>(null);
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -150,6 +152,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
           const recon = reconstructFromOverlay(j?.submission?.values, seedData(prefill));
           if (recon) setData(recon);
         }
+        if (!cancelled) setEdits(Array.isArray(j?.edits) ? j.edits : []);
       } catch { /* fall back to seeded defaults */ }
       finally { if (!cancelled) setLoading(false); }
     })();
@@ -218,6 +221,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
         </div>
         <RtFormatButtons />
         <div style={{ width: 1, height: 26, background: '#eef0f2' }} />
+        {savedId && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ padding: '8px 12px', fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
         <button onClick={() => save(false)} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Save</button>
         <button onClick={() => save(true)} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 800, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save & close'}</button>
         <button onClick={onClose} style={{ padding: '8px 10px', fontSize: 16, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
@@ -307,6 +311,29 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
           </div>
         )}
       </div>
+
+      {showHistory && (
+        <div onClick={() => setShowHistory(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(15,18,20,0.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 20, fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 380, maxWidth: '92%', background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.15)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid #eef0f2', position: 'sticky', top: 0, background: '#fff' }}>
+              <div style={{ flex: 1, fontSize: 15, fontWeight: 800, color: '#1a1a1a' }}>🕘 Edit history</div>
+              <button onClick={() => setShowHistory(false)} style={{ background: 'none', border: 'none', fontSize: 16, color: '#9ca3af', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ padding: 14 }}>
+              {edits.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No changes recorded yet. Every save logs who changed what.</div> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {edits.map(e => (
+                    <div key={e.id} style={{ borderLeft: '2px solid #e6d3a2', paddingLeft: 12 }}>
+                      <div style={{ fontSize: 13, color: '#1a1a1a', fontWeight: 600 }}>{e.summary}</div>
+                      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{e.editor} · {new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

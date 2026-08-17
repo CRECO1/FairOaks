@@ -3,6 +3,35 @@ import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole 
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 
+// ── Builder-doc edit log (audit trail of what an agent changed on save) ──────
+interface LoiTerm { id?: string; label?: string; value?: string }
+interface LoiData { terms?: LoiTerm[]; sellers?: unknown; [k: string]: unknown }
+
+function diffBuilder(oldD: LoiData | null, newD: LoiData) {
+  const oldTerms = oldD?.terms ?? [], newTerms = newD?.terms ?? [];
+  const map = (arr: LoiTerm[]) => new Map(arr.filter(t => t.id).map(t => [t.id as string, t]));
+  const oldMap = map(oldTerms), newMap = map(newTerms);
+  const clean = (l?: string) => (l || 'term').replace(/:$/, '');
+  const removed: string[] = [], added: string[] = [], edited: string[] = [];
+  for (const t of oldTerms) if (t.id && !newMap.has(t.id)) removed.push(clean(t.label));
+  for (const t of newTerms) if (t.id && !oldMap.has(t.id)) added.push(clean(t.label));
+  for (const t of newTerms) { const o = t.id ? oldMap.get(t.id) : undefined; if (o && (o.value !== t.value || o.label !== t.label)) edited.push(clean(t.label)); }
+  const FMAP: Record<string, string> = { loiDate: 'date', addresseeName: 'addressee', addresseeAddr1: 'addressee', addresseeAddr2: 'addressee', reLine: 'Re line', agentName: 'sign-off', agentEmail: 'sign-off', agentPhone: 'sign-off', additionalTerms: 'Other Stipulations' };
+  const fields = new Set<string>();
+  for (const k of Object.keys(FMAP)) if (String(oldD?.[k] ?? '') !== String(newD?.[k] ?? '')) fields.add(FMAP[k]);
+  if (JSON.stringify(oldD?.sellers ?? []) !== JSON.stringify(newD?.sellers ?? [])) fields.add('signers');
+  return { removed, added, edited, fields: Array.from(fields) };
+}
+
+function summarizeDiff(d: ReturnType<typeof diffBuilder>): string {
+  const parts: string[] = [];
+  if (d.removed.length) parts.push(`Removed ${d.removed.join(', ')}`);
+  if (d.added.length) parts.push(`Added ${d.added.length} term${d.added.length > 1 ? 's' : ''}`);
+  if (d.edited.length) parts.push(`Edited ${d.edited.join(', ')}`);
+  if (d.fields.length) parts.push(`Updated ${d.fields.join(', ')}`);
+  return parts.join(' · ');
+}
+
 // Completed/in-progress form instances (crm_form_submissions): stores the field
 // VALUES (jsonb, so it can be re-opened & edited) and a generated PDF in storage.
 // Optionally linked to a deal via deal_id.
@@ -102,6 +131,13 @@ export async function POST(req: NextRequest) {
     else filled_path = path;
   }
 
+  // Snapshot the prior builder state so the save can log what the agent changed.
+  let priorBuilder: LoiData | null = null;
+  if (builder_data !== undefined && submission_id) {
+    const { data: prior } = await supabase.from('crm_form_submissions').select('builder_data').eq('id', submission_id).maybeSingle();
+    priorBuilder = (prior?.builder_data as LoiData) ?? null;
+  }
+
   const base = {
     form_id,
     deal_id: deal_id || null,
@@ -122,6 +158,16 @@ export async function POST(req: NextRequest) {
     : await supabase.from('crm_form_submissions').insert({ ...base, created_by: ctx.userId }).select().single();
 
   if (res.error) { console.error('[api/form-submissions] save', res.error); return NextResponse.json({ error: 'Save failed' }, { status: 500 }); }
+
+  // Audit trail: record what an agent changed on a builder doc (LOI term edits/deletions).
+  if (builder_data !== undefined && res.data) {
+    try {
+      let summary = 'Created'; let changes: unknown = {};
+      if (submission_id) { const d = diffBuilder(priorBuilder, builder_data as LoiData); summary = summarizeDiff(d); changes = d; }
+      if (summary) await supabase.from('crm_form_submission_edits').insert({ submission_id: (res.data as { id: string }).id, editor_id: ctx.userId, business_unit: unit, summary, changes });
+    } catch (e) { console.error('[api/form-submissions] edit-log', e); }
+  }
+
   return NextResponse.json({ submission: res.data });
 }
 
