@@ -58,6 +58,49 @@ function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void })
   );
 }
 
+// Word documents (.docx) → clean HTML via mammoth, rendered on a page-like sheet.
+function DocxView({ url, onReady }: { url: string; onReady: () => void }) {
+  const [html, setHtml] = useState('');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setStatus('loading');
+        const mammoth = await import('mammoth');
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+        const arrayBuffer = await resp.arrayBuffer();
+        if (cancelled) return;
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        if (cancelled) return;
+        setHtml(result.value || '<p>(empty document)</p>');
+        setStatus('ready');
+        onReady();
+      } catch (e) {
+        if (!cancelled) { console.error('[DocxView]', e); setStatus('error'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url, onReady]);
+
+  if (status === 'loading') return <div style={{ padding: 50, textAlign: 'center', color: '#9ca3af' }}>Opening document…</div>;
+  if (status === 'error') return <div style={{ padding: 50, textAlign: 'center', color: '#ef4444' }}>Couldn’t open this document. Try ↓ Download instead.</div>;
+  return (
+    <div className="docxview" style={{ background: '#fff', maxWidth: 820, margin: '0 auto', padding: '48px 56px', borderRadius: 4, boxShadow: '0 1px 8px rgba(0,0,0,.16)' }}>
+      <style>{`.docxview{font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;line-height:1.55;font-size:14px}
+        .docxview p{margin:0 0 10px}
+        .docxview h1,.docxview h2,.docxview h3,.docxview h4{font-family:-apple-system,'DM Sans',sans-serif;margin:18px 0 8px;line-height:1.25}
+        .docxview table{border-collapse:collapse;margin:10px 0;width:auto}
+        .docxview td,.docxview th{border:1px solid #d1d5db;padding:5px 9px;font-size:13px}
+        .docxview img{max-width:100%;height:auto}
+        .docxview ul,.docxview ol{margin:0 0 10px 22px}
+        .docxview a{color:#2563eb}`}</style>
+      <div dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
 export default function DocPreviewModal({ file, onClose }: {
   file: { url: string; name: string; type?: string | null };
   onClose: () => void;
@@ -68,7 +111,8 @@ export default function DocPreviewModal({ file, onClose }: {
   const isPdf = ext === 'pdf' || type === 'application/pdf';
   const isImg = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'].includes(ext) || type.startsWith('image/');
   const isSheet = ['xlsx', 'xls', 'xlsm', 'csv', 'ods', 'tsv'].includes(ext) || type.includes('spreadsheet') || type === 'text/csv';
-  const previewable = isPdf || isImg || isSheet;
+  const isDocx = ext === 'docx' || type.includes('wordprocessingml');
+  const previewable = isPdf || isImg || isSheet || isDocx;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -94,7 +138,7 @@ export default function DocPreviewModal({ file, onClose }: {
       }`}</style>
       <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 980, margin: '0 auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.3)', overflow: 'hidden' }}>
         <div className="docprev-noprint" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderBottom: '1px solid #eef0f2' }}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>{isPdf ? '📄' : isImg ? '🖼' : isSheet ? '📊' : '📎'}</span>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>{isPdf ? '📄' : isImg ? '🖼' : isSheet ? '📊' : isDocx ? '📝' : '📎'}</span>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
           {previewable && <button onClick={() => window.print()} disabled={!ready} title={ready ? 'Print this document' : 'Rendering…'} style={{ ...btn, color: ready ? '#a06a12' : '#c9b78a', borderColor: '#f0e2c4', cursor: ready ? 'pointer' : 'default' }}>🖨 Print</button>}
           <a href={downloadUrl} style={{ ...btn, textDecoration: 'none', color: '#374151' }}>↓ Download</a>
@@ -107,6 +151,8 @@ export default function DocPreviewModal({ file, onClose }: {
             <img src={file.url} alt={file.name} style={{ display: 'block', maxWidth: '100%', margin: '0 auto', background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,.16)', borderRadius: 4 }} />
           ) : isSheet ? (
             <SpreadsheetView url={file.url} onReady={() => setReady(true)} />
+          ) : isDocx ? (
+            <DocxView url={file.url} onReady={() => setReady(true)} />
           ) : (
             <div style={{ padding: 50, textAlign: 'center', color: '#6b7280' }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>📎</div>

@@ -27,15 +27,20 @@ export default function PdfViewer({ url, onReady }: { url: string; onReady?: () 
         if (!container) return;
         container.innerHTML = '';
         const targetW = Math.min(container.clientWidth || 820, 900);
+        // Render at 2× the display width so the canvas has enough pixels to look sharp
+        // both on retina screens and (the reason it matters) when PRINTED — a canvas
+        // prints at its own bitmap resolution, so a 1× canvas prints soft.
+        const OVERSAMPLE = 2;
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           if (cancelled) return;
           const base = page.getViewport({ scale: 1 });
-          const scale = targetW / base.width;
+          const scale = (targetW / base.width) * OVERSAMPLE;
           const viewport = page.getViewport({ scale });
           const canvas = document.createElement('canvas');
           canvas.width = Math.floor(viewport.width);
           canvas.height = Math.floor(viewport.height);
+          // Display (and print) at the 1× width; the extra bitmap pixels just add sharpness.
           canvas.style.cssText = 'display:block;width:100%;max-width:' + targetW + 'px;margin:0 auto 18px;box-shadow:0 1px 8px rgba(0,0,0,.16);border-radius:4px;background:#fff';
           const ctx = canvas.getContext('2d');
           if (!ctx) continue;
