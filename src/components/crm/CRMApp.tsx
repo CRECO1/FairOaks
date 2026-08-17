@@ -462,6 +462,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [dealFormPicker, setDealFormPicker] = useState(false);
   const [dealFormMore, setDealFormMore] = useState(false); // "More forms" dropdown in the deal form picker
+  const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
+  const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
@@ -1091,13 +1093,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return n;
   }, [crmForms, session?.access_token, businessUnit, authGet]);
 
-  const startPacket = useCallback(async (pkt: typeof FORM_PACKETS[number]) => {
+  // Add one library form to a deal as a blank submission — the Docs tab picks
+  // forms one at a time from a dropdown rather than by packet.
+  const addFormToDeal = useCallback(async (form: { id: string; name: string }) => {
     if (!activeDeal) return;
-    showToast(`Attaching ${pkt.label}…`);
-    const n = await attachPacketToDeal(activeDeal.id, pkt);
-    await loadDealForms(activeDeal.id);
-    showToast(n ? `✓ Attached ${n} form${n === 1 ? '' : 's'} to the deal` : 'Could not attach the packet');
-  }, [activeDeal, attachPacketToDeal, loadDealForms]); // eslint-disable-line
+    setDealFormAdding(true);
+    const h: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
+    const res = await fetch('/api/crm/form-submissions', {
+      method: 'POST', headers: h,
+      body: JSON.stringify({ form_id: form.id, deal_id: activeDeal.id, business_unit: businessUnit, title: form.name, values: [] }),
+    }).catch(() => null);
+    if (res?.ok) { await loadDealForms(activeDeal.id); showToast(`✓ Added ${form.name}`); setDealFormPick(''); }
+    else showToast('Could not add that form');
+    setDealFormAdding(false);
+  }, [activeDeal, session?.access_token, businessUnit, loadDealForms]); // eslint-disable-line
 
   const loadDealCommission = useCallback(async (dealId: string, billableValue?: number | null) => {
     setCommissionLoading(true);
@@ -2725,6 +2735,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table tr:last-child td{border-bottom:none!important;}
         .contacts-table tr:hover td{background:#fafbfd!important;}
         .contacts-table .row-actions{opacity:1;}
+        .contacts-table .cell-add-deal{opacity:0;transition:opacity .12s;}
+        .contacts-table tr:hover .cell-add-deal{opacity:1;}
         .cf-select{padding:6px 30px 6px 11px;border-radius:8px;border:1px solid #e2e8f0;font-size:13.5px;font-family:'DM Sans',sans-serif;color:#374151;background:#fff;cursor:pointer;font-weight:500;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:border-color .15s,box-shadow .15s;}
         .cf-select:hover{border-color:#c9922c;}
         .cf-select:focus{outline:none;border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
@@ -4093,24 +4105,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {c.phone ? <a href={`tel:${c.phone}`} style={{ color: '#374151', textDecoration: 'none' }}>{c.phone}</a> : '—'}
                             </td>
 
-                            {/* Active deals */}
+                            {/* Deals — every deal on this contact, plus an always-available add */}
                             <td style={{ fontSize: 13 }}>
-                              {activeDeals.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              {clientDeals.length === 0 ? (
+                                <button onClick={() => { setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
+                                  style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 4, color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>
+                                  + New Deal
+                                </button>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
                                   {activeDeals.map(d => (
                                     <button key={d.id} onClick={() => openDeal(d)}
                                       style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 13, cursor: 'pointer', textAlign: 'left', padding: 0, textDecoration: 'underline' }}>
                                       {d.property || d.type.split(' ')[0]}
                                     </button>
                                   ))}
+                                  {clientDeals.length > activeDeals.length && (
+                                    <span style={{ color: '#9ca3af', fontSize: 12 }}>
+                                      {clientDeals.length - activeDeals.length} inactive
+                                    </span>
+                                  )}
+                                  <button className="cell-add-deal" title="Add another deal for this contact"
+                                    onClick={() => { setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
+                                    style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>
+                                    + Deal
+                                  </button>
                                 </div>
-                              ) : clientDeals.length > 0 ? (
-                                <span style={{ color: '#9ca3af' }}>{clientDeals.length} deal{clientDeals.length !== 1 ? 's' : ''}</span>
-                              ) : (
-                                <button onClick={() => { setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
-                                  style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 4, color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>
-                                  + New Deal
-                                </button>
                               )}
                             </td>
 
@@ -7524,6 +7544,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Client tab */}
               {dealTab === 'client' && (
                 <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
+                  {/* Linked contact — this is what files the deal on a contact card.
+                      Editing "Client Name" below only retitles the deal; re-point it here. */}
+                  <div style={{ gridColumn: '1/-1' }}>
+                    <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Linked Contact — shows this deal on their card</label>
+                    <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.client_id ?? ''}
+                      onChange={e => {
+                        const chosen = clients.find(x => x.id === e.target.value);
+                        if (!chosen) { updateDeal(activeDeal.id, { client_id: undefined }); return; }
+                        updateDeal(activeDeal.id, {
+                          client_id: chosen.id,
+                          client: `${chosen.first_name} ${chosen.last_name}`.replace(/\s+/g, ' ').trim(),
+                          client_email: chosen.email,
+                          client_phone: chosen.phone,
+                        });
+                        showToast(`Deal filed under ${chosen.first_name} ${chosen.last_name}`.replace(/\s+/g, ' '));
+                      }}>
+                      <option value="">— Not linked to a contact —</option>
+                      {clients.map(x => (
+                        <option key={x.id} value={x.id}>
+                          {`${x.first_name} ${x.last_name}`.replace(/\s+/g, ' ').trim()} · {x.type}{x.email ? ` · ${x.email}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {!activeDeal.client_id && (
+                      <div style={{ marginTop: 5, fontSize: 12, color: '#c2410c' }}>⚠️ Not linked — this deal won&apos;t appear on any contact card.</div>
+                    )}
+                  </div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Client Name</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client} onBlur={e => updateDeal(activeDeal.id, { client: e.target.value })} /></div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Email</label><input className="crm-input" type="email" style={{ marginTop: 4 }} defaultValue={activeDeal.client_email} onBlur={e => updateDeal(activeDeal.id, { client_email: e.target.value })} /></div>
                   <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Phone</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.client_phone} onBlur={e => updateDeal(activeDeal.id, { client_phone: e.target.value })} /></div>
@@ -7899,27 +7946,57 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>CRM Forms</div>
                       <button onClick={() => { loadCrmForms(); setDealFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
                     </div>
-                    <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 14 }}>
-                      <span style={{ fontSize: 12, color: '#9ca3af', alignSelf: 'center', marginRight: 2 }}>Attach a packet:</span>
-                      {FORM_PACKETS.map(pkt => {
-                        const suggested = pkt.match.includes(activeDeal.type);
-                        return (
-                          <button key={pkt.key} onClick={() => startPacket(pkt)} title={pkt.forms.join(', ')}
-                            style={{ fontSize: 12, fontWeight: 600, padding: '6px 11px', borderRadius: 20, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
-                              border: suggested ? '1px solid #c9922c' : '1px solid #e5e7eb', background: suggested ? '#fdf6e9' : '#fff', color: suggested ? '#a06a12' : '#6b7280' }}>
-                            📦 {pkt.label}{suggested ? ' · suggested' : ''}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {dealForms.length === 0 ? (
-                      <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>No forms on this deal yet. Fill a commercial/TREC form and it saves here, linked to the deal.</div>
-                    ) : (() => {
-                      // Split into forms actively in use (a PDF has been generated) vs. blank
-                      // ones attached by a packet, still waiting to be filled into the deal.
-                      const inUse = dealForms.filter(f => f.url);
+                    {/* One dropdown to add a form. Lists every form in the library, plus
+                        any blanks already sitting on this deal waiting to be filled. */}
+                    {(() => {
                       const waiting = dealForms.filter(f => !f.url);
-                      const subhead = (t: string) => <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginTop: 2 }}>{t}</div>;
+                      const onDeal = new Set(dealForms.map(f => f.form_id).filter(Boolean) as string[]);
+                      const library = crmForms.filter(f => !onDeal.has(f.id));
+                      const isWaiting = dealFormPick.startsWith('sub:');
+                      const act = () => {
+                        if (!dealFormPick) return;
+                        if (isWaiting) {
+                          const f = waiting.find(w => w.id === dealFormPick.slice(4));
+                          if (f) openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id);
+                        } else {
+                          const f = crmForms.find(x => x.id === dealFormPick.slice(5));
+                          if (f) addFormToDeal({ id: f.id, name: f.name });
+                        }
+                      };
+                      return (
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select className="crm-input" style={{ flex: 1, minWidth: 200 }} value={dealFormPick}
+                            onChange={e => setDealFormPick(e.target.value)}>
+                            <option value="">— Add a form to this deal —</option>
+                            {waiting.length > 0 && (
+                              <optgroup label={`Waiting to be filled · ${waiting.length}`}>
+                                {waiting.map(f => (
+                                  <option key={f.id} value={`sub:${f.id}`}>
+                                    {f.title || f.crm_forms?.name || 'Form'}{f.crm_forms?.form_code ? ` · ${f.crm_forms.form_code}` : ''}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {library.length > 0 && (
+                              <optgroup label="All forms">
+                                {library.map(f => (
+                                  <option key={f.id} value={`lib:${f.id}`}>{f.name}{f.form_code ? ` · ${f.form_code}` : ''}</option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+                          <button onClick={act} disabled={!dealFormPick || dealFormAdding}
+                            style={{ padding: '8px 16px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: 'none', flexShrink: 0, fontFamily: "'DM Sans',sans-serif",
+                              background: dealFormPick ? '#c9922c' : '#e5e7eb', color: dealFormPick ? '#fff' : '#9ca3af', cursor: dealFormPick && !dealFormAdding ? 'pointer' : 'default' }}>
+                            {dealFormAdding ? 'Adding…' : isWaiting ? '✍️ Fill' : '+ Add'}
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    {(() => {
+                      // Only forms actually in use (a PDF has been generated) get a row here.
+                      // Blanks still waiting to be filled live in the dropdown above.
+                      const inUse = dealForms.filter(f => f.url);
                       const row = (f: typeof dealForms[number], w: boolean) => (
                         <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w ? '#fbfbfc' : '#fffdf6', border: '1px solid ' + (w ? '#ececf0' : '#f0e2c4'), borderRadius: 8, padding: '10px 14px' }}>
                           <span style={{ fontSize: 20, flexShrink: 0, opacity: w ? 0.5 : 1 }}>{w ? '◻️' : '📄'}</span>
@@ -7931,16 +8008,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
                         </div>
                       );
+                      if (inUse.length === 0) {
+                        return <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>No forms filled on this deal yet. Add one above and it saves here, linked to the deal.</div>;
+                      }
                       return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {inUse.length > 0 && (<>
-                            {waiting.length > 0 && subhead(`In use · ${inUse.length}`)}
-                            {inUse.map(f => row(f, false))}
-                          </>)}
-                          {waiting.length > 0 && (<>
-                            {subhead(`Waiting to be filled · ${waiting.length}`)}
-                            {waiting.map(f => row(f, true))}
-                          </>)}
+                          {inUse.map(f => row(f, false))}
                         </div>
                       );
                     })()}
@@ -8753,7 +8826,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
               {/* Smart Status Banner */}
               {(() => {
-                const activeDeal = clientDeals.find(d => d.stage !== 'Closed' && d.stage !== 'Lost');
+                const openDeals = clientDeals.filter(d => d.stage !== 'Closed' && d.stage !== 'Lost');
+                const activeDeal = openDeals[0];
                 const closedDeal = clientDeals.find(d => d.stage === 'Closed');
                 const daysSinceTouch = c.last_touched_at ? Math.floor((Date.now() - new Date(c.last_touched_at).getTime()) / 86400000) : null;
                 const lxpDays = c.lease_expiration_date ? Math.ceil((new Date(c.lease_expiration_date).getTime() - Date.now()) / 86400000) : null;
@@ -8777,9 +8851,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const [bg, color] = stageMeta[activeDeal.stage] ?? ['#f3f4f6', '#374151'];
                   return (
                     <div style={{ background: bg, padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color, borderBottom: `1px solid ${color}22` }}>
-                      <span>🟢 Active — {activeDeal.type}</span>
+                      <span>🟢 {openDeals.length > 1 ? `${openDeals.length} active deals — ` : 'Active — '}{activeDeal.type}</span>
                       <span style={{ background: `${color}22`, color, padding: '1px 8px', borderRadius: 10, fontSize: 12 }}>{activeDeal.stage}</span>
-                      <button onClick={() => { setActiveClient(null); setPage('deals'); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 12, color, cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>View deal →</button>
+                      <button onClick={() => { setActiveClient(null); if (openDeals.length > 1) setPage('deals'); else openDeal(activeDeal); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', fontSize: 12, color, cursor: 'pointer', fontWeight: 700, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>{openDeals.length > 1 ? 'View deals →' : 'View deal →'}</button>
                     </div>
                   );
                 }
@@ -8963,18 +9037,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   )}
                 </div>
 
-                {/* Deals */}
+                {/* Deals — a contact can carry any number of deals */}
                 <div>
-                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>Linked Deals</div>
-                  {clientDeals.length === 0 ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <span style={{ fontSize: 14, color: '#9ca3af', fontStyle: 'italic' }}>No deals yet</span>
-                      <button
-                        onClick={() => { setActiveClient(null); setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
-                        style={{ fontSize: 13, color: '#c9922c', background: 'none', border: '1px dashed #c9922c', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                        + Create Deal
-                      </button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>
+                      Linked Deals{clientDeals.length > 1 ? ` (${clientDeals.length})` : ''}
                     </div>
+                    <button
+                      onClick={() => { setActiveClient(null); setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
+                      style={{ background: 'none', border: '1px dashed #c9922c', borderRadius: 6, color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: '3px 10px', fontFamily: "'DM Sans',sans-serif" }}>
+                      + Add Deal
+                    </button>
+                  </div>
+                  {clientDeals.length === 0 ? (
+                    <span style={{ fontSize: 14, color: '#9ca3af', fontStyle: 'italic' }}>No deals yet</span>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {clientDeals.map(d => (
