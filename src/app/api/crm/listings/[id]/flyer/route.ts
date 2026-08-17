@@ -42,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const [agent, coAgent] = await Promise.all([loadAgent(L.listing_agent_id), loadAgent(L.co_agent_id)]);
 
   // Hero (first photo) + floor plan (first floor_plan image).
-  const { data: files } = await supabase.from('crm_listing_files').select('storage_path, file_type, category').eq('listing_id', id);
+  const { data: files } = await supabase.from('crm_listing_files').select('storage_path, file_type, category, created_at').eq('listing_id', id).order('created_at', { ascending: true });
   const pickImage = async (match: (f: { category?: string; file_type?: string }) => boolean) => {
     for (const f of (files ?? []).filter(match)) {
       const ft = (f.file_type || '').toLowerCase();
