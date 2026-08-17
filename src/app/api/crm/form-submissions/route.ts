@@ -50,13 +50,31 @@ export async function GET(req: NextRequest) {
     .select('id, form_id, deal_id, listing_id, title, filled_path, status, created_at, updated_at, crm_forms(name, form_code)')
     .order('updated_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
+  // A document lives in ONE row that both surfaces read, so an edit made from a deal
+  // and an edit made from the property are the same edit — they mirror by construction
+  // rather than by copying. What differs is the view:
+  //   deal D at property L  → D's own docs, plus L's property-level docs
+  //   property L            → L's own docs, plus every doc on a deal at L
+  // The `deal_id.is.null` guard on the deal side matters: without it, deal D would also
+  // pull in the docs of every OTHER deal at the same property.
   if (dealId) {
     if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
-    q = q.eq('deal_id', dealId);
+    const { data: deal } = await supabase.from('crm_deals').select('listing_id').eq('id', dealId).maybeSingle();
+    const lid = deal?.listing_id as string | null | undefined;
+    // Only mirror the property's docs down if the caller may see that property.
+    q = lid && await assertCanAccessListing(lid, ctx)
+      ? q.or(`deal_id.eq.${dealId},and(listing_id.eq.${lid},deal_id.is.null)`)
+      : q.eq('deal_id', dealId);
   }
   if (listingId) {
     if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
-    q = q.eq('listing_id', listingId);
+    let dq = supabase.from('crm_deals').select('id').eq('listing_id', listingId);
+    if (!isAdminRole(ctx.role)) dq = dq.eq('business_unit', ctx.businessUnit);
+    const { data: dealsAtListing } = await dq;
+    const ids = (dealsAtListing ?? []).map(d => d.id as string);
+    q = ids.length
+      ? q.or(`listing_id.eq.${listingId},deal_id.in.(${ids.join(',')})`)
+      : q.eq('listing_id', listingId);
   }
   const { data, error } = await q;
   if (error) { console.error('[api/form-submissions] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
@@ -131,17 +149,25 @@ export async function POST(req: NextRequest) {
     else filled_path = path;
   }
 
-  // Snapshot the prior builder state so the save can log what the agent changed.
+  // Snapshot the prior builder state so the save can log what the agent changed,
+  // and the prior links so a save never silently unfiles the doc (below).
   let priorBuilder: LoiData | null = null;
-  if (builder_data !== undefined && submission_id) {
-    const { data: prior } = await supabase.from('crm_form_submissions').select('builder_data').eq('id', submission_id).maybeSingle();
+  let priorLinks: { deal_id: string | null; listing_id: string | null } | null = null;
+  if (submission_id) {
+    const { data: prior } = await supabase.from('crm_form_submissions')
+      .select('builder_data, deal_id, listing_id').eq('id', submission_id).maybeSingle();
     priorBuilder = (prior?.builder_data as LoiData) ?? null;
+    if (prior) priorLinks = { deal_id: prior.deal_id ?? null, listing_id: prior.listing_id ?? null };
   }
 
   const base = {
     form_id,
-    deal_id: deal_id || null,
-    listing_id: listing_id || null,
+    // Because the two surfaces mirror each other, a property-level doc can be edited
+    // from a deal (and vice versa) — and that caller only knows its OWN id. Writing
+    // `deal_id || null` there would null the doc's listing_id and drop it out of the
+    // property. Keep whichever link the caller didn't speak to.
+    deal_id: deal_id || priorLinks?.deal_id || null,
+    listing_id: listing_id || priorLinks?.listing_id || null,
     business_unit: unit,
     title: title || null,
     values: values ?? [],

@@ -188,7 +188,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   // Transaction-doc forms in the open listing's folder.
   interface FormTemplate { id: string; name: string; form_code?: string; category?: string; pinned?: boolean }
-  interface FormSubmission { id: string; form_id?: string; title?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
+  interface FormSubmission { id: string; form_id?: string; deal_id?: string | null; title?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
   const [crmForms, setCrmForms] = useState<FormTemplate[]>([]);
   const [listingForms, setListingForms] = useState<FormSubmission[]>([]);
   const [formPicker, setFormPicker] = useState(false);
@@ -990,7 +990,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '10px 14px' }}>
                             <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                                <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</span>
+                                {/* Mirrored in from a deal at this property — same row, edited either side */}
+                                {f.deal_id && (() => {
+                                  const d = deals.find(x => x.id === f.deal_id);
+                                  return <span title="Lives on this deal — edits here and on the deal are the same document" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .3, background: '#eef2ff', color: '#4338ca', borderRadius: 20, padding: '1px 8px', flexShrink: 0, whiteSpace: 'nowrap' }}>💼 {d?.client || 'deal'}</span>;
+                                })()}
+                              </div>
                               <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                             </div>
                             {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
