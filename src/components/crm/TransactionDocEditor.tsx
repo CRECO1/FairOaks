@@ -4,12 +4,19 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { parseRich, drawRichText, hasMarkup, type RichFonts } from '@/lib/rich-text';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
-import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
+import LoiBuilder from '@/components/crm/LoiBuilder';
+import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-doc';
 
-// The Letter of Intent to Purchase is a dynamic term-list doc, not a fixed overlay
-// form — whichever surface opens it (deals page, property, Transaction Docs library),
-// hand it to the builder so it never gets filled as flat fields.
+// The Letters of Intent are dynamic term-list docs, not fixed overlay forms —
+// whichever surface opens one (deals page, property, Transaction Docs library),
+// hand it to the builder so it never gets filled as flat fields. Matching by id is
+// the backstop for callers that don't pass a form_code.
 const LOI_PURCHASE_FORM_ID = 'b58b11d1-c5fb-4861-97c5-97b0ab1026fb';
+const LOI_LEASE_FORM_IDS = [
+  '185d29b9-6fbe-4611-b6c4-9e5e2d54ecf2',   // Letter of Intent to Lease
+  '5079ae91-2261-4606-9bd6-d19f6a9e674e',   // Office — Letter of Intent to Lease
+  '0962a496-0faf-48e1-a05d-bcfff590e24c',   // Industrial — Letter of Intent to Lease
+];
 
 // A zipForms-style fillable editor: renders a flat PDF's pages inline (pdf.js),
 // lets an agent drop text/check fields anywhere, type into them, then generates
@@ -92,9 +99,10 @@ export default function TransactionDocEditor({
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
   const drag = useRef<{ id: string; sx: number; sy: number; ofx: number; ofy: number; pw: number; ph: number } | null>(null);
 
-  // The LOI to Purchase is delegated to the builder (see the early return below) —
-  // skip all overlay PDF/field loading for it.
-  const isLoi = form.id === LOI_PURCHASE_FORM_ID;
+  // The LOIs are delegated to the builder (see the early return below) — skip all
+  // overlay PDF/field loading for them.
+  const isLoiLease = LOI_LEASE_FORM_IDS.includes(form.id);
+  const isLoi = form.id === LOI_PURCHASE_FORM_ID || isLoiLease;
 
   // ── Load PDF + measure pages ────────────────────────────────────────────────
   useEffect(() => {
@@ -360,9 +368,10 @@ export default function TransactionDocEditor({
   // which surface opened it — so it's never filled as flat overlay fields.
   if (isLoi) {
     return (
-      <LoiPurchaseBuilder
+      <LoiBuilder
         formId={form.id}
         name={form.name}
+        spec={isLoiLease ? leaseSpec(assetFromFormName(form.name)) : LOI_PURCHASE_SPEC}
         submissionId={submissionId}
         listingId={listingId}
         dealId={dealSel || dealId || undefined}

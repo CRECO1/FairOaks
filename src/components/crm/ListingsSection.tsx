@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
-import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
+import LoiBuilder from '@/components/crm/LoiBuilder';
+import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
 // coordinate-overlay editor.
-const LOI_PURCHASE_CODE = 'LOI-PURCHASE';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [dealFormPick, setDealFormPick] = useState<Record<string, string>>({});
   const [dealFormAdding, setDealFormAdding] = useState<string | null>(null);
   const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string } | null>(null);
-  const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string } | null>(null);
+  const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
 
   // Team / sharing state for the open listing.
   const [teamOwner, setTeamOwner] = useState('');
@@ -313,9 +313,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // Fetch the blank template's signed URL, then open the fillable editor bound to this property.
   const openFormEditor = useCallback(async (form: { id: string; name: string }, submissionId?: string, formCode?: string) => {
     setFormPicker(false);
-    // The LOI to Purchase uses the dynamic term-list builder, not the overlay editor.
+    // The Letters of Intent use the dynamic term-list builder, not the overlay editor.
     const code = formCode || crmForms.find(f => f.id === form.id)?.form_code;
-    if (code === LOI_PURCHASE_CODE) { setLoiDoc({ formId: form.id, name: form.name, submissionId }); return; }
+    const spec = specForForm(code, form.name);
+    if (spec) { setLoiDoc({ formId: form.id, name: form.name, submissionId, spec }); return; }
     try {
       const res = await fetch(`/api/crm/forms/${form.id}/url`, { headers: authHeaders });
       const json = await res.json();
@@ -1641,9 +1642,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
         const propertyAddress = [active.address, active.city, active.state].filter(Boolean).join(', ') || active.name || '';
         return (
-          <LoiPurchaseBuilder
+          <LoiBuilder
             formId={loiDoc.formId}
             name={loiDoc.name}
+            spec={loiDoc.spec}
             submissionId={loiDoc.submissionId}
             listingId={active.id}
             dealId={formDealId ?? undefined}

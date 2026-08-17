@@ -1,13 +1,17 @@
-// Runtime generator for the CRECO "Letter of Intent to Purchase", ported from
+// Runtime generator for CRECO's letter-style Letters of Intent, ported from
 // scripts/forms/loi_purchase/gen_loi_purchase.js + scripts/forms/lib/branding.js so
 // the SAME branded letterhead and term layout render in the browser at fill time.
 //
-// Unlike the static template (baked labels + fixed overlay fields), this builds the
+// Unlike the static templates (baked labels + fixed overlay fields), this builds the
 // whole document from an editable term list: rows the agent removes simply aren't in
 // `data.terms`, so everything below reflows and the signature blocks follow the
-// content instead of sitting at fixed coordinates. The seller acceptance blocks emit
+// content instead of sitting at fixed coordinates. The acceptance blocks emit
 // PlacedField coordinates (`sigFields`) in the exact shape crm_form_submissions.values
 // stores, so the existing e-sign send/stamp flow works with zero changes.
+//
+// One renderer, several documents: a LoiSpec supplies the title, the standard term
+// list, the closing boilerplate and the acceptance heading. Purchase and Lease share
+// everything else.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { parseRich, drawRichText, countRichLines, type RichFonts } from '@/lib/rich-text';
 
@@ -29,8 +33,30 @@ export interface LoiPurchaseData {
 // Matches crm_form_submissions.values entries + esign.ts PlacedField.
 export interface LoiSigField { page: number; fx: number; fy: number; fw: number; type: string; signerRole: string }
 
+// Everything that differs between the Purchase LOI and the Lease LOI.
+export interface LoiSpec {
+  kind: 'purchase' | 'lease';
+  title: string;                 // centred document title + saved submission title
+  partyHeading: string;          // heading above the acceptance blocks ("Seller:" / "Landlord:")
+  partyNoun: string;             // used in placeholders ("Seller 1 — entity / name")
+  boilerplate: string[];
+  defaultTerms: LoiTermRow[];
+  // Recovering a doc that was filled in the OLD overlay editor: term label → the
+  // template field_key(s) that carried its value. 'replace' swaps the whole row
+  // value; 'blanks' drops each key's value into the row's successive ____ blanks
+  // (the lease template embedded its blanks inside standard sentences).
+  overlayKeys: Record<string, string[]>;
+  overlayFill: 'replace' | 'blanks';
+  overlayMeta: {
+    date?: string; addresseeName?: string; addresseeAddr1?: string; addresseeAddr2?: string;
+    reLine?: string; agentName?: string; agentEmail?: string; agentPhone?: string;
+    party1Entity?: string; party1Signatory?: string; party2Entity?: string; party2Signatory?: string;
+  };
+}
+
+// ── Purchase ────────────────────────────────────────────────────────────────
 // The standard starting terms an agent edits from. Deal-specific rows start blank;
-// the process/boilerplate rows carry the standard CRECO language. Commission is new.
+// the process/boilerplate rows carry the standard CRECO language.
 export const DEFAULT_LOI_TERMS: LoiTermRow[] = [
   { label: 'Seller:', value: '' },
   { label: 'Purchaser:', value: '' },
@@ -51,7 +77,134 @@ export const DEFAULT_LOI_TERMS: LoiTermRow[] = [
   { label: 'Time is of the essence:', value: 'This proposal expires on ____________ at 5:00 PM Central Time.' },
 ];
 
-// Two non-agent e-sign roles the send modal already offers, one per seller block.
+export const LOI_PURCHASE_SPEC: LoiSpec = {
+  kind: 'purchase',
+  title: 'Letter of Intent to Purchase',
+  partyHeading: 'Seller:',
+  partyNoun: 'Seller',
+  boilerplate: [
+    'This letter of intent is merely a guide to the preparation of a mutually satisfactory contract and nothing in this letter of intent will be construed to preclude any other provisions from being inserted into the agreement at the request of either party.',
+    'This letter of intent is non-binding on either party until an actual purchase agreement is drafted, agreed upon and executed by both parties.',
+    'Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.',
+  ],
+  defaultTerms: DEFAULT_LOI_TERMS,
+  // The old purchase template had NO Commission row — recovered docs still get it.
+  overlayKeys: {
+    'Seller:': ['seller'], 'Purchaser:': ['purchaser'], 'Property:': ['property'], 'Purchase Price:': ['purchase_price'],
+    'Earnest Money:': ['earnest_money'], 'Title Company:': ['title_company'], 'Title Policy:': ['title_policy'], 'Survey:': ['survey'],
+    'Possession:': ['possession'], 'Feasibility Period:': ['feasibility_period'], 'Closing Schedule:': ['closing_schedule'],
+    'Option Fee:': ['option_fee'], 'Environmental:': ['environmental'], 'Property Expenses:': ['property_expenses'],
+    "Purchaser's Default:": ['purchasers_default'], 'Time is of the essence:': ['time_of_essence'],
+  },
+  overlayFill: 'replace',
+  overlayMeta: {
+    date: 'loi_date', addresseeName: 'addressee_name', addresseeAddr1: 'addressee_addr1', addresseeAddr2: 'addressee_addr2',
+    reLine: 're_line', agentName: 'agent_name', agentEmail: 'agent_email', agentPhone: 'agent_phone',
+    party1Entity: 'seller_1_name', party1Signatory: 'seller_1_its', party2Entity: 'seller_2_name', party2Signatory: 'seller_2_its',
+  },
+};
+
+// ── Lease ───────────────────────────────────────────────────────────────────
+// Mirrors the Office/Industrial letter LOI the team already sends: the same rows,
+// with the standard CRECO language kept as the row's starting value so an agent
+// only fills the blanks (or deletes the row).
+// NB: the ________ blanks mirror exactly what the old overlay template captured —
+// e.g. rental_rate held "$22/sf" and lease_term held "99 month lease term.", so those
+// blanks stand alone rather than sitting inside "$__/sf" or "__ month" scaffolding.
+// Getting this wrong doubles the text when an old doc is recovered into the builder.
+const LEASE_TERMS_COMMON: LoiTermRow[] = [
+  { label: 'Premises:', value: 'Approximately ________ rentable square feet ("RSF"), subject to final architectural plans.' },
+  { label: 'Lease Term:', value: '________' },
+  { label: 'Lease Commencement:', value: '________' },
+  { label: 'Rent Commencement:', value: '________' },
+  { label: 'Rental Rate:', value: '________ with ________ annual escalations.' },
+  { label: "First Month's Rent:", value: 'Due upon Lease execution (________).' },
+  { label: 'Security Deposit:', value: "Due upon Lease execution, equal to the last month's rent (________)." },
+  { label: 'Operating Expenses:', value: 'NNN, estimated to be ________.' },
+  { label: 'Parking:', value: '________' },
+  { label: 'Tenant Improvement Allowance:', value: '________' },
+  { label: 'HVAC:', value: 'Landlord will turn over the HVAC in good working order. Tenant agrees to maintain and pay for a quarterly service contract on the HVAC units and will provide receipts to Landlord upon request. However, if an HVAC unit requires replacement at any time during the Lease term, Landlord accepts full replacement responsibility and expense.' },
+];
+const LEASE_TERMS_TAIL: LoiTermRow[] = [
+  { label: 'Space Planning:', value: 'Landlord shall, in addition to the TIA, pay an amount equal to $0.15 per RSF for space planning, or the amount necessary for space planning and pricing notes.' },
+  { label: 'Fair Market Rental Rate:', value: '"FMRR" shall mean the rental rate charged by landlords for space comparable to the Premises in size, condition, and building quality, and as further defined in the Lease. Should Tenant and Landlord not agree on the FMRR, it will be submitted to a third party for binding arbitration.' },
+  { label: 'CAM (NNN) Reconciliation:', value: 'Landlord shall reconcile actual operating expenses annually and provide Tenant with a written statement.' },
+  { label: 'Broker Fee:', value: 'Landlord shall pay a real estate commission of ________ to CRECO Commercial pursuant to a separate written agreement.' },
+  { label: 'Time is of the essence:', value: 'This proposal expires on ____________ at 5:00 PM Central Time.' },
+];
+// Asset-type flavour: the rows that only make sense for one building type.
+const OFFICE_ROWS: LoiTermRow[] = [
+  { label: 'Office Furniture:', value: 'Existing office furniture will remain in the space.' },
+];
+const INDUSTRIAL_ROWS: LoiTermRow[] = [
+  { label: 'Loading:', value: '________ dock-high door(s) and ________ grade-level door(s).' },
+  { label: 'Clear Height:', value: '________ feet clear.' },
+];
+
+export type LeaseAsset = 'office' | 'industrial' | 'generic';
+
+const LEASE_OVERLAY_KEYS: Record<string, string[]> = {
+  // Each row's blanks fill in order from these template field_keys.
+  'Premises:': ['rentable_sf'],
+  'Lease Term:': ['lease_term'],
+  'Lease Commencement:': ['commencement_date'],
+  'Rent Commencement:': ['rent_commencement_date'],
+  'Rental Rate:': ['rental_rate', 'escalation'],
+  "First Month's Rent:": ['first_month_rent'],
+  'Security Deposit:': ['security_deposit'],
+  'Operating Expenses:': ['opex'],
+  'Parking:': ['parking'],
+  'Tenant Improvement Allowance:': ['ti_allowance'],
+  'Broker Fee:': ['broker_fee'],
+};
+
+export function leaseTerms(asset: LeaseAsset): LoiTermRow[] {
+  const flavour = asset === 'industrial' ? INDUSTRIAL_ROWS : asset === 'office' ? OFFICE_ROWS : [];
+  return [...LEASE_TERMS_COMMON, ...flavour, ...LEASE_TERMS_TAIL];
+}
+
+export function leaseSpec(asset: LeaseAsset = 'generic'): LoiSpec {
+  return {
+    kind: 'lease',
+    title: 'Letter of Intent to Lease',
+    partyHeading: 'Landlord:',
+    partyNoun: 'Landlord',
+    boilerplate: [
+      'This letter of intent is merely a guide to the preparation of a mutually satisfactory contract and nothing in this letter of intent will be construed to preclude any other provisions from being inserted into the agreement at the request of either party.',
+      'This letter of intent is non-binding on either party until an actual lease agreement is drafted, agreed upon and executed by both parties.',
+      'Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.',
+    ],
+    defaultTerms: leaseTerms(asset),
+    overlayKeys: LEASE_OVERLAY_KEYS,
+    overlayFill: 'blanks',
+    overlayMeta: {
+      date: 'loi_date', addresseeName: 'landlord_name',
+      reLine: 'property_address', agentName: 'agent_name', agentEmail: 'agent_email', agentPhone: 'agent_phone',
+      party1Entity: 'landlord_name',
+    },
+  };
+}
+
+// Which spec a form uses. The three lease templates (generic / Office / Industrial)
+// all share the LOI-LEASE code and differ only in their starting term list.
+export const LOI_PURCHASE_CODE = 'LOI-PURCHASE';
+export const LOI_LEASE_CODE = 'LOI-LEASE';
+
+export function assetFromFormName(name: string): LeaseAsset {
+  const n = (name || '').toLowerCase();
+  if (n.includes('industrial')) return 'industrial';
+  if (n.includes('office')) return 'office';
+  return 'generic';
+}
+
+// Pick the builder spec for a form, or null when the form isn't a builder doc.
+export function specForForm(formCode: string | null | undefined, formName = ''): LoiSpec | null {
+  if (formCode === LOI_PURCHASE_CODE) return LOI_PURCHASE_SPEC;
+  if (formCode === LOI_LEASE_CODE) return leaseSpec(assetFromFormName(formName));
+  return null;
+}
+
+// Two non-agent e-sign roles the send modal already offers, one per acceptance block.
 export const SELLER_ROLES = ['client', 'landlord'] as const;
 
 // Times/Helvetica are WinAnsi-only — fold smart punctuation to ASCII so drawText
@@ -84,9 +237,10 @@ function wrapText(str: string, font: PDFFont, size: number, maxW: number): strin
   return lines.length ? lines : [''];
 }
 
-export async function renderLoiPurchase(
+export async function renderLoi(
   data: LoiPurchaseData,
   logoBytes: Uint8Array,
+  spec: LoiSpec = LOI_PURCHASE_SPEC,
 ): Promise<{ pdfBytes: Uint8Array; sigFields: LoiSigField[] }> {
   const doc = await PDFDocument.create();
   const times = await doc.embedFont(StandardFonts.TimesRoman);
@@ -166,7 +320,7 @@ export async function renderLoiPurchase(
     leftBlock(data.reLine, M + 30, RIGHT - (M + 30), 16);
   } else { spacer(6); }
 
-  center(page, 'Letter of Intent to Purchase', y, TITLE, bold); y -= TITLE * 1.9;
+  center(page, spec.title, y, TITLE, bold); y -= TITLE * 1.9;
   spacer(8);
 
   // ── Terms (dynamic — removed rows simply aren't here) ────────────────────────
@@ -192,9 +346,7 @@ export async function renderLoiPurchase(
 
   // ── Closing boilerplate (standard non-binding language) ──────────────────────
   spacer(8);
-  staticBlock('This letter of intent is merely a guide to the preparation of a mutually satisfactory contract and nothing in this letter of intent will be construed to preclude any other provisions from being inserted into the agreement at the request of either party.', 10);
-  staticBlock('This letter of intent is non-binding on either party until an actual purchase agreement is drafted, agreed upon and executed by both parties.', 10);
-  staticBlock('Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.', 16);
+  spec.boilerplate.forEach((p, i) => staticBlock(p, i === spec.boilerplate.length - 1 ? 16 : 10));
 
   // ── Sign-off ─────────────────────────────────────────────────────────────────
   staticBlock('Sincerely,', 14);
@@ -202,7 +354,7 @@ export async function renderLoiPurchase(
   if (data.agentEmail) leftBlock(data.agentEmail, M, 320);
   if (data.agentPhone) leftBlock(data.agentPhone, M, 320, 20);
 
-  // ── Seller acceptance block(s) — emit signature + date PlacedFields ──────────
+  // ── Acceptance block(s) — emit signature + date PlacedFields ─────────────────
   const SIGW = 250, LABX = M + 64;
   function recordSig(x: number, baselineY: number, w: number, type: string, role: string) {
     sigFields.push({ page: pageIndex + 1, fx: x / PW, fy: (PH - baselineY) / PH, fw: w / PW, type, signerRole: role });
@@ -226,7 +378,7 @@ export async function renderLoiPurchase(
     }
   }
   spacer(6);
-  page.drawText('Seller:', { x: M, y, size: BODY, font: bold, color: ink });
+  page.drawText(spec.partyHeading, { x: M, y, size: BODY, font: bold, color: ink });
   y -= 20;
   const sellers = (data.sellers && data.sellers.length ? data.sellers : [{ entity: '', signatory: '' }]).slice(0, 2);
   sellers.forEach((s, i) => { if (i > 0) spacer(14); acceptanceBlock(s, SELLER_ROLES[i] ?? 'client'); });

@@ -22,7 +22,8 @@ import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
 import MentionTextarea from '@/components/crm/MentionTextarea';
-import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
+import LoiBuilder from '@/components/crm/LoiBuilder';
+import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -84,8 +85,6 @@ const CLIENT_TYPE_TO_DEAL: Record<string, string> = {
   'Tenant': 'Tenant Lease',
   'Landlord/Investor': 'Landlord Listing',
 };
-// The LOI to Purchase is a dynamic term-list builder, not the overlay editor.
-const LOI_PURCHASE_CODE = 'LOI-PURCHASE';
 const TYPE_COLORS: Record<string, string> = {
   'Buyer Purchase': 'background:#dbeafe;color:#1e4d8c',
   'Tenant Lease': 'background:#d1fae5;color:#2d5a3d',
@@ -466,7 +465,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
   const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
-  const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string } | null>(null);
+  const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
@@ -1068,9 +1067,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); setCrmForms(j.forms ?? []); } catch { /* ignore */ }
   }, [authGet, businessUnit]);
   const openFormEditor = useCallback(async (form: { id: string; name: string; url?: string | null }, submissionId?: string, formCode?: string) => {
-    // The LOI to Purchase opens in its own term-list builder, matching Properties.
+    // The Letters of Intent open in the term-list builder, matching Properties.
     const code = formCode || crmForms.find(f => f.id === form.id)?.form_code;
-    if (code === LOI_PURCHASE_CODE) { setLoiDoc({ formId: form.id, name: form.name, submissionId }); return; }
+    const spec = specForForm(code, form.name);
+    if (spec) { setLoiDoc({ formId: form.id, name: form.name, submissionId, spec }); return; }
     let url = form.url ?? null;
     if (!url) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
     if (!url) { showToast('Could not open the form'); return; }
@@ -10675,9 +10675,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {loiDoc && (() => {
         const client = activeDeal ? clients.find(c => c.id === activeDeal.client_id) : null;
         return (
-          <LoiPurchaseBuilder
+          <LoiBuilder
             formId={loiDoc.formId}
             name={loiDoc.name}
+            spec={loiDoc.spec}
             submissionId={loiDoc.submissionId}
             dealId={activeDeal?.id}
             businessUnit={businessUnit}

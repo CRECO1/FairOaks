@@ -1,15 +1,16 @@
 'use client';
-// On-document editor for the "Letter of Intent to Purchase". The agent edits the
-// letter directly on a page-styled replica (letterhead, terms, sign-off, seller
-// acceptance blocks) — add/remove/reorder term rows in place — so it reads like the
-// real document. The same edits drive LoiPurchaseData; on save, loi-purchase-doc
-// regenerates the exact branded PDF and writes { filled_path, values: sigFields,
-// builder_data } to crm_form_submissions, so the e-sign flow is unchanged.
+// On-document editor for CRECO's letter-style Letters of Intent (Purchase and
+// Lease). The agent edits the letter directly on a page-styled replica (letterhead,
+// terms, sign-off, acceptance blocks) — add/remove/reorder term rows in place — so it
+// reads like the real document. The same edits drive LoiPurchaseData; on save,
+// loi-doc regenerates the exact branded PDF and writes { filled_path,
+// values: sigFields, builder_data } to crm_form_submissions, so the e-sign flow is
+// unchanged. Which document it is comes from the LoiSpec prop.
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  renderLoiPurchase, DEFAULT_LOI_TERMS,
-  type LoiPurchaseData, type LoiTermRow, type LoiSeller,
-} from '@/lib/loi-purchase-doc';
+  renderLoi, LOI_PURCHASE_SPEC,
+  type LoiPurchaseData, type LoiTermRow, type LoiSeller, type LoiSpec,
+} from '@/lib/loi-doc';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 
 interface Prefill {
@@ -19,6 +20,7 @@ interface Prefill {
 interface Props {
   formId: string;
   name: string;
+  spec?: LoiSpec;
   submissionId?: string;
   listingId?: string;
   dealId?: string;
@@ -34,12 +36,6 @@ interface Props {
 const HEAD_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015      •      (210) 817-3443      •      crecotx.com';
 const FOOT_TAG = 'Where your real estate ventures find the support they deserve';
 const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
-const BOILERPLATE = [
-  'This letter of intent is merely a guide to the preparation of a mutually satisfactory contract and nothing in this letter of intent will be construed to preclude any other provisions from being inserted into the agreement at the request of either party.',
-  'This letter of intent is non-binding on either party until an actual purchase agreement is drafted, agreed upon and executed by both parties.',
-  'Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.',
-];
-
 let _tid = 0;
 const newId = () => `t${++_tid}`;
 
@@ -50,12 +46,13 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-function seedData(prefill?: Prefill): LoiPurchaseData {
-  const terms: LoiTermRow[] = DEFAULT_LOI_TERMS.map(t => {
+function seedData(spec: LoiSpec, prefill?: Prefill): LoiPurchaseData {
+  const terms: LoiTermRow[] = spec.defaultTerms.map(t => {
     let value = t.value;
-    if (t.label === 'Purchaser:' && prefill?.purchaser) value = prefill.purchaser;
-    if (t.label === 'Seller:' && prefill?.sellerName) value = prefill.sellerName;
-    if (t.label === 'Property:' && prefill?.propertyAddress) value = prefill.propertyAddress;
+    // Purchase names the parties in rows; the lease letter names the tenant instead.
+    if ((t.label === 'Purchaser:' || t.label === 'Tenant:') && prefill?.purchaser) value = prefill.purchaser;
+    if ((t.label === 'Seller:' || t.label === 'Landlord:') && prefill?.sellerName) value = prefill.sellerName;
+    if ((t.label === 'Property:' || t.label === 'Premises:') && prefill?.propertyAddress && !t.value) value = prefill.propertyAddress;
     return { id: newId(), label: t.label, value };
   });
   return {
@@ -63,7 +60,7 @@ function seedData(prefill?: Prefill): LoiPurchaseData {
     addresseeName: prefill?.sellerName || '',
     addresseeAddr1: '',
     addresseeAddr2: '',
-    reLine: prefill?.propertyAddress ? `Letter of Intent to Purchase - ${prefill.propertyAddress}` : 'Letter of Intent to Purchase',
+    reLine: prefill?.propertyAddress ? `${spec.title} - ${prefill.propertyAddress}` : spec.title,
     terms,
     additionalTerms: '',
     agentName: prefill?.agentName || '',
@@ -73,10 +70,19 @@ function seedData(prefill?: Prefill): LoiPurchaseData {
   };
 }
 
+// Drop recovered values into a row's successive ____ blanks, left to right. Used by
+// the lease templates, whose blanks sat inside standard sentences.
+function fillBlanks(template: string, values: string[]): string {
+  let i = 0;
+  const out = template.replace(/_{3,}/g, m => (i < values.length && values[i] ? values[i++] : (i++, m)));
+  // A row with no blanks at all (e.g. a bare date row) just takes the first value.
+  return /_{3,}/.test(template) ? out : (values.find(Boolean) || template);
+}
+
 // Recover an LOI that was filled in the OLD overlay editor (submission.values keyed by
 // field_key, one field per wrapped line) into the builder's term model — so re-opening
 // such a doc shows what the agent already entered instead of blank defaults.
-function reconstructFromOverlay(values: unknown, base: LoiPurchaseData): LoiPurchaseData | null {
+function reconstructFromOverlay(values: unknown, base: LoiPurchaseData, spec: LoiSpec): LoiPurchaseData | null {
   if (!Array.isArray(values) || !values.length) return null;
   const arr = values as Array<{ fieldKey?: string; type?: string; value?: string }>;
   if (!arr.some(v => v.fieldKey)) return null;   // builder submissions store sig fields (no fieldKey)
@@ -89,41 +95,42 @@ function reconstructFromOverlay(values: unknown, base: LoiPurchaseData): LoiPurc
     (byKey[bk] ||= []).push({ line, value: v.value || '' });
   }
   const has = (k: string) => k in byKey;
-  const get = (k: string) => (byKey[k] || []).sort((a, b) => a.line - b.line).map(x => x.value).filter(Boolean).join(' ').trim();
-  // Old-template term label → its field_key. Note the old form had NO Commission row.
-  const LABEL_TO_KEY: Record<string, string> = {
-    'Seller:': 'seller', 'Purchaser:': 'purchaser', 'Property:': 'property', 'Purchase Price:': 'purchase_price',
-    'Earnest Money:': 'earnest_money', 'Title Company:': 'title_company', 'Title Policy:': 'title_policy', 'Survey:': 'survey',
-    'Possession:': 'possession', 'Feasibility Period:': 'feasibility_period', 'Closing Schedule:': 'closing_schedule',
-    'Option Fee:': 'option_fee', 'Environmental:': 'environmental', 'Property Expenses:': 'property_expenses',
-    "Purchaser's Default:": 'purchasers_default', 'Time is of the essence:': 'time_of_essence',
-  };
-  if (!Object.values(LABEL_TO_KEY).some(k => has(k))) return null;   // not a recoverable overlay LOI
-  // Start from the STANDARD term list — so Commission (and any newer standard row the old
-  // form lacked) still appears — and fill each with the agent's recovered value where the
-  // old form carried that field.
+  const get = (k?: string) => !k ? '' : (byKey[k] || []).sort((a, b) => a.line - b.line).map(x => x.value).filter(Boolean).join(' ').trim();
+  const keys = spec.overlayKeys;
+  if (!Object.values(keys).flat().some(k => has(k))) return null;   // not a recoverable overlay LOI
+  // Start from the STANDARD term list — so any newer standard row the old form lacked
+  // still appears — and fill each with the agent's recovered value where the old form
+  // carried that field.
   const terms = base.terms.map(t => {
-    const k = LABEL_TO_KEY[t.label];
-    return { id: newId(), label: t.label, value: k && has(k) ? get(k) : t.value };
+    const ks = keys[t.label];
+    if (!ks || !ks.some(has)) return { id: newId(), label: t.label, value: t.value };
+    const vals = ks.map(get);
+    return {
+      id: newId(), label: t.label,
+      value: spec.overlayFill === 'replace' ? (vals.find(Boolean) || t.value) : fillBlanks(t.value, vals),
+    };
   });
-  const s2e = get('seller_2_name'), s2s = get('seller_2_its');
+  const meta = spec.overlayMeta;
+  const p2e = get(meta.party2Entity), p2s = get(meta.party2Signatory);
+  const reLine = get(meta.reLine);
   return {
     ...base,
-    loiDate: get('loi_date') || base.loiDate,
-    addresseeName: has('addressee_name') ? get('addressee_name') : base.addresseeName,
-    addresseeAddr1: has('addressee_addr1') ? get('addressee_addr1') : base.addresseeAddr1,
-    addresseeAddr2: has('addressee_addr2') ? get('addressee_addr2') : base.addresseeAddr2,
-    reLine: get('re_line') || base.reLine,
+    loiDate: get(meta.date) || base.loiDate,
+    addresseeName: has(meta.addresseeName ?? '') ? get(meta.addresseeName) : base.addresseeName,
+    addresseeAddr1: has(meta.addresseeAddr1 ?? '') ? get(meta.addresseeAddr1) : base.addresseeAddr1,
+    addresseeAddr2: has(meta.addresseeAddr2 ?? '') ? get(meta.addresseeAddr2) : base.addresseeAddr2,
+    // The lease template had no Re: field — it carried the address, so title it.
+    reLine: reLine ? (spec.overlayFill === 'blanks' ? `${spec.title} - ${reLine}` : reLine) : base.reLine,
     terms,
-    agentName: get('agent_name') || base.agentName,
-    agentEmail: get('agent_email') || base.agentEmail,
-    agentPhone: get('agent_phone') || base.agentPhone,
-    sellers: [{ entity: get('seller_1_name'), signatory: get('seller_1_its') }, ...(s2e || s2s ? [{ entity: s2e, signatory: s2s }] : [])],
+    agentName: get(meta.agentName) || base.agentName,
+    agentEmail: get(meta.agentEmail) || base.agentEmail,
+    agentPhone: get(meta.agentPhone) || base.agentPhone,
+    sellers: [{ entity: get(meta.party1Entity), signatory: get(meta.party1Signatory) }, ...(p2e || p2s ? [{ entity: p2e, signatory: p2s }] : [])],
   };
 }
 
-export default function LoiPurchaseBuilder({ formId, submissionId, listingId, dealId, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
-  const [data, setData] = useState<LoiPurchaseData>(() => seedData(prefill));
+export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissionId, listingId, dealId, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
+  const [data, setData] = useState<LoiPurchaseData>(() => seedData(spec, prefill));
   const [savedId, setSavedId] = useState<string | undefined>(submissionId);
   const [loading, setLoading] = useState(!!submissionId);
   const [busy, setBusy] = useState(false);
@@ -143,13 +150,13 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
         const bd = j?.submission?.builder_data;
         if (bd && Array.isArray(bd.terms)) {
           setData({
-            ...seedData(prefill), ...bd,
+            ...seedData(spec, prefill), ...bd,
             terms: bd.terms.map((t: LoiTermRow) => ({ id: t.id || newId(), label: t.label || '', value: t.value || '' })),
             sellers: bd.sellers?.length ? bd.sellers : [{ entity: '', signatory: '' }],
           });
         } else {
           // No builder_data — recover values from a doc filled in the old overlay editor.
-          const recon = reconstructFromOverlay(j?.submission?.values, seedData(prefill));
+          const recon = reconstructFromOverlay(j?.submission?.values, seedData(spec, prefill), spec);
           if (recon) setData(recon);
         }
         if (!cancelled) setEdits(Array.isArray(j?.edits) ? j.edits : []);
@@ -178,13 +185,13 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
     if (!data.terms.some(t => t.value.trim() || t.label.trim())) { onToast('Add at least one term'); return; }
     setBusy(true);
     try {
-      const { pdfBytes, sigFields } = await renderLoiPurchase(data, await getLogo());
+      const { pdfBytes, sigFields } = await renderLoi(data, await getLogo(), spec);
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           form_id: formId, deal_id: dealId || null, listing_id: listingId || null,
-          business_unit: businessUnit, title: 'Letter of Intent to Purchase',
+          business_unit: businessUnit, title: spec.title,
           values: sigFields, builder_data: data, pdfBase64: bytesToBase64(pdfBytes), submission_id: savedId,
         }),
       });
@@ -216,7 +223,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 18px', background: '#fff', borderBottom: '1px solid #eef0f2', fontFamily: "'DM Sans',sans-serif" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a' }}>Letter of Intent to Purchase</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a' }}>{spec.title}</div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>Edit on the letter · hover a term for ↑ ↓ ＋ ✕ · select text to <b>bold</b>/<i>italic</i> (⌘B / ⌘I)</div>
         </div>
         <RtFormatButtons />
@@ -240,7 +247,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {/* Date / addressee / re */}
             <div style={{ marginBottom: 16, maxWidth: 240 }}><RichText value={data.loiDate} onChange={v => patch({ loiDate: v })} placeholder="Date" /></div>
             <div style={{ marginBottom: 14, maxWidth: 360 }}>
-              <RichText value={data.addresseeName} onChange={v => patch({ addresseeName: v })} placeholder="Addressee name (seller)" />
+              <RichText value={data.addresseeName} onChange={v => patch({ addresseeName: v })} placeholder={`Addressee name (${spec.partyNoun.toLowerCase()})`} />
               <RichText value={data.addresseeAddr1} onChange={v => patch({ addresseeAddr1: v })} placeholder="Street address" />
               <RichText value={data.addresseeAddr2} onChange={v => patch({ addresseeAddr2: v })} placeholder="City, State ZIP" />
             </div>
@@ -249,7 +256,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
               <div style={{ flex: 1 }}><RichText value={data.reLine} onChange={v => patch({ reLine: v })} placeholder="Re: line" /></div>
             </div>
 
-            <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, margin: '0 0 16px' }}>Letter of Intent to Purchase</div>
+            <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, margin: '0 0 16px' }}>{spec.title}</div>
 
             {/* Terms */}
             {data.terms.map((t, i) => (
@@ -275,7 +282,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             </div>
 
             {/* Boilerplate */}
-            {BOILERPLATE.map((p, i) => <p key={i} style={{ margin: '0 0 10px' }}>{p}</p>)}
+            {spec.boilerplate.map((p, i) => <p key={i} style={{ margin: '0 0 10px' }}>{p}</p>)}
 
             {/* Sign-off */}
             <div style={{ margin: '18px 0 6px' }}>Sincerely,</div>
@@ -287,7 +294,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
 
             {/* Seller acceptance */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <span style={{ fontWeight: 700 }}>Seller:</span>
+              <span style={{ fontWeight: 700 }}>{spec.partyHeading}</span>
               <div style={{ display: 'flex', gap: 5, fontFamily: "'DM Sans',sans-serif" }}>
                 <button onClick={() => setSellerCount(1)} style={{ fontSize: 11.5, fontWeight: 700, color: twoSellers ? '#9ca3af' : '#fff', background: twoSellers ? '#fff' : '#c9922c', border: '1px solid ' + (twoSellers ? '#e5e7eb' : '#c9922c'), borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>1 signer</button>
                 <button onClick={() => setSellerCount(2)} style={{ fontSize: 11.5, fontWeight: 700, color: twoSellers ? '#fff' : '#9ca3af', background: twoSellers ? '#c9922c' : '#fff', border: '1px solid ' + (twoSellers ? '#c9922c' : '#e5e7eb'), borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>2 signers</button>
@@ -296,7 +303,7 @@ export default function LoiPurchaseBuilder({ formId, submissionId, listingId, de
             {data.sellers.map((s, i) => (
               <div key={i} style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, fontSize: 12.5, letterSpacing: 0.3, margin: '6px 0 10px' }}>AGREED TO &amp; ACCEPTED BY:</div>
-                <div style={{ maxWidth: 360, marginBottom: 12 }}><RichText value={s.entity} onChange={v => setSeller(i, { entity: v })} placeholder={`Seller ${i + 1} — entity / name`} /><div style={{ borderBottom: '1px solid #9ca3af', marginTop: -2 }} /></div>
+                <div style={{ maxWidth: 360, marginBottom: 12 }}><RichText value={s.entity} onChange={v => setSeller(i, { entity: v })} placeholder={`${spec.partyNoun} ${i + 1} — entity / name`} /><div style={{ borderBottom: '1px solid #9ca3af', marginTop: -2 }} /></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Signature:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 12, maxWidth: 420 }}><span>Name:</span><div style={{ flex: 1, marginLeft: 8, borderBottom: '1px solid #9ca3af' }}><RichText value={s.signatory} onChange={v => setSeller(i, { signatory: v })} placeholder="printed name" /></div></div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', maxWidth: 420 }}><span>Date:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
