@@ -29,6 +29,7 @@ export interface FlyerInput {
   agentNames: string[];
   contacts: string[];            // email / phone lines
   hero?: { bytes: Uint8Array; png: boolean } | null;
+  galleryPhotos?: Array<{ bytes: Uint8Array; png: boolean }>;   // page-2 gallery (pre-cropped ~4:3)
   mapBytes?: Uint8Array | null;        // page-1 location map (PNG)
   aerialBytes?: Uint8Array | null;     // page-2 aerial map (PNG)
   floorPlan?: { bytes: Uint8Array; png: boolean } | null;
@@ -74,6 +75,29 @@ function drawContain(page: PDFPage, img: PDFImage, x: number, y: number, w: numb
   const iw = img.width * scale, ih = img.height * scale;
   page.drawImage(img, { x: x + (w - iw) / 2, y: y + (h - ih) / 2, width: iw, height: ih });
 }
+// Draw one line justified to fill maxW (word gaps stretched evenly).
+function drawJustified(page: PDFPage, text: string, x: number, y: number, maxW: number, font: PDFFont, size: number, color: RGB) {
+  const words = text.split(' ').filter(Boolean);
+  if (words.length < 2) { page.drawText(text, { x, y, size, font, color }); return; }
+  const wordsW = words.reduce((s, w) => s + font.widthOfTextAtSize(w, size), 0);
+  const gap = (maxW - wordsW) / (words.length - 1);
+  let cx = x;
+  for (const w of words) { page.drawText(w, { x: cx, y, size, font, color }); cx += font.widthOfTextAtSize(w, size) + gap; }
+}
+// Lay pre-cropped (~4:3) photos into a grid filling the box.
+function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB) {
+  const n = imgs.length; if (!n) return;
+  const cols = n === 1 ? 1 : n <= 6 ? 2 : 3;
+  const rows = Math.ceil(n / cols);
+  const g = 6;
+  const cw = (w - (cols - 1) * g) / cols, ch = (h - (rows - 1) * g) / rows;
+  imgs.forEach((img, i) => {
+    const r = Math.floor(i / cols), col = i % cols;
+    const cx = x + col * (cw + g), cy = y + h - (r + 1) * ch - r * g;
+    drawContain(page, img, cx, cy, cw, ch);
+    page.drawRectangle({ x: cx, y: cy, width: cw, height: ch, borderColor: line, borderWidth: 0.75 });
+  });
+}
 
 export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
@@ -94,6 +118,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const map = await embedPng(input.mapBytes);
   const aerial = await embedPng(input.aerialBytes);
   const floor = await embed(input.floorPlan);
+  const gallery = (await Promise.all((input.galleryPhotos || []).map(embed))).filter((g): g is PDFImage => !!g).slice(0, 6);
 
   // ── PAGE 1 ─────────────────────────────────────────────────────────────────
   const p1 = pdf.addPage([W, H]);
@@ -128,8 +153,14 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   // Left: PROPERTY DESCRIPTION
   p1.drawText('PROPERTY DESCRIPTION', { x: leftX, y: ly, size: 13, font: osw, color: INK });
   ly -= 17;
-  const descLines = wrapText(input.description || 'Contact the listing agent for full property details.', body, 9.3, leftW);
-  for (const ln of descLines.slice(0, 12)) { p1.drawText(ln, { x: leftX, y: ly, size: 9.3, font: body, color: BODY }); ly -= 12.4; }
+  const descLines = wrapText(input.description || 'Contact the listing agent for full property details.', body, 9.3, leftW).slice(0, 12);
+  descLines.forEach((ln, i) => {
+    const isLast = i === descLines.length - 1;
+    // Justify full lines; leave the last line (and short paragraph-enders) ragged.
+    if (!isLast && body.widthOfTextAtSize(ln, 9.3) > leftW * 0.6) drawJustified(p1, ln, leftX, ly, leftW, body, 9.3, BODY);
+    else p1.drawText(ln, { x: leftX, y: ly, size: 9.3, font: body, color: BODY });
+    ly -= 12.4;
+  });
   ly -= 12;
 
   // Left: HIGHLIGHTS
@@ -187,30 +218,36 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   if (logo) drawContain(p1, logo, W - M - 168, 40, 168, 52);
   p1.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: GOLD });
 
-  // ── PAGE 2 ─────────────────────────────────────────────────────────────────
-  const p2 = pdf.addPage([W, H]);
-  p2.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
-  // Banner
-  const b2H = 72, b2Y = H - b2H;
-  p2.drawRectangle({ x: 0, y: b2Y, width: W, height: b2H, color: BLACK });
-  p2.drawText(badge, { x: 22, y: b2Y + b2H - 24, size: 13, font: osw, color: WHITE });
-  const a2 = fitSize(addr, osw, W - 44, 24, 12);
-  p2.drawText(addr, { x: 22, y: b2Y + 14, size: a2, font: osw, color: GOLD });
+  // ── PAGE 2 — adaptive: only added when there's a gallery / floor plan / aerial ─
+  let p2: PDFPage | null = null;
+  const p2blocks: Array<{ title: string; weight: number; border: boolean; draw: (x: number, y: number, w: number, h: number) => void }> = [];
+  if (gallery.length) p2blocks.push({ title: 'PROPERTY GALLERY', weight: Math.min(2.4, 1.2 + gallery.length * 0.22), border: false, draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, LINE) });
+  if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 1.6, border: true, draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
+  if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.5, border: true, draw: (x, y, w, h) => drawContain(p2!, aerial!, x, y, w, h) });
 
-  // Aerial (top) + floor plan (bottom). The static map is requested at the box aspect,
-  // so contain fills it exactly with no overflow.
-  const gap = 18;
-  const aerialTop = b2Y - gap, aerialBottom = 372, aerialH = aerialTop - aerialBottom;
-  if (aerial) drawContain(p2, aerial, 18, aerialBottom, W - 36, aerialH);
-  else { p2.drawRectangle({ x: 18, y: aerialBottom, width: W - 36, height: aerialH, color: rgb(0.93, 0.94, 0.95) }); p2.drawText('Aerial map', { x: W / 2 - 26, y: aerialBottom + aerialH / 2, size: 11, font: body, color: rgb(0.6, 0.63, 0.67) }); }
-  p2.drawRectangle({ x: 18, y: aerialBottom, width: W - 36, height: aerialH, borderColor: LINE, borderWidth: 1 });
+  if (p2blocks.length) {
+    p2 = pdf.addPage([W, H]);
+    p2.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
+    const b2H = 72, b2Y = H - b2H;
+    p2.drawRectangle({ x: 0, y: b2Y, width: W, height: b2H, color: BLACK });
+    p2.drawText(badge, { x: 22, y: b2Y + b2H - 24, size: 13, font: osw, color: WHITE });
+    const a2 = fitSize(addr, osw, W - 44, 24, 12);
+    p2.drawText(addr, { x: 22, y: b2Y + 14, size: a2, font: osw, color: GOLD });
 
-  const fpTop = aerialBottom - gap, fpBottom = 30, fpH = fpTop - fpBottom;
-  p2.drawText('FLOOR PLAN', { x: 20, y: fpTop - 2, size: 12, font: osw, color: INK });
-  const fpBoxTop = fpTop - 18;
-  if (floor) drawContain(p2, floor, 18, fpBottom, W - 36, fpBoxTop - fpBottom);
-  else { p2.drawRectangle({ x: 18, y: fpBottom, width: W - 36, height: fpBoxTop - fpBottom, color: rgb(0.98, 0.98, 0.98), borderColor: LINE, borderWidth: 1 }); p2.drawText('Upload a floor plan under Documents / Floor Plans to include it here.', { x: 34, y: (fpBottom + fpBoxTop) / 2, size: 10, font: body, color: rgb(0.62, 0.65, 0.69) }); }
-  p2.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: GOLD });
+    const gap = 16, titleH = 18, usableTop = b2Y - gap, usableBottom = 30;
+    const totalWt = p2blocks.reduce((s, b) => s + b.weight, 0);
+    const avail = (usableTop - usableBottom) - p2blocks.length * titleH - (p2blocks.length - 1) * gap;
+    let cur = usableTop;
+    for (const blk of p2blocks) {
+      const bh = avail * (blk.weight / totalWt);
+      p2.drawText(blk.title, { x: 20, y: cur - 13, size: 12, font: osw, color: INK });
+      cur -= titleH;
+      blk.draw(18, cur - bh, W - 36, bh);
+      if (blk.border) p2.drawRectangle({ x: 18, y: cur - bh, width: W - 36, height: bh, borderColor: LINE, borderWidth: 1 });
+      cur -= bh + gap;
+    }
+    p2.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: GOLD });
+  }
 
   return pdf.save();
 }
