@@ -3,20 +3,72 @@
 import React, { useEffect, useState } from 'react';
 import PdfViewer from './PdfViewer';
 
-// In-app document preview: renders a PDF (to <canvas> via PdfViewer) or an image
-// inline so the user can VIEW + PRINT without the browser downloading the file every
-// time. Print uses a print-only stylesheet that shows just the rendered pages — no
-// blob/iframe (the app CSP blocks frame-src/object-src for those). Download stays as
-// an explicit choice via the Supabase `?download=` disposition param.
+// In-app document preview: renders a PDF (to <canvas> via PdfViewer), an image, or a
+// spreadsheet (parsed client-side with SheetJS) inline so the user can VIEW + PRINT
+// without the browser downloading the file every time. Everything is rendered IN THE
+// BROWSER — the document is never sent to a third-party viewer. Print uses a
+// print-only stylesheet (no blob/iframe — the app CSP blocks frame-src/object-src).
+// Download stays an explicit choice via Supabase's `?download=` disposition param.
+
+// Spreadsheets (.xlsx/.xls/.csv/.ods) → HTML tables via SheetJS, one tab per sheet.
+function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void }) {
+  const [sheets, setSheets] = useState<{ name: string; html: string }[]>([]);
+  const [active, setActive] = useState(0);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setStatus('loading');
+        const XLSX = await import('xlsx');
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+        const data = await resp.arrayBuffer();
+        if (cancelled) return;
+        const wb = XLSX.read(data, { type: 'array' });
+        const out = wb.SheetNames.map(name => ({ name, html: XLSX.utils.sheet_to_html(wb.Sheets[name], { editable: false, header: '', footer: '' }) }));
+        if (cancelled) return;
+        setSheets(out.length ? out : [{ name: 'Sheet1', html: '<p>Empty sheet.</p>' }]);
+        setStatus('ready');
+        onReady();
+      } catch (e) {
+        if (!cancelled) { console.error('[SpreadsheetView]', e); setStatus('error'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url, onReady]);
+
+  if (status === 'loading') return <div style={{ padding: 50, textAlign: 'center', color: '#9ca3af' }}>Opening spreadsheet…</div>;
+  if (status === 'error') return <div style={{ padding: 50, textAlign: 'center', color: '#ef4444' }}>Couldn’t open this spreadsheet. Try ↓ Download instead.</div>;
+  return (
+    <div className="ssheet" style={{ background: '#fff', borderRadius: 6, boxShadow: '0 1px 8px rgba(0,0,0,.12)', overflow: 'hidden', maxWidth: 1100, margin: '0 auto' }}>
+      <style>{`.ssheet table{border-collapse:collapse;width:100%;font-family:-apple-system,'DM Sans',sans-serif}
+        .ssheet td,.ssheet th{border:1px solid #e5e7eb;padding:5px 9px;font-size:12.5px;color:#1a1a1a;white-space:nowrap;text-align:left}
+        .ssheet tr:first-child td,.ssheet th{background:#f9fafb;font-weight:700}
+        .ssheet td:empty::after{content:"\\00a0"}`}</style>
+      {sheets.length > 1 && (
+        <div className="docprev-noprint" style={{ display: 'flex', gap: 4, padding: '8px 8px 0', flexWrap: 'wrap', borderBottom: '1px solid #eef0f2', background: '#fbfbfc' }}>
+          {sheets.map((s, i) => (
+            <button key={s.name} onClick={() => setActive(i)} style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', border: 'none', borderBottom: active === i ? '2px solid #c9922c' : '2px solid transparent', background: 'none', color: active === i ? '#a06a12' : '#6b7280', cursor: 'pointer' }}>{s.name}</button>
+          ))}
+        </div>
+      )}
+      <div style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sheets[active]?.html || '' }} />
+    </div>
+  );
+}
+
 export default function DocPreviewModal({ file, onClose }: {
   file: { url: string; name: string; type?: string | null };
   onClose: () => void;
 }) {
   const [ready, setReady] = useState(false);
   const ext = (file.name.split('.').pop() || '').toLowerCase();
-  const isPdf = ext === 'pdf' || file.type === 'application/pdf';
-  const isImg = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'].includes(ext) || (file.type || '').startsWith('image/');
-  const previewable = isPdf || isImg;
+  const type = file.type || '';
+  const isPdf = ext === 'pdf' || type === 'application/pdf';
+  const isImg = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'].includes(ext) || type.startsWith('image/');
+  const isSheet = ['xlsx', 'xls', 'xlsm', 'csv', 'ods', 'tsv'].includes(ext) || type.includes('spreadsheet') || type === 'text/csv';
+  const previewable = isPdf || isImg || isSheet;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -31,7 +83,7 @@ export default function DocPreviewModal({ file, onClose }: {
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.62)', zIndex: 1000, display: 'flex', flexDirection: 'column', padding: 24 }}>
-      {/* Print only the rendered document pages, at full size, with nothing else. */}
+      {/* Print only the rendered document, at full size, with nothing else. */}
       <style>{`@media print {
         body > * { visibility: hidden !important; }
         .docprev-print, .docprev-print * { visibility: visible !important; }
@@ -42,7 +94,7 @@ export default function DocPreviewModal({ file, onClose }: {
       }`}</style>
       <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 980, margin: '0 auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,.3)', overflow: 'hidden' }}>
         <div className="docprev-noprint" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 14px', borderBottom: '1px solid #eef0f2' }}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>{isPdf ? '📄' : isImg ? '🖼' : '📎'}</span>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>{isPdf ? '📄' : isImg ? '🖼' : isSheet ? '📊' : '📎'}</span>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
           {previewable && <button onClick={() => window.print()} disabled={!ready} title={ready ? 'Print this document' : 'Rendering…'} style={{ ...btn, color: ready ? '#a06a12' : '#c9b78a', borderColor: '#f0e2c4', cursor: ready ? 'pointer' : 'default' }}>🖨 Print</button>}
           <a href={downloadUrl} style={{ ...btn, textDecoration: 'none', color: '#374151' }}>↓ Download</a>
@@ -53,6 +105,8 @@ export default function DocPreviewModal({ file, onClose }: {
             <PdfViewer url={file.url} onReady={() => setReady(true)} />
           ) : isImg ? (
             <img src={file.url} alt={file.name} style={{ display: 'block', maxWidth: '100%', margin: '0 auto', background: '#fff', boxShadow: '0 1px 8px rgba(0,0,0,.16)', borderRadius: 4 }} />
+          ) : isSheet ? (
+            <SpreadsheetView url={file.url} onReady={() => setReady(true)} />
           ) : (
             <div style={{ padding: 50, textAlign: 'center', color: '#6b7280' }}>
               <div style={{ fontSize: 40, marginBottom: 10 }}>📎</div>

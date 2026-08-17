@@ -951,7 +951,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
                               <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                             </div>
-                            {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
+                            {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
                             <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
                             <button onClick={() => copySubmission(f.id)} title="Make a copy" style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
                             <button onClick={() => deleteSubmission(f.id)} title="Delete document" style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
@@ -1097,7 +1097,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                       <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
                                       <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                                     </div>
-                                    {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>PDF ↗</a>}
+                                    {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
                                     {(() => {
                                       const env = envMap[f.id];
                                       if (env && env.status !== 'voided') {
@@ -1107,7 +1107,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                         return (
                                           <>
                                             {env.status === 'completed' && env.executed_url
-                                              ? <a href={env.executed_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 7, padding: '5px 10px', textDecoration: 'none', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed ↗</a>
+                                              ? <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: 'none', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>
                                               : <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '5px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>}
                                             <button onClick={() => openSendModal(d, f)} disabled={!f.form_id} title="Resend for signature (e.g. after making edits)" style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 8px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>↻</button>
                                             {pending && <button onClick={() => voidEnvelope(env.id)} title="Cancel the signature request" style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', flexShrink: 0 }}>⊘</button>}
@@ -1147,10 +1147,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
                         {photos.map(f => (
-                          <a key={f.id} href={f.url || '#'} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid #eef0f2', aspectRatio: '4 / 3', background: '#f3f4f6' }}>
+                          <button key={f.id} onClick={() => f.url && setPreviewFile({ url: f.url, name: f.name, type: f.file_type })} disabled={!f.url}
+                            style={{ display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid #eef0f2', aspectRatio: '4 / 3', background: '#f3f4f6', padding: 0, cursor: f.url ? 'pointer' : 'default' }}>
                             {f.url ? <img src={f.url} alt={f.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
-                          </a>
+                          </button>
                         ))}
                       </div>
                     );
