@@ -32,9 +32,10 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
   const [message, setMessage] = useState('');
   const [pick, setPick] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  // Placed signature fields on this document, grouped by role, so the agent can drop
-  // any that don't apply to this deal (e.g. a 2nd seller block on a single-seller sale).
-  const [fieldGroups, setFieldGroups] = useState<{ role: string; types: string[]; keep: boolean }[]>([]);
+  // Placed signature fields on this document, grouped by their ORIGINAL role, so the
+  // agent can drop any that don't apply (e.g. a 2nd seller block on a single-seller
+  // sale) OR reassign a block to a different party (`role` = editable target).
+  const [fieldGroups, setFieldGroups] = useState<{ origRole: string; role: string; types: string[]; keep: boolean }[]>([]);
   const [docValues, setDocValues] = useState<Array<Record<string, unknown>>>([]);
   useEffect(() => {
     let alive = true;
@@ -47,7 +48,7 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
         const sig = vals.filter(x => ['signature', 'initial', 'date'].includes(String(x.type)));
         const byRole = new Map<string, string[]>();
         for (const s of sig) { const r = String(s.signerRole || 'client'); if (!byRole.has(r)) byRole.set(r, []); byRole.get(r)!.push(String(s.type)); }
-        setFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ role, types, keep: true })));
+        setFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ origRole: role, role, types, keep: true })));
       })
       .catch(() => { if (alive) setFieldGroups([]); });
     return () => { alive = false; };
@@ -61,12 +62,24 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
     if (!clean.length) { showToast?.('Add at least one signer with a valid email'); return; }
     setBusy(true);
     try {
-      // Persist any trimmed signature fields before sending, so no dropped field is signed.
-      const removedRoles = fieldGroups.filter(g => !g.keep).map(g => g.role);
-      if (removedRoles.length && docValues.length) {
-        const kept = docValues.filter(v => !(['signature', 'initial', 'date'].includes(String(v.type)) && removedRoles.includes(String(v.signerRole || 'client'))));
-        const removedCount = docValues.length - kept.length;
-        const up = await fetch(`/api/crm/form-submissions/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ values: kept, logSummary: `Removed ${removedCount} signature field${removedCount === 1 ? '' : 's'} (${removedRoles.map(roleLabel).join(', ')}) before sending` }) });
+      // Persist any removed/reassigned signature fields before sending, so each field is
+      // dropped or routed to the right party.
+      const SIG = ['signature', 'initial', 'date'];
+      const byOrig = new Map(fieldGroups.map(g => [g.origRole, g]));
+      const removed = fieldGroups.filter(g => !g.keep);
+      const reassigned = fieldGroups.filter(g => g.keep && g.role !== g.origRole);
+      if ((removed.length || reassigned.length) && docValues.length) {
+        const kept = docValues.flatMap(v => {
+          if (!SIG.includes(String(v.type))) return [v];
+          const g = byOrig.get(String(v.signerRole || 'client'));
+          if (!g) return [v];
+          if (!g.keep) return [];
+          return [g.role !== g.origRole ? { ...v, signerRole: g.role } : v];
+        });
+        const parts: string[] = [];
+        if (removed.length) parts.push(`Removed ${removed.map(g => roleLabel(g.origRole)).join(', ')}`);
+        if (reassigned.length) parts.push(`Reassigned ${reassigned.map(g => `${roleLabel(g.origRole)} → ${roleLabel(g.role)}`).join(', ')}`);
+        const up = await fetch(`/api/crm/form-submissions/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ values: kept, logSummary: `${parts.join(' · ')} (signature fields) before sending` }) });
         if (!up.ok) { showToast?.('Could not update the signature fields'); return; }
       }
       const r = await fetch('/api/crm/envelopes', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ submission_id: doc.id, deal_id: dealId, title: doc.title || doc.crm_forms?.name, message, signers: clean }) });
@@ -93,10 +106,15 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
               {fieldGroups.map((g, gi) => {
                 const counts = g.types.reduce((m, t) => { m[t] = (m[t] || 0) + 1; return m; }, {} as Record<string, number>);
                 const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
+                const hasSigner = signers.some(s => s.role === g.role && s.email.includes('@') && s.name.trim());
                 return (
-                  <div key={g.role} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '5px 4px 5px 9px', opacity: g.keep ? 1 : 0.6 }}>
-                    <span style={{ fontWeight: 700, color: '#166534', textDecoration: g.keep ? 'none' : 'line-through' }}>{roleLabel(g.role)}</span>
+                  <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
+                    <select value={g.role} disabled={!g.keep} onChange={e => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
+                      title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: '#166534', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
+                      {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
                     <span style={{ color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                    {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
                     <span style={{ flex: 1 }} />
                     {g.keep
                       ? <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
@@ -105,7 +123,7 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
                 );
               })}
             </div>
-            {anyRemoved && <div style={{ fontSize: 11, color: '#8a6d3b', marginTop: 6 }}>Removed fields won’t be signed. Saved to the document when you send.</div>}
+            {(anyRemoved || fieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: '#8a6d3b', marginTop: 6 }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
           </div>
         );
       })()}
@@ -165,7 +183,9 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState('client');
   const [adding, setAdding] = useState(false);
   const [add, setAdd] = useState<Draft>({ role: 'other', name: '', email: '' });
   if (!env) { return <div style={{ fontFamily: "'DM Sans',sans-serif" }}><button onClick={onBack} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13 }}>‹ Back</button></div>; }
@@ -193,6 +213,13 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
       <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a', marginBottom: 2 }}>{doc.title || doc.crm_forms?.name}</div>
       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginBottom: 14 }}>📤 Out for signature · {signedCount(env)}/{signers.length} signed</div>
 
+      {signers.length > 0 && signers.every(s => s.status === 'signed' || s.signed_at) && env.status !== 'completed' && env.status !== 'voided' && (
+        <div style={{ fontSize: 12.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 180 }}>Everyone signed, but the executed copy didn’t finish generating. Click to finish it and email everyone.</span>
+          <button disabled={busy} onClick={() => act({ action: 'finalize' }, 'Executed copy generated ✓', true)} style={{ ...mini, background: GOLD, color: '#fff', border: 'none' }}>⟳ Finish signing</button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {signers.map(s => {
           const done = s.status === 'signed' || !!s.signed_at;
@@ -212,15 +239,21 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
               {!done && (
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   {editId === s.id ? (
-                    <>
-                      <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="new email" style={{ ...INP, fontSize: 12.5, padding: '5px 8px' }} />
-                      <button onClick={() => { act({ action: 'update_signer', signer_id: s.id, email: editEmail }, 'Signer updated ✓'); setEditId(null); }} style={{ ...mini, background: GOLD, color: '#fff', border: 'none' }}>Save</button>
-                      <button onClick={() => setEditId(null)} style={mini}>✕</button>
-                    </>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <select value={editRole} onChange={e => setEditRole(e.target.value)} title="Signer's role" style={{ ...INP, width: 'auto', flex: '0 0 104px', padding: '5px 8px', fontSize: 12.5 }}>{ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                        <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" style={{ ...INP, fontSize: 12.5, padding: '5px 8px' }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="Email" style={{ ...INP, fontSize: 12.5, padding: '5px 8px' }} />
+                        <button disabled={busy} onClick={() => { if (!editName.trim() || !editEmail.includes('@')) { showToast?.('Name + valid email'); return; } act({ action: 'update_signer', signer_id: s.id, name: editName, email: editEmail, role: editRole }, 'Signer updated ✓'); setEditId(null); }} style={{ ...mini, background: GOLD, color: '#fff', border: 'none' }}>Save</button>
+                        <button onClick={() => setEditId(null)} style={mini}>✕</button>
+                      </div>
+                    </div>
                   ) : (
                     <>
                       {isCurrent && <button disabled={busy} onClick={() => act({ action: 'nudge' }, `Reminder sent to ${s.email} ✓`)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>🔔 Nudge</button>}
-                      <button onClick={() => { setEditId(s.id); setEditEmail(s.email); }} style={mini}>✎ Fix email</button>
+                      <button onClick={() => { setEditId(s.id); setEditName(s.name); setEditEmail(s.email); setEditRole(s.signer_role); }} title="Change who signs — name, email, or role" style={mini}>✎ Edit signer</button>
                       <button onClick={() => copyLink(s.id)} title="Copy this signer's private link to share manually" style={mini}>🔗 Link</button>
                     </>
                   )}

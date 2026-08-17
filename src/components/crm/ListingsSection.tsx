@@ -218,7 +218,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [envMap, setEnvMap] = useState<Record<string, Envelope>>({}); // submission_id -> envelope
   const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string; formId?: string } | null>(null);
   const [sendSigFields, setSendSigFields] = useState<number | null>(null);
-  const [sendFieldGroups, setSendFieldGroups] = useState<{ role: string; types: string[]; keep: boolean }[]>([]);
+  // Placed signature fields, grouped by their ORIGINAL role (the immutable key back to
+  // the stored field). `role` is the editable target so a block can be reassigned to a
+  // different party; `keep=false` drops it. Persisted to the submission on send.
+  const [sendFieldGroups, setSendFieldGroups] = useState<{ origRole: string; role: string; types: string[]; keep: boolean }[]>([]);
   const [sendValues, setSendValues] = useState<Array<Record<string, unknown>>>([]);
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
@@ -470,7 +473,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         setSendSigFields(sig.length);
         const byRole = new Map<string, string[]>();
         for (const s of sig) { const r = String(s.signerRole || 'client'); if (!byRole.has(r)) byRole.set(r, []); byRole.get(r)!.push(String(s.type)); }
-        setSendFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ role, types, keep: true })));
+        setSendFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ origRole: role, role, types, keep: true })));
       })
       .catch(() => { setSendSigFields(0); setSendFieldGroups([]); });
   }
@@ -481,15 +484,27 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       .map((s, i) => ({ signer_role: s.role, name: s.name.trim(), email: s.email.trim(), signing_order: i + 1 }));
     if (signers.length === 0) { onToast('Add at least one signer with a valid email'); return; }
     setSendBusy(true);
-    // If the agent removed any placed signature fields, persist the trimmed set on the
-    // submission BEFORE sending, so no one is asked to sign a field that was dropped.
-    const removedRoles = sendFieldGroups.filter(g => !g.keep).map(g => g.role);
-    if (removedRoles.length && sendValues.length) {
-      const kept = sendValues.filter(v => !(['signature', 'initial', 'date'].includes(String(v.type)) && removedRoles.includes(String(v.signerRole || 'client'))));
-      const removedCount = sendValues.length - kept.length;
+    // If the agent removed or reassigned any placed signature fields, persist the edited
+    // set on the submission BEFORE sending, so each field is dropped or routed to the
+    // right party.
+    const SIG = ['signature', 'initial', 'date'];
+    const byOrig = new Map(sendFieldGroups.map(g => [g.origRole, g]));
+    const removed = sendFieldGroups.filter(g => !g.keep);
+    const reassigned = sendFieldGroups.filter(g => g.keep && g.role !== g.origRole);
+    if ((removed.length || reassigned.length) && sendValues.length) {
+      const kept = sendValues.flatMap(v => {
+        if (!SIG.includes(String(v.type))) return [v];
+        const g = byOrig.get(String(v.signerRole || 'client'));
+        if (!g) return [v];
+        if (!g.keep) return [];
+        return [g.role !== g.origRole ? { ...v, signerRole: g.role } : v];
+      });
+      const parts: string[] = [];
+      if (removed.length) parts.push(`Removed ${removed.map(g => roleLabel(g.origRole)).join(', ')}`);
+      if (reassigned.length) parts.push(`Reassigned ${reassigned.map(g => `${roleLabel(g.origRole)} → ${roleLabel(g.role)}`).join(', ')}`);
       const up = await fetch(`/api/crm/form-submissions/${sendModal.submissionId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ values: kept, logSummary: `Removed ${removedCount} signature field${removedCount === 1 ? '' : 's'} (${removedRoles.map(roleLabel).join(', ')}) before sending` }),
+        body: JSON.stringify({ values: kept, logSummary: `${parts.join(' · ')} (signature fields) before sending` }),
       });
       if (!up.ok) { setSendBusy(false); onToast('Could not update the signature fields'); return; }
     }
@@ -1440,10 +1455,15 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       {sendFieldGroups.map((g, gi) => {
                         const counts = g.types.reduce((m, t) => { m[t] = (m[t] || 0) + 1; return m; }, {} as Record<string, number>);
                         const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
+                        const hasSigner = sendSigners.some(s => s.role === g.role && s.email.includes('@') && s.name.trim());
                         return (
-                          <div key={g.role} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '5px 4px 5px 9px', opacity: g.keep ? 1 : 0.6 }}>
-                            <span style={{ fontWeight: 700, color: '#166534', textDecoration: g.keep ? 'none' : 'line-through' }}>{roleLabel(g.role)}</span>
+                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
+                            <select value={g.role} disabled={!g.keep} onChange={e => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
+                              title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: '#166534', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
+                              {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
                             <span style={{ color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                            {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
                             <span style={{ flex: 1 }} />
                             {g.keep
                               ? <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
@@ -1451,7 +1471,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           </div>
                         );
                       })}
-                      {anyRemoved && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Removed fields won’t be signed. Saved to the document when you send.</div>}
+                      {(anyRemoved || sendFieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
                     </div>
                   )}
                 </div>

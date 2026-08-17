@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, completedEmail, sendEsignEmail, buildExecutedPdf, type ExecutedSigner, type PlacedField } from '@/lib/esign';
+import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so external
 // signers (no login) reach it. Uses the service-role client directly.
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const ctx = await load(token);
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const { db, signer, env, signers } = ctx;
+  if (!env) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const status = turnStatus(env, signer, signers);
 
   let doc_url: string | null = null;
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const ctx = await load(token);
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const { db, signer, env, signers } = ctx;
+  if (!env) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (turnStatus(env, signer, signers) !== 'ready') {
     return NextResponse.json({ error: 'This document is not available for you to sign right now.' }, { status: 409 });
   }
@@ -82,7 +84,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     }
   }
 
-  await db.from('crm_envelope_signers').update({ status: 'signed', signed_at: nowIso, signature_path, typed_name: typedName, consent_at: nowIso, ip, user_agent: ua }).eq('id', signer.id);
+  // Atomic claim: only the request that flips this signer not-signed → signed proceeds.
+  // A double-click / concurrent retry matches 0 rows and returns early, so the next
+  // signer is never emailed twice and finalize never runs (or completion-emails) twice.
+  const { data: claimed } = await db.from('crm_envelope_signers')
+    .update({ status: 'signed', signed_at: nowIso, signature_path, typed_name: typedName, consent_at: nowIso, ip, user_agent: ua })
+    .eq('id', signer.id).neq('status', 'signed').select('id');
+  if (!claimed || claimed.length === 0) return NextResponse.json({ status: 'signed', already: true });
   await logEvent(db, env.id, signer.id, 'signed', { actor: signer.email, ip, ua });
 
   const { data: freshData } = await db.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');
@@ -98,46 +106,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     return NextResponse.json({ status: 'signed', next: true });
   }
 
-  // Everyone has signed → assemble the executed PDF.
-  try {
-    const { data: srcBlob } = await db.storage.from(SIGN_BUCKET).download(env.source_path!);
-    const srcBytes = new Uint8Array(await srcBlob!.arrayBuffer());
-    const execSigners: ExecutedSigner[] = [];
-    for (const s of all) {
-      let png: Uint8Array | null = null;
-      if (s.signature_path) { const { data: pb } = await db.storage.from(SIGN_BUCKET).download(s.signature_path); if (pb) png = new Uint8Array(await pb.arrayBuffer()); }
-      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, signedAt: s.signed_at, ip: s.ip, signaturePng: png, typedName: s.typed_name || undefined });
-    }
-    let sigFields: PlacedField[] = [];
-    if (env.submission_id) {
-      const { data: sub } = await db.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
-      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string }> = Array.isArray(sub?.values) ? sub!.values : [];
-      sigFields = vals
-        .filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(String(f.type)))
-        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client' }));
-    }
-    const executed = await buildExecutedPdf(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });
-    const execPath = `executed/${env.id}.pdf`;
-    await db.storage.from(SIGN_BUCKET).upload(execPath, Buffer.from(executed), { contentType: 'application/pdf', upsert: true });
-    await db.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
-    await logEvent(db, env.id, null, 'completed', { actor: 'system' });
-
-    // email the executed copy to every signer + the broker
-    const b64 = Buffer.from(executed).toString('base64');
-    const attach = [{ filename: `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`, content: b64 }];
-    const recipients = new Map<string, string>();
-    for (const s of all) recipients.set(s.email.toLowerCase(), s.name);
-    if (env.created_by) {
-      const { data: prof } = await db.from('crm_profiles').select('email, first_name, last_name').eq('id', env.created_by).maybeSingle();
-      if (prof?.email) recipients.set(String(prof.email).toLowerCase(), `${prof.first_name ?? ''} ${prof.last_name ?? ''}`.trim() || 'Broker');
-    }
-    for (const [email, name] of recipients) {
-      const { subject, html } = completedEmail(env.business_unit, { recipientName: name, docTitle: env.title });
-      await sendEsignEmail(env.business_unit, email, subject, html, attach);
-    }
-  } catch (e) {
-    console.error('[api/sign] finalize', e);
-    // signer's signature is recorded; envelope stays in_progress for a retry/manual fix
+  // Everyone has signed → assemble + store the executed PDF and email it to all parties.
+  const fin = await finalizeEnvelope(db, env, all);
+  if (!fin.ok) {
+    console.error('[api/sign] finalize', fin.error);
+    // The signature is safely recorded; leave the request in_progress so the broker can
+    // retry finalize (PATCH /api/crm/envelopes action:'finalize') without anyone re-signing.
     await db.from('crm_envelopes').update({ status: 'in_progress', updated_at: nowIso }).eq('id', env.id);
     return NextResponse.json({ status: 'signed', finalizeError: true });
   }

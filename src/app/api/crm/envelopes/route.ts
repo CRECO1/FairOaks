@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail } from '@/lib/esign';
+import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, finalizeEnvelope, type FinalizeSigner } from '@/lib/esign';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,6 +127,22 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ url: signUrl(signer.access_token) });
   }
 
+  // Recover a stuck request: everyone signed but the executed PDF never assembled
+  // (e.g. a transient storage error reverted it to in_progress). Re-runs finalize.
+  if (action === 'finalize') {
+    if (env.status === 'completed') return NextResponse.json({ ok: true, already: true });
+    if (env.status === 'voided') return NextResponse.json({ error: 'This request was cancelled.' }, { status: 400 });
+    const { data: rows } = await supabase.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');
+    const all = (rows ?? []) as Array<FinalizeSigner & { status: string; signed_at: string | null }>;
+    if (!all.length) return NextResponse.json({ error: 'No signers on this request.' }, { status: 400 });
+    if (!all.every(s => s.status === 'signed' || s.signed_at)) return NextResponse.json({ error: 'Not everyone has signed yet.' }, { status: 400 });
+    const { data: full } = await supabase.from('crm_envelopes').select('id, title, business_unit, source_path, submission_id, created_by').eq('id', env.id).single();
+    if (!full) return notFound('Signature request not found');
+    const fin = await finalizeEnvelope(supabase, full, all);
+    if (!fin.ok) { console.error('[api/envelopes] finalize', fin.error); return NextResponse.json({ error: fin.error || 'Could not finish signing' }, { status: 500 }); }
+    return NextResponse.json({ ok: true });
+  }
+
   if (env.status === 'completed' || env.status === 'voided') {
     return NextResponse.json({ error: `This request is ${env.status} and can no longer be changed.` }, { status: 400 });
   }
@@ -153,7 +169,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: r.ok, to: current.email });
   }
 
-  // ── Fix a pending signer's name/email; resend if they're the current signer ──
+  // ── Change a not-yet-signed signer (swap who signs): name / email / role;
+  //    resend if they're the current signer ──
   if (action === 'update_signer') {
     if (!b.signer_id) return NextResponse.json({ error: 'signer_id required' }, { status: 400 });
     const signers = await loadSigners();
@@ -163,9 +180,10 @@ export async function PATCH(req: NextRequest) {
     const patch: Record<string, string> = {};
     if (typeof b.name === 'string' && b.name.trim()) patch.name = b.name.trim();
     if (typeof b.email === 'string' && b.email.includes('@')) patch.email = b.email.trim().toLowerCase();
-    if (!Object.keys(patch).length) return NextResponse.json({ error: 'Give a name or a valid email' }, { status: 400 });
+    if (typeof b.role === 'string' && b.role.trim()) patch.signer_role = b.role.trim();
+    if (!Object.keys(patch).length) return NextResponse.json({ error: 'Give a name, a valid email, or a role' }, { status: 400 });
     await supabase.from('crm_envelope_signers').update(patch).eq('id', signer.id);
-    await logEvent(supabase, env.id, signer.id, 'signer_updated', { actor: ctx.userId });
+    await logEvent(supabase, env.id, signer.id, 'signer_updated', { actor: ctx.userId, meta: patch });
     const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
     let resent = false;
     if (current && current.id === signer.id) resent = (await invite({ name: patch.name || signer.name, email: patch.email || signer.email, access_token: signer.access_token })).ok;

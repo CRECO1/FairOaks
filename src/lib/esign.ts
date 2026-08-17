@@ -268,3 +268,68 @@ export async function buildExecutedPdf(
   const withSigs = await doc.save();
   return appendCertificate(withSigs, info);
 }
+
+// ── Finalize ─────────────────────────────────────────────────────────────────
+// Assemble + store the executed PDF for a fully-signed envelope, mark it completed,
+// and email the executed copy to every signer + the broker. Self-contained and
+// idempotent-safe (upsert on a stable path), so it backs BOTH the last signer's
+// sign callback AND an authed retry for a request that got stuck mid-finalize.
+export interface FinalizeSigner {
+  name: string; email: string; signer_role: string;
+  signed_at: string | null; ip: string | null; signature_path: string | null; typed_name: string | null;
+}
+export async function finalizeEnvelope(
+  admin: SupabaseClient,
+  env: { id: string; title: string; business_unit: string; source_path: string | null; submission_id: string | null; created_by: string | null },
+  signers: FinalizeSigner[],
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    if (!env.source_path) return { ok: false, error: 'This request has no source document to execute.' };
+    const { data: srcBlob } = await admin.storage.from(SIGN_BUCKET).download(env.source_path);
+    if (!srcBlob) return { ok: false, error: 'The source document could not be downloaded.' };
+    const srcBytes = new Uint8Array(await srcBlob.arrayBuffer());
+
+    const execSigners: ExecutedSigner[] = [];
+    for (const s of signers) {
+      let png: Uint8Array | null = null;
+      if (s.signature_path) { const { data: pb } = await admin.storage.from(SIGN_BUCKET).download(s.signature_path); if (pb) png = new Uint8Array(await pb.arrayBuffer()); }
+      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, signedAt: s.signed_at, ip: s.ip, signaturePng: png, typedName: s.typed_name || undefined });
+    }
+
+    let sigFields: PlacedField[] = [];
+    if (env.submission_id) {
+      const { data: sub } = await admin.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
+      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string }> = Array.isArray(sub?.values) ? sub!.values : [];
+      sigFields = vals
+        .filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(String(f.type)))
+        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client' }));
+    }
+
+    const executed = await buildExecutedPdf(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });
+    const execPath = `executed/${env.id}.pdf`;
+    const { error: upErr } = await admin.storage.from(SIGN_BUCKET).upload(execPath, Buffer.from(executed), { contentType: 'application/pdf', upsert: true });
+    if (upErr) return { ok: false, error: upErr.message };
+
+    const nowIso = new Date().toISOString();
+    await admin.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
+    await logEvent(admin, env.id, null, 'completed', { actor: 'system' });
+
+    // Email the executed copy to every signer + the broker (best-effort; the doc is
+    // already stored + marked completed, so a mail failure never blocks completion).
+    const b64 = Buffer.from(executed).toString('base64');
+    const attach = [{ filename: `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`, content: b64 }];
+    const recipients = new Map<string, string>();
+    for (const s of signers) if (s.email) recipients.set(s.email.toLowerCase(), s.name);
+    if (env.created_by) {
+      const { data: prof } = await admin.from('crm_profiles').select('email, first_name, last_name').eq('id', env.created_by).maybeSingle();
+      if (prof?.email) recipients.set(String(prof.email).toLowerCase(), `${prof.first_name ?? ''} ${prof.last_name ?? ''}`.trim() || 'Broker');
+    }
+    for (const [email, name] of recipients) {
+      const { subject, html } = completedEmail(env.business_unit, { recipientName: name, docTitle: env.title });
+      await sendEsignEmail(env.business_unit, email, subject, html, attach);
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
