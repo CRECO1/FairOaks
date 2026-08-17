@@ -27,6 +27,7 @@ interface Listing {
   year_built?: string;
   description?: string;
   notes?: string;
+  highlights?: string | null;
   listing_agent_id?: string;
   assigned_agent_ids?: string[];
   is_restricted?: boolean;
@@ -143,7 +144,7 @@ function fmtBytes(n?: number | null) {
 const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
-  lot_size: '', year_built: '', description: '', notes: '', listing_agent_id: '',
+  lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '',
 };
 
 // Signer-role options (shared by the send modal's role picker + placed-field labels).
@@ -330,7 +331,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       status: l.status ?? 'active', asking_price: l.asking_price != null ? String(l.asking_price) : '',
       sq_ft: l.sq_ft != null ? String(l.sq_ft) : '',
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
-      description: l.description ?? '', notes: l.notes ?? '',
+      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '',
       listing_agent_id: l.listing_agent_id ?? '',
     });
     setDirty(false);
@@ -752,6 +753,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         <div>
           {LBL('Description')}
           <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
+        </div>
+        <div>
+          {LBL('Flyer Highlights (one per line)')}
+          <textarea style={{ ...INP, minHeight: 70, resize: 'vertical' }} value={form.highlights} onChange={e => set('highlights', e.target.value)} placeholder={'Move-in ready medical building\nHigh visibility\nAmple parking'} />
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Bulleted list on the property flyer — one highlight per line.</div>
         </div>
         <div>
           {LBL('Internal Notes')}
