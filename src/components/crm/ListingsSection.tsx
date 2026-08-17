@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
+import DocPreviewModal from '@/components/crm/DocPreviewModal';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
 // coordinate-overlay editor.
@@ -223,6 +224,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // different party; `keep=false` drops it. Persisted to the submission on send.
   const [sendFieldGroups, setSendFieldGroups] = useState<{ origRole: string; role: string; types: string[]; keep: boolean }[]>([]);
   const [sendValues, setSendValues] = useState<Array<Record<string, unknown>>>([]);
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
   const [sendMsg, setSendMsg] = useState('');
@@ -1006,10 +1008,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                                     {f.url && (
-                                      <a href={f.url} target="_blank" rel="noopener noreferrer"
-                                        style={{ padding: '5px 10px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: '#374151', textDecoration: 'none', fontWeight: 600, cursor: 'pointer' }}>
-                                        ↓ View
-                                      </a>
+                                      <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })}
+                                        style={{ padding: '5px 10px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: '#374151', fontWeight: 600, cursor: 'pointer' }}>
+                                        👁 View
+                                      </button>
                                     )}
                                     {isAdmin && (
                                       <button onClick={() => deleteFile(f.id, f.name)}
@@ -1037,7 +1039,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                   <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                                   <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtBytes(f.file_size)}</div>
                                 </div>
-                                {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#2563eb', textDecoration: 'none', fontWeight: 600 }}>↓ View</a>}
+                                {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', fontWeight: 600, cursor: 'pointer' }}>👁 View</button>}
                                 {isAdmin && <button onClick={() => deleteFile(f.id, f.name)} style={{ padding: '5px 8px', background: 'none', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>✕</button>}
                               </div>
                             ))}
@@ -1526,6 +1528,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           </div>
         </div>
       )}
+
+      {/* ── In-app document preview (view + print, no forced download) ── */}
+      {previewFile && <DocPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
 
       {/* ── Fillable transaction-doc editor, bound to the open property ── */}
       {editorDoc && active && (

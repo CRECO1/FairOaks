@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from 'react';
 // CSP that blocks iframing external PDFs. The PDF is fetched from its signed URL
 // (connect-src allows *.supabase.co) and pdf.js runs off a self-hosted worker
 // (worker-src 'self').
-export default function PdfViewer({ url }: { url: string }) {
+export default function PdfViewer({ url, onReady }: { url: string; onReady?: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
@@ -44,6 +44,7 @@ export default function PdfViewer({ url }: { url: string }) {
           container.appendChild(canvas);
         }
         setStatus('ready');
+        onReady?.();
       } catch (e) {
         if (!cancelled) { console.error('[PdfViewer]', e); setStatus('error'); }
       }
