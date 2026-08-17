@@ -13,6 +13,8 @@ interface Draft { role: string; name: string; email: string }
 
 const GOLD = '#c9922c';
 const ROLES = [['client', 'Client'], ['landlord', 'Landlord'], ['agent', 'Agent'], ['seller', 'Seller'], ['buyer', 'Buyer'], ['witness', 'Witness'], ['other', 'Other']] as const;
+const roleLabel = (r: string) => (ROLES.find(([v]) => v === r)?.[1] as string) || (r ? r[0].toUpperCase() + r.slice(1) : 'Signer');
+const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : t === 'date' ? 'Date' : t.charAt(0).toUpperCase() + t.slice(1);
 const cName = (c: PickContact) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
 const INP: React.CSSProperties = { width: '100%', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a', background: '#fff', boxSizing: 'border-box' };
 const ctrl: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid #e6d3a2', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
@@ -30,6 +32,26 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
   const [message, setMessage] = useState('');
   const [pick, setPick] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // Placed signature fields on this document, grouped by role, so the agent can drop
+  // any that don't apply to this deal (e.g. a 2nd seller block on a single-seller sale).
+  const [fieldGroups, setFieldGroups] = useState<{ role: string; types: string[]; keep: boolean }[]>([]);
+  const [docValues, setDocValues] = useState<Array<Record<string, unknown>>>([]);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/crm/form-submissions/${doc.id}`, { headers: authOf(authToken) })
+      .then(r => r.json())
+      .then(j => {
+        if (!alive) return;
+        const vals: Array<Record<string, unknown>> = Array.isArray(j.submission?.values) ? j.submission.values : [];
+        setDocValues(vals);
+        const sig = vals.filter(x => ['signature', 'initial', 'date'].includes(String(x.type)));
+        const byRole = new Map<string, string[]>();
+        for (const s of sig) { const r = String(s.signerRole || 'client'); if (!byRole.has(r)) byRole.set(r, []); byRole.get(r)!.push(String(s.type)); }
+        setFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ role, types, keep: true })));
+      })
+      .catch(() => { if (alive) setFieldGroups([]); });
+    return () => { alive = false; };
+  }, [doc.id, authToken]);
   const set = (i: number, p: Partial<Draft>) => setSigners(s => s.map((x, k) => k === i ? { ...x, ...p } : x));
   const move = (i: number, d: -1 | 1) => setSigners(s => { const j = i + d; if (j < 0 || j >= s.length) return s; const c = [...s]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const suggestions = (q: string) => q.trim() ? clients.filter(c => cName(c).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6) : [];
@@ -39,6 +61,14 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
     if (!clean.length) { showToast?.('Add at least one signer with a valid email'); return; }
     setBusy(true);
     try {
+      // Persist any trimmed signature fields before sending, so no dropped field is signed.
+      const removedRoles = fieldGroups.filter(g => !g.keep).map(g => g.role);
+      if (removedRoles.length && docValues.length) {
+        const kept = docValues.filter(v => !(['signature', 'initial', 'date'].includes(String(v.type)) && removedRoles.includes(String(v.signerRole || 'client'))));
+        const removedCount = docValues.length - kept.length;
+        const up = await fetch(`/api/crm/form-submissions/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ values: kept, logSummary: `Removed ${removedCount} signature field${removedCount === 1 ? '' : 's'} (${removedRoles.map(roleLabel).join(', ')}) before sending` }) });
+        if (!up.ok) { showToast?.('Could not update the signature fields'); return; }
+      }
       const r = await fetch('/api/crm/envelopes', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ submission_id: doc.id, deal_id: dealId, title: doc.title || doc.crm_forms?.name, message, signers: clean }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast?.(j.error || 'Could not send'); return; }
@@ -52,6 +82,33 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
       <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8 }}>‹ Back</button>
       <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a', marginBottom: 2 }}>Send for signature</div>
       <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 14 }}><strong>{doc.title || doc.crm_forms?.name}</strong> — signers are emailed in order; each signs, then the next is notified.</div>
+
+      {fieldGroups.length > 0 && (() => {
+        const keptCount = fieldGroups.filter(g => g.keep).reduce((n, g) => n + g.types.length, 0);
+        const anyRemoved = fieldGroups.some(g => !g.keep);
+        return (
+          <div style={{ fontSize: 12.5, color: '#15803d', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+            <div style={{ fontWeight: 800 }}>✒ {keptCount} signature field{keptCount === 1 ? '' : 's'} on this document</div>
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {fieldGroups.map((g, gi) => {
+                const counts = g.types.reduce((m, t) => { m[t] = (m[t] || 0) + 1; return m; }, {} as Record<string, number>);
+                const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
+                return (
+                  <div key={g.role} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '5px 4px 5px 9px', opacity: g.keep ? 1 : 0.6 }}>
+                    <span style={{ fontWeight: 700, color: '#166534', textDecoration: g.keep ? 'none' : 'line-through' }}>{roleLabel(g.role)}</span>
+                    <span style={{ color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                    <span style={{ flex: 1 }} />
+                    {g.keep
+                      ? <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
+                      : <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
+                  </div>
+                );
+              })}
+            </div>
+            {anyRemoved && <div style={{ fontSize: 11, color: '#8a6d3b', marginTop: 6 }}>Removed fields won’t be signed. Saved to the document when you send.</div>}
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {signers.map((s, i) => {

@@ -145,6 +145,11 @@ const BLANK_FORM = {
   lot_size: '', year_built: '', description: '', notes: '', listing_agent_id: '',
 };
 
+// Signer-role options (shared by the send modal's role picker + placed-field labels).
+const SIGNER_ROLES: [string, string][] = [['client', 'Client'], ['landlord', 'Landlord'], ['agent', 'Agent'], ['seller', 'Seller'], ['buyer', 'Buyer'], ['witness', 'Witness'], ['other', 'Other']];
+const roleLabel = (r: string) => SIGNER_ROLES.find(([v]) => v === r)?.[1] || (r ? r[0].toUpperCase() + r.slice(1) : 'Signer');
+const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : t === 'date' ? 'Date' : t.charAt(0).toUpperCase() + t.slice(1);
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast }: Props) {
@@ -213,6 +218,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [envMap, setEnvMap] = useState<Record<string, Envelope>>({}); // submission_id -> envelope
   const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string; formId?: string } | null>(null);
   const [sendSigFields, setSendSigFields] = useState<number | null>(null);
+  const [sendFieldGroups, setSendFieldGroups] = useState<{ role: string; types: string[]; keep: boolean }[]>([]);
+  const [sendValues, setSendValues] = useState<Array<Record<string, unknown>>>([]);
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
   const [sendMsg, setSendMsg] = useState('');
@@ -449,12 +456,23 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setSendPick(null);
     setSendMsg('');
     setSendSigFields(null);
+    setSendFieldGroups([]);
+    setSendValues([]);
     setSendModal({ submissionId: f.id, dealId: d.id, title: f.title || f.crm_forms?.name || 'Document', formId: f.form_id });
-    // how many signature/initial/date fields the agent placed on this doc
+    // Capture the placed signature fields so the agent can trim any that don't
+    // apply to this deal (e.g. a 2nd seller block on a single-seller sale).
     fetch(`/api/crm/form-submissions/${f.id}`, { headers: authHeaders })
       .then(r => r.json())
-      .then(j => { const vals = Array.isArray(j.submission?.values) ? j.submission.values : []; setSendSigFields(vals.filter((x: { type?: string }) => ['signature', 'initial', 'date'].includes(String(x.type))).length); })
-      .catch(() => setSendSigFields(0));
+      .then(j => {
+        const vals: Array<Record<string, unknown>> = Array.isArray(j.submission?.values) ? j.submission.values : [];
+        setSendValues(vals);
+        const sig = vals.filter(x => ['signature', 'initial', 'date'].includes(String(x.type)));
+        setSendSigFields(sig.length);
+        const byRole = new Map<string, string[]>();
+        for (const s of sig) { const r = String(s.signerRole || 'client'); if (!byRole.has(r)) byRole.set(r, []); byRole.get(r)!.push(String(s.type)); }
+        setSendFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ role, types, keep: true })));
+      })
+      .catch(() => { setSendSigFields(0); setSendFieldGroups([]); });
   }
 
   async function sendForSignature() {
@@ -463,6 +481,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       .map((s, i) => ({ signer_role: s.role, name: s.name.trim(), email: s.email.trim(), signing_order: i + 1 }));
     if (signers.length === 0) { onToast('Add at least one signer with a valid email'); return; }
     setSendBusy(true);
+    // If the agent removed any placed signature fields, persist the trimmed set on the
+    // submission BEFORE sending, so no one is asked to sign a field that was dropped.
+    const removedRoles = sendFieldGroups.filter(g => !g.keep).map(g => g.role);
+    if (removedRoles.length && sendValues.length) {
+      const kept = sendValues.filter(v => !(['signature', 'initial', 'date'].includes(String(v.type)) && removedRoles.includes(String(v.signerRole || 'client'))));
+      const removedCount = sendValues.length - kept.length;
+      const up = await fetch(`/api/crm/form-submissions/${sendModal.submissionId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ values: kept, logSummary: `Removed ${removedCount} signature field${removedCount === 1 ? '' : 's'} (${removedRoles.map(roleLabel).join(', ')}) before sending` }),
+      });
+      if (!up.ok) { setSendBusy(false); onToast('Could not update the signature fields'); return; }
+    }
     const res = await fetch('/api/crm/envelopes', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify({ submission_id: sendModal.submissionId, deal_id: sendModal.dealId, listing_id: active?.id, title: sendModal.title, message: sendMsg, signers }),
@@ -1399,9 +1429,34 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}><strong>{sendModal.title}</strong> — signers are emailed in order; each signs, then the next is notified. The executed copy is emailed to everyone.</div>
-            {sendSigFields !== null && (sendSigFields > 0 ? (
-              <div style={{ fontSize: 12.5, color: '#15803d', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 8, padding: '8px 12px', marginBottom: 14 }}>✒ {sendSigFields} signature field{sendSigFields === 1 ? '' : 's'} placed — signers will sign on the document itself.</div>
-            ) : (
+            {sendSigFields !== null && (sendSigFields > 0 ? (() => {
+              const keptCount = sendFieldGroups.length ? sendFieldGroups.filter(g => g.keep).reduce((n, g) => n + g.types.length, 0) : sendSigFields;
+              const anyRemoved = sendFieldGroups.some(g => !g.keep);
+              return (
+                <div style={{ fontSize: 12.5, color: '#15803d', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700 }}>✒ {keptCount} signature field{keptCount === 1 ? '' : 's'} on this document — signers sign on the doc itself.</div>
+                  {sendFieldGroups.length > 0 && (
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {sendFieldGroups.map((g, gi) => {
+                        const counts = g.types.reduce((m, t) => { m[t] = (m[t] || 0) + 1; return m; }, {} as Record<string, number>);
+                        const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
+                        return (
+                          <div key={g.role} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '5px 4px 5px 9px', opacity: g.keep ? 1 : 0.6 }}>
+                            <span style={{ fontWeight: 700, color: '#166534', textDecoration: g.keep ? 'none' : 'line-through' }}>{roleLabel(g.role)}</span>
+                            <span style={{ color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                            <span style={{ flex: 1 }} />
+                            {g.keep
+                              ? <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
+                              : <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
+                          </div>
+                        );
+                      })}
+                      {anyRemoved && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Removed fields won’t be signed. Saved to the document when you send.</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
               <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ flex: 1, minWidth: 180 }}>No signature fields placed — signers will sign on an added Signatures page. To sign on the document’s own lines, place fields first.</span>
                 <button onClick={() => { const m = sendModal; setSendModal(null); if (m) editDealForm(m.dealId, { id: m.formId || '', name: m.title }, m.submissionId, crmForms.find(cf => cf.id === m.formId)?.form_code); }}
@@ -1418,7 +1473,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                       <span style={{ fontSize: 11.5, fontWeight: 800, color: '#9ca3af' }}>{i + 1}.</span>
                       <select value={s.role} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, role: e.target.value } : x))} style={{ ...INP, width: 'auto', flex: '0 0 118px', padding: '5px 8px', fontSize: 12.5 }}>
-                        {([['client', 'Client'], ['landlord', 'Landlord'], ['agent', 'Agent'], ['seller', 'Seller'], ['buyer', 'Buyer'], ['witness', 'Witness'], ['other', 'Other']] as const).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                       <span style={{ flex: 1 }} />
                       <button onClick={() => setSendSigners(prev => { const j = i - 1; if (j < 0) return prev; const c = [...prev]; [c[i], c[j]] = [c[j], c[i]]; return c; })} disabled={i === 0} title="Move up" style={{ ...rc, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
