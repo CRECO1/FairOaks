@@ -15,7 +15,7 @@ const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionD
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
-import EsignPanel from '@/components/crm/EsignPanel';
+import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
@@ -39,7 +39,7 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
@@ -464,6 +464,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
   const [dealFormAdding, setDealFormAdding] = useState(false);
+  const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
+  const [esignModal, setEsignModal] = useState<{ mode: 'send' | 'manage'; doc: EsignDoc } | null>(null);
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
@@ -1062,6 +1064,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   );
   const loadDealForms = useCallback(async (dealId: string) => {
     try { const r = await authGet(`/api/crm/form-submissions?deal_id=${dealId}`); const j = await r.json(); setDealForms(j.submissions ?? []); } catch { /* ignore */ }
+  }, [authGet]);
+  // E-sign envelopes for this deal's documents, keyed by submission_id (newest kept).
+  // The deal Docs list now mirrors in property-level docs (deal_id null), so we also
+  // fetch the deal's listing envelopes to cover those rows.
+  const loadDealEnvelopes = useCallback(async (dealId: string, listingId?: string | null) => {
+    try {
+      const qs = [`deal_id=${dealId}`];
+      if (listingId) qs.push(`listing_id=${listingId}`);
+      const lists = await Promise.all(qs.map(q => authGet(`/api/crm/envelopes?${q}`).then(r => r.json()).catch(() => ({}))));
+      const map: Record<string, EsignEnvelope> = {};
+      for (const j of lists) for (const e of (j.envelopes ?? [])) if (e.submission_id && !map[e.submission_id]) map[e.submission_id] = e; // GET is newest-first
+      setDealEnvMap(map);
+    } catch { /* ignore */ }
   }, [authGet]);
   const loadCrmForms = useCallback(async () => {
     try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); setCrmForms(j.forms ?? []); } catch { /* ignore */ }
@@ -2646,6 +2661,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     loadDealEmails(deal.id);
     loadDealDocs(deal.id);
     loadDealForms(deal.id);
+    loadDealEnvelopes(deal.id, deal.listing_id);
     loadCrmForms();
     loadDealCommission(deal.id, deal.earned_commission);
     if (typeof window !== 'undefined') sessionStorage.setItem('activeDealId', deal.id);
@@ -8006,6 +8022,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}</div>
                           </div>
                           {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
+                          {!w && (() => {
+                            const env = dealEnvMap[f.id];
+                            if (env && env.status !== 'voided') {
+                              const sg = env.crm_envelope_signers || [];
+                              const done = sg.filter(s => s.status === 'signed' || s.signed_at).length;
+                              if (env.status === 'completed' && env.executed_url)
+                                return <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} title="View the fully-executed copy" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>;
+                              return <button onClick={() => setEsignModal({ mode: 'manage', doc: f })} title="Manage the signature request" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</button>;
+                            }
+                            return <button onClick={() => setEsignModal({ mode: 'send', doc: f })} disabled={!f.form_id} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
+                          })()}
                           <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
                         </div>
                       );
@@ -10650,6 +10677,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* The fillable editor, launched from a deal */}
       {/* In-app document preview (view + print, no forced download) */}
       {previewFile && <DocPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+
+      {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
+      {esignModal && activeDeal && (
+        <div onClick={e => { if (e.target === e.currentTarget) setEsignModal(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+            {esignModal.mode === 'send' ? (
+              <SendView doc={esignModal.doc} dealId={activeDeal.id} clients={clients} dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
+                agentName={`${profile.first_name} ${profile.last_name}`.trim()} agentEmail={profile.email} authToken={session?.access_token} showToast={showToast}
+                onCancel={() => setEsignModal(null)}
+                onSent={() => { setEsignModal(null); loadDealForms(activeDeal.id); loadDealEnvelopes(activeDeal.id, activeDeal.listing_id); }} />
+            ) : (
+              <ManageView doc={esignModal.doc} env={dealEnvMap[esignModal.doc.id]} authToken={session?.access_token} showToast={showToast}
+                onBack={() => { setEsignModal(null); loadDealEnvelopes(activeDeal.id, activeDeal.listing_id); }}
+                onReload={() => loadDealEnvelopes(activeDeal.id, activeDeal.listing_id)} />
+            )}
+          </div>
+        </div>
+      )}
 
       {dealFormEditor && (
         <TransactionDocEditor

@@ -4,11 +4,12 @@
 // manages an out-for-signature request (nudge the current signer, fix a pending signer's
 // email, add another signer, or cancel). Backed by /api/crm/envelopes.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPreviewModal';
 
-interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
-interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
+export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
+export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
 interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
-interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; title?: string; created_at?: string; crm_envelope_signers?: Signer[] }
+export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; title?: string; created_at?: string; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
 
 const GOLD = '#c9922c';
@@ -24,7 +25,7 @@ const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 
 // ── Send a document for signature (dynamic signer list) ──────────────────────
-function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, authToken, showToast, onCancel, onSent }: {
+export function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, authToken, showToast, onCancel, onSent }: {
   doc: Doc; dealId: string; clients: PickContact[]; dealClient?: { name?: string; email?: string };
   agentName?: string; agentEmail?: string; authToken?: string; showToast?: (m: string) => void; onCancel: () => void; onSent: () => void;
 }) {
@@ -32,6 +33,7 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
   const [message, setMessage] = useState('');
   const [pick, setPick] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
   // Placed signature fields on this document, grouped by their ORIGINAL role, so the
   // agent can drop any that don't apply (e.g. a 2nd seller block on a single-seller
   // sale) OR reassign a block to a different party (`role` = editable target).
@@ -169,16 +171,29 @@ function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, aut
       </div>
 
       <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', marginTop: 12 }} />
-      <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+      {doc.url && <button onClick={() => setPreview(true)} style={{ width: '100%', marginTop: 12, padding: '9px 0', borderRadius: 8, border: '1px solid #c9922c', background: '#fdf6e9', color: '#a06a12', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>👁 Review document — who signs where</button>}
+      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
         <button onClick={send} disabled={busy} style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Sending…' : '📤 Send for signature'}</button>
       </div>
+      {preview && doc.url && (() => {
+        // Show the fields as they WILL be sent (removed dropped, reassigned remapped).
+        const SIG = ['signature', 'initial', 'date'];
+        const effective = docValues.filter(v => SIG.includes(String(v.type))).flatMap(v => {
+          const g = fieldGroups.find(x => x.origRole === String(v.signerRole || 'client'));
+          if (g && !g.keep) return [];
+          const role = g && g.role !== g.origRole ? g.role : String(v.signerRole || 'client');
+          return [{ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: role }];
+        });
+        const label = (role: string) => { const s = signers.find(x => x.role === role && x.name.trim()); return s ? s.name : roleLabel(role) + ' (no signer yet)'; };
+        return <SignPreviewModal url={doc.url!} fields={effective} signerLabel={label} onClose={() => setPreview(false)} />;
+      })()}
     </div>
   );
 }
 
 // ── Manage an out-for-signature request ──────────────────────────────────────
-function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
+export function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
   doc: Doc; env?: Envelope; authToken?: string; showToast?: (m: string) => void; onBack: () => void; onReload: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -188,6 +203,21 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
   const [editRole, setEditRole] = useState('client');
   const [adding, setAdding] = useState(false);
   const [add, setAdd] = useState<Draft>({ role: 'other', name: '', email: '' });
+  const [preview, setPreview] = useState(false);
+  const [previewFields, setPreviewFields] = useState<PreviewField[]>([]);
+  // Load the placed fields so the agent can visually confirm who signs where before a resend.
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/crm/form-submissions/${doc.id}`, { headers: authOf(authToken) })
+      .then(r => r.json())
+      .then(j => {
+        if (!alive) return;
+        const vals: Array<Record<string, unknown>> = Array.isArray(j.submission?.values) ? j.submission.values : [];
+        setPreviewFields(vals.filter(v => ['signature', 'initial', 'date'].includes(String(v.type))).map(v => ({ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: String(v.signerRole || 'client') })));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [doc.id, authToken]);
   if (!env) { return <div style={{ fontFamily: "'DM Sans',sans-serif" }}><button onClick={onBack} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13 }}>‹ Back</button></div>; }
   const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
   const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
@@ -281,10 +311,13 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
       )}
 
       <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 14, paddingTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-        {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280' }}>PDF ↗</a>}
+        {doc.url && <button onClick={() => setPreview(true)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4', background: '#fdf6e9', fontWeight: 800 }}>👁 Review — who signs where</button>}
         <span style={{ flex: 1 }} />
         <button disabled={busy} onClick={() => { if (window.confirm('Cancel this signature request? Signers can no longer sign; the document stays so you can edit + re-send.')) act({ action: 'void' }, 'Signature request cancelled', true); }} style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Cancel request</button>
       </div>
+      {preview && doc.url && (
+        <SignPreviewModal url={doc.url} fields={previewFields} signerLabel={(role) => { const s = signers.find(x => x.signer_role === role); return s ? `${s.name}${s.status === 'signed' || s.signed_at ? ' ✓' : ''}` : roleLabel(role); }} onClose={() => setPreview(false)} />
+      )}
     </div>
   );
 }
