@@ -10658,7 +10658,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           submissionId={dealFormEditor.submissionId}
           authToken={session?.access_token}
           isAdmin={isAdmin}
-          deals={deals}
+          // No `deals` prop on purpose: the doc is already bound to this deal, so
+          // the deal picker stays hidden and the toolbar matches the Properties
+          // editor. dealSel seeds from dealId, so it still saves to the deal.
           dealId={activeDeal?.id}
           businessUnit={businessUnit}
           fieldPrefill={{ ...agentPrefill, ...dealPrefill(activeDeal) }}
