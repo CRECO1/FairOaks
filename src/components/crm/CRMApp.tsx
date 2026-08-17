@@ -22,6 +22,7 @@ import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
 import MentionTextarea from '@/components/crm/MentionTextarea';
+import LoiPurchaseBuilder from '@/components/crm/LoiPurchaseBuilder';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -83,6 +84,8 @@ const CLIENT_TYPE_TO_DEAL: Record<string, string> = {
   'Tenant': 'Tenant Lease',
   'Landlord/Investor': 'Landlord Listing',
 };
+// The LOI to Purchase is a dynamic term-list builder, not the overlay editor.
+const LOI_PURCHASE_CODE = 'LOI-PURCHASE';
 const TYPE_COLORS: Record<string, string> = {
   'Buyer Purchase': 'background:#dbeafe;color:#1e4d8c',
   'Tenant Lease': 'background:#d1fae5;color:#2d5a3d',
@@ -463,6 +466,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
   const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
+  const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
@@ -1063,12 +1067,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadCrmForms = useCallback(async () => {
     try { const r = await authGet(`/api/crm/forms?business_unit=${businessUnit}`); const j = await r.json(); setCrmForms(j.forms ?? []); } catch { /* ignore */ }
   }, [authGet, businessUnit]);
-  const openFormEditor = useCallback(async (form: { id: string; name: string; url?: string | null }, submissionId?: string) => {
+  const openFormEditor = useCallback(async (form: { id: string; name: string; url?: string | null }, submissionId?: string, formCode?: string) => {
+    // The LOI to Purchase opens in its own term-list builder, matching Properties.
+    const code = formCode || crmForms.find(f => f.id === form.id)?.form_code;
+    if (code === LOI_PURCHASE_CODE) { setLoiDoc({ formId: form.id, name: form.name, submissionId }); return; }
     let url = form.url ?? null;
     if (!url) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
     if (!url) { showToast('Could not open the form'); return; }
     setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
-  }, [authGet]); // eslint-disable-line
+  }, [authGet, crmForms]); // eslint-disable-line
   // Attach a packet's forms (blank, pre-linked submissions) to any deal by id.
   // Skips any form name not in the library (e.g. before its PDF is uploaded).
   // Returns how many were attached; pass formsCache to avoid a refetch per call.
@@ -7951,9 +7958,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         if (!dealFormPick) return;
                         if (isWaiting) {
                           const f = waiting.find(w => w.id === dealFormPick.slice(4));
-                          if (f) openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id);
+                          if (f) openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code);
                         } else {
-                          const f = crmForms.find(x => x.id === dealFormPick.slice(5));
+                          const f = crmForms.find(x => x.id === dealFormPick.slice(4));
                           if (f) addFormToDeal({ id: f.id, name: f.name });
                         }
                       };
@@ -7999,7 +8006,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}</div>
                           </div>
                           {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
-                          <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
+                          <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
                         </div>
                       );
                       if (inUse.length === 0) {
@@ -10661,6 +10668,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
         />
       )}
+
+      {/* LOI-to-Purchase term-list builder — same editor Properties uses */}
+      {loiDoc && (() => {
+        const client = activeDeal ? clients.find(c => c.id === activeDeal.client_id) : null;
+        return (
+          <LoiPurchaseBuilder
+            formId={loiDoc.formId}
+            name={loiDoc.name}
+            submissionId={loiDoc.submissionId}
+            dealId={activeDeal?.id}
+            businessUnit={businessUnit}
+            authToken={session?.access_token}
+            prefill={{
+              agentName: profile ? `${profile.first_name} ${profile.last_name}`.trim() : '',
+              agentEmail: profile?.email || '',
+              agentPhone: profile?.phone || '',
+              propertyAddress: activeDeal?.property || '',
+              purchaser: client ? (client.business_name?.trim() || `${client.first_name} ${client.last_name}`.trim()) : (activeDeal?.client || ''),
+            }}
+            onToast={showToast}
+            onClose={() => setLoiDoc(null)}
+            onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
+          />
+        );
+      })()}
 
       {/* Toast */}
       {toast && (

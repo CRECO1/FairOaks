@@ -192,6 +192,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [crmForms, setCrmForms] = useState<FormTemplate[]>([]);
   const [listingForms, setListingForms] = useState<FormSubmission[]>([]);
   const [formPicker, setFormPicker] = useState(false);
+  // Per-deal "add a form" dropdown on the Deals tab (mirrors the deal Docs tab).
+  const [dealFormPick, setDealFormPick] = useState<Record<string, string>>({});
+  const [dealFormAdding, setDealFormAdding] = useState<string | null>(null);
   const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string } | null>(null);
 
@@ -454,8 +457,20 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (res.ok) { setDeals(prev => prev.filter(d => d.id !== dealId)); onToast('Deal unlinked'); }
   }
 
-  function fillFormForDeal(dealId: string) { setFormDealId(dealId); loadCrmForms(); setFormPicker(true); }
   function editDealForm(dealId: string, form: { id: string; name: string }, submissionId: string, formCode?: string) { setFormDealId(dealId); openFormEditor(form, submissionId, formCode); }
+
+  // Add one library form to a deal as a blank submission — same flow as the
+  // deal's own Docs tab, so a form picked here lands in "Waiting to be filled".
+  async function addFormToDeal(dealId: string, form: FormTemplate) {
+    setDealFormAdding(dealId);
+    const res = await fetch('/api/crm/form-submissions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ form_id: form.id, deal_id: dealId, business_unit: businessUnit, title: form.name, values: [] }),
+    }).catch(() => null);
+    if (res?.ok) { await loadDealForms(dealId); setDealFormPick(prev => ({ ...prev, [dealId]: '' })); onToast(`✓ Added ${form.name}`); }
+    else onToast('Could not add that form');
+    setDealFormAdding(null);
+  }
 
   function openSendModal(d: Deal, f: FormSubmission) {
     const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
@@ -1098,10 +1113,27 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       {deals.map(d => {
                         const agent = profiles.find(p => p.id === d.agent_id);
                         const chip = STAGE_CHIP[d.stage || 'Prospect'] || STAGE_CHIP.Prospect;
-                        const docs = dealForms[d.id] ?? [];
+                        const allDocs = dealForms[d.id] ?? [];
+                        // Filled docs get a row; blanks live in the dropdown below.
+                        const docs = allDocs.filter(f => f.url);
+                        const waiting = allDocs.filter(f => !f.url);
+                        const onDeal = new Set(allDocs.map(f => f.form_id).filter(Boolean) as string[]);
+                        const library = crmForms.filter(fm => !onDeal.has(fm.id));
+                        const pick = dealFormPick[d.id] ?? '';
+                        const pickIsWaiting = pick.startsWith('sub:');
+                        const runPick = () => {
+                          if (!pick) return;
+                          if (pickIsWaiting) {
+                            const f = waiting.find(w => w.id === pick.slice(4));
+                            if (f) editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code);
+                          } else {
+                            const fm = crmForms.find(x => x.id === pick.slice(4));
+                            if (fm) addFormToDeal(d.id, fm);
+                          }
+                        };
                         return (
                           <div key={d.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fbfbfa', borderBottom: docs.length ? '1px solid #f3f4f6' : 'none' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', background: '#fbfbfa', borderBottom: '1px solid #f3f4f6' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                   <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1a1a' }}>{d.client || 'Unnamed'}</span>
@@ -1111,8 +1143,35 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                   {d.type || '—'}{d.value ? ` · ${fmt$(d.value)}` : ''}{agent ? ` · ${agent.first_name} ${agent.last_name}` : ''}
                                 </div>
                               </div>
-                              <button onClick={() => fillFormForDeal(d.id)} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
                               <button onClick={() => unlinkDeal(d.id)} title="Remove from property" style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 7, color: '#9ca3af', fontSize: 13, cursor: 'pointer', padding: '5px 8px', flexShrink: 0 }}>✕</button>
+                            </div>
+                            {/* Add a form to this deal — blanks waiting first, then the library */}
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 14px 0', flexWrap: 'wrap' }}>
+                              <select value={pick} onChange={e => setDealFormPick(prev => ({ ...prev, [d.id]: e.target.value }))}
+                                style={{ flex: 1, minWidth: 190, padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", cursor: 'pointer' }}>
+                                <option value="">— Add a form to this deal —</option>
+                                {waiting.length > 0 && (
+                                  <optgroup label={`Waiting to be filled · ${waiting.length}`}>
+                                    {waiting.map(f => (
+                                      <option key={f.id} value={`sub:${f.id}`}>
+                                        {f.title || f.crm_forms?.name || 'Form'}{f.crm_forms?.form_code ? ` · ${f.crm_forms.form_code}` : ''}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {library.length > 0 && (
+                                  <optgroup label="All forms">
+                                    {library.map(fm => (
+                                      <option key={fm.id} value={`lib:${fm.id}`}>{fm.name}{fm.form_code ? ` · ${fm.form_code}` : ''}</option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                              <button onClick={runPick} disabled={!pick || dealFormAdding === d.id}
+                                style={{ padding: '7px 14px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: 'none', flexShrink: 0, fontFamily: "'DM Sans',sans-serif",
+                                  background: pick ? '#c9922c' : '#e5e7eb', color: pick ? '#fff' : '#9ca3af', cursor: pick && dealFormAdding !== d.id ? 'pointer' : 'default' }}>
+                                {dealFormAdding === d.id ? 'Adding…' : pickIsWaiting ? '✍️ Fill' : '+ Add'}
+                              </button>
                             </div>
                             {docs.length > 0 && (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '10px 14px' }}>
