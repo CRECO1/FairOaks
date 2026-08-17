@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const caller = await getCrmUser(req);
   if (!caller) return unauthorized();
   const body = await req.json();
-  const { name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, year_built, description, notes, highlights, listing_agent_id, assigned_agent_ids, is_restricted, business_unit } = body;
+  const { name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, year_built, description, notes, highlights, flyer_type, co_agent_id, listing_agent_id, assigned_agent_ids, is_restricted, business_unit } = body;
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_listings').insert({
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     asking_price: asking_price || null, sq_ft: sq_ft || null,
     lot_size: lot_size || null, year_built: year_built || null,
     description: description || null, notes: notes || null, highlights: highlights || null,
+    flyer_type: flyer_type || null, co_agent_id: co_agent_id || null,
     // Owner defaults to the creator so sharing has a natural owner from day one.
     listing_agent_id: listing_agent_id || caller.id,
     assigned_agent_ids: Array.isArray(assigned_agent_ids) ? assigned_agent_ids : [],

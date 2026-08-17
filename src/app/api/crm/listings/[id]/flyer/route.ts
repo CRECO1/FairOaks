@@ -36,9 +36,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { data: L } = await supabase.from('crm_listings').select('*').eq('id', id).single();
   if (!L) return notFound('Listing not found');
 
-  const agent = L.listing_agent_id
-    ? (await supabase.from('crm_profiles').select('first_name, last_name, email, phone').eq('id', L.listing_agent_id).maybeSingle()).data as Record<string, string> | null
+  const loadAgent = async (uid?: string | null) => uid
+    ? (await supabase.from('crm_profiles').select('first_name, last_name, email, phone').eq('id', uid).maybeSingle()).data as Record<string, string> | null
     : null;
+  const [agent, coAgent] = await Promise.all([loadAgent(L.listing_agent_id), loadAgent(L.co_agent_id)]);
 
   // Hero (first photo) + floor plan (first floor_plan image).
   const { data: files } = await supabase.from('crm_listing_files').select('storage_path, file_type, category').eq('listing_id', id);
@@ -56,11 +57,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const floorPlan = await pickImage(f => f.category === 'floor_plan');
 
   // Lease vs sale + price. asking_price doubles as a $/SF/yr rate (small) or a total.
+  // An explicit flyer_type ('lease'|'sale') wins; otherwise infer from magnitude/type.
   const ap = Number(L.asking_price) || 0;
   const isRate = ap > 0 && ap < 1000;
-  const isSale = !isRate && (ap >= 1000 || L.status === 'sold' || L.type === 'Land');
+  const inferredSale = !isRate && (ap >= 1000 || L.status === 'sold' || L.type === 'Land');
+  const isSale = L.flyer_type === 'sale' ? true : L.flyer_type === 'lease' ? false : inferredSale;
   const badge = isSale ? 'FOR SALE' : 'FOR LEASE';
-  const statPrice = ap <= 0 ? 'Call for pricing' : isRate ? `$${ap.toFixed(2)} /SF/YR` : money(ap);
+  const statPrice = ap <= 0 ? 'Call for pricing'
+    : isSale ? money(ap)
+    : isRate ? `$${ap.toFixed(2)} /SF/YR` : `${money(ap)} /YR`;
   const statSize = L.sq_ft ? `${Number(L.sq_ft).toLocaleString()} SF` : (L.lot_size ? String(L.lot_size) : '—');
 
   const address = [L.address, L.city, L.state, L.zip].filter(Boolean).join(', ') || L.name || 'Property';
@@ -73,15 +78,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     staticMap({ center: address, zoom: '16', size: '576x330', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` }),
   ]);
 
-  const agentName = agent ? `${agent.first_name ?? ''} ${agent.last_name ?? ''}`.trim() : '';
-  const contacts = [agent?.email, agent?.phone, web].filter(Boolean) as string[];
+  const nameOf = (a: Record<string, string> | null) => a ? `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() : '';
+  const agentNames = [nameOf(agent), nameOf(coAgent)].filter(Boolean);
+  const contacts = (coAgent
+    ? [agent?.email, coAgent?.email, agent?.phone || coAgent?.phone]
+    : [agent?.email, agent?.phone, web]).filter(Boolean) as string[];
 
   const bytes = await renderFlyer({
     badge, address,
     description: L.description || L.notes || '',
     highlights: String(L.highlights || '').split('\n').map(s => s.trim()).filter(Boolean),
     statPrice, statSize,
-    agentNames: agentName ? [agentName] : [],
+    agentNames,
     contacts,
     hero, mapBytes, aerialBytes, floorPlan,
     fontBold: new Uint8Array(Buffer.from(OSWALD_BOLD_B64, 'base64')),

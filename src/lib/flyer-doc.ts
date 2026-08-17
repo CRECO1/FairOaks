@@ -150,15 +150,21 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   p1.drawRectangle({ x: rightX, y: tileY, width: rightW, height: tileH, color: BLACK });
   const half = rightW / 2;
   p1.drawRectangle({ x: rightX + half - 0.5, y: tileY + 8, width: 1, height: tileH - 16, color: rgb(0.3, 0.31, 0.34) });
-  const tile = (cx: number, cw: number, label: string, value: string) => {
-    // small gold glyph
-    p1.drawRectangle({ x: cx + 12, y: tileY + tileH / 2 - 7, width: 14, height: 14, color: GOLD, opacity: 0.9 });
+  const tile = (cx: number, cw: number, kind: 'price' | 'size', value: string) => {
+    // Vector icon (drawSvgPath anchors at the top-left, SVG y points down from there).
+    const ix = cx + 12, iyTop = tileY + tileH / 2 + 7.5;
+    if (kind === 'price') {
+      p1.drawSvgPath('M6 1 L15 1 L15 15 L6 15 L1 8 Z', { x: ix, y: iyTop, color: GOLD });
+      p1.drawEllipse({ x: ix + 5, y: iyTop - 8, xScale: 1.5, yScale: 1.5, color: BLACK });
+    } else {
+      p1.drawSvgPath('M1 1 L15 1 L15 15 L1 15 Z M1 8 L15 8 M8 1 L8 15', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
+    }
     const v = sanitize(value) || '—';
     const vs = fitSize(v, osw, cw - 44, 15, 8);
-    p1.drawText(v, { x: cx + 34, y: tileY + tileH / 2 - vs * 0.34, size: vs, font: osw, color: WHITE });
+    p1.drawText(v, { x: cx + 36, y: tileY + tileH / 2 - vs * 0.34, size: vs, font: osw, color: WHITE });
   };
-  tile(rightX, half, 'PRICE', input.statPrice);
-  tile(rightX + half, half, 'SIZE', input.statSize);
+  tile(rightX, half, 'price', input.statPrice);
+  tile(rightX + half, half, 'size', input.statSize);
 
   // Right: location map
   const mapTop = tileY - 12, mapBottom = 116, mapH = mapTop - mapBottom;

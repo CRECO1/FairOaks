@@ -28,6 +28,8 @@ interface Listing {
   description?: string;
   notes?: string;
   highlights?: string | null;
+  flyer_type?: string | null;
+  co_agent_id?: string | null;
   listing_agent_id?: string;
   assigned_agent_ids?: string[];
   is_restricted?: boolean;
@@ -144,7 +146,7 @@ function fmtBytes(n?: number | null) {
 const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
-  lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '',
+  lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '', co_agent_id: '', flyer_type: '',
 };
 
 // Signer-role options (shared by the send modal's role picker + placed-field labels).
@@ -332,6 +334,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       sq_ft: l.sq_ft != null ? String(l.sq_ft) : '',
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
       description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '',
+      co_agent_id: l.co_agent_id ?? '', flyer_type: l.flyer_type ?? '',
       listing_agent_id: l.listing_agent_id ?? '',
     });
     setDirty(false);
@@ -743,12 +746,29 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           <div>{LBL('Lot Size')}<input style={INP} value={form.lot_size} onChange={e => set('lot_size', e.target.value)} placeholder="e.g. 0.85 acres" /></div>
           <div>{LBL('Year Built')}<input style={INP} value={form.year_built} onChange={e => set('year_built', e.target.value)} placeholder="e.g. 2005" /></div>
         </div>
-        <div>
-          {LBL('Listing Agent')}
-          <select style={INP} value={form.listing_agent_id} onChange={e => set('listing_agent_id', e.target.value)}>
-            <option value="">— Unassigned —</option>
-            {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-          </select>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
+          <div>
+            {LBL('Listing Agent')}
+            <select style={INP} value={form.listing_agent_id} onChange={e => set('listing_agent_id', e.target.value)}>
+              <option value="">— Unassigned —</option>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+            </select>
+          </div>
+          <div>
+            {LBL('Co-listing Agent (flyer)')}
+            <select style={INP} value={form.co_agent_id} onChange={e => set('co_agent_id', e.target.value)}>
+              <option value="">— None —</option>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
+            </select>
+          </div>
+          <div>
+            {LBL('Flyer Heading')}
+            <select style={INP} value={form.flyer_type} onChange={e => set('flyer_type', e.target.value)}>
+              <option value="">Auto (from price)</option>
+              <option value="lease">For Lease</option>
+              <option value="sale">For Sale</option>
+            </select>
+          </div>
         </div>
         <div>
           {LBL('Description')}
