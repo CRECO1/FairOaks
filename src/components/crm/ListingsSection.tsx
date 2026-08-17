@@ -213,7 +213,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [envMap, setEnvMap] = useState<Record<string, Envelope>>({}); // submission_id -> envelope
   const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string; formId?: string } | null>(null);
   const [sendSigFields, setSendSigFields] = useState<number | null>(null);
-  const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string; include: boolean }[]>([]);
+  const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
+  const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
   const [sendMsg, setSendMsg] = useState('');
   const [sendBusy, setSendBusy] = useState(false);
   const [showMoreForms, setShowMoreForms] = useState(false);
@@ -442,12 +443,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   function openSendModal(d: Deal, f: FormSubmission) {
     const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
-    const agent = profiles.find(p => p.id === (active?.listing_agent_id || d.agent_id));
-    setSendSigners([
-      { role: 'client', name: d.client || '', email: d.client_email || '', include: true },
-      { role: 'landlord', name: landlord ? (landlord.business_name || `${landlord.first_name} ${landlord.last_name}`.trim()) : '', email: landlord?.email || '', include: !!landlord?.email },
-      { role: 'agent', name: agent ? `${agent.first_name} ${agent.last_name}`.trim() : '', email: '', include: false },
-    ]);
+    const seed: { role: string; name: string; email: string }[] = [{ role: 'client', name: d.client || '', email: d.client_email || '' }];
+    if (landlord?.email) seed.push({ role: 'landlord', name: landlord.business_name || `${landlord.first_name} ${landlord.last_name}`.trim(), email: landlord.email });
+    setSendSigners(seed);
+    setSendPick(null);
     setSendMsg('');
     setSendSigFields(null);
     setSendModal({ submissionId: f.id, dealId: d.id, title: f.title || f.crm_forms?.name || 'Document', formId: f.form_id });
@@ -460,7 +459,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   async function sendForSignature() {
     if (!sendModal) return;
-    const signers = sendSigners.filter(s => s.include && s.email.includes('@') && s.name.trim())
+    const signers = sendSigners.filter(s => s.email.includes('@') && s.name.trim())
       .map((s, i) => ({ signer_role: s.role, name: s.name.trim(), email: s.email.trim(), signing_order: i + 1 }));
     if (signers.length === 0) { onToast('Add at least one signer with a valid email'); return; }
     setSendBusy(true);
@@ -1410,20 +1409,39 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
             ))}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {sendSigners.map((s, i) => (
-                <div key={s.role} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', background: s.include ? '#fff' : '#fafafa' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: s.include ? 8 : 0, cursor: 'pointer' }}>
-                    <input type="checkbox" checked={s.include} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, include: e.target.checked } : x))} style={{ accentColor: '#c9922c', width: 15, height: 15 }} />
-                    <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, color: '#6b7280' }}>{i + 1}. {s.role}</span>
-                  </label>
-                  {s.include && (
+              {sendSigners.map((s, i) => {
+                const q = s.name.trim().toLowerCase();
+                const sugg = sendPick === i && q ? clients.filter(c => (c.business_name || `${c.first_name} ${c.last_name}`).toLowerCase().includes(q)).slice(0, 6) : [];
+                const rc: React.CSSProperties = { fontSize: 12, fontWeight: 800, lineHeight: 1, color: '#8a6d3b', background: '#fbf6e9', border: '1px solid #e6d3a2', borderRadius: 5, cursor: 'pointer', padding: '3px 6px' };
+                return (
+                  <div key={i} style={{ border: '1px solid #eef0f2', borderRadius: 10, padding: 10, background: '#fff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 800, color: '#9ca3af' }}>{i + 1}.</span>
+                      <select value={s.role} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, role: e.target.value } : x))} style={{ ...INP, width: 'auto', flex: '0 0 118px', padding: '5px 8px', fontSize: 12.5 }}>
+                        {([['client', 'Client'], ['landlord', 'Landlord'], ['agent', 'Agent'], ['seller', 'Seller'], ['buyer', 'Buyer'], ['witness', 'Witness'], ['other', 'Other']] as const).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                      </select>
+                      <span style={{ flex: 1 }} />
+                      <button onClick={() => setSendSigners(prev => { const j = i - 1; if (j < 0) return prev; const c = [...prev]; [c[i], c[j]] = [c[j], c[i]]; return c; })} disabled={i === 0} title="Move up" style={{ ...rc, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                      <button onClick={() => setSendSigners(prev => { const j = i + 1; if (j >= prev.length) return prev; const c = [...prev]; [c[i], c[j]] = [c[j], c[i]]; return c; })} disabled={i === sendSigners.length - 1} title="Move down" style={{ ...rc, opacity: i === sendSigners.length - 1 ? 0.3 : 1 }}>↓</button>
+                      {sendSigners.length > 1 && <button onClick={() => setSendSigners(prev => prev.filter((_, j) => j !== i))} title="Remove signer" style={{ ...rc, color: '#dc2626', borderColor: '#fecaca', background: '#fff' }}>✕</button>}
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <input value={s.name} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} placeholder="Name" style={{ ...INP, fontSize: 14 }} />
+                      <div style={{ position: 'relative' }}>
+                        <input value={s.name} onChange={e => { setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x)); setSendPick(i); }} onFocus={() => setSendPick(i)} onBlur={() => setTimeout(() => setSendPick(p => (p === i ? null : p)), 150)} placeholder="Name" style={{ ...INP, fontSize: 14 }} />
+                        {sugg.length > 0 && (
+                          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.1)', maxHeight: 180, overflowY: 'auto' }}>
+                            {sugg.map(c => { const nm = c.business_name || `${c.first_name} ${c.last_name}`.trim(); return (
+                              <button key={c.id} onMouseDown={() => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, name: nm, email: c.email || x.email } : x))} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 11px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: 13 }}>{nm}{c.email ? <span style={{ color: '#9ca3af', fontSize: 11 }}> · {c.email}</span> : ''}</button>
+                            ); })}
+                          </div>
+                        )}
+                      </div>
                       <input value={s.email} onChange={e => setSendSigners(prev => prev.map((x, j) => j === i ? { ...x, email: e.target.value } : x))} placeholder="Email" style={{ ...INP, fontSize: 14 }} />
                     </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
+              <button onClick={() => setSendSigners(prev => [...prev, { role: 'other', name: '', email: '' }])} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', alignSelf: 'flex-start' }}>＋ Add signer</button>
               <textarea value={sendMsg} onChange={e => setSendMsg(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', fontSize: 14 }} />
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>

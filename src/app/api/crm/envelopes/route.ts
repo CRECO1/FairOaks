@@ -119,6 +119,14 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Fetch a signer's private sign link (read-only) — for the agent to share manually.
+  if (action === 'get_link') {
+    if (!b.signer_id) return NextResponse.json({ error: 'signer_id required' }, { status: 400 });
+    const { data: signer } = await supabase.from('crm_envelope_signers').select('access_token').eq('id', b.signer_id).eq('envelope_id', env.id).maybeSingle();
+    if (!signer) return notFound('Signer not found');
+    return NextResponse.json({ url: signUrl(signer.access_token) });
+  }
+
   if (env.status === 'completed' || env.status === 'voided') {
     return NextResponse.json({ error: `This request is ${env.status} and can no longer be changed.` }, { status: 400 });
   }

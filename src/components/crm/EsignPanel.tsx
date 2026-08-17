@@ -123,6 +123,12 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
     if (!r.ok) { showToast?.(j.error || 'Action failed'); return; }
     showToast?.(okMsg); if (back) onBack(); else onReload();
   }
+  async function copyLink(signerId: string) {
+    const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ envelope_id: env!.id, action: 'get_link', signer_id: signerId }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.url) { showToast?.(j.error || 'Could not get link'); return; }
+    try { await navigator.clipboard.writeText(j.url); showToast?.('Sign link copied ✓'); } catch { window.prompt('Copy this signer’s link:', j.url); }
+  }
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
@@ -158,6 +164,7 @@ function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
                     <>
                       {isCurrent && <button disabled={busy} onClick={() => act({ action: 'nudge' }, `Reminder sent to ${s.email} ✓`)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>🔔 Nudge</button>}
                       <button onClick={() => { setEditId(s.id); setEditEmail(s.email); }} style={mini}>✎ Fix email</button>
+                      <button onClick={() => copyLink(s.id)} title="Copy this signer's private link to share manually" style={mini}>🔗 Link</button>
                     </>
                   )}
                 </div>

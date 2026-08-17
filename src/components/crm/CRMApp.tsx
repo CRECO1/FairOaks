@@ -457,8 +457,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
   const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
-  const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null }[]>([]);
+  const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [dealFormPicker, setDealFormPicker] = useState(false);
+  const [dealFormMore, setDealFormMore] = useState(false); // "More forms" dropdown in the deal form picker
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
@@ -10561,14 +10562,40 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 16, color: '#6b7280', flexShrink: 0 }}>✕</button>
             </div>
             <div style={{ padding: 10, maxHeight: isMobile ? undefined : '52vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', ...(isMobile ? { flex: 1, minHeight: 0 } : {}) }}>
-              {crmForms.length === 0 ? <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>No forms available.</div> :
-                crmForms.map(f => (
-                  <button key={f.id} onClick={() => openFormEditor(f)} style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                    <span style={{ fontSize: 20 }}>📄</span>
-                    <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
-                  </button>
-                ))}
+              {crmForms.length === 0 ? <div style={{ padding: 20, color: '#9ca3af', textAlign: 'center' }}>No forms available.</div> : (() => {
+                const pinned = crmForms.filter(f => f.pinned);
+                const primary = pinned.length ? pinned : crmForms;
+                const extra = pinned.length ? crmForms.filter(f => !f.pinned) : [];
+                const togglePin = (f: typeof crmForms[number], e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  const next = !f.pinned;
+                  setCrmForms(prev => prev.map(x => x.id === f.id ? { ...x, pinned: next } : x));
+                  fetch(`/api/crm/forms/${f.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ pinned: next }) }).catch(() => {});
+                };
+                const row = (f: typeof crmForms[number]) => (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <button onClick={() => openFormEditor(f)} style={{ flex: 1, display: 'flex', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif", minWidth: 0 }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                      <span style={{ fontSize: 20 }}>📄</span>
+                      <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: '#1a1a1a' }}>{f.name}</span>{f.form_code && <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.form_code}</span>}</span>
+                    </button>
+                    {isAdmin && <button onClick={e => togglePin(f, e)} title={f.pinned ? 'Unpin from top' : 'Pin to top'} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: f.pinned ? '#c9922c' : '#d1d5db', padding: '6px 8px', flexShrink: 0 }}>{f.pinned ? '★' : '☆'}</button>}
+                  </div>
+                );
+                return (
+                  <>
+                    {primary.map(row)}
+                    {extra.length > 0 && (
+                      <>
+                        <button onClick={() => setDealFormMore(m => !m)} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 6, padding: '9px 12px', marginTop: 4, border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 700, color: '#6b7280' }}>
+                          <span>{dealFormMore ? '▾' : '▸'}</span> More forms ({extra.length})
+                        </button>
+                        {dealFormMore && extra.map(row)}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

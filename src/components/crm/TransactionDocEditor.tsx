@@ -269,10 +269,16 @@ export default function TransactionDocEditor({
       if (f.type === 'check') { if (f.value) pg.drawText('X', { x, y, size, font, color: ink }); continue; }
       const val = winAnsi(f.value || '');
       if (!val) continue;
-      // Field values may carry inline **bold**/*italic* markup; plain values keep the
-      // single-drawText fast path so text extraction stays clean.
-      if (hasMarkup(val)) drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size, maxW: Infinity, fonts: rich, color: ink });
-      else pg.drawText(val, { x, y, size, font, color: ink });
+      // Wrap long values to the field's width instead of running off the page; a short
+      // plain value keeps the single-drawText fast path (clean text extraction).
+      const maxW = Math.max(24, f.fw * width - 4);
+      if (hasMarkup(val)) {
+        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
+      } else if (font.widthOfTextAtSize(val, size) <= maxW) {
+        pg.drawText(val, { x, y, size, font, color: ink });
+      } else {
+        drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
+      }
     }
     return doc.save();
   }, [fields]);
@@ -537,7 +543,7 @@ export default function TransactionDocEditor({
                     onFocus={() => setSelected(f.id)}
                     stopDrag
                     style={{ width: '100%', minHeight: 0, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
-                      textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'nowrap', overflow: 'hidden' }}
+                      textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                 )}
                 {isSel && (
