@@ -16,6 +16,7 @@ import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
 import EsignPanel from '@/components/crm/EsignPanel';
+import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
@@ -458,6 +459,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
   const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [dealFormPicker, setDealFormPicker] = useState(false);
   const [dealFormMore, setDealFormMore] = useState(false); // "More forms" dropdown in the deal form picker
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
@@ -7912,21 +7914,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {dealForms.length === 0 ? (
                       <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>No forms on this deal yet. Fill a commercial/TREC form and it saves here, linked to the deal.</div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {dealForms.map(f => (
-                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '10px 14px' }}>
-                            <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
-                              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
-                            </div>
-                            {f.url && <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', flexShrink: 0 }}>PDF ↗</a>}
-                            <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                    ) : (() => {
+                      // Split into forms actively in use (a PDF has been generated) vs. blank
+                      // ones attached by a packet, still waiting to be filled into the deal.
+                      const inUse = dealForms.filter(f => f.url);
+                      const waiting = dealForms.filter(f => !f.url);
+                      const subhead = (t: string) => <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginTop: 2 }}>{t}</div>;
+                      const row = (f: typeof dealForms[number], w: boolean) => (
+                        <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w ? '#fbfbfc' : '#fffdf6', border: '1px solid ' + (w ? '#ececf0' : '#f0e2c4'), borderRadius: 8, padding: '10px 14px' }}>
+                          <span style={{ fontSize: 20, flexShrink: 0, opacity: w ? 0.5 : 1 }}>{w ? '◻️' : '📄'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: w ? '#6b7280' : '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}</div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                          {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
+                          <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
+                        </div>
+                      );
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {inUse.length > 0 && (<>
+                            {waiting.length > 0 && subhead(`In use · ${inUse.length}`)}
+                            {inUse.map(f => row(f, false))}
+                          </>)}
+                          {waiting.length > 0 && (<>
+                            {subhead(`Waiting to be filled · ${waiting.length}`)}
+                            {waiting.map(f => row(f, true))}
+                          </>)}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
                   {/* Upload area */}
@@ -10602,6 +10619,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       )}
 
       {/* The fillable editor, launched from a deal */}
+      {/* In-app document preview (view + print, no forced download) */}
+      {previewFile && <DocPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+
       {dealFormEditor && (
         <TransactionDocEditor
           form={dealFormEditor.form}
