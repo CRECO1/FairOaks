@@ -1,0 +1,295 @@
+'use client';
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+// The property's rent roll — one editable row per suite, replacing the Excel master
+// (rent roll + suite directory + mailbox/key log were all keyed by suite, so they're
+// one table here). Edits save on blur and mirror the tenant onto the Floor Plan.
+// Below it: the building's vendor list and building-info notes.
+
+export interface RentRollRow {
+  id: string; suite?: string | null; building?: string | null; tenant_name?: string | null;
+  size_sf?: number | null; lease_type?: string | null; lease_start?: string | null; lease_expiration?: string | null;
+  monthly_rent?: number | null; annual_rent?: number | null; rent_psf?: number | null; pct_share?: number | null;
+  mailbox_box?: string | null; keys?: number | null; email?: string | null; contact_name?: string | null;
+  renewal_status?: string | null; notes?: string | null; sort_order?: number | null;
+}
+interface VendorRow { id: string; category: string; label?: string | null; vendor?: string | null; contact?: string | null; phone?: string | null; notes?: string | null; sort_order?: number | null }
+
+const GOLD = '#c9922c';
+const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
+const isVacant = (r: RentRollRow) => !r.tenant_name || /^vacant$/i.test(r.tenant_name.trim());
+const money = (n?: number | null) => (n === null || n === undefined || n === '' as unknown) ? '' : '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+// Lease status straight from the expiration date — same bands (and colours) the
+// spreadsheet used, so the sheet's red/orange/yellow key still reads the same.
+function leaseStatus(exp?: string | null): { label: string; bg: string; color: string } | null {
+  if (!exp) return null;
+  const days = Math.floor((new Date(exp + 'T00:00:00').getTime() - new Date(new Date().toDateString()).getTime()) / 86400000);
+  if (days < 0) return { label: 'Expired', bg: '#fee2e2', color: '#b91c1c' };
+  if (days <= 60) return { label: `${days}d left`, bg: '#fee2e2', color: '#b91c1c' };
+  if (days <= 90) return { label: '61-90 days', bg: '#ffedd5', color: '#c2410c' };
+  if (days <= 120) return { label: '91-120 days', bg: '#fef9c3', color: '#a16207' };
+  return { label: 'Current', bg: '#f0fdf4', color: '#15803d' };
+}
+
+const TH: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '7px 8px', fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 800, textAlign: 'left', whiteSpace: 'nowrap' };
+const TD: React.CSSProperties = { borderBottom: '1px solid #f1f2f4', padding: 0, verticalAlign: 'middle' };
+
+// One inline-editable cell: commits on blur (or Enter), reverts on Escape.
+function Cell({ value, onSave, align, width, placeholder, type = 'text', bold }: {
+  value: string | number | null | undefined; onSave: (v: string) => void;
+  align?: 'left' | 'right'; width?: number; placeholder?: string; type?: string; bold?: boolean;
+}) {
+  const [v, setV] = useState(value ?? '');
+  const dirty = useRef(false);
+  useEffect(() => { if (!dirty.current) setV(value ?? ''); }, [value]);
+  return (
+    <input
+      value={v as string | number}
+      type={type}
+      placeholder={placeholder}
+      onChange={e => { dirty.current = true; setV(e.target.value); }}
+      onBlur={() => { if (!dirty.current) return; dirty.current = false; if (String(v ?? '') !== String(value ?? '')) onSave(String(v ?? '')); }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        if (e.key === 'Escape') { dirty.current = false; setV(value ?? ''); (e.target as HTMLInputElement).blur(); }
+      }}
+      style={{ width: width ?? '100%', minWidth: width ?? 0, border: 'none', outline: 'none', background: 'transparent',
+        padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a',
+        textAlign: align ?? 'left', fontWeight: bold ? 700 : 400, boxSizing: 'border-box' }}
+      onFocus={e => { e.currentTarget.style.background = '#fffdf3'; e.currentTarget.style.boxShadow = `inset 0 0 0 2px ${GOLD}33`; }}
+      onBlurCapture={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none'; }}
+    />
+  );
+}
+
+export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
+  listingId: string; authToken?: string; isAdmin?: boolean; onToast?: (m: string) => void;
+}) {
+  const [rows, setRows] = useState<RentRollRow[]>([]);
+  const [vendors, setVendors] = useState<VendorRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [showVacant, setShowVacant] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [a, b] = await Promise.all([
+      fetch(`/api/crm/rent-roll?listing_id=${listingId}`, { headers: authOf(authToken) }).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/crm/listing-vendors?listing_id=${listingId}`, { headers: authOf(authToken) }).then(r => r.json()).catch(() => ({})),
+    ]);
+    setRows(a.rows ?? []); setVendors(b.rows ?? []); setLoading(false);
+  }, [listingId, authToken]);
+  useEffect(() => { load(); }, [load]);
+
+  // Optimistic save — the row updates on screen immediately, then persists.
+  const saveCell = async (id: string, field: keyof RentRollRow, value: string) => {
+    setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value === '' ? null : value } as RentRollRow : r));
+    const res = await fetch('/api/crm/rent-roll', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, [field]: value }) });
+    if (!res.ok) { onToast?.('Could not save that change'); load(); return; }
+    const j = await res.json().catch(() => ({}));
+    if (j.row) setRows(rs => rs.map(r => r.id === id ? j.row : r));
+  };
+  const addSuite = async () => {
+    const res = await fetch('/api/crm/rent-roll', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ listing_id: listingId, tenant_name: 'Vacant', sort_order: (rows.at(-1)?.sort_order ?? rows.length) + 1 }) });
+    if (!res.ok) { onToast?.('Could not add a suite'); return; }
+    const j = await res.json(); setRows(rs => [...rs, j.row]); onToast?.('Suite added — fill in the details');
+  };
+  const removeSuite = async (r: RentRollRow) => {
+    if (!window.confirm(`Remove suite ${r.suite || ''}${r.tenant_name ? ` (${r.tenant_name})` : ''} from the rent roll?`)) return;
+    const res = await fetch(`/api/crm/rent-roll?id=${r.id}`, { method: 'DELETE', headers: authOf(authToken) });
+    if (!res.ok) { onToast?.('Could not remove the suite'); return; }
+    setRows(rs => rs.filter(x => x.id !== r.id)); onToast?.('Suite removed');
+  };
+  const saveVendor = async (id: string, field: keyof VendorRow, value: string) => {
+    setVendors(vs => vs.map(v => v.id === id ? { ...v, [field]: value || null } as VendorRow : v));
+    const res = await fetch('/api/crm/listing-vendors', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, [field]: value }) });
+    if (!res.ok) onToast?.('Could not save that change');
+  };
+  const addVendor = async (category: 'vendor' | 'building_info') => {
+    const res = await fetch('/api/crm/listing-vendors', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ listing_id: listingId, category, sort_order: vendors.length }) });
+    if (!res.ok) { onToast?.('Could not add the row'); return; }
+    const j = await res.json(); setVendors(vs => [...vs, j.row]);
+  };
+  const removeVendor = async (id: string) => {
+    const res = await fetch(`/api/crm/listing-vendors?id=${id}`, { method: 'DELETE', headers: authOf(authToken) });
+    if (!res.ok) { onToast?.('Could not remove the row'); return; }
+    setVendors(vs => vs.filter(v => v.id !== id));
+  };
+
+  const stats = useMemo(() => {
+    const occ = rows.filter(r => !isVacant(r));
+    const vac = rows.filter(isVacant);
+    const sf = rows.reduce((s, r) => s + (Number(r.size_sf) || 0), 0);
+    const occSf = occ.reduce((s, r) => s + (Number(r.size_sf) || 0), 0);
+    const mo = occ.reduce((s, r) => s + (Number(r.monthly_rent) || 0), 0);
+    const yr = occ.reduce((s, r) => s + (Number(r.annual_rent) || Number(r.monthly_rent || 0) * 12), 0);
+    const in12 = occ.filter(r => { if (!r.lease_expiration) return false; const d = (new Date(r.lease_expiration).getTime() - Date.now()) / 86400000; return d < 365; });
+    return { occ: occ.length, vac: vac.length, sf, occSf, mo, yr, in12: in12.length, in12Sf: in12.reduce((s, r) => s + (Number(r.size_sf) || 0), 0) };
+  }, [rows]);
+
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return rows.filter(r => (showVacant || !isVacant(r)) &&
+      (!needle || [r.suite, r.tenant_name, r.email, r.contact_name, r.mailbox_box, r.notes].some(v => String(v ?? '').toLowerCase().includes(needle))));
+  }, [rows, q, showVacant]);
+
+  const exportCsv = () => {
+    const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'rent_psf', 'mailbox_box', 'keys', 'email', 'contact_name', 'renewal_status', 'notes'];
+    const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Rent/SF', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
+    const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const csv = [head.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = 'rent-roll.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  const tile = (label: string, value: string, sub?: string) => (
+    <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 13px', minWidth: 108 }}>
+      <div style={{ fontSize: 10, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 17, fontWeight: 800, color: '#1a1a1a', marginTop: 2, fontFamily: "'Cormorant Garamond',serif" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10.5, color: '#9ca3af' }}>{sub}</div>}
+    </div>
+  );
+
+  if (loading) return <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>Loading rent roll…</div>;
+
+  const vendorRows = vendors.filter(v => v.category === 'vendor');
+  const infoRows = vendors.filter(v => v.category === 'building_info');
+
+  return (
+    <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
+      {/* Summary */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        {tile('Occupied', String(stats.occ), `${stats.vac} vacant`)}
+        {tile('Leased SF', stats.occSf.toLocaleString(), `${stats.sf.toLocaleString()} total`)}
+        {tile('Monthly', money(stats.mo))}
+        {tile('Annual', money(stats.yr))}
+        {tile('Exp. 12 mo', String(stats.in12), `${stats.in12Sf.toLocaleString()} SF at risk`)}
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search suite, tenant, email…"
+          style={{ flex: 1, minWidth: 190, padding: '7px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={showVacant} onChange={e => setShowVacant(e.target.checked)} /> Show vacant
+        </label>
+        <button onClick={exportCsv} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>⤓ CSV</button>
+        <button onClick={addSuite} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '7px 13px', cursor: 'pointer' }}>＋ Suite</button>
+      </div>
+
+      {/* Grid */}
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', maxHeight: 560, background: '#fff' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1180 }}>
+          <thead>
+            <tr>
+              <th style={{ ...TH, minWidth: 62 }}>Suite</th>
+              <th style={{ ...TH, minWidth: 44 }}>Bldg</th>
+              <th style={{ ...TH, minWidth: 168 }}>Tenant</th>
+              <th style={{ ...TH, minWidth: 66, textAlign: 'right' }}>Sq Ft</th>
+              <th style={{ ...TH, minWidth: 106 }}>Lease Exp</th>
+              <th style={{ ...TH, minWidth: 92 }}>Status</th>
+              <th style={{ ...TH, minWidth: 86, textAlign: 'right' }}>Monthly</th>
+              <th style={{ ...TH, minWidth: 86, textAlign: 'right' }}>Annual</th>
+              <th style={{ ...TH, minWidth: 64, textAlign: 'right' }}>$/SF</th>
+              <th style={{ ...TH, minWidth: 62 }}>Type</th>
+              <th style={{ ...TH, minWidth: 58 }}>Box</th>
+              <th style={{ ...TH, minWidth: 48 }}>Keys</th>
+              <th style={{ ...TH, minWidth: 178 }}>Email</th>
+              <th style={{ ...TH, minWidth: 130 }}>Contact</th>
+              <th style={{ ...TH, minWidth: 160 }}>Notes</th>
+              <th style={{ ...TH, width: 34 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(r => {
+              const st = leaseStatus(r.lease_expiration);
+              const vac = isVacant(r);
+              return (
+                <tr key={r.id} style={{ background: vac ? '#fbfbfc' : '#fff' }}>
+                  <td style={TD}><Cell value={r.suite} bold onSave={v => saveCell(r.id, 'suite', v)} /></td>
+                  <td style={TD}><Cell value={r.building} onSave={v => saveCell(r.id, 'building', v)} /></td>
+                  <td style={TD}><Cell value={r.tenant_name} bold={!vac} placeholder="Vacant" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>
+                  <td style={TD}><Cell value={r.size_sf} align="right" type="number" onSave={v => saveCell(r.id, 'size_sf', v)} /></td>
+                  <td style={TD}><Cell value={r.lease_expiration} type="date" onSave={v => saveCell(r.id, 'lease_expiration', v)} /></td>
+                  <td style={{ ...TD, padding: '0 8px' }}>
+                    {st && !vac ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.label}</span>
+                      : <span style={{ fontSize: 11, color: '#c0c4cc' }}>{vac ? 'Vacant' : '—'}</span>}
+                  </td>
+                  <td style={TD}><Cell value={r.monthly_rent} align="right" type="number" onSave={v => saveCell(r.id, 'monthly_rent', v)} /></td>
+                  <td style={TD}><Cell value={r.annual_rent} align="right" type="number" onSave={v => saveCell(r.id, 'annual_rent', v)} /></td>
+                  <td style={TD}><Cell value={r.rent_psf} align="right" type="number" onSave={v => saveCell(r.id, 'rent_psf', v)} /></td>
+                  <td style={TD}><Cell value={r.lease_type} onSave={v => saveCell(r.id, 'lease_type', v)} /></td>
+                  <td style={TD}><Cell value={r.mailbox_box} onSave={v => saveCell(r.id, 'mailbox_box', v)} /></td>
+                  <td style={TD}><Cell value={r.keys} align="right" type="number" onSave={v => saveCell(r.id, 'keys', v)} /></td>
+                  <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
+                  <td style={TD}><Cell value={r.contact_name} onSave={v => saveCell(r.id, 'contact_name', v)} /></td>
+                  <td style={TD}><Cell value={r.notes} onSave={v => saveCell(r.id, 'notes', v)} /></td>
+                  <td style={{ ...TD, textAlign: 'center' }}>
+                    {isAdmin && <button onClick={() => removeSuite(r)} title="Remove suite" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
+                  </td>
+                </tr>
+              );
+            })}
+            {visible.length === 0 && <tr><td colSpan={16} style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No suites match.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>
+        Click any cell to edit — changes save automatically. Tenant, size and lease expiration also update the Floor Plan for that suite.
+      </div>
+
+      {/* Vendors */}
+      <div style={{ marginTop: 26 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
+          <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Vendors</div>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => addVendor('vendor')} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Vendor</button>
+        </div>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+            <thead><tr>
+              <th style={{ ...TH, minWidth: 168 }}>Service</th><th style={{ ...TH, minWidth: 160 }}>Vendor</th>
+              <th style={{ ...TH, minWidth: 120 }}>Contact</th><th style={{ ...TH, minWidth: 124 }}>Phone</th>
+              <th style={{ ...TH, minWidth: 180 }}>Notes</th><th style={{ ...TH, width: 34 }} />
+            </tr></thead>
+            <tbody>
+              {vendorRows.map(v => (
+                <tr key={v.id}>
+                  <td style={TD}><Cell value={v.label} bold onSave={x => saveVendor(v.id, 'label', x)} /></td>
+                  <td style={TD}><Cell value={v.vendor} onSave={x => saveVendor(v.id, 'vendor', x)} /></td>
+                  <td style={TD}><Cell value={v.contact} onSave={x => saveVendor(v.id, 'contact', x)} /></td>
+                  <td style={TD}><Cell value={v.phone} onSave={x => saveVendor(v.id, 'phone', x)} /></td>
+                  <td style={TD}><Cell value={v.notes} onSave={x => saveVendor(v.id, 'notes', x)} /></td>
+                  <td style={{ ...TD, textAlign: 'center' }}>{isAdmin && <button onClick={() => removeVendor(v.id)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}</td>
+                </tr>
+              ))}
+              {vendorRows.length === 0 && <tr><td colSpan={6} style={{ padding: 18, textAlign: 'center', color: '#9ca3af', fontSize: 12.5 }}>No vendors yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Building info */}
+      <div style={{ marginTop: 22 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
+          <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Building Information</div>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => addVendor('building_info')} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Item</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {infoRows.map(v => (
+            <div key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fff', border: '1px solid #eef0f2', borderRadius: 8, padding: '2px 4px 2px 0' }}>
+              <div style={{ flex: '0 0 210px' }}><Cell value={v.label} bold onSave={x => saveVendor(v.id, 'label', x)} /></div>
+              <div style={{ flex: 1 }}><Cell value={v.notes} onSave={x => saveVendor(v.id, 'notes', x)} /></div>
+              {isAdmin && <button onClick={() => removeVendor(v.id)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '8px 6px' }}>✕</button>}
+            </div>
+          ))}
+          {infoRows.length === 0 && <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '6px 2px' }}>No building notes yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}

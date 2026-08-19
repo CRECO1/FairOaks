@@ -5,6 +5,7 @@ import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
+import RentRoll from '@/components/crm/RentRoll';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
 // coordinate-overlay editor.
@@ -170,7 +171,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // is active by the time it resolves — so A's docs/deals/envelopes can't paint
   // into B's panel.
   const activeListingIdRef = useRef<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'rentroll' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -958,8 +959,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0 }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'deals' | 'photos' | 'contacts' | 'team')}
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'rentroll', label: '📊 Rent Roll' }, { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -1098,6 +1099,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* ── Rent Roll tab (per-suite tenancy, vendors, building info) ── */}
+              {activeTab === 'rentroll' && (
+                <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} onToast={onToast} />
               )}
 
               {/* ── Deals tab (deals at this property + their documents) ── */}
