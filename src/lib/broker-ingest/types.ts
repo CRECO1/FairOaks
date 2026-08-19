@@ -73,6 +73,7 @@ export interface Extraction {
   power: string | null;              // e.g. "3-phase / 800A"
   sprinklered: string | null;        // e.g. "ESFR", "wet", "none"
   zoning: string | null;
+  elevator: boolean | null;
   listing_type: string | null;       // "For Sale" | "For Lease" | "Both"
   transaction_status: string | null; // "Available" | "Under Contract" | "Sold" | "Leased" | "Off-Market"
   sale_price: number | null;         // USD
@@ -124,6 +125,7 @@ export interface PropertyRecord {
   power: string | null;
   sprinklered: string | null;
   zoning: string | null;
+  elevator: boolean | null;
   listing_type: string | null;
   transaction_status: string | null;
   sale_price: number | null;

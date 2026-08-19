@@ -99,6 +99,7 @@ export function toRecord(e: Extraction): PropertyRecord {
     power: e.power ?? null,
     sprinklered: e.sprinklered ?? null,
     zoning: e.zoning ?? null,
+    elevator: e.elevator ?? null,
     listing_type: e.listing_type ?? null,
     transaction_status: e.transaction_status ?? 'Available',
     sale_price: e.sale_price ?? null,

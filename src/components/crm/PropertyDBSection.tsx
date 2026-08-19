@@ -42,6 +42,7 @@ interface Property {
   grade_doors?: number | null;
   parking_spaces?: number | null;
   zoning?: string;
+  elevator?: boolean | null;
   owner_name?: string;
   description?: string;
   highlights?: string;
@@ -676,6 +677,7 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
             <Field label="Dock doors" value={p.dock_doors} />
             <Field label="Grade doors" value={p.grade_doors} />
             <Field label="Parking" value={p.parking_spaces} />
+            <Field label="Elevator" value={p.elevator == null ? null : p.elevator ? 'Yes' : 'No'} />
             <Field label="Zoning" value={p.zoning} />
             <Field label="Lease type" value={p.lease_type} />
           </Group>

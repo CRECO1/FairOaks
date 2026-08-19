@@ -30,6 +30,10 @@ interface Listing {
   description?: string;
   notes?: string;
   highlights?: string | null;
+  zoning?: string | null;
+  elevator?: boolean | null;
+  grade_level_doors?: boolean | null;
+  dock_high_doors?: boolean | null;
   flyer_type?: string | null;
   co_agent_id?: string | null;
   latitude?: number | null;
@@ -151,6 +155,7 @@ const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
   lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
+  zoning: '', elevator: '', grade_level_doors: '', dock_high_doors: '',
 };
 
 // Signer-role options (shared by the send modal's role picker + placed-field labels).
@@ -348,6 +353,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
       description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '',
       co_agent_id: l.co_agent_id ?? '', flyer_type: l.flyer_type ?? '',
+      zoning: l.zoning ?? '',
+      elevator: l.elevator == null ? '' : String(l.elevator),
+      grade_level_doors: l.grade_level_doors == null ? '' : String(l.grade_level_doors),
+      dock_high_doors: l.dock_high_doors == null ? '' : String(l.dock_high_doors),
       map_pin: (l.latitude != null && l.longitude != null) ? `${l.latitude}, ${l.longitude}` : '',
       listing_agent_id: l.listing_agent_id ?? '',
     });
@@ -383,6 +392,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       body.latitude = m ? Number(m[1]) : null; body.longitude = m ? Number(m[2]) : null;
       delete (body as Record<string, unknown>).map_pin; }
     body.sq_ft        = editForm.sq_ft !== '' ? Number(editForm.sq_ft) : null;
+    for (const k of ['elevator', 'grade_level_doors', 'dock_high_doors'] as const) {
+      const v = (editForm as Record<string, string>)[k];
+      body[k] = v === '' ? null : v === 'true';     // unanswered stays unknown, not "No"
+    }
     const res = await fetch(`/api/crm/listings/${active.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -847,6 +860,27 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         <div>
           {LBL('Description')}
           <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
+          <div>{LBL('Zoning')}<input style={INP} value={form.zoning} onChange={e => set('zoning', e.target.value)} placeholder="e.g. I-1, C-2" /></div>
+          <div>
+            {LBL('Elevator')}
+            <select style={INP} value={form.elevator} onChange={e => set('elevator', e.target.value)}>
+              <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
+            </select>
+          </div>
+          <div>
+            {LBL('Grade-level doors')}
+            <select style={INP} value={form.grade_level_doors} onChange={e => set('grade_level_doors', e.target.value)}>
+              <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
+            </select>
+          </div>
+          <div>
+            {LBL('Dock-high doors')}
+            <select style={INP} value={form.dock_high_doors} onChange={e => set('dock_high_doors', e.target.value)}>
+              <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
+            </select>
+          </div>
         </div>
         <div>
           {LBL('Flyer Highlights (one per line)')}

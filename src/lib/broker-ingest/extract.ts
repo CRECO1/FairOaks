@@ -50,6 +50,7 @@ Return ONLY the JSON object, no prose, no markdown fences. Shape:
   "power": string|null,
   "sprinklered": string|null,
   "zoning": string|null,
+  "elevator": true|false|null,
   "listing_type": "For Sale"|"For Lease"|"Both"|null,
   "transaction_status": "Available"|"Under Contract"|"Sold"|"Leased"|"Off-Market"|null,
   "sale_price": number|null,
@@ -78,7 +79,7 @@ RULES:
 - "listing_company" / "listing_agent_name" / "listing_agent_phone": the listing broker firm and the primary listing agent + phone. If multiple listing agents, put the primary one here and mention the others in notes.
 - Structured spec fields — fill from the text/flyer ONLY when clearly stated, else null (NEVER invent):
   - "property_subtype" (Warehouse/Distribution, Flex, Strip Center, Freestanding, Medical Office…); "building_class" (A/B/C only).
-  - "year_built" (int); "lot_size_acres" (number); "office_sf"; "clear_height_ft" (number); "dock_doors"/"grade_doors" (counts); "power" (e.g. "3-phase / 800A"); "sprinklered" (e.g. "ESFR"); "zoning" (e.g. "I-1").
+  - "year_built" (int); "lot_size_acres" (number); "office_sf"; "clear_height_ft" (number); "dock_doors"/"grade_doors" (counts); "power" (e.g. "3-phase / 800A"); "sprinklered" (e.g. "ESFR"); "zoning" (e.g. "I-1"); "elevator" (true only if the flyer states one, false if it says none, else null).
   - "listing_type" ("For Sale"/"For Lease"/"Both"); "transaction_status" ("Available" unless clearly Under Contract/Sold/Leased/Off-Market).
   - "sale_price" (USD number); "price_per_sf" (sale $/SF); "lease_rate_min"/"lease_rate_max" ($/SF/yr — set both equal if a single rate); "lease_type" (NNN/FSG/MG/IG); "opex_psf".
   - "available_sf"; "divisible" (true if subdividable); "available_date" (ISO date only if a specific date given).
@@ -177,6 +178,7 @@ export function normalizeExtraction(raw: any): Extraction {
     power: strOrNull(raw?.power),
     sprinklered: strOrNull(raw?.sprinklered),
     zoning: strOrNull(raw?.zoning),
+    elevator: typeof raw?.elevator === 'boolean' ? raw.elevator : null,
     listing_type: strOrNull(raw?.listing_type),
     transaction_status: strOrNull(raw?.transaction_status),
     sale_price: toNumberOrNull(raw?.sale_price),

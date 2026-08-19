@@ -3,7 +3,7 @@ import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 
-const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','highlights','flyer_type','co_agent_id','latitude','longitude','listing_agent_id','assigned_agent_ids','is_restricted'];
+const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','highlights','zoning','elevator','grade_level_doors','dock_high_doors','flyer_type','co_agent_id','latitude','longitude','listing_agent_id','assigned_agent_ids','is_restricted'];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
