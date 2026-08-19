@@ -141,7 +141,26 @@ const INDUSTRIAL_ROWS: LoiTermRow[] = [
   { label: 'Clear Height:', value: '________ feet clear.' },
 ];
 
-export type LeaseAsset = 'office' | 'industrial' | 'generic';
+export type LeaseAsset = 'office' | 'industrial' | 'generic' | 'shortterm';
+
+// A staged lease: a short storage-only period rolling into the full term. Written
+// from the TENANT's side (Tenant proposes; Landlord countersigns), and the numbered
+// sections of that letter map to term rows — the label carries the section heading.
+const SHORTTERM_TERMS: LoiTermRow[] = [
+  { label: 'Premises:', value: 'Approximately ________ rentable square feet located at ________, including approximately ________ square feet in the rear portion of the Premises that has limited utility for Tenant\u2019s operations.' },
+  { label: 'Term \u2014 Short-Term Storage Period:', value: 'An initial period of ________ during which Tenant\u2019s use of the Premises will be limited to storage.' },
+  { label: 'Term \u2014 Long-Term Lease Period:', value: 'A primary term of ________ for Tenant\u2019s full intended operation, commencing at the end of the short-term storage period.' },
+  { label: 'Base Rent \u2014 Short Term:', value: 'Base Rent of $________/SF/year during the short-term storage period.' },
+  { label: 'Base Rent \u2014 Long Term:', value: 'Base Rent of $________/SF/year with ____% annual base rent escalations.' },
+  { label: 'Governmental Approval Contingency:', value: 'The Lease shall be contingent upon Tenant obtaining all governmental approvals necessary for Tenant\u2019s intended operation, including, but not limited to, zoning approvals, permits, and a Certificate of Occupancy. Tenant shall diligently pursue such approvals within the timelines reasonably required by the applicable governmental authorities. If such approvals cannot be obtained despite Tenant\u2019s diligent efforts, Tenant shall have the right to terminate the Lease without penalty, and any security deposit and unused prepaid rent shall be refunded.' },
+  { label: 'Right of First Refusal to Purchase:', value: 'If Landlord receives a bona fide third-party offer that Landlord intends to accept, Tenant shall have the right to purchase the Property on the same material terms and conditions. Landlord will give Tenant early notice prior to formally listing the Property for sale, to provide Tenant the ability to purchase before offers are formally taken.' },
+  { label: 'Purchase During the Lease Term:', value: 'If Tenant purchases the Property during the lease term: the Lease shall automatically terminate at closing; no early termination penalty shall apply; and any unused security deposit and prepaid rent shall be credited to Tenant at closing.' },
+  { label: 'Adjacent Space Expansion Rights:', value: 'Tenant requests advance written notice if either adjacent tenant\u2019s lease will expire, terminate, or not be renewed; a Right of First Offer (ROFO) to lease either adjacent space before it is offered to another tenant; and reasonable access to the information necessary to evaluate the adjacent space.' },
+  { label: 'Due Diligence:', value: 'Tenant is continuing to coordinate with the applicable governmental authorities regarding zoning, permitting, and regulatory requirements for the proposed operation. Additional site visits may be required with contractors and consultants. If upgrades to the electrical service, sprinkler system, or other building systems are required to support Tenant\u2019s intended operation, the parties shall discuss an appropriate allocation of those improvement costs, including potential tenant improvement allowances, rent concessions, and/or rent abatement.' },
+  { label: 'Brokerage & Expenses:', value: 'Except as otherwise agreed in the definitive Lease, each party shall bear its own costs and expenses (including attorneys\u2019 fees) incurred in connection with the negotiation and documentation of the Lease. Any real estate brokerage commissions shall be paid pursuant to a separate written agreement and disclosed to the parties.' },
+  { label: 'Confidentiality:', value: 'The parties shall keep the terms of this letter of intent and the negotiations between them confidential and shall not disclose such information to any third party, except to their respective attorneys, accountants, lenders, and advisors on a need-to-know basis, or as otherwise required by law.' },
+  { label: 'Expiration of Offer:', value: 'Unless the parties commence good-faith negotiation of a definitive Lease, or Landlord delivers a countersigned copy of this letter of intent, on or before ____________ the terms set forth herein shall automatically expire and be of no further force or effect.' },
+];
 
 const LEASE_OVERLAY_KEYS: Record<string, string[]> = {
   // Each row's blanks fill in order from these template field_keys.
@@ -159,6 +178,7 @@ const LEASE_OVERLAY_KEYS: Record<string, string[]> = {
 };
 
 export function leaseTerms(asset: LeaseAsset): LoiTermRow[] {
+  if (asset === 'shortterm') return SHORTTERM_TERMS;   // its own structure, not common + flavour
   const flavour = asset === 'industrial' ? INDUSTRIAL_ROWS : asset === 'office' ? OFFICE_ROWS : [];
   return [...LEASE_TERMS_COMMON, ...flavour, ...LEASE_TERMS_TAIL];
 }
@@ -169,11 +189,18 @@ export function leaseSpec(asset: LeaseAsset = 'generic'): LoiSpec {
     title: 'Letter of Intent to Lease',
     partyHeading: 'Landlord:',
     partyNoun: 'Landlord',
-    boilerplate: [
-      'This letter of intent is merely a guide to the preparation of a mutually satisfactory contract and nothing in this letter of intent will be construed to preclude any other provisions from being inserted into the agreement at the request of either party.',
-      'This letter of intent is non-binding on either party until an actual lease agreement is drafted, agreed upon and executed by both parties.',
-      'Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.',
-    ],
+    // The staged letter states its own non-binding effect as a numbered term, so it
+    // only needs the closing acceptance line here.
+    boilerplate: asset === 'shortterm'
+      ? [
+        'This letter of intent is intended solely to summarize the principal terms currently proposed and to facilitate preparation of a definitive Lease. It is not a binding or enforceable agreement, and neither party shall have any obligation to the other unless and until a definitive written Lease is executed and delivered by both parties.',
+        'Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.',
+      ]
+      : [
+        'This letter of intent is merely a guide to the preparation of a mutually satisfactory contract and nothing in this letter of intent will be construed to preclude any other provisions from being inserted into the agreement at the request of either party.',
+        'This letter of intent is non-binding on either party until an actual lease agreement is drafted, agreed upon and executed by both parties.',
+        'Should the above be acceptable to you, please indicate your acceptance by execution of this letter of intent in the space provided below.',
+      ],
     defaultTerms: leaseTerms(asset),
     overlayKeys: LEASE_OVERLAY_KEYS,
     overlayFill: 'blanks',
@@ -192,6 +219,7 @@ export const LOI_LEASE_CODE = 'LOI-LEASE';
 
 export function assetFromFormName(name: string): LeaseAsset {
   const n = (name || '').toLowerCase();
+  if (n.includes('short')) return 'shortterm';      // check first — "Short-Term Industrial" is still staged
   if (n.includes('industrial')) return 'industrial';
   if (n.includes('office')) return 'office';
   return 'generic';
