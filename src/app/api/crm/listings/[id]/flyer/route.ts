@@ -101,10 +101,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
   const [mapBytes, aerialBytes] = await Promise.all([
-    googleStaticMap({ center: address, zoom: '13', size: '272x172', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
-      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: 344 }) : null)),
-    googleStaticMap({ center: address, zoom: '16', size: '576x330', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
-      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 292, source: 'satellite' }) : null)),
+    googleStaticMap({ center: address, zoom: '13', size: '272x214', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: 428 }) : null)),
+    googleStaticMap({ center: address, zoom: '16', size: '576x444', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }) : null)),
   ]);
 
   // IABS (required in TX). Stable per-unit path first — replacing that file updates
