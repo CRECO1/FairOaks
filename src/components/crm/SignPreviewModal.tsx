@@ -11,11 +11,16 @@ export interface PreviewField { page?: number; fx: number; fy: number; fw: numbe
 const ROLE_COLORS: Record<string, string> = { client: '#c9922c', landlord: '#2563eb', agent: '#16a34a', seller: '#c9922c', buyer: '#7c3aed', witness: '#db2777', other: '#6b7280' };
 const typeLabel = (t?: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : (t === 'date' || t === 'date_signed') ? 'Date' : (t || 'Field');
 
-export default function SignPreviewModal({ url, fields, signerLabel, onClose }: {
+export default function SignPreviewModal({ url, fields, signerLabel, onClose, onConfirm, confirmLabel = 'Send', busy }: {
   url: string;
   fields: PreviewField[];
   signerLabel?: (role: string) => string;
   onClose: () => void;
+  // When given, this is the last step before a document goes out: the review carries
+  // the send button itself, so nothing is sent without the agent seeing the placements.
+  onConfirm?: () => void;
+  confirmLabel?: string;
+  busy?: boolean;
 }) {
   const [pages, setPages] = useState<{ w: number; h: number; src: string }[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -71,7 +76,13 @@ export default function SignPreviewModal({ url, fields, signerLabel, onClose }: 
           </span>
         ))}</div>}
         <span style={{ flex: 1 }} />
-        <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}>✕ Close</button>
+        <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}>{onConfirm ? '‹ Back' : '✕ Close'}</button>
+        {onConfirm && (
+          <button onClick={onConfirm} disabled={busy}
+            style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Sending…' : confirmLabel}
+          </button>
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#4b4f52', borderRadius: 8, padding: 18 }}>
         {status === 'loading' && <div style={{ color: '#cbd5e1', textAlign: 'center', padding: 60 }}>Rendering document…</div>}

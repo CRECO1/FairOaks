@@ -5,6 +5,7 @@ import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
+import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import RentRoll from '@/components/crm/RentRoll';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
@@ -226,7 +227,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [dealBusy, setDealBusy] = useState(false);
   const [formDealId, setFormDealId] = useState<string | null>(null); // which deal a form editor is bound to
   const [envMap, setEnvMap] = useState<Record<string, Envelope>>({}); // submission_id -> envelope
-  const [sendModal, setSendModal] = useState<{ submissionId: string; dealId: string; title: string; formId?: string } | null>(null);
+  const [sendModal, setSendModal] = useState<{ submissionId: string; dealId?: string | null; title: string; formId?: string; url?: string | null } | null>(null);
+  // Held while the agent steps out to place signature fields, so the signer list they
+  // just typed is still there when they come back.
+  const [pendingSend, setPendingSend] = useState<{ submissionId: string; dealId?: string | null; title: string; formId?: string; signers: { role: string; name: string; email: string }[]; msg: string } | null>(null);
+  const [sendPreview, setSendPreview] = useState(false);
   const [sendSigFields, setSendSigFields] = useState<number | null>(null);
   // Placed signature fields, grouped by their ORIGINAL role (the immutable key back to
   // the stored field). `role` is the editable target so a block can be reassigned to a
@@ -482,17 +487,31 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setDealFormAdding(null);
   }
 
-  function openSendModal(d: Deal, f: FormSubmission) {
+  function openSendModal(d: Deal | null, f: FormSubmission, restore?: { signers: { role: string; name: string; email: string }[]; msg: string }) {
+    const nameOfC = (c: { business_name?: string; first_name?: string; last_name?: string }) =>
+      c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
     const landlord = listingContacts.find(c => (c.role || '').toLowerCase() === 'landlord')?.crm_clients;
-    const seed: { role: string; name: string; email: string }[] = [{ role: 'client', name: d.client || '', email: d.client_email || '' }];
-    if (landlord?.email) seed.push({ role: 'landlord', name: landlord.business_name || `${landlord.first_name} ${landlord.last_name}`.trim(), email: landlord.email });
+    let seed: { role: string; name: string; email: string }[];
+    if (restore) seed = restore.signers;
+    else if (d) {
+      seed = [{ role: 'client', name: d.client || '', email: d.client_email || '' }];
+      if (landlord?.email) seed.push({ role: 'landlord', name: nameOfC(landlord), email: landlord.email });
+    } else {
+      // Property-level doc: start from the folder's own contacts (landlord first).
+      seed = listingContacts
+        .filter(c => c.crm_clients?.email)
+        .slice(0, 2)
+        .map(c => ({ role: (c.role || '').toLowerCase() === 'landlord' ? 'landlord' : 'client', name: nameOfC(c.crm_clients!), email: c.crm_clients!.email! }));
+      if (!seed.length) seed = [{ role: 'client', name: '', email: '' }];
+    }
     setSendSigners(seed);
     setSendPick(null);
-    setSendMsg('');
+    setSendMsg(restore?.msg ?? '');
+    setSendPreview(false);
     setSendSigFields(null);
     setSendFieldGroups([]);
     setSendValues([]);
-    setSendModal({ submissionId: f.id, dealId: d.id, title: f.title || f.crm_forms?.name || 'Document', formId: f.form_id });
+    setSendModal({ submissionId: f.id, dealId: d?.id ?? f.deal_id ?? null, title: f.title || f.crm_forms?.name || 'Document', formId: f.form_id, url: f.url ?? null });
     // Capture the placed signature fields so the agent can trim any that don't
     // apply to this deal (e.g. a 2nd seller block on a single-seller sale).
     fetch(`/api/crm/form-submissions/${f.id}`, { headers: authHeaders })
@@ -507,6 +526,31 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         setSendFieldGroups(Array.from(byRole.entries()).map(([role, types]) => ({ origRole: role, role, types, keep: true })));
       })
       .catch(() => { setSendSigFields(0); setSendFieldGroups([]); });
+  }
+
+  // Send flow, step 2: hop into the document to place signature / initial / date
+  // fields. The half-filled send (signers + message) is stashed and restored when the
+  // editor closes, so stepping out doesn't cost the agent their typing.
+  function goPlaceFields() {
+    const m = sendModal;
+    if (!m) return;
+    setPendingSend({ ...m, signers: sendSigners, msg: sendMsg });
+    setSendModal(null);
+    const form = { id: m.formId || '', name: m.title };
+    const code = crmForms.find(cf => cf.id === m.formId)?.form_code;
+    if (m.dealId) editDealForm(m.dealId, form, m.submissionId, code);
+    else { setFormDealId(null); openFormEditor(form, m.submissionId, code); }
+  }
+
+  // Back from placing fields — reopen the send modal where they left off.
+  function resumeSend() {
+    const ps = pendingSend;
+    if (!ps) return;
+    setPendingSend(null);
+    const f = [...listingForms, ...Object.values(dealForms).flat()].find(x => x.id === ps.submissionId);
+    const deal = ps.dealId ? deals.find(d => d.id === ps.dealId) ?? null : null;
+    openSendModal(deal, (f ?? { id: ps.submissionId, title: ps.title, form_id: ps.formId }) as FormSubmission,
+      { signers: ps.signers, msg: ps.msg });
   }
 
   async function sendForSignature() {
@@ -541,7 +585,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     }
     const res = await fetch('/api/crm/envelopes', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
-      body: JSON.stringify({ submission_id: sendModal.submissionId, deal_id: sendModal.dealId, listing_id: active?.id, title: sendModal.title, message: sendMsg, signers }),
+      body: JSON.stringify({ submission_id: sendModal.submissionId, deal_id: sendModal.dealId || null, listing_id: active?.id, title: sendModal.title, message: sendMsg, signers }),
     });
     const j = await res.json().catch(() => ({}));
     setSendBusy(false);
@@ -1016,6 +1060,21 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             </div>
                             {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
                             <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                            {(() => {
+                              const env = envMap[f.id];
+                              if (env && env.status !== 'voided') {
+                                const sg = env.crm_envelope_signers || [];
+                                const done = sg.filter(x => x.status === 'signed' || x.signed_at).length;
+                                if (env.status === 'completed' && env.executed_url)
+                                  return <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} title="View the executed copy" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>;
+                                return (<>
+                                  <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '6px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>
+                                  <button onClick={() => openSendModal(null, f)} title="Resend for signature" style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 8px', cursor: 'pointer', flexShrink: 0 }}>↻</button>
+                                  <button onClick={() => voidEnvelope(env.id)} title="Cancel the signature request" style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 8px', cursor: 'pointer', flexShrink: 0 }}>⊘</button>
+                                </>);
+                              }
+                              return <button onClick={() => openSendModal(null, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: f.url ? '#c9922c' : '#e5e7eb', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
+                            })()}
                             <button onClick={() => copySubmission(f.id)} title="Make a copy" style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
                             <button onClick={() => deleteSubmission(f.id)} title="Delete document" style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
                           </div>
@@ -1595,6 +1654,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         );
                       })}
                       {(anyRemoved || sendFieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
+                      <button onClick={goPlaceFields} style={{ alignSelf: 'flex-start', marginTop: 2, fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: 'pointer' }}>✒ Add / move fields on the document</button>
                     </div>
                   )}
                 </div>
@@ -1602,7 +1662,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             })() : (
               <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ flex: 1, minWidth: 180 }}>No signature fields placed — signers will sign on an added Signatures page. To sign on the document’s own lines, place fields first.</span>
-                <button onClick={() => { const m = sendModal; setSendModal(null); if (m) editDealForm(m.dealId, { id: m.formId || '', name: m.title }, m.submissionId, crmForms.find(cf => cf.id === m.formId)?.form_code); }}
+                <button onClick={goPlaceFields}
                   style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Place fields</button>
               </div>
             ))}
@@ -1644,11 +1704,38 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             </div>
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
               <button onClick={() => setSendModal(null)} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Cancel</button>
-              <button onClick={sendForSignature} disabled={sendBusy} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: sendBusy ? 'default' : 'pointer', opacity: sendBusy ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>{sendBusy ? 'Sending…' : '📤 Send for signature'}</button>
+              <button
+                onClick={() => {
+                  const ready = sendSigners.filter(x => x.email.includes('@') && x.name.trim());
+                  if (!ready.length) { onToast('Add at least one signer with a valid email'); return; }
+                  // Nothing leaves from here — this opens the review, which carries the send.
+                  if (sendModal?.url) setSendPreview(true); else sendForSignature();
+                }}
+                disabled={sendBusy}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: sendBusy ? 'default' : 'pointer', opacity: sendBusy ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                {sendBusy ? 'Sending…' : (sendModal?.url ? '✒ Create Signatures →' : '📤 Send for signature')}
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ── Review before sending: the document with every placement labelled ── */}
+      {sendPreview && sendModal?.url && (() => {
+        const SIG = ['signature', 'initial', 'date'];
+        const byOrig = new Map(sendFieldGroups.map(g => [g.origRole, g]));
+        const effective = sendValues.filter(v => SIG.includes(String(v.type))).flatMap(v => {
+          const g = byOrig.get(String(v.signerRole || 'client'));
+          if (g && !g.keep) return [];
+          const role = g && g.role !== g.origRole ? g.role : String(v.signerRole || 'client');
+          return [{ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: role }];
+        });
+        const label = (role: string) => { const x = sendSigners.find(y => y.role === role && y.name.trim()); return x ? x.name : roleLabel(role) + ' (no signer yet)'; };
+        return <SignPreviewModal url={sendModal.url!} fields={effective} signerLabel={label} busy={sendBusy}
+          onClose={() => setSendPreview(false)}
+          onConfirm={async () => { await sendForSignature(); setSendPreview(false); }}
+          confirmLabel="📤 Send for signature" />;
+      })()}
 
       {/* ── In-app document preview (view + print, no forced download) ── */}
       {previewFile && <DocPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
@@ -1665,7 +1752,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           businessUnit={businessUnit}
           submissionId={editorDoc.submissionId}
           onToast={onToast}
-          onClose={() => { setEditorDoc(null); setFormDealId(null); }}
+          onClose={() => { setEditorDoc(null); setFormDealId(null); resumeSend(); }}
           onSaved={() => { if (formDealId) loadDealForms(formDealId); if (active) loadListingForms(active.id); onToast(formDealId ? 'Saved to deal ✓' : 'Saved to property ✓'); }}
         />
       )}
@@ -1693,7 +1780,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               sellerName: landlord ? (landlord.business_name || `${landlord.first_name} ${landlord.last_name}`.trim()) : '',
             }}
             onToast={onToast}
-            onClose={() => { setLoiDoc(null); setFormDealId(null); }}
+            onClose={() => { setLoiDoc(null); setFormDealId(null); resumeSend(); }}
             onSaved={() => { if (formDealId) loadDealForms(formDealId); if (active) loadListingForms(active.id); onToast(formDealId ? 'Saved to deal ✓' : 'Saved to property ✓'); }}
           />
         );
