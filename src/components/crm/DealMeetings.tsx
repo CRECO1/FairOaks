@@ -4,6 +4,7 @@
 // mode it's an editable log; in contact mode (clientId) it's a read-only reverse list
 // of meetings that contact was part of.
 import React, { useCallback, useEffect, useState } from 'react';
+import { createClient as createBrowserClient } from '@/lib/supabase/client';
 
 interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }
 interface Attendee { id: string; name: string }
@@ -89,9 +90,37 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
   }
 
   const selectedIds = new Set(attendees.map(a => a.id));
-  const matches = search.trim()
-    ? clients.filter(c => !selectedIds.has(c.id) && contactName(c).toLowerCase().includes(search.trim().toLowerCase())).slice(0, 8)
-    : [];
+  const [remote, setRemote] = useState<PickContact[]>([]);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) { setRemote([]); setSearching(false); return; }
+    setSearching(true);
+    let alive = true;
+    const t = setTimeout(async () => {
+      try {
+        const sb = createBrowserClient();
+        const like = `%${q.replace(/[%,]/g, '')}%`;
+        const { data } = await sb.from('crm_clients')
+          .select('id, first_name, last_name, business_name, type')
+          .eq('business_unit', businessUnit)
+          .or(`first_name.ilike.${like},last_name.ilike.${like},business_name.ilike.${like}`)
+          .limit(10);
+        if (alive) setRemote((data ?? []) as PickContact[]);
+      } catch { if (alive) setRemote([]); }
+      finally { if (alive) setSearching(false); }
+    }, 220);
+    return () => { alive = false; clearTimeout(t); };
+  }, [search, businessUnit]);
+
+  const matches = (() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    const local = clients.filter(c => contactName(c).toLowerCase().includes(q));
+    const byId = new Map<string, PickContact>();
+    for (const c of [...local, ...remote]) if (!selectedIds.has(c.id)) byId.set(c.id, c);
+    return Array.from(byId.values()).slice(0, 8);
+  })();
 
   const readOnly = !dealId; // contact mode
 
@@ -122,9 +151,14 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
             ))}
           </div>
           <div style={{ position: 'relative' }}>
-            <input className="crm-input" style={{ width: '100%' }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Type a contact&rsquo;s name to tag them…" />
+            <input className="crm-input" style={{ width: '100%' }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Type a contact's name to tag them…" />
+            {search.trim().length > 0 && matches.length === 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', padding: '9px 12px', fontSize: 12.5, color: '#9ca3af' }}>
+                {searching || search.trim().length < 2 ? 'Searching…' : `No contact matches "${search.trim()}"`}
+              </div>
+            )}
             {matches.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 5, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', maxHeight: 220, overflowY: 'auto' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', maxHeight: 220, overflowY: 'auto' }}>
                 {matches.map(c => (
                   <button key={c.id} onClick={() => { setAttendees(list => [...list, { id: c.id, name: contactName(c) }]); setSearch(''); }}
                     style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 8, alignItems: 'center', padding: '8px 12px', border: 'none', background: '#fff', cursor: 'pointer', fontSize: 13 }}
