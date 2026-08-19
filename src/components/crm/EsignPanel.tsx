@@ -25,9 +25,14 @@ const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 
 // ── Send a document for signature (dynamic signer list) ──────────────────────
-export function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, authToken, showToast, onCancel, onSent }: {
+export function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, authToken, showToast, onCancel, onSent, onPlaceFields, fieldsVersion = 0 }: {
   doc: Doc; dealId: string; clients: PickContact[]; dealClient?: { name?: string; email?: string };
   agentName?: string; agentEmail?: string; authToken?: string; showToast?: (m: string) => void; onCancel: () => void; onSent: () => void;
+  // Opens the document so the agent can place signature / initial / date fields.
+  onPlaceFields?: () => void;
+  // Bumped by the parent after the document editor saves, so the field list refreshes
+  // while the signer list the agent typed stays put.
+  fieldsVersion?: number;
 }) {
   const [signers, setSigners] = useState<Draft[]>([{ role: 'client', name: dealClient?.name || '', email: dealClient?.email || '' }]);
   const [message, setMessage] = useState('');
@@ -54,7 +59,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
       })
       .catch(() => { if (alive) setFieldGroups([]); });
     return () => { alive = false; };
-  }, [doc.id, authToken]);
+  }, [doc.id, authToken, fieldsVersion]);
   const set = (i: number, p: Partial<Draft>) => setSigners(s => s.map((x, k) => k === i ? { ...x, ...p } : x));
   const move = (i: number, d: -1 | 1) => setSigners(s => { const j = i + d; if (j < 0 || j >= s.length) return s; const c = [...s]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const suggestions = (q: string) => q.trim() ? clients.filter(c => cName(c).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6) : [];
@@ -171,10 +176,22 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
       </div>
 
       <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', marginTop: 12 }} />
-      {doc.url && <button onClick={() => setPreview(true)} style={{ width: '100%', marginTop: 12, padding: '9px 0', borderRadius: 8, border: '1px solid #c9922c', background: '#fdf6e9', color: '#a06a12', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>👁 Review document — who signs where</button>}
+      {onPlaceFields && doc.form_id && (
+        <button onClick={onPlaceFields} style={{ width: '100%', marginTop: 12, padding: '8px 0', borderRadius: 8, border: '1px solid #f0e2c4', background: '#fff', color: '#a06a12', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>✒ Add / move fields on the document</button>
+      )}
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
-        <button onClick={send} disabled={busy} style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Sending…' : '📤 Send for signature'}</button>
+        <button
+          onClick={() => {
+            const ready = signers.filter(x => x.name.trim() && x.email.includes('@'));
+            if (!ready.length) { showToast?.('Add at least one signer with a valid email'); return; }
+            // Opens the review — the send itself lives there, so nothing goes out unseen.
+            if (doc.url) setPreview(true); else send();
+          }}
+          disabled={busy}
+          style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>
+          {busy ? 'Sending…' : (doc.url ? '✒ Create Signatures →' : '📤 Send for signature')}
+        </button>
       </div>
       {preview && doc.url && (() => {
         // Show the fields as they WILL be sent (removed dropped, reassigned remapped).
@@ -186,7 +203,10 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
           return [{ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: role }];
         });
         const label = (role: string) => { const s = signers.find(x => x.role === role && x.name.trim()); return s ? s.name : roleLabel(role) + ' (no signer yet)'; };
-        return <SignPreviewModal url={doc.url!} fields={effective} signerLabel={label} onClose={() => setPreview(false)} />;
+        return <SignPreviewModal url={doc.url!} fields={effective} signerLabel={label} busy={busy}
+          onClose={() => setPreview(false)}
+          onConfirm={async () => { await send(); setPreview(false); }}
+          confirmLabel="📤 Send for signature" />;
       })()}
     </div>
   );
@@ -324,6 +344,8 @@ export function ManageView({ doc, env, authToken, showToast, onBack, onReload }:
 
 interface Props {
   dealId: string;
+  // Lets the E-Sign tab hand off to the document editor to place fields mid-send.
+  onPlaceFields?: (doc: Doc) => void;
   clients?: PickContact[];
   dealClient?: { name?: string; email?: string };
   agentName?: string;
@@ -332,7 +354,7 @@ interface Props {
   showToast?: (m: string) => void;
 }
 
-export default function EsignPanel({ dealId, clients = [], dealClient, agentName, agentEmail, authToken, showToast }: Props) {
+export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealClient, agentName, agentEmail, authToken, showToast }: Props) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [envByDoc, setEnvByDoc] = useState<Record<string, Envelope>>({});
   const [loading, setLoading] = useState(true);
@@ -367,7 +389,7 @@ export default function EsignPanel({ dealId, clients = [], dealClient, agentName
     return [...docs].sort((a, b) => rank(a) - rank(b) || (b.updated_at || '').localeCompare(a.updated_at || ''));
   }, [docs, statusOf]);
 
-  if (view.t === 'send') return <SendView doc={view.doc} dealId={dealId} clients={clients} dealClient={dealClient} agentName={agentName} agentEmail={agentEmail} authToken={authToken} showToast={showToast} onCancel={() => setView({ t: 'list' })} onSent={() => { setView({ t: 'list' }); load(); }} />;
+  if (view.t === 'send') return <SendView doc={view.doc} dealId={dealId} clients={clients} dealClient={dealClient} agentName={agentName} agentEmail={agentEmail} authToken={authToken} showToast={showToast} onPlaceFields={onPlaceFields ? () => onPlaceFields(view.doc) : undefined} onCancel={() => setView({ t: 'list' })} onSent={() => { setView({ t: 'list' }); load(); }} />;
   if (view.t === 'manage') return <ManageView doc={view.doc} env={envByDoc[view.doc.id]} authToken={authToken} showToast={showToast} onBack={() => { setView({ t: 'list' }); load(); }} onReload={load} />;
 
   return (

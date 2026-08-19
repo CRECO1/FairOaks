@@ -466,6 +466,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
   const [esignModal, setEsignModal] = useState<{ mode: 'send' | 'manage'; doc: EsignDoc } | null>(null);
+  const [esignFieldsVersion, setEsignFieldsVersion] = useState(0); // bumped when placements change
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
@@ -8120,6 +8121,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ padding: '4px 2px' }}>
                   <EsignPanel
                     dealId={activeDeal.id}
+                    onPlaceFields={d => openFormEditor({ id: d.form_id || "", name: d.crm_forms?.name || d.title || "Form" }, d.id, d.crm_forms?.form_code)}
                     clients={clients}
                     dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
                     agentName={profile ? `${profile.first_name} ${profile.last_name}`.trim() : ''}
@@ -10712,6 +10714,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {esignModal.mode === 'send' ? (
               <SendView doc={esignModal.doc} dealId={activeDeal.id} clients={clients} dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
                 agentName={`${profile.first_name} ${profile.last_name}`.trim()} agentEmail={profile.email} authToken={session?.access_token} showToast={showToast}
+                fieldsVersion={esignFieldsVersion}
+                // The editor opens ON TOP of this modal, so the signers already typed are
+                // still here when it closes.
+                onPlaceFields={() => openFormEditor({ id: esignModal.doc.form_id || '', name: esignModal.doc.crm_forms?.name || esignModal.doc.title || 'Form' }, esignModal.doc.id, esignModal.doc.crm_forms?.form_code)}
                 onCancel={() => setEsignModal(null)}
                 onSent={() => { setEsignModal(null); loadDealForms(activeDeal.id); loadDealEnvelopes(activeDeal.id, activeDeal.listing_id); }} />
             ) : (
@@ -10738,7 +10744,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           fieldPrefill={{ ...agentPrefill, ...dealPrefill(activeDeal) }}
           onToast={showToast}
           isMobile={isMobile}
-          onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); }}
+          onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); setEsignFieldsVersion(v => v + 1); }}
           onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
         />
       )}
