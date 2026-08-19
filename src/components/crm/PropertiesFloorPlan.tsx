@@ -82,9 +82,9 @@ const SUITES: SuiteDef[] = [
 
   // ───────────────────────── Building 2 · Floor 1 ─────────────────────────
   { key: 'ceco_concrete', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 320, y: 170, w: 170, h: 230 }, name: { x: 405, y: 282, lines: ['Ceco', 'Concrete'], size: 21 }, num: { x: 405, y: 341 }, defNumber: '3100', defColor: 'amber' },
-  { key: 'suite_3102', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 715, y: 170, w: 140, h: 230 }, name: { x: 785, y: 276, lines: ['Central Texas', 'Tree Service'], size: 15 }, num: { x: 785, y: 339 }, defNumber: '3102', defColor: 'green' },
-  { key: 'central_texas', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 855, y: 170, w: 140, h: 230 }, name: { x: 925, y: 276, lines: ['Central Texas', 'Tree Service'], size: 15 }, num: { x: 925, y: 339 }, defNumber: '3102', defColor: 'green' },
-  { key: 'emergency_diagnostic', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 995, y: 170, w: 145, h: 230 }, name: { x: 1067, y: 286, lines: ['Emergency', 'Diagnostic'], size: 15 }, num: { x: 1067, y: 345 }, defNumber: '3115', defColor: 'rose' },
+  { key: 'suite_3102', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 490, y: 170, w: 140, h: 230 }, name: { x: 560, y: 276, lines: ['Central Texas', 'Tree Service'], size: 15 }, num: { x: 560, y: 339 }, defNumber: '3102', defColor: 'green' },
+  { key: 'central_texas', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 830, y: 170, w: 155, h: 230 }, name: { x: 907, y: 276, lines: ['Central Texas', 'Tree Service'], size: 16 }, num: { x: 907, y: 339 }, defNumber: '3102', defColor: 'green' },
+  { key: 'emergency_diagnostic', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 985, y: 170, w: 155, h: 230 }, name: { x: 1062, y: 286, lines: ['Emergency', 'Diagnostic'], size: 16 }, num: { x: 1062, y: 345 }, defNumber: '3115', defColor: 'rose' },
   { key: 'cherie', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 375, y: 590, w: 185, h: 320 }, name: { x: 467, y: 690, lines: ['A. Cherie', 'Coutour'], size: 20 }, num: { x: 467, y: 744 }, defNumber: '3101', defColor: 'purple' },
   { key: 'open_3108', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 560, y: 590, w: 155, h: 320 }, name: { x: 637, y: 700, lines: ['Open'], size: 20 }, num: { x: 637, y: 744 }, defNumber: '', defColor: 'gray', defStatus: 'vacant' },
   { key: 'fair_oaks_financial', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 715, y: 590, w: 190, h: 320 }, name: { x: 810, y: 690, lines: ['Fair Oaks', 'Financial'], size: 20 }, num: { x: 810, y: 744 }, defNumber: '3109', defColor: 'blue' },
@@ -165,14 +165,14 @@ const GEO: Record<string, FloorGeo> = {
   },
   'bldg2-1': {
     ext: [[110, 170, 1140, 170], [1140, 170, 1140, 910], [110, 910, 1140, 910], [110, 170, 110, 430], [110, 490, 110, 910]],
-    int: [[110, 400, 1140, 400], [320, 170, 320, 400], [490, 170, 490, 400], [600, 170, 600, 400], [715, 170, 715, 400], [855, 170, 855, 400], [995, 170, 995, 400], [375, 590, 1140, 590], [375, 590, 375, 910], [560, 590, 560, 910], [715, 590, 715, 910], [905, 590, 905, 910]],
+    int: [[110, 400, 1140, 400], [320, 170, 320, 400], [490, 170, 490, 400], [630, 170, 630, 400], [730, 170, 730, 400], [830, 170, 830, 400], [985, 170, 985, 400], [375, 590, 1140, 590], [375, 590, 375, 910], [560, 590, 560, 910], [715, 590, 715, 910], [905, 590, 905, 910]],
     fills: [
       { x: 110, y: 170, w: 210, h: 230, fill: '#eef1f4' },
-      { x: 490, y: 170, w: 110, h: 230, fill: '#eef1f4' },
-      { x: 600, y: 170, w: 115, h: 230, fill: '#eef1f4' },
+      { x: 630, y: 170, w: 100, h: 230, fill: '#eef1f4' },
+      { x: 730, y: 170, w: 100, h: 230, fill: '#eef1f4' },
     ],
     labels: [
-      { x: 215, y: 292, t: 'Conference', size: 20 }, { x: 545, y: 292, t: 'Bth', size: 16 }, { x: 657, y: 292, t: 'Bth', size: 16 },
+      { x: 215, y: 292, t: 'Conference', size: 20 }, { x: 680, y: 292, t: 'Bth', size: 16 }, { x: 780, y: 292, t: 'Bth', size: 16 },
       { x: 242, y: 660, t: 'LOBBY', size: 15, color: '#9aa0a8', ls: 2 },
     ],
     doorErase: [[110, 430, 110, 490], [250, 910, 310, 910]],
