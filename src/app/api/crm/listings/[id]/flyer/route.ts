@@ -5,6 +5,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { renderFlyer } from '@/lib/flyer-doc';
 import { OSWALD_BOLD_B64, CRECO_LOGO_PNG_B64 } from '@/lib/flyer-assets';
 import sharp from 'sharp';
+import { geocode, osmStaticMap } from '@/lib/static-map';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,16 +14,15 @@ function money(n: unknown): string {
   return Number.isFinite(v) && v > 0 ? '$' + v.toLocaleString('en-US') : '';
 }
 
-// Fetch a Google Static Map as PNG bytes; null if the API is off / key restricted /
-// any error, so the flyer degrades to a clean placeholder instead of failing.
-async function staticMap(params: Record<string, string>): Promise<Uint8Array | null> {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+// Map tiles. The account's public Google key is referrer-restricted (unusable from a
+// server) and Maps Static isn't enabled, so we render the map ourselves from OSM
+// tiles. If a genuine server-side Google key is ever added, prefer it.
+async function googleStaticMap(params: Record<string, string>): Promise<Uint8Array | null> {
+  const key = process.env.GOOGLE_MAPS_SERVER_KEY;
   if (!key) return null;
-  const qs = new URLSearchParams({ ...params, key }).toString();
   try {
-    const r = await fetch(`https://maps.googleapis.com/maps/api/staticmap?${qs}`);
-    if (!r.ok) return null;
-    if (!(r.headers.get('content-type') || '').includes('image')) return null;
+    const r = await fetch(`https://maps.googleapis.com/maps/api/staticmap?${new URLSearchParams({ ...params, key })}`);
+    if (!r.ok || !(r.headers.get('content-type') || '').includes('image')) return null;
     return new Uint8Array(await r.arrayBuffer());
   } catch { return null; }
 }
@@ -82,13 +82,37 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const address = [L.address, L.city, L.state, L.zip].filter(Boolean).join(', ') || L.name || 'Property';
   const residential = L.business_unit === 'residential';
+  const unit = residential ? 'residential' : 'commercial';
   const web = residential ? 'fairoaksrealtygroup.com' : 'crecotx.com';
 
-  // Static maps (auto if the key has Maps Static API enabled; else null → placeholder).
+  // Maps. Geocode once per property and cache it on the listing, then render the
+  // location + area maps from OSM tiles (falling back to Google only if a server key exists).
+  let pt = (L.latitude != null && L.longitude != null) ? { lat: Number(L.latitude), lon: Number(L.longitude) } : null;
+  if (!pt) {
+    pt = await geocode(address);
+    if (pt) await supabase.from('crm_listings')
+      .update({ latitude: pt.lat, longitude: pt.lon, geocoded_at: new Date().toISOString() }).eq('id', id);
+  }
   const [mapBytes, aerialBytes] = await Promise.all([
-    staticMap({ center: address, zoom: '13', size: '272x172', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` }),
-    staticMap({ center: address, zoom: '16', size: '576x330', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` }),
+    googleStaticMap({ center: address, zoom: '13', size: '272x172', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: 344 }) : null)),
+    googleStaticMap({ center: address, zoom: '16', size: '576x330', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 15, width: 700, height: 292 }) : null)),
   ]);
+
+  // IABS (required in TX). Stable per-unit path first — replacing that file updates
+  // every flyer — then the form library's template. Never attach another unit's form.
+  let iabsPdf: Uint8Array | null = null;
+  const { data: iabsFile } = await supabase.storage.from('transaction-forms').download(`${unit}/iabs-current.pdf`);
+  if (iabsFile) iabsPdf = new Uint8Array(await iabsFile.arrayBuffer());
+  else {
+    const { data: tpl } = await supabase.from('crm_forms').select('storage_path')
+      .eq('business_unit', unit).ilike('name', '%Brokerage Services%').limit(1).maybeSingle();
+    if (tpl?.storage_path) {
+      const { data: b } = await supabase.storage.from('transaction-forms').download(tpl.storage_path);
+      if (b) iabsPdf = new Uint8Array(await b.arrayBuffer());
+    }
+  }
 
   const nameOf = (a: Record<string, string> | null) => a ? `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() : '';
   const agentNames = [nameOf(agent), nameOf(coAgent)].filter(Boolean);
@@ -103,7 +127,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     statPrice, statSize,
     agentNames,
     contacts,
-    hero, galleryPhotos, mapBytes, aerialBytes, floorPlan,
+    hero, galleryPhotos, mapBytes, aerialBytes, floorPlan, iabsPdf,
     fontBold: new Uint8Array(Buffer.from(OSWALD_BOLD_B64, 'base64')),
     logoPng: new Uint8Array(Buffer.from(CRECO_LOGO_PNG_B64, 'base64')),
   });

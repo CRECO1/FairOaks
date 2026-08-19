@@ -35,6 +35,7 @@ export interface FlyerInput {
   floorPlan?: { bytes: Uint8Array; png: boolean } | null;
   fontBold: Uint8Array;          // Oswald-Bold TTF
   logoPng: Uint8Array;           // CRECO letterhead PNG
+  iabsPdf?: Uint8Array | null;   // Information About Brokerage Services — appended last (required in TX)
 }
 
 function sanitize(s: unknown): string {
@@ -87,13 +88,20 @@ function drawJustified(page: PDFPage, text: string, x: number, y: number, maxW: 
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
 function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB) {
   const n = imgs.length; if (!n) return;
-  const cols = n === 1 ? 1 : n <= 6 ? 2 : 3;
+  const cols = n === 1 ? 1 : n === 2 || n === 4 ? 2 : 3;
   const rows = Math.ceil(n / cols);
   const g = 6;
-  const cw = (w - (cols - 1) * g) / cols, ch = (h - (rows - 1) * g) / rows;
+  // Cells are held at the photos' own 4:3 so they fill edge to edge instead of
+  // letterboxing; the block shrinks to fit the box and is centred in it.
+  let cw = (w - (cols - 1) * g) / cols;
+  let ch = cw * 0.75;
+  const needH = rows * ch + (rows - 1) * g;
+  if (needH > h) { const k = (h - (rows - 1) * g) / (rows * ch); cw *= k; ch *= k; }
+  const gridW = cols * cw + (cols - 1) * g;
+  const x0 = x + (w - gridW) / 2, top = y + h;   // top-aligned: slack falls below, not under the heading
   imgs.forEach((img, i) => {
     const r = Math.floor(i / cols), col = i % cols;
-    const cx = x + col * (cw + g), cy = y + h - (r + 1) * ch - r * g;
+    const cx = x0 + col * (cw + g), cy = top - (r + 1) * ch - r * g;
     drawContain(page, img, cx, cy, cw, ch);
     page.drawRectangle({ x: cx, y: cy, width: cw, height: ch, borderColor: line, borderWidth: 0.75 });
   });
@@ -247,6 +255,16 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
       cur -= bh + gap;
     }
     p2.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: GOLD });
+  }
+
+  // ── IABS — Texas requires this disclosure accompany the marketing piece, so it
+  // always goes last. Copied in as real pages so the filed form stays pixel-exact.
+  if (input.iabsPdf?.length) {
+    try {
+      const iabs = await PDFDocument.load(input.iabsPdf, { ignoreEncryption: true });
+      const pages = await pdf.copyPages(iabs, iabs.getPageIndices());
+      for (const pg of pages) pdf.addPage(pg);
+    } catch (e) { console.error('[flyer] IABS append failed', e); }
   }
 
   return pdf.save();
