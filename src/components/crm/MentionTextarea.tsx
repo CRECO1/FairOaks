@@ -3,12 +3,17 @@
 import { useState, useRef, useCallback } from 'react';
 
 interface Profile { id: string; first_name: string; last_name: string; role: string; }
+// A CRM contact (client). Tagging one is silent — it records who is involved in the
+// deal for the team; the contact is never notified.
+export interface MentionContact { id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }
 
 interface Props {
   value: string;
   onChange: (val: string) => void;
   onMentionedIds?: (ids: string[]) => void;
+  onMentionedContactIds?: (ids: string[]) => void;
   profiles: Profile[];
+  contacts?: MentionContact[];
   placeholder?: string;
   className?: string;
   style?: React.CSSProperties;
@@ -24,7 +29,20 @@ export function parseMentionIds(text: string, profiles: Profile[]): string[] {
     .map(p => p.id);
 }
 
-export default function MentionTextarea({ value, onChange, onMentionedIds, profiles, placeholder, className, style, id }: Props) {
+// The single word a contact is mentioned by — their first name, or the first word of
+// the business name for company records.
+export const contactToken = (c: MentionContact): string =>
+  ((c.first_name || c.business_name || '').trim().split(/\s+/)[0] || '').replace(/\W/g, '');
+export const contactLabel = (c: MentionContact): string =>
+  c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
+
+export function parseMentionContactIds(text: string, contacts: MentionContact[]): string[] {
+  const hits = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
+  if (!hits.length) return [];
+  return contacts.filter(c => { const t = contactToken(c).toLowerCase(); return t && hits.includes(t); }).map(c => c.id);
+}
+
+export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], placeholder, className, style, id }: Props) {
   const [search, setSearch]     = useState('');
   const [showDrop, setShowDrop] = useState(false);
   const [atPos, setAtPos]       = useState(-1);
@@ -32,10 +50,14 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, profi
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   const suggestions = search.length === 0
-    ? profiles.slice(0, 8)
+    ? profiles.slice(0, 6)
     : profiles.filter(p =>
         `${p.first_name} ${p.last_name}`.toLowerCase().includes(search.toLowerCase())
-      ).slice(0, 8);
+      ).slice(0, 6);
+  // Contacts only surface once there's something to match on, so the menu doesn't open
+  // with hundreds of names.
+  const contactHits = search.length === 0 ? [] :
+    contacts.filter(c => contactLabel(c).toLowerCase().includes(search.toLowerCase()) && contactToken(c)).slice(0, 6);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val    = e.target.value;
@@ -58,15 +80,17 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, profi
 
     onChange(val);
     if (onMentionedIds) onMentionedIds(parseMentionIds(val, profiles));
-  }, [onChange, onMentionedIds, profiles]);
+    if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(val, contacts));
+  }, [onChange, onMentionedIds, onMentionedContactIds, profiles, contacts]);
 
-  const pickProfile = useCallback((p: Profile) => {
-    const mention = `@${p.first_name} `;
+  const insertMention = useCallback((token: string) => {
+    const mention = `@${token} `;
     const before  = value.slice(0, atPos);
     const after   = value.slice(atPos + 1 + search.length);
     const next    = before + mention + after;
     onChange(next);
     if (onMentionedIds) onMentionedIds(parseMentionIds(next, profiles));
+    if (onMentionedContactIds) onMentionedContactIds(parseMentionContactIds(next, contacts));
     setShowDrop(false);
     setSearch('');
     setTimeout(() => {
@@ -76,7 +100,9 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, profi
         taRef.current.setSelectionRange(pos, pos);
       }
     }, 0);
-  }, [value, atPos, search, onChange, onMentionedIds, profiles]);
+  }, [value, atPos, search, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts]);
+  const pickProfile = useCallback((p: Profile) => insertMention(p.first_name), [insertMention]);
+  const pickContact = useCallback((c: MentionContact) => insertMention(contactToken(c)), [insertMention]);
 
   return (
     <>
@@ -92,15 +118,25 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, profi
           onBlur={() => setTimeout(() => setShowDrop(false), 150)}
         />
 
-        {value.includes('@') && (
-          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
-            {[...value.matchAll(/@(\w+)/g)].map(m => `@${m[1]}`).join(', ')} will be notified on save
-          </div>
-        )}
+        {value.includes('@') && (() => {
+          const team = parseMentionIds(value, profiles);
+          const tagged = parseMentionContactIds(value, contacts);
+          const names = (ids: string[], list: { id: string }[], label: (x: never) => string) =>
+            ids.map(i => label(list.find(x => x.id === i) as never)).filter(Boolean);
+          const teamNames = names(team, profiles, (p: Profile) => `@${p.first_name}`);
+          const contactNames = names(tagged, contacts, (c: MentionContact) => contactLabel(c));
+          if (!teamNames.length && !contactNames.length) return null;
+          return (
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+              {teamNames.length > 0 && <span>{teamNames.join(', ')} will be notified on save. </span>}
+              {contactNames.length > 0 && <span>Tagged (not notified): {contactNames.join(', ')}.</span>}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Dropdown rendered fixed to viewport — bypasses all overflow clipping */}
-      {showDrop && suggestions.length > 0 && rect && (
+      {showDrop && (suggestions.length > 0 || contactHits.length > 0) && rect && (
         <div style={{
           position: 'fixed',
           top: rect.top,
@@ -114,9 +150,11 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, profi
           overflow: 'hidden',
           pointerEvents: 'auto',
         }}>
-          <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
-            Tag a team member
-          </div>
+          {suggestions.length > 0 && (
+            <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #f1f5f9' }}>
+              Team member · notified
+            </div>
+          )}
           {suggestions.map(p => (
             <button
               key={p.id}
@@ -135,6 +173,33 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, profi
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{p.first_name} {p.last_name}</div>
                 <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'capitalize' }}>{p.role}</div>
+              </div>
+            </button>
+          ))}
+
+          {contactHits.length > 0 && (
+            <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderTop: suggestions.length ? '1px solid #f1f5f9' : undefined, borderBottom: '1px solid #f1f5f9' }}>
+              Contact · not notified
+            </div>
+          )}
+          {contactHits.map(c => (
+            <button
+              key={c.id}
+              onMouseDown={(e) => { e.preventDefault(); pickContact(c); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans', sans-serif" }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+            >
+              <span style={{
+                width: 28, height: 28, borderRadius: '50%', background: '#eef2ff', color: '#4338ca',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 11, fontWeight: 700, flexShrink: 0,
+              }}>
+                {contactLabel(c).slice(0, 2).toUpperCase()}
+              </span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{contactLabel(c)}</div>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>{c.type || 'Contact'}</div>
               </div>
             </button>
           ))}

@@ -21,7 +21,7 @@ import EsignDashboard from '@/components/crm/EsignDashboard';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
-import MentionTextarea from '@/components/crm/MentionTextarea';
+import MentionTextarea, { parseMentionContactIds } from '@/components/crm/MentionTextarea';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 
@@ -39,7 +39,7 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
@@ -7435,8 +7435,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <MentionTextarea
                           className="crm-input"
                           style={{ minHeight: 80, resize: 'vertical', width: '100%' }}
-                          placeholder="Deal notes… (type @ to tag a teammate)"
+                          placeholder="Deal notes… (type @ to tag a teammate or a contact)"
                           profiles={profiles}
+                          contacts={clients}
                           value={dealNotesText}
                           onChange={v => setDealNotesText(v)}
                           onMentionedIds={ids => {
@@ -7444,7 +7445,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           }}
                         />
                         {dealNotesText !== (activeDeal.notes ?? '') && (
-                          <button onClick={() => { updateDeal(activeDeal.id, { notes: dealNotesText }); setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText } : prev); showToast('Notes saved ✓'); }}
+                          <button onClick={() => {
+                            const tagged = parseMentionContactIds(dealNotesText, clients);
+                            updateDeal(activeDeal.id, { notes: dealNotesText, tagged_contact_ids: tagged });
+                            setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText, tagged_contact_ids: tagged } : prev);
+                            showToast(tagged.length ? `Notes saved ✓ · ${tagged.length} contact${tagged.length > 1 ? 's' : ''} tagged` : 'Notes saved ✓');
+                          }}
                             style={{ marginTop: 6, padding: '4px 14px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             Save Notes
                           </button>
@@ -9239,6 +9245,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </button>
                     </div>
                   </div>
+
+                  {/* Deals where this contact is @-tagged in the deal notes */}
+                  {(() => {
+                    const tagged = deals.filter(d => (d.tagged_contact_ids || []).includes(c.id));
+                    if (!tagged.length) return null;
+                    return (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>💼 Tagged in deal notes</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {tagged.map(d => (
+                            <button key={d.id} onClick={() => openDeal(d)} title="Open this deal"
+                              style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              {d.property || d.client} <span style={{ fontWeight: 500, color: '#b08a4a' }}>· {d.stage}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Deal notes this contact is tagged in — answers "which deals is this client part of?" */}
                   <div style={{ marginTop: 10, marginBottom: 16 }}>
