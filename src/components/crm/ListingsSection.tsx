@@ -239,6 +239,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [sendMsg, setSendMsg] = useState('');
   const [sendBusy, setSendBusy] = useState(false);
   const [showMoreForms, setShowMoreForms] = useState(false);
+  const [formSearch, setFormSearch] = useState('');   // the library is long — let agents type to find a form
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
 
@@ -993,7 +994,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction Docs</div>
-                      <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                      <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormSearch(''); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
                     </div>
                     {listingForms.length === 0 ? (
                       <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
@@ -1495,10 +1496,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       )}
 
       {formPicker && active && (() => {
-        const pinnedForms = crmForms.filter(fm => fm.pinned);
-        const restForms = crmForms.filter(fm => !fm.pinned);
-        const primary = pinnedForms.length ? pinnedForms : crmForms;
-        const hasCurated = pinnedForms.length > 0;
+        const q = formSearch.trim().toLowerCase();
+        const matches = q
+          ? crmForms.filter(fm => [fm.name, fm.category, fm.form_code].some(v => String(v ?? '').toLowerCase().includes(q)))
+          : crmForms;
+        const pinnedForms = matches.filter(fm => fm.pinned);
+        const restForms = matches.filter(fm => !fm.pinned);
+        const primary = q ? matches : (pinnedForms.length ? pinnedForms : matches);
+        const hasCurated = !q && pinnedForms.length > 0;
         const formRow = (fm: FormTemplate) => (
           <div key={fm.id} style={{ display: 'flex', alignItems: 'stretch', gap: 4 }}>
             <button onClick={() => openFormEditor({ id: fm.id, name: fm.name }, undefined, fm.form_code)}
@@ -1524,8 +1529,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Fill a form — {active.name}</h3>
               <button onClick={() => setFormPicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
             </div>
+            <input autoFocus value={formSearch} onChange={e => setFormSearch(e.target.value)}
+              placeholder="Search forms — e.g. short term, LOI, lease…"
+              style={{ ...INP, marginBottom: 12, fontSize: 14 }} />
             {crmForms.length === 0 ? (
               <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No form templates found for this workspace.</div>
+            ) : matches.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#9ca3af', padding: '8px 0' }}>No form matches “{formSearch}”.</div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '62vh', overflowY: 'auto' }}>
                 {hasCurated && <div style={{ fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, padding: '0 2px 2px' }}>Your forms</div>}
