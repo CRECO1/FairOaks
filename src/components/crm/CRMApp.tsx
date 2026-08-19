@@ -9240,9 +9240,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   </div>
 
-                  {/* Meetings this contact was tagged in, across deals (read-only reverse view) */}
+                  {/* Deal notes this contact is tagged in — answers "which deals is this client part of?" */}
                   <div style={{ marginTop: 10, marginBottom: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>🤝 Meetings tagged in</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 2 }}>📝 Tagged in these deals</div>
+                    <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 8 }}>Internal notes from deals where this contact was tagged.</div>
                     <DealMeetings clientId={c.id} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
                   </div>
 

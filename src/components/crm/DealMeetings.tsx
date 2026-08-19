@@ -63,7 +63,7 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
   }
 
   async function save() {
-    if (!title.trim() && !note.trim() && attendees.length === 0) { showToast?.('Add a title, note, or attendee'); return; }
+    if (!title.trim() && !note.trim() && attendees.length === 0) { showToast?.('Write a note or tag someone first'); return; }
     setBusy(true);
     try {
       const body = { deal_id: dealId, meeting_date: date, title: title.trim() || null, note: note.trim() || null, attendee_ids: attendees.map(a => a.id) };
@@ -76,15 +76,15 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       const j = await r.json();
       if (!r.ok) { showToast?.(j.error || 'Could not save'); return; }
       setEditing(null); resetForm(); load();
-      showToast?.(isNew ? 'Meeting logged ✓' : 'Meeting updated ✓');
+      showToast?.(isNew ? 'Note saved ✓' : 'Note updated ✓');
     } catch { showToast?.('Could not save'); }
     finally { setBusy(false); }
   }
 
   async function remove(id: string) {
-    if (!window.confirm('Delete this meeting log?')) return;
+    if (!window.confirm('Delete this note?')) return;
     const r = await fetch(`/api/crm/deal-meetings?id=${id}`, { method: 'DELETE', headers: authHeaders });
-    if (r.ok) { setMeetings(ms => ms.filter(m => m.id !== id)); showToast?.('Meeting deleted'); }
+    if (r.ok) { setMeetings(ms => ms.filter(m => m.id !== id)); showToast?.('Note deleted'); }
     else showToast?.('Could not delete');
   }
 
@@ -99,9 +99,12 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       {!readOnly && (
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#374151' }}>🤝 Meetings</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>📝 Internal Notes</div>
+            <div style={{ fontSize: 11.5, color: '#9ca3af' }}>Tag the contacts involved so the team can see who&rsquo;s in this deal. Tagging never notifies anyone.</div>
+          </div>
           {editing === null && (
-            <button onClick={startNew} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>＋ Log meeting</button>
+            <button onClick={startNew} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}>＋ Add note</button>
           )}
         </div>
       )}
@@ -109,27 +112,17 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
       {/* ── Log / edit form ── */}
       {!readOnly && editing !== null && (
         <div style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: 14, marginBottom: 14, background: '#fcfcfb' }}>
-          <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-            <div style={{ flex: '0 0 150px' }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</label>
-              <input type="date" className="crm-input" style={{ marginTop: 3, width: '100%' }} value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-            <div style={{ flex: 1, minWidth: 180 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4 }}>Title</label>
-              <input className="crm-input" style={{ marginTop: 3, width: '100%' }} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Site walk with eng team" />
-            </div>
-          </div>
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4 }}>Notes</label>
-          <textarea className="crm-input" style={{ marginTop: 3, width: '100%', minHeight: 60, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="What was discussed…" />
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4 }}>Note</label>
+          <textarea className="crm-input" autoFocus style={{ marginTop: 3, width: '100%', minHeight: 78, resize: 'vertical' }} value={note} onChange={e => setNote(e.target.value)} placeholder="What happened, what was decided, next steps…" />
 
-          <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginTop: 10 }}>Attendees (contacts)</label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, display: 'block', marginTop: 10 }}>Tag contacts in this deal</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '5px 0' }}>
             {attendees.map(a => (
               <span key={a.id} style={chip}>{a.name}<button onClick={() => setAttendees(list => list.filter(x => x.id !== a.id))} style={{ border: 'none', background: 'none', color: '#b0873a', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>✕</button></span>
             ))}
           </div>
           <div style={{ position: 'relative' }}>
-            <input className="crm-input" style={{ width: '100%' }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Type a contact’s name to add…" />
+            <input className="crm-input" style={{ width: '100%' }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Type a contact&rsquo;s name to tag them…" />
             {matches.length > 0 && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 5, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', maxHeight: 220, overflowY: 'auto' }}>
                 {matches.map(c => (
@@ -143,10 +136,21 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
               </div>
             )}
           </div>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Tagged contacts are for your records only — they are not notified.</div>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Internal only — tagged contacts are never emailed or notified. They&rsquo;ll see this deal listed on their contact record.</div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: '0 0 150px' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.4 }}>Date</label>
+              <input type="date" className="crm-input" style={{ marginTop: 3, width: '100%' }} value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.4 }}>Title <span style={{ textTransform: 'none', fontWeight: 500 }}>(optional)</span></label>
+              <input className="crm-input" style={{ marginTop: 3, width: '100%' }} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Site walk, call with lender" />
+            </div>
+          </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-            <button onClick={save} disabled={busy} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : (editing === 'new' ? 'Log meeting' : 'Save')}</button>
+            <button onClick={save} disabled={busy} style={{ padding: '7px 16px', fontSize: 13, fontWeight: 700, background: GOLD, color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : (editing === 'new' ? 'Save note' : 'Save')}</button>
             <button onClick={() => { setEditing(null); resetForm(); }} style={{ padding: '7px 14px', fontSize: 13, fontWeight: 700, background: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
@@ -154,16 +158,16 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
 
       {/* ── Meeting list ── */}
       {loading ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Loading…</div>
-        : meetings.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>{readOnly ? 'Not tagged in any meetings yet.' : 'No meetings logged yet.'}</div>
+        : meetings.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af', padding: '6px 0' }}>{readOnly ? 'Not tagged in any deal notes yet.' : 'No notes yet — add one and tag who\u2019s involved.'}</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {meetings.map(m => (
               <div key={m.id} style={{ border: '1px solid #eef0f2', borderRadius: 12, padding: '11px 14px', background: '#fff' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: m.note || m.attendees.length ? 6 : 0 }}>
-                  <span style={{ fontSize: 15 }}>🤝</span>
+                  <span style={{ fontSize: 15 }}>📝</span>
+                  {readOnly && m.deal && <span style={{ fontSize: 12.5, fontWeight: 800, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 6, padding: '2px 8px' }}>{m.deal.property || m.deal.client}</span>}
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280' }}>{fmtDate(m.meeting_date)}</span>
                   {m.title && <span style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a' }}>· {m.title}</span>}
-                  {readOnly && m.deal && <span style={{ fontSize: 12, color: '#9ca3af' }}>· {m.deal.property || m.deal.client}</span>}
                   <span style={{ flex: 1 }} />
                   {!readOnly && (
                     <>
