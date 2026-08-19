@@ -1209,7 +1209,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
               {/* ── Rent Roll tab (per-suite tenancy, vendors, building info) ── */}
               {activeTab === 'rentroll' && (
-                <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} onToast={onToast} />
+                <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} />
               )}
 
               {/* ── Deals tab (deals at this property + their documents) ── */}

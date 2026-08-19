@@ -12,13 +12,19 @@ export interface RentRollRow {
   size_sf?: number | null; lease_type?: string | null; lease_start?: string | null; lease_expiration?: string | null;
   monthly_rent?: number | null; annual_rent?: number | null; rent_psf?: number | null; pct_share?: number | null;
   mailbox_box?: string | null; keys?: number | null; email?: string | null; contact_name?: string | null;
+  contact_id?: string | null; crm_clients?: CrmContact | null;
   renewal_status?: string | null; notes?: string | null; sort_order?: number | null;
 }
+export interface CrmContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; phone?: string; cell_phone?: string; type?: string }
 interface VendorRow { id: string; category: string; label?: string | null; vendor?: string | null; contact?: string | null; phone?: string | null; notes?: string | null; sort_order?: number | null }
 
 const GOLD = '#c9922c';
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const isVacant = (r: RentRollRow) => !r.tenant_name || /^vacant$/i.test(r.tenant_name.trim());
+const contactName = (c: CrmContact) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.email || 'Unnamed contact';
+// What shows in the Contact column: the linked CRM contact wins, then the typed name.
+const rowContact = (r: RentRollRow) => r.crm_clients ? contactName(r.crm_clients) : (r.contact_name ?? '');
+const normName = (v?: string | null) => String(v ?? '').toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 const money = (n?: number | null) => (n === null || n === undefined || n === '' as unknown) ? '' : '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 // Lease status straight from the expiration date — same bands (and colours) the
@@ -97,8 +103,85 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, m
   );
 }
 
-export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
-  listingId: string; authToken?: string; isAdmin?: boolean; onToast?: (m: string) => void;
+// The suite's Contact — a real CRM contact, not free text. Click it to search the
+// contact list; picking one links the record so name/email track the contact card.
+// A name that isn't in the CRM can still be typed and kept as plain text.
+function ContactCell({ row, contacts, onLink, onText }: {
+  row: RentRollRow; contacts: CrmContact[];
+  onLink: (c: CrmContact | null) => void; onText: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const box = useRef<HTMLDivElement>(null);
+  const linked = row.crm_clients ?? null;
+  const shown = rowContact(row);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', away);
+    return () => document.removeEventListener('mousedown', away);
+  }, [open]);
+
+  const matches = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return [];
+    return contacts.filter(c => `${c.first_name ?? ''} ${c.last_name ?? ''} ${c.business_name ?? ''} ${c.email ?? ''}`
+      .toLowerCase().includes(needle)).slice(0, 8);
+  }, [q, contacts]);
+
+  if (!open) return (
+    <button onClick={() => { setOpen(true); setQ(linked ? '' : (row.contact_name ?? '')); }}
+      title={linked ? [contactName(linked), linked.email, linked.phone || linked.cell_phone].filter(Boolean).join(' · ') : 'Link a contact'}
+      style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer',
+        padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif",
+        color: linked ? '#111' : shown ? '#6b7280' : '#c0c4cc', fontWeight: linked ? 600 : 400,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+      {linked ? <span style={{ color: GOLD, marginRight: 4 }}>●</span> : null}
+      {shown || 'Link contact'}
+    </button>
+  );
+
+  return (
+    <div ref={box} style={{ position: 'relative' }}>
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)}
+        placeholder="Search contacts…"
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setOpen(false); return; }
+          if (e.key === 'Enter') { if (matches[0]) { onLink(matches[0]); setOpen(false); } else { onText(q); setOpen(false); } }
+        }}
+        style={{ width: '100%', border: 'none', outline: 'none', background: '#fffdf3', boxShadow: `inset 0 0 0 2px ${GOLD}33`,
+          padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }} />
+      <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 30, minWidth: 240, background: '#fff',
+        border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+        {matches.map(c => (
+          <button key={c.id} onClick={() => { onLink(c); setOpen(false); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none',
+              borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{contactName(c)}</div>
+            {c.email && <div style={{ fontSize: 11, color: '#9ca3af' }}>{c.email}</div>}
+          </button>
+        ))}
+        {q.trim() && matches.length === 0 && (
+          <button onClick={() => { onText(q); setOpen(false); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: '#6b7280' }}>
+            No contact matches — keep “{q.trim()}” as text
+          </button>
+        )}
+        {!q.trim() && <div style={{ padding: '8px 11px', fontSize: 12, color: '#9ca3af' }}>Type a name, business or email…</div>}
+        {linked && (
+          <button onClick={() => { onLink(null); setOpen(false); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderTop: '1px solid #f3f4f6', background: '#fafafa', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12, color: '#b91c1c' }}>
+            ✕ Unlink {contactName(linked)}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function RentRoll({ listingId, authToken, isAdmin, contacts = [], onToast }: {
+  listingId: string; authToken?: string; isAdmin?: boolean; contacts?: CrmContact[]; onToast?: (m: string) => void;
 }) {
   const [rows, setRows] = useState<RentRollRow[]>([]);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
@@ -133,6 +216,56 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
     const j = await res.json().catch(() => ({}));
     if (j.row) setRows(rs => rs.map(r => r.id === id ? j.row : r));
   };
+  // Linking writes the id and mirrors the name into contact_name, so the CSV export
+  // and a contacts-less read still show who it is.
+  const patch = async (id: string, body: Record<string, unknown>) => {
+    const res = await fetch('/api/crm/rent-roll', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ id, ...body }) });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => ({}));
+    if (j.row) setRows(rs => rs.map(r => r.id === id ? j.row : r));
+    return j.row as RentRollRow | null;
+  };
+  const linkContact = async (row: RentRollRow, c: CrmContact | null) => {
+    const body: Record<string, unknown> = c
+      ? { contact_id: c.id, contact_name: contactName(c), ...(row.email ? {} : c.email ? { email: c.email } : {}) }
+      : { contact_id: null };
+    setRows(rs => rs.map(r => r.id === row.id ? { ...r, contact_id: c?.id ?? null, crm_clients: c, contact_name: c ? contactName(c) : r.contact_name } : r));
+    if (!(await patch(row.id, body))) { onToast?.('Could not save that contact'); load(); }
+  };
+  // A typed name that isn't in the CRM: keep the text, drop any stale link.
+  const setContactText = async (row: RentRollRow, v: string) => {
+    setRows(rs => rs.map(r => r.id === row.id ? { ...r, contact_name: v || null, contact_id: null, crm_clients: null } : r));
+    if (!(await patch(row.id, { contact_name: v, contact_id: null }))) { onToast?.('Could not save that contact'); load(); }
+  };
+
+  // The rent roll came out of a spreadsheet, so its contacts are names and emails
+  // rather than links. Match what we safely can in one pass: email is exact, and a
+  // name only counts when exactly one contact answers to it.
+  const [matching, setMatching] = useState(false);
+  const unlinked = useMemo(() => rows.filter(r => !r.contact_id && (r.contact_name || r.email)), [rows]);
+  const matchContacts = async () => {
+    const byEmail = new Map<string, CrmContact>();
+    const byName = new Map<string, CrmContact[]>();
+    for (const c of contacts) {
+      if (c.email) byEmail.set(c.email.toLowerCase().trim(), c);
+      for (const n of [normName(`${c.first_name ?? ''} ${c.last_name ?? ''}`), normName(c.business_name)]) {
+        if (n) byName.set(n, [...(byName.get(n) ?? []), c]);
+      }
+    }
+    const hits: { row: RentRollRow; c: CrmContact }[] = [];
+    for (const r of unlinked) {
+      const byN = byName.get(normName(r.contact_name));
+      const c = (byN?.length === 1 ? byN[0] : null) ?? (r.email ? byEmail.get(r.email.toLowerCase().trim()) : null);
+      if (c) hits.push({ row: r, c });
+    }
+    if (!hits.length) { onToast?.('No suites matched a contact by name or email'); return; }
+    if (!window.confirm(`Link ${hits.length} suite${hits.length === 1 ? '' : 's'} to matching contacts?\n\n${hits.slice(0, 8).map(h => `${h.row.suite || '—'}  →  ${contactName(h.c)}`).join('\n')}${hits.length > 8 ? `\n…and ${hits.length - 8} more` : ''}`)) return;
+    setMatching(true);
+    for (const h of hits) await linkContact(h.row, h.c);
+    setMatching(false);
+    onToast?.(`Linked ${hits.length} suite${hits.length === 1 ? '' : 's'} to contacts`);
+  };
+
   const addSuite = async () => {
     const res = await fetch('/api/crm/rent-roll', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ listing_id: listingId, tenant_name: 'Vacant', sort_order: (rows.at(-1)?.sort_order ?? rows.length) + 1 }) });
     if (!res.ok) { onToast?.('Could not add a suite'); return; }
@@ -174,11 +307,12 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const out = rows.filter(r => (showVacant || !isVacant(r)) &&
-      (!needle || [r.suite, r.tenant_name, r.email, r.contact_name, r.mailbox_box, r.notes].some(v => String(v ?? '').toLowerCase().includes(needle))));
+      (!needle || [r.suite, r.tenant_name, r.email, rowContact(r), r.mailbox_box, r.notes].some(v => String(v ?? '').toLowerCase().includes(needle))));
     if (!sort.key) return out;                      // no sort = the saved suite order
     const k = sort.key;
     return [...out].sort((a, b) => {
-      const av = a[k], bv = b[k];
+      const av = k === 'contact_name' ? rowContact(a) : a[k];
+      const bv = k === 'contact_name' ? rowContact(b) : b[k];
       const ba = av === null || av === undefined || av === '';
       const bb = bv === null || bv === undefined || bv === '';
       if (ba && bb) return 0;
@@ -196,7 +330,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
     const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'mailbox_box', 'keys', 'email', 'contact_name', 'renewal_status', 'notes'];
     const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
     const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const csv = [head.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
+    const csv = [head.join(','), ...rows.map(r => cols.map(c => esc(c === 'contact_name' ? rowContact(r) : r[c])).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = 'rent-roll.csv'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
@@ -233,6 +367,12 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
         <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showVacant} onChange={e => setShowVacant(e.target.checked)} /> Show vacant
         </label>
+        {unlinked.length > 0 && contacts.length > 0 && (
+          <button onClick={matchContacts} disabled={matching} title="Link suites to CRM contacts by name or email"
+            style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 8, padding: '7px 12px', cursor: matching ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+            {matching ? 'Linking…' : `🔗 Link contacts (${unlinked.length})`}
+          </button>
+        )}
         <button onClick={exportCsv} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>⤓ CSV</button>
         <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Back to the property card' : 'Open the full sheet'}
           style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>{expanded ? '✕ Close' : '⛶ Expand'}</button>
@@ -277,7 +417,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
                   <td style={TD}><Cell value={r.mailbox_box} onSave={v => saveCell(r.id, 'mailbox_box', v)} /></td>
                   <td style={TD}><Cell value={r.keys} align="right" type="number" onSave={v => saveCell(r.id, 'keys', v)} /></td>
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
-                  <td style={TD}><Cell value={r.contact_name} onSave={v => saveCell(r.id, 'contact_name', v)} /></td>
+                  <td style={TD}><ContactCell row={r} contacts={contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} /></td>
                   <td style={TD}><Cell value={r.notes} onSave={v => saveCell(r.id, 'notes', v)} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove suite" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}

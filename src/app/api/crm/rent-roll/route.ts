@@ -12,9 +12,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // Columns an agent may write. Everything else (ids, timestamps) is server-owned.
 const EDITABLE = ['tenant_name', 'suite', 'building', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration',
   'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'mailbox_box', 'keys', 'email', 'contact_name',
-  'renewal_status', 'notes', 'sort_order'] as const;
+  'contact_id', 'renewal_status', 'notes', 'sort_order'] as const;
 const NUMERIC = new Set(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'keys', 'sort_order']);
 const DATE = new Set(['lease_start', 'lease_expiration']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// The suite's Contact is a real CRM contact, joined live so a change on the contact
+// record shows here — contact_name stays as the fallback for people not in the CRM.
+const SELECT = '*, crm_clients:contact_id (id, first_name, last_name, business_name, email, phone, cell_phone)';
 
 function clean(body: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -22,6 +26,7 @@ function clean(body: Record<string, unknown>): Record<string, unknown> {
     if (!(k in body)) continue;
     const v = body[k];
     if (v === '' || v === null || v === undefined) { out[k] = null; continue; }
+    if (k === 'contact_id') { const id = String(v).trim(); out[k] = UUID.test(id) ? id : null; continue; }
     if (NUMERIC.has(k)) { const n = Number(v); out[k] = Number.isFinite(n) ? n : null; continue; }
     if (DATE.has(k)) { const s = String(v).trim(); out[k] = /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null; continue; }
     out[k] = String(v);
@@ -58,7 +63,7 @@ export async function GET(req: NextRequest) {
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_property_tenants')
-    .select('*')
+    .select(SELECT)
     .eq('listing_id', listingId)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('suite', { ascending: true });
@@ -78,7 +83,7 @@ export async function POST(req: NextRequest) {
   const row = clean(body);
   const { data, error } = await supabase.from('crm_property_tenants')
     .insert({ ...row, listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId })
-    .select().single();
+    .select(SELECT).single();
   if (error) { console.error('[rent-roll] POST', error); return NextResponse.json({ error: 'Could not add the suite' }, { status: 500 }); }
   await syncFloorPlan(supabase, data.business_unit, data.suite, row);
   return NextResponse.json({ row: data });
@@ -97,7 +102,7 @@ export async function PATCH(req: NextRequest) {
   if (!(await assertCanAccessListing(cur.listing_id, ctx))) return notFound('Suite not found');
   const row = clean(body);
   const { data, error } = await supabase.from('crm_property_tenants')
-    .update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    .update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select(SELECT).single();
   if (error) { console.error('[rent-roll] PATCH', error); return NextResponse.json({ error: 'Could not save the change' }, { status: 500 }); }
   // Sync against the suite as it now stands (a renamed suite moves the mirror with it).
   await syncFloorPlan(supabase, data.business_unit, data.suite ?? cur.suite, { ...row, tenant_name: data.tenant_name, size_sf: data.size_sf, lease_expiration: data.lease_expiration });
