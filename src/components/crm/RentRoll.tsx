@@ -33,6 +33,28 @@ function leaseStatus(exp?: string | null): { label: string; bg: string; color: s
   return { label: 'Current', bg: '#f0fdf4', color: '#15803d' };
 }
 
+type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'rent_psf' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'contact_name';
+const NUMERIC_COLS = new Set<SortKey>(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'keys']);
+// Column headers. `k` makes the column sortable; Status has no key of its own because
+// it's derived from the expiration date — sort by Lease Exp to get the same order.
+const HEAD: { label: string; w: number; k?: SortKey; right?: boolean }[] = [
+  { label: 'Suite', w: 62, k: 'suite' },
+  { label: 'Bldg', w: 44, k: 'building' },
+  { label: 'Tenant', w: 168, k: 'tenant_name' },
+  { label: 'Sq Ft', w: 66, k: 'size_sf', right: true },
+  { label: 'Lease Exp', w: 106, k: 'lease_expiration' },
+  { label: 'Status', w: 92 },
+  { label: 'Monthly', w: 86, k: 'monthly_rent', right: true },
+  { label: 'Annual', w: 86, k: 'annual_rent', right: true },
+  { label: '$/SF', w: 64, k: 'rent_psf', right: true },
+  { label: 'Type', w: 62, k: 'lease_type' },
+  { label: 'Box', w: 58, k: 'mailbox_box' },
+  { label: 'Keys', w: 48, k: 'keys', right: true },
+  { label: 'Email', w: 178, k: 'email' },
+  { label: 'Contact', w: 130, k: 'contact_name' },
+  { label: 'Notes', w: 160 },
+];
+
 const TH: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '7px 8px', fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 800, textAlign: 'left', whiteSpace: 'nowrap' };
 const TD: React.CSSProperties = { borderBottom: '1px solid #f1f2f4', padding: 0, verticalAlign: 'middle' };
 
@@ -72,6 +94,9 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [showVacant, setShowVacant] = useState(true);
+  const [sort, setSort] = useState<{ key: SortKey | null; dir: 1 | -1 }>({ key: null, dir: 1 });
+  const [expanded, setExpanded] = useState(false);   // full-screen: see the whole sheet at once
+  const toggleSort = (k: SortKey) => setSort(s => s.key !== k ? { key: k, dir: 1 } : s.dir === 1 ? { key: k, dir: -1 } : { key: null, dir: 1 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,6 +107,12 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
     setRows(a.rows ?? []); setVendors(b.rows ?? []); setLoading(false);
   }, [listingId, authToken]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setExpanded(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [expanded]);
 
   // Optimistic save — the row updates on screen immediately, then persists.
   const saveCell = async (id: string, field: keyof RentRollRow, value: string) => {
@@ -131,9 +162,24 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows.filter(r => (showVacant || !isVacant(r)) &&
+    const out = rows.filter(r => (showVacant || !isVacant(r)) &&
       (!needle || [r.suite, r.tenant_name, r.email, r.contact_name, r.mailbox_box, r.notes].some(v => String(v ?? '').toLowerCase().includes(needle))));
-  }, [rows, q, showVacant]);
+    if (!sort.key) return out;                      // no sort = the saved suite order
+    const k = sort.key;
+    return [...out].sort((a, b) => {
+      const av = a[k], bv = b[k];
+      const ba = av === null || av === undefined || av === '';
+      const bb = bv === null || bv === undefined || bv === '';
+      if (ba && bb) return 0;
+      if (ba) return 1;                             // blanks (and no-lease rows) always last
+      if (bb) return -1;
+      let c: number;
+      if (k === 'suite') c = (parseInt(String(av), 10) || 0) - (parseInt(String(bv), 10) || 0) || String(av).localeCompare(String(bv));
+      else if (NUMERIC_COLS.has(k)) c = Number(av) - Number(bv);
+      else c = String(av).localeCompare(String(bv));
+      return c * sort.dir;
+    });
+  }, [rows, q, showVacant, sort]);
 
   const exportCsv = () => {
     const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'rent_psf', 'mailbox_box', 'keys', 'email', 'contact_name', 'renewal_status', 'notes'];
@@ -158,7 +204,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
   const vendorRows = vendors.filter(v => v.category === 'vendor');
   const infoRows = vendors.filter(v => v.category === 'building_info');
 
-  return (
+  const body = (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
       {/* Summary */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -177,29 +223,25 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
           <input type="checkbox" checked={showVacant} onChange={e => setShowVacant(e.target.checked)} /> Show vacant
         </label>
         <button onClick={exportCsv} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>⤓ CSV</button>
+        <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Back to the property card' : 'Open the full sheet'}
+          style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>{expanded ? '✕ Close' : '⛶ Expand'}</button>
         <button onClick={addSuite} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '7px 13px', cursor: 'pointer' }}>＋ Suite</button>
       </div>
 
       {/* Grid */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', maxHeight: 560, background: '#fff' }}>
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', maxHeight: expanded ? 'calc(100vh - 330px)' : 560, background: '#fff' }}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1180 }}>
           <thead>
             <tr>
-              <th style={{ ...TH, minWidth: 62 }}>Suite</th>
-              <th style={{ ...TH, minWidth: 44 }}>Bldg</th>
-              <th style={{ ...TH, minWidth: 168 }}>Tenant</th>
-              <th style={{ ...TH, minWidth: 66, textAlign: 'right' }}>Sq Ft</th>
-              <th style={{ ...TH, minWidth: 106 }}>Lease Exp</th>
-              <th style={{ ...TH, minWidth: 92 }}>Status</th>
-              <th style={{ ...TH, minWidth: 86, textAlign: 'right' }}>Monthly</th>
-              <th style={{ ...TH, minWidth: 86, textAlign: 'right' }}>Annual</th>
-              <th style={{ ...TH, minWidth: 64, textAlign: 'right' }}>$/SF</th>
-              <th style={{ ...TH, minWidth: 62 }}>Type</th>
-              <th style={{ ...TH, minWidth: 58 }}>Box</th>
-              <th style={{ ...TH, minWidth: 48 }}>Keys</th>
-              <th style={{ ...TH, minWidth: 178 }}>Email</th>
-              <th style={{ ...TH, minWidth: 130 }}>Contact</th>
-              <th style={{ ...TH, minWidth: 160 }}>Notes</th>
+              {HEAD.map((h, i) => (
+                <th key={i} onClick={h.k ? () => toggleSort(h.k as SortKey) : undefined}
+                  title={h.k ? `Sort by ${h.label}` : undefined}
+                  style={{ ...TH, minWidth: h.w, textAlign: h.right ? 'right' : 'left',
+                    cursor: h.k ? 'pointer' : 'default', userSelect: 'none',
+                    color: sort.key && sort.key === h.k ? '#a06a12' : TH.color }}>
+                  {h.label}{sort.key && sort.key === h.k ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
+                </th>
+              ))}
               <th style={{ ...TH, width: 34 }} />
             </tr>
           </thead>
@@ -289,6 +331,16 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
           ))}
           {infoRows.length === 0 && <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '6px 2px' }}>No building notes yet.</div>}
         </div>
+      </div>
+    </div>
+  );
+
+  if (!expanded) return body;
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) setExpanded(false); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(17,24,39,.55)', padding: 16, display: 'flex' }}>
+      <div style={{ background: '#fff', borderRadius: 14, flex: 1, minHeight: 0, overflow: 'auto', padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+        {body}
       </div>
     </div>
   );
