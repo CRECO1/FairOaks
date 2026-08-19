@@ -31,6 +31,8 @@ interface Listing {
   highlights?: string | null;
   flyer_type?: string | null;
   co_agent_id?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   listing_agent_id?: string;
   assigned_agent_ids?: string[];
   is_restricted?: boolean;
@@ -147,7 +149,7 @@ function fmtBytes(n?: number | null) {
 const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
-  lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '', co_agent_id: '', flyer_type: '',
+  lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
 };
 
 // Signer-role options (shared by the send modal's role picker + placed-field labels).
@@ -340,6 +342,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
       description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '',
       co_agent_id: l.co_agent_id ?? '', flyer_type: l.flyer_type ?? '',
+      map_pin: (l.latitude != null && l.longitude != null) ? `${l.latitude}, ${l.longitude}` : '',
       listing_agent_id: l.listing_agent_id ?? '',
     });
     setDirty(false);
@@ -369,6 +372,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (!active) return;
     const body: Record<string, unknown> = { ...editForm };
     body.asking_price = editForm.asking_price !== '' ? Number(editForm.asking_price) : null;
+    // "29.7255, -98.6526" pasted from Google Maps -> the two columns the flyer map reads
+    { const m = String(editForm.map_pin || '').match(/(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/);
+      body.latitude = m ? Number(m[1]) : null; body.longitude = m ? Number(m[2]) : null;
+      delete (body as Record<string, unknown>).map_pin; }
     body.sq_ft        = editForm.sq_ft !== '' ? Number(editForm.sq_ft) : null;
     const res = await fetch(`/api/crm/listings/${active.id}`, {
       method: 'PATCH',
@@ -777,6 +784,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <option value="">— None —</option>
               {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
             </select>
+          </div>
+          <div>
+            {LBL('Map Pin (flyer)')}
+            <input style={INP} value={form.map_pin} onChange={e => set('map_pin', e.target.value)} placeholder="29.7255, -98.6526" />
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
           </div>
           <div>
             {LBL('Flyer Heading')}

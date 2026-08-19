@@ -14,11 +14,29 @@ const UA = 'CRECO-CRM/1.0 (https://www.crecotx.com; property flyer generator)';
 const TILE = 256;
 
 export interface LatLng { lat: number; lon: number }
+// `precise` = matched to an actual street address (Census). false = we only found the
+// street or locality, which is fine for context but shouldn't be trusted as a pin.
+export interface GeocodeResult extends LatLng { precise: boolean }
 
-// Nominatim usage policy: identify yourself, and don't hammer it — callers cache
-// the result on the listing so a given property is geocoded once.
-export async function geocode(address: string): Promise<LatLng | null> {
-  if (!address?.trim()) return null;
+// Geocoding, best source first. The US Census geocoder is free, keyless and built
+// for US street addresses, so it resolves actual buildings; Nominatim is the
+// fallback but often only knows the STREET, in which case it returns an arbitrary
+// point along it — fine for context, wrong for a pin. Anything that has to be exact
+// should be pinned by hand on the listing (crm_listings.latitude/longitude), which
+// always wins over both of these.
+async function censusGeocode(address: string): Promise<LatLng | null> {
+  try {
+    const u = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?' +
+      new URLSearchParams({ address, benchmark: 'Public_AR_Current', format: 'json' });
+    const r = await fetch(u, { headers: { 'User-Agent': UA } });
+    if (!r.ok) return null;
+    const j = await r.json() as { result?: { addressMatches?: Array<{ coordinates: { x: number; y: number } }> } };
+    const m = j?.result?.addressMatches?.[0];
+    return m ? { lat: m.coordinates.y, lon: m.coordinates.x } : null;
+  } catch { return null; }
+}
+
+async function nominatimGeocode(address: string): Promise<LatLng | null> {
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`;
     const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en' } });
@@ -30,6 +48,22 @@ export async function geocode(address: string): Promise<LatLng | null> {
   } catch { return null; }
 }
 
+export async function geocode(address: string): Promise<GeocodeResult | null> {
+  if (!address?.trim()) return null;
+  const exact = await censusGeocode(address);
+  if (exact) return { ...exact, precise: true };
+  const approx = await nominatimGeocode(address);
+  return approx ? { ...approx, precise: false } : null;
+}
+
+// Parse a pin pasted from Google Maps — "29.7255, -98.6526" (and tolerates parens).
+export function parsePin(v: string): LatLng | null {
+  const m = String(v || '').match(/(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)/);
+  if (!m) return null;
+  const lat = Number(m[1]), lon = Number(m[2]);
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null;
+}
+
 // Web-mercator world pixel coordinates at a given zoom.
 function project(lat: number, lon: number, z: number) {
   const n = TILE * Math.pow(2, z);
@@ -39,20 +73,30 @@ function project(lat: number, lon: number, z: number) {
   return { x, y };
 }
 
-async function tile(z: number, x: number, y: number): Promise<Buffer | null> {
+export type MapSource = 'street' | 'satellite';
+// USGS imagery is public domain and covers the US; it tops out around z16 in most
+// areas, so callers' satellite zoom is clamped to what the source actually has.
+const SOURCES: Record<MapSource, { url: (z: number, x: number, y: number) => string; credit: string; maxZoom: number }> = {
+  street: { url: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`, credit: '© OpenStreetMap contributors', maxZoom: 19 },
+  // ArcGIS tiles are addressed row-then-column, i.e. /{z}/{y}/{x} — not the OSM order.
+  satellite: { url: (z, x, y) => `https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/${z}/${y}/${x}`, credit: 'Imagery: USGS National Map', maxZoom: 16 },
+};
+
+async function tile(z: number, x: number, y: number, src: MapSource): Promise<Buffer | null> {
   const max = Math.pow(2, z);
   if (y < 0 || y >= max) return null;
   const wrapped = ((x % max) + max) % max;   // wrap the antimeridian
   try {
-    const r = await fetch(`https://tile.openstreetmap.org/${z}/${wrapped}/${y}.png`, { headers: { 'User-Agent': UA } });
+    const r = await fetch(SOURCES[src].url(z, wrapped, y), { headers: { 'User-Agent': UA } });
     if (!r.ok) return null;
     return Buffer.from(await r.arrayBuffer());
   } catch { return null; }
 }
 
 // Render a map centred on lat/lon. Returns PNG bytes, or null if tiles wouldn't load.
-export async function osmStaticMap(opts: { lat: number; lon: number; zoom: number; width: number; height: number; marker?: boolean }): Promise<Uint8Array | null> {
-  const { lat, lon, zoom: z, width: W, height: H, marker = true } = opts;
+export async function osmStaticMap(opts: { lat: number; lon: number; zoom: number; width: number; height: number; marker?: boolean; source?: MapSource }): Promise<Uint8Array | null> {
+  const { lat, lon, width: W, height: H, marker = true, source = 'street' } = opts;
+  const z = Math.min(opts.zoom, SOURCES[source].maxZoom);
   try {
     const c = project(lat, lon, z);
     const left = c.x - W / 2, top = c.y - H / 2;
@@ -62,7 +106,7 @@ export async function osmStaticMap(opts: { lat: number; lon: number; zoom: numbe
     if (cols * rows > 40) return null;                    // guard against silly sizes
 
     const tiles = await Promise.all(
-      Array.from({ length: cols * rows }, (_, i) => tile(z, x0 + (i % cols), y0 + Math.floor(i / cols))),
+      Array.from({ length: cols * rows }, (_, i) => tile(z, x0 + (i % cols), y0 + Math.floor(i / cols), source)),
     );
     if (!tiles.some(Boolean)) return null;                // nothing loaded — caller falls back
 
@@ -90,8 +134,8 @@ export async function osmStaticMap(opts: { lat: number; lon: number; zoom: numbe
              <text x="17" y="23" font-family="Helvetica,Arial,sans-serif" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">SITE</text>
            </g>`
         : '') +
-      `<rect x="0" y="${H - 15}" width="${W}" height="15" fill="#ffffff" opacity="0.72"/>
-       <text x="${W - 5}" y="${H - 4}" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#4b5563" text-anchor="end">© OpenStreetMap contributors</text>
+      `<rect x="0" y="${H - 15}" width="${W}" height="15" fill="#ffffff" opacity="0.8"/>
+       <text x="${W - 5}" y="${H - 4}" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#4b5563" text-anchor="end">${SOURCES[source].credit}</text>
      </svg>`);
     return new Uint8Array(await img.composite([{ input: overlay, left: 0, top: 0 }]).png().toBuffer());
   } catch { return null; }

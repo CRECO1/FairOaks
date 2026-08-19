@@ -87,17 +87,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Maps. Geocode once per property and cache it on the listing, then render the
   // location + area maps from OSM tiles (falling back to Google only if a server key exists).
-  let pt = (L.latitude != null && L.longitude != null) ? { lat: Number(L.latitude), lon: Number(L.longitude) } : null;
+  // A pin set by hand on the listing always wins.
+  let pt: { lat: number; lon: number } | null =
+    (L.latitude != null && L.longitude != null) ? { lat: Number(L.latitude), lon: Number(L.longitude) } : null;
   if (!pt) {
-    pt = await geocode(address);
-    if (pt) await supabase.from('crm_listings')
-      .update({ latitude: pt.lat, longitude: pt.lon, geocoded_at: new Date().toISOString() }).eq('id', id);
+    const g = await geocode(address);
+    if (g) {
+      pt = { lat: g.lat, lon: g.lon };
+      // Only cache an address-level match. A street-level guess still draws a map for
+      // this render but isn't saved, so it never masquerades as a confirmed pin.
+      if (g.precise) await supabase.from('crm_listings')
+        .update({ latitude: g.lat, longitude: g.lon, geocoded_at: new Date().toISOString() }).eq('id', id);
+    }
   }
   const [mapBytes, aerialBytes] = await Promise.all([
     googleStaticMap({ center: address, zoom: '13', size: '272x172', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
       .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: 344 }) : null)),
     googleStaticMap({ center: address, zoom: '16', size: '576x330', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
-      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 15, width: 700, height: 292 }) : null)),
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 292, source: 'satellite' }) : null)),
   ]);
 
   // IABS (required in TX). Stable per-unit path first — replacing that file updates
