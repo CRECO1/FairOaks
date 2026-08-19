@@ -33,8 +33,8 @@ function leaseStatus(exp?: string | null): { label: string; bg: string; color: s
   return { label: 'Current', bg: '#f0fdf4', color: '#15803d' };
 }
 
-type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'rent_psf' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'contact_name';
-const NUMERIC_COLS = new Set<SortKey>(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'keys']);
+type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'contact_name';
+const NUMERIC_COLS = new Set<SortKey>(['size_sf', 'monthly_rent', 'annual_rent', 'keys']);
 // Column headers. `k` makes the column sortable; Status has no key of its own because
 // it's derived from the expiration date — sort by Lease Exp to get the same order.
 const HEAD: { label: string; w: number; k?: SortKey; right?: boolean }[] = [
@@ -46,7 +46,6 @@ const HEAD: { label: string; w: number; k?: SortKey; right?: boolean }[] = [
   { label: 'Status', w: 92 },
   { label: 'Monthly', w: 86, k: 'monthly_rent', right: true },
   { label: 'Annual', w: 86, k: 'annual_rent', right: true },
-  { label: '$/SF', w: 64, k: 'rent_psf', right: true },
   { label: 'Type', w: 62, k: 'lease_type' },
   { label: 'Box', w: 58, k: 'mailbox_box' },
   { label: 'Keys', w: 48, k: 'keys', right: true },
@@ -59,20 +58,34 @@ const TH: React.CSSProperties = { position: 'sticky', top: 0, zIndex: 2, backgro
 const TD: React.CSSProperties = { borderBottom: '1px solid #f1f2f4', padding: 0, verticalAlign: 'middle' };
 
 // One inline-editable cell: commits on blur (or Enter), reverts on Escape.
-function Cell({ value, onSave, align, width, placeholder, type = 'text', bold }: {
+function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, money }: {
   value: string | number | null | undefined; onSave: (v: string) => void;
-  align?: 'left' | 'right'; width?: number; placeholder?: string; type?: string; bold?: boolean;
+  align?: 'left' | 'right'; width?: number; placeholder?: string; type?: string; bold?: boolean; money?: boolean;
 }) {
-  const [v, setV] = useState(value ?? '');
+  const [v, setV] = useState<string | number>(value ?? '');
+  const [focused, setFocused] = useState(false);
   const dirty = useRef(false);
   useEffect(() => { if (!dirty.current) setV(value ?? ''); }, [value]);
+  // Money reads as $1,234 at rest and as plain digits while you're editing it.
+  const shown = money && !focused && String(v ?? '') !== ''
+    ? '$' + Number(String(v).replace(/[^0-9.-]/g, '') || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })
+    : v;
+  const commit = () => {
+    setFocused(false);
+    if (!dirty.current) return;
+    dirty.current = false;
+    const raw = money ? String(v ?? '').replace(/[^0-9.-]/g, '') : String(v ?? '');
+    if (raw !== String(value ?? '')) onSave(raw);
+  };
   return (
     <input
-      value={v as string | number}
-      type={type}
+      value={shown as string | number}
+      type={money ? 'text' : type}
+      inputMode={money ? 'decimal' : undefined}
       placeholder={placeholder}
       onChange={e => { dirty.current = true; setV(e.target.value); }}
-      onBlur={() => { if (!dirty.current) return; dirty.current = false; if (String(v ?? '') !== String(value ?? '')) onSave(String(v ?? '')); }}
+      onFocus={e => { setFocused(true); e.currentTarget.style.background = '#fffdf3'; e.currentTarget.style.boxShadow = `inset 0 0 0 2px ${GOLD}33`; }}
+      onBlur={e => { commit(); e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none'; }}
       onKeyDown={e => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
         if (e.key === 'Escape') { dirty.current = false; setV(value ?? ''); (e.target as HTMLInputElement).blur(); }
@@ -80,8 +93,6 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold }:
       style={{ width: width ?? '100%', minWidth: width ?? 0, border: 'none', outline: 'none', background: 'transparent',
         padding: '7px 8px', fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a',
         textAlign: align ?? 'left', fontWeight: bold ? 700 : 400, boxSizing: 'border-box' }}
-      onFocus={e => { e.currentTarget.style.background = '#fffdf3'; e.currentTarget.style.boxShadow = `inset 0 0 0 2px ${GOLD}33`; }}
-      onBlurCapture={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none'; }}
     />
   );
 }
@@ -182,8 +193,8 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
   }, [rows, q, showVacant, sort]);
 
   const exportCsv = () => {
-    const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'rent_psf', 'mailbox_box', 'keys', 'email', 'contact_name', 'renewal_status', 'notes'];
-    const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Rent/SF', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
+    const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'mailbox_box', 'keys', 'email', 'contact_name', 'renewal_status', 'notes'];
+    const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
     const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [head.join(','), ...rows.map(r => cols.map(c => esc(r[c])).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -260,9 +271,8 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
                     {st && !vac ? <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.label}</span>
                       : <span style={{ fontSize: 11, color: '#c0c4cc' }}>{vac ? 'Vacant' : '—'}</span>}
                   </td>
-                  <td style={TD}><Cell value={r.monthly_rent} align="right" type="number" onSave={v => saveCell(r.id, 'monthly_rent', v)} /></td>
-                  <td style={TD}><Cell value={r.annual_rent} align="right" type="number" onSave={v => saveCell(r.id, 'annual_rent', v)} /></td>
-                  <td style={TD}><Cell value={r.rent_psf} align="right" type="number" onSave={v => saveCell(r.id, 'rent_psf', v)} /></td>
+                  <td style={TD}><Cell value={r.monthly_rent} align="right" money onSave={v => saveCell(r.id, 'monthly_rent', v)} /></td>
+                  <td style={TD}><Cell value={r.annual_rent} align="right" money onSave={v => saveCell(r.id, 'annual_rent', v)} /></td>
                   <td style={TD}><Cell value={r.lease_type} onSave={v => saveCell(r.id, 'lease_type', v)} /></td>
                   <td style={TD}><Cell value={r.mailbox_box} onSave={v => saveCell(r.id, 'mailbox_box', v)} /></td>
                   <td style={TD}><Cell value={r.keys} align="right" type="number" onSave={v => saveCell(r.id, 'keys', v)} /></td>
@@ -275,7 +285,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, onToast }: {
                 </tr>
               );
             })}
-            {visible.length === 0 && <tr><td colSpan={16} style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No suites match.</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={15} style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No suites match.</td></tr>}
           </tbody>
         </table>
       </div>
