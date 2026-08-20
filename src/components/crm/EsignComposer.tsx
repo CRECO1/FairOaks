@@ -205,14 +205,6 @@ export default function EsignComposer({
               .catch(() => { /* keep the old link */ });
           }}
         />
-        {review && doc.url && (
-          <SignPreviewModal url={doc.url} fields={effective} busy={sending}
-            signers={editorRecipients.map(r => ({ name: r.name, role: r.role, color: r.color }))}
-            signerLabel={role => valid.find(v => v.role === role)?.name || role}
-            onClose={() => setReview(false)}
-            onConfirm={async () => { await send(); setReview(false); }}
-            confirmLabel="📤 Send for signature" />
-        )}
     </>
   ) : null;
 
@@ -223,12 +215,22 @@ export default function EsignComposer({
   return (
     <>
     {editor}
+    {/* Rendered here rather than inside the editor so the send flow is reachable
+        without it — see the mobile path below. */}
+    {review && doc?.url && (
+      <SignPreviewModal url={doc.url} fields={effective} busy={sending}
+        signers={editorRecipients.map(r => ({ name: r.name, role: r.role, color: r.color }))}
+        signerLabel={role => valid.find(v => v.role === role)?.name || role}
+        onClose={() => setReview(false)}
+        onConfirm={async () => { await send(); setReview(false); }}
+        confirmLabel="📤 Send for signature" />
+    )}
     {step === 'setup' && (
     <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 1001, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: '1px solid #eef0f2', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14, padding: isMobile ? '12px 12px calc(12px + env(safe-area-inset-top))' : '14px 20px', borderBottom: '1px solid #eef0f2', flexShrink: 0, paddingTop: isMobile ? 'calc(12px + env(safe-area-inset-top))' : undefined }}>
         <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 19, color: '#6b7280', cursor: 'pointer', padding: 0 }}>✕</button>
-        <span style={{ width: 1, height: 22, background: '#e5e7eb' }} />
-        <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 600, color: '#1a1a1a' }}>Set Up Envelope</div>
+        {!isMobile && <span style={{ width: 1, height: 22, background: '#e5e7eb' }} />}
+        {!isMobile && <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 600, color: '#1a1a1a', whiteSpace: 'nowrap' }}>Set Up Envelope</div>}
         <span style={{ flex: 1 }} />
         {orphaned > 0 && !isMobile && (
           <span style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '4px 10px', fontWeight: 700 }}>
@@ -236,9 +238,15 @@ export default function EsignComposer({
           </span>
         )}
         {blocker && !isMobile && <span style={{ fontSize: 12.5, color: '#9ca3af' }}>{blocker}</span>}
-        <button onClick={goFields} disabled={!!blocker}
-          style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', background: blocker ? '#d8d5cf' : GOLD, border: 'none', borderRadius: 9, padding: '10px 18px', cursor: blocker ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-          Next: Add Fields →
+        {isMobile && (
+          <button onClick={goFields} disabled={!!blocker} title="Easier on a desktop"
+            style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 9, padding: '10px 12px', cursor: blocker ? 'default' : 'pointer', whiteSpace: 'nowrap', opacity: blocker ? 0.5 : 1 }}>
+            ✒ Fields
+          </button>
+        )}
+        <button onClick={() => { if (isMobile) { setPlaced([]); setReview(true); } else goFields(); }} disabled={!!blocker}
+          style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', background: blocker ? '#d8d5cf' : GOLD, border: 'none', borderRadius: 9, padding: isMobile ? '10px 13px' : '10px 18px', cursor: blocker ? 'default' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          {isMobile ? 'Review & Send' : 'Next: Add Fields →'}
         </button>
       </div>
 
@@ -358,6 +366,14 @@ export default function EsignComposer({
               </>
             )}
           </Section>
+
+          {isMobile && (
+            <div style={{ fontSize: 12.5, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 10, padding: '11px 13px', margin: '16px 0 0', lineHeight: 1.5 }}>
+              💡 Sending from a phone adds a signature page at the end of the document for
+              each signer. To place signatures on specific lines instead, tap <strong>✒ Fields</strong>
+              — that works best on a desktop.
+            </div>
+          )}
 
           {/* 3 — the email they get */}
           <Section title="Add message" open={open === 'message'} onToggle={() => setOpen(o => o === 'message' ? null : 'message')}

@@ -79,9 +79,9 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.72)', zIndex: 1100, display: 'flex', flexDirection: 'column', padding: 18, fontFamily: "'DM Sans',sans-serif" }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.72)', zIndex: 1100, display: 'flex', flexDirection: 'column', padding: 'max(10px, min(18px, 3vw))', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-        <div style={{ color: '#fff', fontSize: 15, fontWeight: 800 }}>Review signature placements — who signs where</div>
+        <div style={{ color: '#fff', fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap' }}>Review — who signs where</div>
         {roles.length > 0 && <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>{roles.map(r => (
           <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#e5e7eb', fontSize: 12, fontWeight: 600 }}>
             <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(r) }} />{nameOf(r)}

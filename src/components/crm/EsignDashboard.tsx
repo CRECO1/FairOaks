@@ -22,8 +22,8 @@ interface Props {
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
-const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
-const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' };
+const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
+const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap' };
 
 export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, isSuperAdmin, refreshKey = 0 }: Props) {
   const [envs, setEnvs] = useState<Envelope[]>([]);
@@ -123,10 +123,10 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111' }}>✍️ E-Sign</h2>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
+        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>✍️ E-Sign</h2>
         <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.filter(e => !byAgent || e.sent_by === byAgent).length} ${showAll ? 'requests' : 'out for signature'}${byAgent ? ` · ${byAgent}` : ''}`}</span>
-        <span style={{ flex: 1 }} />
+        <span style={{ flex: '1 0 0', minWidth: 0 }} />
         {(() => {
           const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
           if (agents.length < 2) return null;
@@ -141,7 +141,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; completed
         </label>
-        <button onClick={load} style={{ ...mini, color: '#9ca3af' }}>⟳ Refresh</button>
+        <button onClick={load} style={{ ...mini, color: '#9ca3af', flexShrink: 0 }}>⟳ Refresh</button>
       </div>
       <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 18 }}>Import a document to be signed, or track the ones already out. Nudge the current signer or jump to the deal to manage.</p>
 
@@ -168,11 +168,11 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>Ready to prepare &amp; send</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {docs.filter(d => !d.envelope).map(d => (
-              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
-                <div style={{ flex: 1, minWidth: 140 }}>
+                <div style={{ flex: '1 1 190px', minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Document'}</div>
-                  <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Imported{d.updated_at ? ` · ${ago(d.updated_at)} ago` : ''} · not sent yet</div>
+                  <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Imported{d.updated_at ? ` · ${ago(d.updated_at)}` : ''} · not sent yet</div>
                 </div>
                 <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }}>✕</button>
                 {onCompose && <button onClick={() => onCompose({ doc: d })} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Prepare &amp; send →</button>}
@@ -198,10 +198,12 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
               const dealName = env.crm_deals?.property || env.crm_deals?.client || 'Deal';
               return (
-                <div key={env.id} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px' }}>
+                <div key={env.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
+                  {/* Needs a basis wide enough to be worth a line of its own; below that
+                      the actions wrap underneath instead of off the side of the screen. */}
+                  <div style={{ flex: '1 1 190px', minWidth: 0 }}>
+                    <div title={env.title || 'Document'} style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
                     <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
                       {env.sent_by && <><span style={{ fontWeight: 700, color: '#6b7280' }}>{env.sent_by}</span> · </>}
                       {dealName} · {done}/{signers.length} signed
@@ -214,10 +216,11 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     </div>
                     {current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
-                        ⏳ Waiting on {current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.viewed_at ? ' · viewed' : current.sent_at ? ` · ${ago(current.sent_at)}` : ''}</span>
+                        ⏳ Waiting on {current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.viewed_at ? ' · viewed' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
                       </div>
                     )}
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginLeft: 'auto' }}>
                   {current && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
                   {env.status !== 'voided' && !env.archived_at && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
                   {env.archived_at
@@ -225,6 +228,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     : <button disabled={busy === env.id} onClick={() => archiveEnv(env)} title="File this away — everything is kept" style={{ ...mini }}>🗄 Archive</button>}
                   {isSuperAdmin && <button disabled={busy === env.id} onClick={() => purgeEnv(env)} title="Permanently delete — destroys the signatures and the executed copy" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑</button>}
                   {env.deal_id && onOpenDeal && <button onClick={() => onOpenDeal(env.deal_id!)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Open →</button>}
+                  </div>
                 </div>
               );
             })}
