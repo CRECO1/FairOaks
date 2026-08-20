@@ -35,6 +35,8 @@ interface Listing {
   grade_level_doors?: boolean | null;
   dock_high_doors?: boolean | null;
   flyer_type?: string | null;
+  flyer_path?: string | null;
+  flyer_generated_at?: string | null;
   co_agent_id?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -664,17 +666,36 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   }
 
   // Generate a branded one-page PDF flyer from this property's data + photos.
-  async function generateFlyer() {
+  // Open, save, or rebuild the property's flyer. The server keeps the generated PDF
+  // and only rebuilds when the listing has changed since — `force` is the agent
+  // saying "I changed something, make me a new one" regardless.
+  async function generateFlyer(opts?: { force?: boolean; download?: boolean }) {
     if (!active) return;
     setFlyerBusy(true);
     try {
-      const res = await fetch(`/api/crm/listings/${active.id}/flyer`, { headers: authHeaders });
-      if (!res.ok) { onToast('Could not generate flyer'); return; }
+      const qs = [opts?.force ? 'force=1' : '', opts?.download ? 'download=1' : ''].filter(Boolean).join('&');
+      const res = await fetch(`/api/crm/listings/${active.id}/flyer${qs ? `?${qs}` : ''}`, { headers: authHeaders });
+      if (!res.ok) { onToast(opts?.force ? 'Could not rebuild the flyer' : 'Could not open the flyer'); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      if (opts?.download) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(active.name || active.address || 'listing').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 50)}-flyer.pdf`;
+        a.click();
+        onToast('Flyer downloaded ✓');
+      } else {
+        window.open(url, '_blank');
+      }
       setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch { onToast('Could not generate flyer'); }
+      // Pick up flyer_generated_at so the header stops saying it's out of date.
+      const built = res.headers.get('X-Flyer-Generated-At');
+      if (built) {
+        setActive(a => a && a.id === active.id ? { ...a, flyer_generated_at: built } : a);
+        setListings(ls => ls.map(l => l.id === active.id ? { ...l, flyer_generated_at: built } : l));
+      }
+      if (opts?.force) onToast('Updated flyer created ✓');
+    } catch { onToast('Could not open the flyer'); }
     finally { setFlyerBusy(false); }
   }
 
@@ -1058,10 +1079,39 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <button onClick={generateFlyer} disabled={flyerBusy} title="Generate a branded PDF flyer"
-                    style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #f0e2c4', background: '#fdf6e9', color: '#a06a12', fontSize: 12.5, fontWeight: 700, cursor: flyerBusy ? 'default' : 'pointer', opacity: flyerBusy ? 0.6 : 1, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" }}>
-                    {flyerBusy ? '…' : '📄 Flyer'}
-                  </button>
+                  {(() => {
+                    const built = active.flyer_generated_at ? new Date(active.flyer_generated_at) : null;
+                    // Same test the server makes, so the header agrees with what an open
+                    // would actually do: the flyer is out of date once the listing or any
+                    // of its uploads is newer than the flyer.
+                    const newestFile = files.reduce((m, f) => Math.max(m, f.created_at ? new Date(f.created_at).getTime() : 0), 0);
+                    const changedAt = Math.max(active.updated_at ? new Date(active.updated_at).getTime() : 0, newestFile);
+                    const stale = !!built && changedAt > built.getTime();
+                    const bs: React.CSSProperties = { padding: '6px 11px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: flyerBusy ? 'default' : 'pointer', opacity: flyerBusy ? 0.6 : 1, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {built && (
+                          <span title={`Flyer built ${built.toLocaleString('en-US')}`} style={{ fontSize: 11.5, color: stale ? '#b45309' : '#9ca3af', fontWeight: stale ? 700 : 400, whiteSpace: 'nowrap' }}>
+                            {stale ? '⚠ out of date' : `Flyer · ${built.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+                          </span>
+                        )}
+                        <button onClick={() => generateFlyer()} disabled={flyerBusy} title={built ? 'Open the saved flyer' : 'Create a branded PDF flyer'}
+                          style={{ ...bs, border: '1px solid #f0e2c4', background: '#fdf6e9', color: '#a06a12' }}>
+                          {flyerBusy ? '…' : built ? '📄 View flyer' : '📄 Create flyer'}
+                        </button>
+                        {built && (
+                          <>
+                            <button onClick={() => generateFlyer({ download: true })} disabled={flyerBusy} title="Download the flyer as a PDF"
+                              style={{ ...bs, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280' }}>⬇</button>
+                            <button onClick={() => generateFlyer({ force: true })} disabled={flyerBusy} title="Rebuild the flyer from the current photos and details"
+                              style={{ ...bs, border: stale ? 'none' : '1px solid #e5e7eb', background: stale ? '#c9922c' : '#fff', color: stale ? '#fff' : '#6b7280' }}>
+                              ↻ Create updated flyer
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <button onClick={closePanel} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
                 </div>
               </div>
