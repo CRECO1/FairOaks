@@ -55,6 +55,7 @@ interface ListingFile {
   file_size?: number;
   category: string;
   created_at: string;
+  sort_order?: number | null;
   url?: string;
 }
 
@@ -788,6 +789,102 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     }
   }
 
+  // ── Photos ────────────────────────────────────────────────────────────────
+  // Upload straight into the Photos tab (any number at once) rather than routing
+  // through Documents with the right category selected.
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [dragPhoto, setDragPhoto] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const replacingRef = useRef<ListingFile | null>(null);
+
+  // One file through presign → PUT → confirm; returns the saved row.
+  const putPhoto = useCallback(async (file: File): Promise<ListingFile | null> => {
+    if (!active) return null;
+    const pre = await fetch('/api/crm/listing-files/presign', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ listing_id: active.id, filename: file.name, category: 'photo', file_size: file.size, file_type: file.type || '' }),
+    });
+    const pj = await pre.json().catch(() => ({}));
+    if (!pre.ok) { onToast(pj.error ?? 'Upload failed'); return null; }
+    const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
+    if (!put.ok) { onToast(`Upload failed (storage ${put.status})`); return null; }
+    const conf = await fetch('/api/crm/listing-files/confirm', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ ...pj.meta, storage_path: pj.storagePath }),
+    });
+    const cj = await conf.json().catch(() => ({}));
+    if (!conf.ok) { onToast(cj.error ?? 'Upload failed'); return null; }
+    return cj.file as ListingFile;
+  }, [active, authHeaders, onToast]);
+
+  async function addPhotos(list: FileList | null) {
+    if (!active || !list?.length) return;
+    const imgs = Array.from(list).filter(f => (f.type || '').startsWith('image/'));
+    if (!imgs.length) { onToast('Photos need to be image files'); return; }
+    setPhotoBusy(true);
+    try {
+      const added: ListingFile[] = [];
+      for (const f of imgs) { const row = await putPhoto(f); if (row) added.push(row); }
+      if (added.length) {
+        setFiles(prev => [...prev, ...added]);
+        onToast(`${added.length} photo${added.length === 1 ? '' : 's'} added ✓`);
+      }
+    } finally { setPhotoBusy(false); }
+  }
+
+  // Persist the order the tiles are in; position 0 becomes the flyer's cover.
+  const savePhotoOrder = useCallback(async (ordered: ListingFile[]) => {
+    if (!active) return;
+    const res = await fetch('/api/crm/listing-files', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ listing_id: active.id, order: ordered.map(f => f.id) }),
+    });
+    if (!res.ok) { onToast('Could not save the photo order'); loadFiles(active.id); return; }
+    // Mirror the saved positions locally so the cover badge and the flyer's
+    // out-of-date check agree without a refetch.
+    const pos = new Map(ordered.map((f, i) => [f.id, i]));
+    setFiles(prev => prev.map(f => pos.has(f.id) ? { ...f, sort_order: pos.get(f.id)! } : f));
+  }, [active, authHeaders, onToast]); // eslint-disable-line
+
+  // Drop a dragged tile in front of the one it was dropped on.
+  function movePhoto(photos: ListingFile[], fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const from = photos.findIndex(f => f.id === fromId);
+    const to = photos.findIndex(f => f.id === toId);
+    if (from < 0 || to < 0) return;
+    const next = [...photos];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    savePhotoOrder(next);
+  }
+  const makeCover = (photos: ListingFile[], id: string) => movePhoto(photos, id, photos[0]?.id ?? id);
+
+  // Swap one photo without disturbing the rest — the replacement takes the old
+  // one's position, so a "just change that picture" edit doesn't reshuffle anything.
+  async function replacePhoto(file: File) {
+    const old = replacingRef.current;
+    replacingRef.current = null;
+    if (!active || !old) return;
+    setPhotoBusy(true);
+    try {
+      const row = await putPhoto(file);
+      if (!row) return;
+      await fetch('/api/crm/listing-files', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ fileId: old.id }),
+      });
+      setFiles(prev => {
+        const next = prev.filter(f => f.id !== old.id);
+        const at = prev.findIndex(f => f.id === old.id);
+        next.splice(Math.max(0, at), 0, row);
+        const photos = next.filter(f => f.category === 'photo');
+        savePhotoOrder(photos);
+        return next;
+      });
+      onToast('Photo replaced ✓');
+    } finally { setPhotoBusy(false); }
+  }
+
   async function deleteFile(fileId: string, name: string) {
     if (!confirm(`Remove "${name}"?`)) return;
     const res = await fetch('/api/crm/listing-files', {
@@ -896,7 +993,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           </div>
         </div>
         <div>
-          {LBL('Description')}
+          {LBL('Flyer Description')}
           <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
@@ -1410,20 +1507,61 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   {(() => {
                     const photos = files.filter(f => f.category === 'photo');
                     if (filesLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 14 }}>Loading…</div>;
-                    if (photos.length === 0) return (
-                      <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
-                        <div style={{ fontSize: 32, marginBottom: 8 }}>🖼</div>
-                        <div style={{ fontSize: 13 }}>No photos yet. Upload images in the Documents tab with category “Photos”.</div>
-                      </div>
-                    );
+                    const act: React.CSSProperties = { border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, padding: '3px 7px', cursor: 'pointer', lineHeight: 1.4, fontFamily: "'DM Sans',sans-serif" };
                     return (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
-                        {photos.map(f => (
-                          <button key={f.id} onClick={() => f.url && setPreviewFile({ url: f.url, name: f.name, type: f.file_type })} disabled={!f.url}
-                            style={{ display: 'block', borderRadius: 10, overflow: 'hidden', border: '1px solid #eef0f2', aspectRatio: '4 / 3', background: '#f3f4f6', padding: 0, cursor: f.url ? 'pointer' : 'default' }}>
-                            {f.url ? <img src={f.url} alt={f.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
+                      <div>
+                        <input ref={photoInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                          onChange={e => { const l = e.target.files; e.target.value = ''; addPhotos(l); }} />
+                        <input ref={replaceRef} type="file" accept="image/*" style={{ display: 'none' }}
+                          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) replacePhoto(f); }} />
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+                          <button onClick={() => photoInputRef.current?.click()} disabled={photoBusy}
+                            style={{ ...act, padding: '7px 13px', fontSize: 12.5, background: '#c9922c', color: '#fff', opacity: photoBusy ? 0.6 : 1 }}>
+                            {photoBusy ? 'Working…' : '＋ Add photos'}
                           </button>
-                        ))}
+                          <span style={{ fontSize: 12, color: '#9ca3af' }}>
+                            {photos.length} photo{photos.length === 1 ? '' : 's'} · drag to reorder — the first one is the flyer cover
+                          </span>
+                        </div>
+
+                        {photos.length === 0 ? (
+                          <div
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => { e.preventDefault(); addPhotos(e.dataTransfer.files); }}
+                            onClick={() => photoInputRef.current?.click()}
+                            style={{ textAlign: 'center', padding: 40, color: '#9ca3af', border: '2px dashed #e6d3a2', borderRadius: 12, background: '#fffdf6', cursor: 'pointer' }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>🖼</div>
+                            <div style={{ fontSize: 13 }}>Drop photos here, or click to browse.</div>
+                          </div>
+                        ) : (
+                          <div
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => { e.preventDefault(); if (!dragPhoto) addPhotos(e.dataTransfer.files); }}
+                            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+                            {photos.map((f, i) => (
+                              <div key={f.id}
+                                draggable
+                                onDragStart={() => setDragPhoto(f.id)}
+                                onDragEnd={() => setDragPhoto(null)}
+                                onDragOver={e => e.preventDefault()}
+                                onDrop={e => { e.preventDefault(); e.stopPropagation(); if (dragPhoto) movePhoto(photos, dragPhoto, f.id); setDragPhoto(null); }}
+                                style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', aspectRatio: '4 / 3', background: '#f3f4f6',
+                                  border: i === 0 ? `2px solid #c9922c` : '1px solid #eef0f2',
+                                  opacity: dragPhoto === f.id ? 0.4 : 1, cursor: 'grab' }}>
+                                {f.url && <img src={f.url} alt={f.name} loading="lazy" draggable={false} onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })} style={{ width: '100%', height: '100%', objectFit: 'cover', cursor: 'pointer' }} />}
+                                {i === 0 && (
+                                  <span style={{ position: 'absolute', top: 6, left: 6, background: '#c9922c', color: '#fff', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 20 }}>★ COVER</span>
+                                )}
+                                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 4, justifyContent: 'center', padding: 5, background: 'linear-gradient(transparent, rgba(0,0,0,.6))' }}>
+                                  {i !== 0 && <button onClick={() => makeCover(photos, f.id)} title="Use as the flyer cover" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#a06a12' }}>★ Cover</button>}
+                                  <button onClick={() => { replacingRef.current = f; replaceRef.current?.click(); }} disabled={photoBusy} title="Swap this photo, keeping its position" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#374151' }}>⇄ Replace</button>
+                                  <button onClick={() => deleteFile(f.id, f.name)} title="Remove this photo" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#b91c1c' }}>✕</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

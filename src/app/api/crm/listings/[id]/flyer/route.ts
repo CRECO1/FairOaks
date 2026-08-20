@@ -83,7 +83,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const [agent, coAgent] = await Promise.all([loadAgent(L.listing_agent_id), loadAgent(L.co_agent_id)]);
 
   // Photos (oldest-first, so the imported cover leads) + floor plan.
-  const { data: files } = await supabase.from('crm_listing_files').select('storage_path, file_type, category, created_at').eq('listing_id', id).order('created_at', { ascending: true });
+  // Gallery order decides the flyer: photoRows[0] is the hero. sort_order wins, and
+  // NULL sorts last so a listing nobody has reordered still leads with its oldest
+  // photo exactly as before.
+  const { data: files } = await supabase.from('crm_listing_files')
+    .select('storage_path, file_type, category, created_at, sort_order').eq('listing_id', id)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
   const rows = files ?? [];
   const dl = async (f: { storage_path: string }) => {
     const { data: blob } = await supabase.storage.from('listing-files').download(f.storage_path);

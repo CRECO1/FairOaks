@@ -20,6 +20,9 @@ export async function GET(req: NextRequest) {
     .from('crm_listing_files')
     .select('*')
     .eq('listing_id', listingId)
+    // Gallery order first (NULL last, so un-ordered files keep today's behaviour),
+    // then newest-first within each group.
+    .order('sort_order', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false });
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
   const withUrls = await Promise.all(
@@ -70,4 +73,37 @@ export async function DELETE(req: NextRequest) {
   if (f.storage_path) await supabase.storage.from(BUCKET).remove([f.storage_path]);
   await supabase.from('crm_listing_files').delete().eq('id', fileId);
   return NextResponse.json({ deleted: true });
+}
+
+// Reorder a listing's photos. The client sends the ids in the order it wants them;
+// position 0 is the flyer's cover. Writing every position (rather than a delta)
+// keeps the sequence dense and makes the result independent of what was there before.
+export async function PATCH(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const { listing_id, order } = await req.json().catch(() => ({}));
+  if (!listing_id || !Array.isArray(order)) {
+    return NextResponse.json({ error: 'listing_id and order[] required' }, { status: 400 });
+  }
+  if (!(await callerCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
+  const ids = (order as unknown[]).filter((x): x is string => typeof x === 'string').slice(0, 500);
+  if (!ids.length) return NextResponse.json({ error: 'order[] is empty' }, { status: 400 });
+
+  const supabase = adminClient();
+  // Only touch rows that really belong to this listing — an id from elsewhere must
+  // not be re-parented or reordered by passing it in the list.
+  const { data: owned } = await supabase.from('crm_listing_files')
+    .select('id').eq('listing_id', listing_id).in('id', ids);
+  const ownedIds = new Set((owned ?? []).map(f => f.id as string));
+  const toWrite = ids.filter(id => ownedIds.has(id));
+  if (!toWrite.length) return NextResponse.json({ error: 'Nothing to reorder' }, { status: 400 });
+
+  const results = await Promise.all(toWrite.map((id, i) =>
+    supabase.from('crm_listing_files').update({ sort_order: i }).eq('id', id).eq('listing_id', listing_id)));
+  const failed = results.filter(r => r.error);
+  if (failed.length) {
+    console.error('[api/listing-files] reorder', failed[0].error);
+    return NextResponse.json({ error: 'Could not save the new order' }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, ordered: toWrite.length });
 }
