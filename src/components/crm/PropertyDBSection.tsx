@@ -1137,15 +1137,17 @@ function AddPropertyModal({
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) readFlyer(f); }}
             style={{ display: 'block', border: '2px dashed #e0cfa0', background: reading ? '#fbf3df' : '#fffdf6', borderRadius: 12, padding: '18px 16px', textAlign: 'center', cursor: reading ? 'default' : 'pointer', marginBottom: 16 }}>
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style={{ display: 'none' }}
+            {/* accept="image/*" reliably offers the camera on phones and lets iOS
+                hand back a JPEG (HEIC photos are converted on capture). */}
+            <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) readFlyer(f); e.target.value = ''; }} />
             {reading ? (
               <div style={{ color: '#a06a12', fontWeight: 700, fontSize: 14 }}>⏳ Reading the flyer with AI…</div>
             ) : (
               <>
-                <div style={{ fontSize: 22, marginBottom: 4 }}>📄</div>
-                <div style={{ fontWeight: 700, color: '#8a6a1e', fontSize: 14 }}>Upload a flyer to auto-fill</div>
-                <div style={{ fontSize: 12, color: '#b08a4a', marginTop: 3 }}>Drop a PDF or image here, or click to browse — the details are read from it and filled in below for you to review.</div>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{isMobile ? '📸' : '📄'}</div>
+                <div style={{ fontWeight: 700, color: '#8a6a1e', fontSize: 14 }}>{isMobile ? 'Take a photo of the flyer to auto-fill' : 'Upload a flyer to auto-fill'}</div>
+                <div style={{ fontSize: 12, color: '#b08a4a', marginTop: 3 }}>{isMobile ? 'Snap a photo, or choose a PDF/image' : 'Drop a PDF or image here, or click to browse'} — the details are read from it and filled in below for you to review.</div>
               </>
             )}
           </label>
