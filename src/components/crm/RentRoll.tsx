@@ -106,9 +106,10 @@ function Cell({ value, onSave, align, width, placeholder, type = 'text', bold, m
 // The suite's Contact — a real CRM contact, not free text. Click it to search the
 // contact list; picking one links the record so name/email track the contact card.
 // A name that isn't in the CRM can still be typed and kept as plain text.
-function ContactCell({ row, contacts, onLink, onText }: {
+function ContactCell({ row, contacts, onLink, onText, onCreate }: {
   row: RentRollRow; contacts: CrmContact[];
   onLink: (c: CrmContact | null) => void; onText: (v: string) => void;
+  onCreate: (name: string) => Promise<CrmContact | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -163,10 +164,16 @@ function ContactCell({ row, contacts, onLink, onText }: {
           </button>
         ))}
         {q.trim() && matches.length === 0 && (
-          <button onClick={() => { onText(q); setOpen(false); }}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: '#6b7280' }}>
-            No contact matches — keep “{q.trim()}” as text
-          </button>
+          <>
+            <button onClick={async () => { const c = await onCreate(q); if (c) { onLink(c); setOpen(false); } }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fffdf3', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: GOLD, fontWeight: 700 }}>
+              ＋ Add “{q.trim()}” as a new contact
+            </button>
+            <button onClick={() => { onText(q); setOpen(false); }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 11px', border: 'none', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, color: '#6b7280' }}>
+              No contact matches — keep “{q.trim()}” as text
+            </button>
+          </>
         )}
         {!q.trim() && <div style={{ padding: '8px 11px', fontSize: 12, color: '#9ca3af' }}>Type a name, business or email…</div>}
         {linked && (
@@ -185,6 +192,8 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
 }) {
   const [rows, setRows] = useState<RentRollRow[]>([]);
   const [vendors, setVendors] = useState<VendorRow[]>([]);
+  // Contacts created inline here — merged into the search so they're instantly pickable.
+  const [localContacts, setLocalContacts] = useState<CrmContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [showVacant, setShowVacant] = useState(true);
@@ -236,6 +245,23 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
   const setContactText = async (row: RentRollRow, v: string) => {
     setRows(rs => rs.map(r => r.id === row.id ? { ...r, contact_name: v || null, contact_id: null, crm_clients: null } : r));
     if (!(await patch(row.id, { contact_name: v, contact_id: null }))) { onToast?.('Could not save that contact'); load(); }
+  };
+  // Create a brand-new contact in the master list (crm_clients) so a suite tenant
+  // that isn't a contact yet gets added ONCE and linked — no duplicates.
+  const createContact = async (name: string): Promise<CrmContact | null> => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return null;
+    try {
+      const res = await fetch('/api/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+        body: JSON.stringify({ first_name: parts[0], last_name: parts.slice(1).join(' ') || null, type: 'Tenant' }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.contact) { onToast?.('Could not create the contact'); return null; }
+      setLocalContacts(l => [j.contact as CrmContact, ...l]);
+      return j.contact as CrmContact;
+    } catch { onToast?.('Could not create the contact'); return null; }
   };
 
   // The rent roll came out of a spreadsheet, so its contacts are names and emails
@@ -417,7 +443,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
                   <td style={TD}><Cell value={r.mailbox_box} onSave={v => saveCell(r.id, 'mailbox_box', v)} /></td>
                   <td style={TD}><Cell value={r.keys} align="right" type="number" onSave={v => saveCell(r.id, 'keys', v)} /></td>
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
-                  <td style={TD}><ContactCell row={r} contacts={contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} /></td>
+                  <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={createContact} /></td>
                   <td style={TD}><Cell value={r.notes} onSave={v => saveCell(r.id, 'notes', v)} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove suite" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}

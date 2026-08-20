@@ -122,6 +122,26 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
     return Array.from(byId.values()).slice(0, 8);
   })();
 
+  // Create a contact in the master list and tag it in one step, so someone who
+  // isn't a contact yet is added ONCE and tagged — no duplicates.
+  const createAndTag = async (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return;
+    try {
+      const res = await fetch('/api/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ first_name: parts[0], last_name: parts.slice(1).join(' ') || null, type: 'Other' }),
+      });
+      const j = await res.json();
+      if (res.ok && j.contact) {
+        const nm = j.contact.business_name || `${j.contact.first_name ?? ''} ${j.contact.last_name ?? ''}`.trim() || 'Contact';
+        setAttendees(list => [...list, { id: j.contact.id as string, name: nm }]);
+        setSearch('');
+      } else { showToast?.('Could not create the contact'); }
+    } catch { showToast?.('Could not create the contact'); }
+  };
+
   const readOnly = !dealId; // contact mode
 
   return (
@@ -153,8 +173,15 @@ export default function DealMeetings({ dealId, clientId, clients = [], authToken
           <div style={{ position: 'relative' }}>
             <input className="crm-input" style={{ width: '100%' }} value={search} onChange={e => setSearch(e.target.value)} placeholder="Type a contact's name to tag them…" />
             {search.trim().length > 0 && matches.length === 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', padding: '9px 12px', fontSize: 12.5, color: '#9ca3af' }}>
-                {searching || search.trim().length < 2 ? 'Searching…' : `No contact matches "${search.trim()}"`}
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 2, boxShadow: '0 6px 20px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
+                {searching || search.trim().length < 2 ? (
+                  <div style={{ padding: '9px 12px', fontSize: 12.5, color: '#9ca3af' }}>Searching…</div>
+                ) : (
+                  <button onClick={() => createAndTag(search)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', background: '#fffdf6', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: '#a06a12' }}>
+                    ＋ Add “{search.trim()}” as a new contact
+                  </button>
+                )}
               </div>
             )}
             {matches.length > 0 && (

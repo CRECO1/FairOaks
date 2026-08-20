@@ -441,6 +441,23 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     onToast('Contact added ✓');
   }
 
+  // Create a contact in the master list (crm_clients) and link it in one step, so a
+  // party that isn't a contact yet is added ONCE with the chosen role — no dupes.
+  async function createAndLinkContact(name: string) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length || !active) return;
+    setAddingContact(true);
+    const roleType: Record<string, string> = { Tenant: 'Tenant', Landlord: 'Landlord/Investor', Buyer: 'Buyer', Seller: 'Seller', 'Listing Agent': 'Broker', 'Co-broker': 'Broker' };
+    const res = await fetch('/api/crm/contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ first_name: parts[0], last_name: parts.slice(1).join(' ') || null, type: roleType[contactRole] || 'Other' }),
+    });
+    if (!res.ok) { setAddingContact(false); onToast('Could not create the contact'); return; }
+    const { contact } = await res.json();
+    await addContact(contact.id); // links it to the listing with the selected role + reloads
+  }
+
   async function removeContact(id: string) {
     setListingContacts(prev => prev.filter(c => c.id !== id));
     await fetch(`/api/crm/listing-contacts?id=${id}`, { method: 'DELETE', headers: authHeaders });
@@ -1381,7 +1398,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       return (
                         <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #eef0f2', borderRadius: 8, background: '#fff' }}>
                           {matches.length === 0 ? (
-                            <div style={{ padding: 12, fontSize: 13, color: '#9ca3af' }}>No matches.</div>
+                            <button onClick={() => createAndLinkContact(contactSearch)} disabled={addingContact}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '10px 12px', border: 'none', background: '#fffdf6', cursor: addingContact ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700, color: '#a06a12' }}>
+                              ＋ Add “{contactSearch.trim()}” as a new {contactRole.toLowerCase()} contact
+                            </button>
                           ) : matches.map(c => (
                             <button key={c.id} onClick={() => addContact(c.id)} disabled={addingContact}
                               style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 12px', border: 'none', borderBottom: '1px solid #f3f4f6', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
