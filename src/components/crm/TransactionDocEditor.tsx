@@ -103,6 +103,7 @@ export default function TransactionDocEditor({
   // overlay PDF/field loading for them.
   const isLoiLease = LOI_LEASE_FORM_IDS.includes(form.id);
   const isLoi = form.id === LOI_PURCHASE_FORM_ID || isLoiLease;
+  const imported = !form.id;
 
   // ── Load PDF + measure pages ────────────────────────────────────────────────
   useEffect(() => {
@@ -154,6 +155,7 @@ export default function TransactionDocEditor({
             return;
           }
         }
+        if (imported) return;                 // nothing to inherit — the agent places every field
         const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
         const json = await res.json();
         if (cancelled || !Array.isArray(json.fields)) return;
@@ -175,7 +177,7 @@ export default function TransactionDocEditor({
       } catch { /* no template yet */ }
     })();
     return () => { cancelled = true; };
-  }, [form.id, authToken, submissionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.id, authToken, submissionId, imported]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Add a field on click ────────────────────────────────────────────────────
   const onPageClick = useCallback((e: React.MouseEvent, pd: PageDim) => {
@@ -332,7 +334,7 @@ export default function TransactionDocEditor({
       if (authToken) h.Authorization = `Bearer ${authToken}`;
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST', headers: h,
-        body: JSON.stringify({ form_id: form.id, deal_id: dealSel || null, listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
+        body: JSON.stringify({ form_id: form.id || null, deal_id: dealSel || null, listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
       });
       if (res.ok) {
         const j = await res.json();
@@ -439,7 +441,7 @@ export default function TransactionDocEditor({
           style={isMobile
             ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {isAdmin && !isMobile && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
+          {isAdmin && !isMobile && !imported && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {!listingId && deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
               style={{ padding: isMobile ? '11px 10px' : '8px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>

@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPreviewModal';
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
-export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; crm_forms?: { name?: string; form_code?: string } | null }
+export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
 interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
 export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; title?: string; created_at?: string; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
@@ -26,7 +26,7 @@ const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Be
 
 // ── Send a document for signature (dynamic signer list) ──────────────────────
 export function SendView({ doc, dealId, clients, dealClient, agentName, agentEmail, authToken, showToast, onCancel, onSent, onPlaceFields, fieldsVersion = 0 }: {
-  doc: Doc; dealId: string; clients: PickContact[]; dealClient?: { name?: string; email?: string };
+  doc: Doc; dealId?: string; clients: PickContact[]; dealClient?: { name?: string; email?: string };
   agentName?: string; agentEmail?: string; authToken?: string; showToast?: (m: string) => void; onCancel: () => void; onSent: () => void;
   // Opens the document so the agent can place signature / initial / date fields.
   onPlaceFields?: () => void;
@@ -89,7 +89,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
         const up = await fetch(`/api/crm/form-submissions/${doc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ values: kept, logSummary: `${parts.join(' · ')} (signature fields) before sending` }) });
         if (!up.ok) { showToast?.('Could not update the signature fields'); return; }
       }
-      const r = await fetch('/api/crm/envelopes', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ submission_id: doc.id, deal_id: dealId, title: doc.title || doc.crm_forms?.name, message, signers: clean }) });
+      const r = await fetch('/api/crm/envelopes', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ submission_id: doc.id, deal_id: dealId || null, title: doc.title || doc.crm_forms?.name, message, signers: clean }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast?.(j.error || 'Could not send'); return; }
       showToast?.(j.sent ? `📤 Sent to ${clean[0].email} ✓` : 'Request created');
@@ -176,7 +176,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
       </div>
 
       <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', marginTop: 12 }} />
-      {onPlaceFields && doc.form_id && (
+      {onPlaceFields && (doc.form_id || doc.imported) && (
         <button onClick={onPlaceFields} style={{ width: '100%', marginTop: 12, padding: '8px 0', borderRadius: 8, border: '1px solid #f0e2c4', background: '#fff', color: '#a06a12', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>✒ Add / move fields on the document</button>
       )}
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>

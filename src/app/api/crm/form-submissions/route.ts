@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { form_id, deal_id, listing_id, title, values, pdfBase64, business_unit, submission_id, builder_data } = body;
-  if (!form_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
+  if (!form_id && !submission_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();
 
   // An update may only target a submission in the caller's workspace.
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
   if (pdfBase64) {
     const bytes = Buffer.from(pdfBase64, 'base64');
     const stamp = `${Date.now()}_${Math.round(Math.random() * 1e6)}`;
-    const path = `submissions/${form_id}/${stamp}.pdf`;
+    const path = `submissions/${form_id ?? 'imported'}/${stamp}.pdf`;
     const { error: upErr } = await supabase.storage.from('transaction-forms').upload(path, bytes, { contentType: 'application/pdf', upsert: true });
     if (upErr) console.error('[api/form-submissions] upload', upErr);
     else filled_path = path;
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
   }
 
   const base = {
-    form_id,
+    ...(form_id ? { form_id } : {}),
     // Because the two surfaces mirror each other, a property-level doc can be edited
     // from a deal (and vice versa) — and that caller only knows its OWN id. Writing
     // `deal_id || null` there would null the doc's listing_id and drop it out of the

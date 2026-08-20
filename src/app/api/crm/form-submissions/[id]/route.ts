@@ -19,8 +19,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const form = (data as { crm_forms?: { storage_path?: string } }).crm_forms;
   let blankUrl: string | null = null, filledUrl: string | null = null;
-  if (form?.storage_path) {
-    const { data: b } = await supabase.storage.from('transaction-forms').createSignedUrl(form.storage_path, 3600);
+  const basePath = form?.storage_path ?? data.source_path ?? null;
+  if (basePath) {
+    const { data: b } = await supabase.storage.from('transaction-forms').createSignedUrl(basePath, 3600);
     blankUrl = b?.signedUrl ?? null;
   }
   if (data.filled_path) {

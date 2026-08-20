@@ -1,21 +1,81 @@
 'use client';
-// Global E-Sign dashboard: every out-for-signature document across the workspace, who
-// each is waiting on and for how long, with a one-click nudge or a jump to the deal.
-import React, { useCallback, useEffect, useState } from 'react';
+// Global E-Sign dashboard. Two halves: documents an agent has imported and is still
+// preparing (drop a PDF in, place the signature/date fields, send), and everything
+// already out for signature — who each is waiting on and for how long.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
-interface Props { authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void }
+// A document imported for signing: a submission with no library form behind it.
+export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; envelope?: { id: string; status: string } | null }
+
+interface Props {
+  authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void;
+  // Opens the drag-and-drop editor so the agent can place where each party signs.
+  onPlaceFields?: (doc: ImportedDoc) => void;
+  // Opens the send flow (signers → review → send) for a prepared document.
+  onSend?: (doc: ImportedDoc) => void;
+  // Bumped by the parent whenever the editor saves, so the list re-reads the doc.
+  refreshKey?: number;
+}
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' };
 
-export default function EsignDashboard({ authToken, showToast, onOpenDeal }: Props) {
+export default function EsignDashboard({ authToken, showToast, onOpenDeal, onPlaceFields, onSend, refreshKey = 0 }: Props) {
   const [envs, setEnvs] = useState<Envelope[]>([]);
+  const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const loadDocs = useCallback(async () => {
+    try {
+      const j = await fetch('/api/crm/esign-import', { headers: auth(authToken) }).then(r => r.json());
+      setDocs(Array.isArray(j.documents) ? j.documents : []);
+    } catch { setDocs([]); }
+  }, [authToken]);
+  useEffect(() => { loadDocs(); }, [loadDocs, refreshKey]);
+
+  // Import: presign → the browser PUTs straight to storage (so a big scan never has
+  // to fit through a serverless request) → confirm, which validates the PDF.
+  const importFile = useCallback(async (file: File) => {
+    if (!/\.pdf$/i.test(file.name)) { showToast?.('Only PDFs can be sent for signature — save it as a PDF first'); return; }
+    setUploading(true);
+    try {
+      const pre = await fetch('/api/crm/esign-import', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) },
+        body: JSON.stringify({ filename: file.name, file_size: file.size }),
+      });
+      const pj = await pre.json().catch(() => ({}));
+      if (!pre.ok) { showToast?.(pj.error || 'Could not start the upload'); return; }
+      const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file });
+      if (!put.ok) { showToast?.('The upload failed — try again'); return; }
+      const conf = await fetch('/api/crm/esign-import', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...auth(authToken) },
+        body: JSON.stringify({ storage_path: pj.storagePath, title: file.name }),
+      });
+      const cj = await conf.json().catch(() => ({}));
+      if (!conf.ok) { showToast?.(cj.error || 'Could not import that document'); return; }
+      await loadDocs();
+      showToast?.(`✓ ${cj.submission?.title || 'Document'} imported — place the signature fields`);
+      // Straight into the editor: placing the fields is the next thing to do.
+      if (cj.submission && onPlaceFields) onPlaceFields(cj.submission as ImportedDoc);
+    } catch { showToast?.('Could not import that document'); }
+    finally { setUploading(false); }
+  }, [authToken, showToast, loadDocs, onPlaceFields]);
+
+  const removeDoc = useCallback(async (d: ImportedDoc) => {
+    if (!window.confirm(`Remove "${d.title || 'this document'}" from E-Sign? The file is deleted.`)) return;
+    const r = await fetch(`/api/crm/esign-import?id=${d.id}`, { method: 'DELETE', headers: auth(authToken) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast?.(j.error || 'Could not remove it'); return; }
+    setDocs(ds => ds.filter(x => x.id !== d.id));
+  }, [authToken, showToast]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,7 +88,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal }: Pro
     finally { setLoading(false); }
   }, [authToken]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   async function nudge(env: Envelope) {
     setBusy(env.id);
@@ -47,17 +107,56 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal }: Pro
         <span style={{ flex: 1 }} />
         <button onClick={load} style={{ ...mini, color: '#9ca3af' }}>⟳ Refresh</button>
       </div>
-      <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 18 }}>Every document waiting on a signature, across all deals. Nudge the current signer or jump to the deal to manage.</p>
+      <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 18 }}>Import a document to be signed, or track the ones already out. Nudge the current signer or jump to the deal to manage.</p>
+
+      {/* ── Import ── */}
+      <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }}
+        onClick={() => !uploading && fileRef.current?.click()}
+        style={{ border: `2px dashed ${dragging ? '#c9922c' : '#e6d3a2'}`, background: dragging ? '#fdf6e9' : '#fffdf6', borderRadius: 12,
+          padding: '20px 18px', textAlign: 'center', cursor: uploading ? 'default' : 'pointer', marginBottom: 22 }}>
+        <div style={{ fontSize: 26, marginBottom: 4 }}>{uploading ? '⏳' : '📥'}</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>{uploading ? 'Importing…' : 'Import a document to be signed'}</div>
+        <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 3 }}>
+          Drop a PDF here or click to browse — then drag the signature, initial and date fields onto the page before sending.
+        </div>
+      </div>
+
+      {/* ── Imported, not yet sent ── */}
+      {docs.filter(d => !d.envelope).length > 0 && (
+        <div style={{ marginBottom: 26 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>Ready to prepare &amp; send</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {docs.filter(d => !d.envelope).map(d => (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Document'}</div>
+                  <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Imported{d.updated_at ? ` · ${ago(d.updated_at)} ago` : ''} · not sent yet</div>
+                </div>
+                <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }}>✕</button>
+                {onPlaceFields && <button onClick={() => onPlaceFields(d)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>✒ Place fields</button>}
+                {onSend && <button onClick={() => onSend(d)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Add signers →</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div>
         : envs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is waiting to be signed.</div>
-            <div style={{ fontSize: 13 }}>Send a document from a deal's E-Sign tab and it shows up here.</div>
+            <div style={{ fontSize: 13 }}>Import a document above, or send one from a deal's E-Sign tab.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af' }}>Out for signature</div>
             {envs.map(env => {
               const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
               const done = signers.filter(s => s.status === 'signed' || s.signed_at).length;

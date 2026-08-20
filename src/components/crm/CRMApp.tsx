@@ -467,7 +467,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
   const [esignModal, setEsignModal] = useState<{ mode: 'send' | 'manage'; doc: EsignDoc } | null>(null);
   const [esignFieldsVersion, setEsignFieldsVersion] = useState(0); // bumped when placements change
-  const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string } | null>(null);
+  const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string; showDeals?: boolean } | null>(null);
+  const [importSend, setImportSend] = useState<EsignDoc | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
@@ -1088,10 +1089,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const spec = specForForm(code, form.name);
     if (spec) { setLoiDoc({ formId: form.id, name: form.name, submissionId, spec }); return; }
     let url = form.url ?? null;
-    if (!url) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
-    if (!url) { showToast('Could not open the form'); return; }
+    // An imported document has no library form to fetch a blank from — its own
+    // upload IS the blank, so read the page images from the submission instead.
+    if (!url && !form.id && submissionId) {
+      const r = await authGet(`/api/crm/form-submissions/${submissionId}`);
+      const j = await r.json().catch(() => ({}));
+      url = j.blankUrl ?? j.filledUrl ?? null;
+    }
+    if (!url && form.id) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
+    if (!url) { showToast('Could not open the document'); return; }
     setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
   }, [authGet, crmForms]); // eslint-disable-line
+  // Open the drag-and-drop editor on an imported document (no library form behind it).
+  const openImportEditor = useCallback(async (d: { id: string; title?: string; url?: string | null }) => {
+    const r = await authGet(`/api/crm/form-submissions/${d.id}`);
+    const j = await r.json().catch(() => ({}));
+    const url = j.blankUrl ?? j.filledUrl ?? d.url ?? null;
+    if (!url) { showToast('Could not open that document'); return; }
+    setDealFormEditor({ form: { id: '', name: d.title || 'Document' }, url, submissionId: d.id, showDeals: true });
+  }, [authGet]); // eslint-disable-line
+
   // Attach a packet's forms (blank, pre-linked submissions) to any deal by id.
   // Skips any form name not in the library (e.g. before its PDF is uploaded).
   // Returns how many were attached; pass formsCache to avoid a refetch per call.
@@ -7326,6 +7343,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <EsignDashboard
               authToken={session?.access_token}
               showToast={showToast}
+              refreshKey={esignFieldsVersion}
+              onPlaceFields={d => openImportEditor(d)}
+              onSend={d => setImportSend({ id: d.id, title: d.title, url: d.url ?? undefined, imported: true })}
               onOpenDeal={(dealId) => { const d = deals.find(x => x.id === dealId); if (d) { openDeal(d); setDealTab('esign'); } else { setPage('deals'); showToast('Open the deal from All Deals'); } }}
             />
           )}
@@ -10729,6 +10749,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
       )}
 
+      {/* E-Sign → an imported document: same signers → review → send flow as a deal's,
+          just not bound to one. Nothing goes out without the visual review. */}
+      {importSend && (
+        <div onClick={e => { if (e.target === e.currentTarget) setImportSend(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+            <SendView doc={importSend} clients={clients}
+              agentName={`${profile.first_name} ${profile.last_name}`.trim()} agentEmail={profile.email}
+              authToken={session?.access_token} showToast={showToast}
+              fieldsVersion={esignFieldsVersion}
+              onPlaceFields={() => openImportEditor({ id: importSend.id, title: importSend.title, url: importSend.url })}
+              onCancel={() => setImportSend(null)}
+              onSent={() => { setImportSend(null); setEsignFieldsVersion(v => v + 1); }} />
+          </div>
+        </div>
+      )}
+
       {dealFormEditor && (
         <TransactionDocEditor
           form={dealFormEditor.form}
@@ -10736,15 +10773,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           submissionId={dealFormEditor.submissionId}
           authToken={session?.access_token}
           isAdmin={isAdmin}
-          // No `deals` prop on purpose: the doc is already bound to this deal, so
-          // the deal picker stays hidden and the toolbar matches the Properties
-          // editor. dealSel seeds from dealId, so it still saves to the deal.
+          // No `deals` prop for a deal's own doc: it's already bound to that deal, so
+          // the picker stays hidden and the toolbar matches the Properties editor.
+          // An imported one-off has no deal yet, so there it IS offered.
+          deals={dealFormEditor.showDeals ? deals : undefined}
           dealId={activeDeal?.id}
           businessUnit={businessUnit}
           fieldPrefill={{ ...agentPrefill, ...dealPrefill(activeDeal) }}
           onToast={showToast}
           isMobile={isMobile}
-          onClose={() => { setDealFormEditor(null); if (activeDeal) loadDealForms(activeDeal.id); setEsignFieldsVersion(v => v + 1); }}
+          onClose={() => {
+            const sid = dealFormEditor.submissionId;
+            setDealFormEditor(null);
+            if (activeDeal) loadDealForms(activeDeal.id);
+            setEsignFieldsVersion(v => v + 1);
+            // Saving rewrote filled_path, so the send review needs a fresh signed URL.
+            if (sid && importSend?.id === sid) {
+              authGet(`/api/crm/form-submissions/${sid}`).then(r => r.json())
+                .then(j => setImportSend(d => d && d.id === sid ? { ...d, url: j.filledUrl ?? d.url } : d))
+                .catch(() => { /* keep the old link */ });
+            }
+          }}
           onSaved={() => { if (activeDeal) loadDealForms(activeDeal.id); }}
         />
       )}
