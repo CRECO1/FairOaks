@@ -37,6 +37,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { data: L } = await supabase.from('crm_listings').select('*').eq('id', id).single();
   if (!L) return notFound('Listing not found');
 
+  const fileName = (L.name || L.address || 'listing').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 50) || 'flyer';
+  const serve = (bytes: Uint8Array | Buffer, generatedAt: string | null) => new NextResponse(Buffer.from(bytes), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${fileName}-flyer.pdf"`,
+      // The stored copy is the flyer until someone rebuilds it, so let the browser
+      // reuse it rather than re-downloading on every open.
+      'Cache-Control': 'private, max-age=300',
+      ...(generatedAt ? { 'X-Flyer-Generated-At': generatedAt } : {}),
+    },
+  });
+
+  // A flyer is built once and kept. Rebuilding costs a geocode, every photo, two map
+  // tile stitches and the IABS merge — so it only happens when the agent asks for an
+  // updated one (or nothing has been built yet).
+  const force = req.nextUrl.searchParams.get('force') === '1';
+  if (!force && L.flyer_path) {
+    const { data: cached } = await supabase.storage.from('listing-files').download(L.flyer_path);
+    if (cached) return serve(Buffer.from(await cached.arrayBuffer()), L.flyer_generated_at ?? null);
+    // Path recorded but the blob is gone — fall through and rebuild rather than 404.
+    console.warn('[flyer] stored flyer missing, rebuilding:', L.flyer_path);
+  }
+
   const loadAgent = async (uid?: string | null) => uid
     ? (await supabase.from('crm_profiles').select('first_name, last_name, email, phone').eq('id', uid).maybeSingle()).data as Record<string, string> | null
     : null;
@@ -139,8 +162,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     logoPng: new Uint8Array(Buffer.from(CRECO_LOGO_PNG_B64, 'base64')),
   });
 
-  const fname = (L.name || L.address || 'listing').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 50) || 'flyer';
-  return new NextResponse(Buffer.from(bytes), {
-    headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${fname}-flyer.pdf"` },
-  });
+  // Keep it, so the next open is a download rather than a rebuild. A storage failure
+  // must not lose the agent the flyer they just waited for — serve it either way.
+  const path = `${id}/flyer/current.pdf`;
+  const generatedAt = new Date().toISOString();
+  const { error: upErr } = await supabase.storage.from('listing-files')
+    .upload(path, Buffer.from(bytes), { contentType: 'application/pdf', upsert: true });
+  if (upErr) console.error('[flyer] could not store flyer', upErr);
+  else await supabase.from('crm_listings').update({ flyer_path: path, flyer_generated_at: generatedAt }).eq('id', id);
+
+  return serve(bytes, upErr ? null : generatedAt);
 }

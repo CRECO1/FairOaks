@@ -27,7 +27,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const supabase = adminClient();
   // Remove all storage files for this listing first
   const { data: files } = await supabase.from('crm_listing_files').select('storage_path').eq('listing_id', id);
-  if (files?.length) await supabase.storage.from('listing-files').remove(files.map(f => f.storage_path));
+  const paths = (files ?? []).map(f => f.storage_path as string);
+  // The generated flyer is a blob with no crm_listing_files row, so it has to be
+  // named explicitly or it outlives the listing.
+  const { data: L } = await supabase.from('crm_listings').select('flyer_path').eq('id', id).maybeSingle();
+  if (L?.flyer_path) paths.push(L.flyer_path as string);
+  if (paths.length) await supabase.storage.from('listing-files').remove(paths);
   const { error } = await supabase.from('crm_listings').delete().eq('id', id);
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
   return NextResponse.json({ deleted: true });
