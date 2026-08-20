@@ -9,7 +9,7 @@ import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPrevie
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
 interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
-export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; title?: string; created_at?: string; crm_envelope_signers?: Signer[] }
+export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
 
 const GOLD = '#c9922c';
@@ -213,8 +213,8 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
 }
 
 // ── Manage an out-for-signature request ──────────────────────────────────────
-export function ManageView({ doc, env, authToken, showToast, onBack, onReload }: {
-  doc: Doc; env?: Envelope; authToken?: string; showToast?: (m: string) => void; onBack: () => void; onReload: () => void;
+export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBack, onReload }: {
+  doc: Doc; env?: Envelope; authToken?: string; isSuperAdmin?: boolean; showToast?: (m: string) => void; onBack: () => void; onReload: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -250,20 +250,27 @@ export function ManageView({ doc, env, authToken, showToast, onBack, onReload }:
     if (!r.ok) { showToast?.(j.error || 'Action failed'); return; }
     showToast?.(okMsg); if (back) onBack(); else onReload();
   }
-  // Void stops a request; delete removes it. Spelled out in the prompt because it
-  // takes the signatures and the executed copy with it.
-  async function remove() {
-    const done = env!.status === 'completed';
-    const warn = done
-      ? `Delete "${env!.title || 'this document'}"?\n\nThis is the FULLY EXECUTED copy. The signed PDF and every signature on it are permanently deleted. This cannot be undone.`
-      : `Delete this signature request?\n\nThe request, its signers and any signatures collected so far are permanently deleted. The document itself stays.`;
-    if (!window.confirm(warn)) return;
+  // Void stops a request. Archive files it away — the record, the signers and every
+  // signature are kept, because the signing history of a deal is a business record.
+  // Purging is the only thing that destroys anything, and only the account owner can.
+  async function archive() {
+    if (!window.confirm(`Archive "${env!.title || 'this request'}"?\n\nIt moves out of your active list. The request, its signers and every signature are kept — you can restore it from “Show cancelled & completed”.`)) return;
     setBusy(true);
     const r = await fetch(`/api/crm/envelopes?id=${env!.id}`, { method: 'DELETE', headers: authOf(authToken) });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
+    if (!r.ok) { showToast?.(j.error || 'Could not archive it'); return; }
+    showToast?.('Signature request archived');
+    onBack();
+  }
+  async function purge() {
+    if (!window.confirm(`Permanently delete "${env!.title || 'this request'}"?\n\nThe request, its signers, every signature and${env!.status === 'completed' ? ' THE FULLY EXECUTED PDF' : ' any signatures collected so far'} are destroyed. This cannot be undone — Archive keeps the history instead.`)) return;
+    setBusy(true);
+    const r = await fetch(`/api/crm/envelopes?id=${env!.id}&purge=1`, { method: 'DELETE', headers: authOf(authToken) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
     if (!r.ok) { showToast?.(j.error || 'Could not delete it'); return; }
-    showToast?.('Signature request deleted');
+    showToast?.('Signature request permanently deleted');
     onBack();
   }
   async function copyLink(signerId: string) {
@@ -352,7 +359,8 @@ export function ManageView({ doc, env, authToken, showToast, onBack, onReload }:
         {env.status !== 'voided' && env.status !== 'completed' && (
           <button disabled={busy} onClick={() => { if (window.confirm('Cancel this signature request? Signers can no longer sign; the document stays so you can edit + re-send.')) act({ action: 'void' }, 'Signature request cancelled', true); }} style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Cancel request</button>
         )}
-        <button disabled={busy} onClick={remove} title="Remove this signature request entirely" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑 Delete</button>
+        <button disabled={busy} onClick={archive} title="File this away — the record and every signature are kept" style={{ ...mini }}>🗄 Archive</button>
+        {isSuperAdmin && <button disabled={busy} onClick={purge} title="Permanently delete — destroys the signatures and the executed copy" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑 Delete forever</button>}
       </div>
       {preview && doc.url && (
         <SignPreviewModal url={doc.url} fields={previewFields} signerLabel={(role) => { const s = signers.find(x => x.signer_role === role); return s ? `${s.name}${s.status === 'signed' || s.signed_at ? ' ✓' : ''}` : roleLabel(role); }} onClose={() => setPreview(false)} />
@@ -365,6 +373,7 @@ interface Props {
   dealId: string;
   // Lets the E-Sign tab hand off to the document editor to place fields mid-send.
   onPlaceFields?: (doc: Doc) => void;
+  isSuperAdmin?: boolean;
   clients?: PickContact[];
   dealClient?: { name?: string; email?: string };
   agentName?: string;
@@ -373,7 +382,7 @@ interface Props {
   showToast?: (m: string) => void;
 }
 
-export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealClient, agentName, agentEmail, authToken, showToast }: Props) {
+export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealClient, agentName, agentEmail, authToken, isSuperAdmin, showToast }: Props) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [envByDoc, setEnvByDoc] = useState<Record<string, Envelope>>({});
   const [loading, setLoading] = useState(true);
@@ -409,7 +418,7 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
   }, [docs, statusOf]);
 
   if (view.t === 'send') return <SendView doc={view.doc} dealId={dealId} clients={clients} dealClient={dealClient} agentName={agentName} agentEmail={agentEmail} authToken={authToken} showToast={showToast} onPlaceFields={onPlaceFields ? () => onPlaceFields(view.doc) : undefined} onCancel={() => setView({ t: 'list' })} onSent={() => { setView({ t: 'list' }); load(); }} />;
-  if (view.t === 'manage') return <ManageView doc={view.doc} env={envByDoc[view.doc.id]} authToken={authToken} showToast={showToast} onBack={() => { setView({ t: 'list' }); load(); }} onReload={load} />;
+  if (view.t === 'manage') return <ManageView doc={view.doc} env={envByDoc[view.doc.id]} authToken={authToken} isSuperAdmin={isSuperAdmin} showToast={showToast} onBack={() => { setView({ t: 'list' }); load(); }} onReload={load} />;
 
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
 
@@ -16,16 +16,17 @@ export async function GET(req: NextRequest) {
   const submissionId = req.nextUrl.searchParams.get('submission_id');
   const supabase = adminClient();
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, created_at, completed_at, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, created_at, completed_at, archived_at, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) q = q.eq('deal_id', dealId);
   if (listingId) q = q.eq('listing_id', listingId);
   if (submissionId) q = q.eq('submission_id', submissionId);
   if (req.nextUrl.searchParams.get('pending')) q = q.in('status', ['sent', 'in_progress']); // global dashboard: out-for-signature only
-  // …and the same dashboard asking for everything, so cancelled and completed
-  // requests stay reachable (to review, or to delete).
+  // …and the same dashboard asking for everything, so cancelled, completed and
+  // archived requests stay reachable (to review, restore, or purge).
   if (req.nextUrl.searchParams.get('scope') === 'all') q = q.limit(200);
+  else q = q.is('archived_at', null);
   const { data, error } = await q;
   if (error) { console.error('[api/envelopes] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
   const envelopes = await Promise.all((data ?? []).map(async (e) => {
@@ -216,26 +217,42 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
 
-// Delete a signature request outright. Voiding stops a request; this removes it —
-// the envelope, its signers, its event log (both cascade) and every file it owns:
-// each signer's signature/initials PNGs and the executed copy.
+// Remove a signature request from the working lists — or, for a super admin,
+// destroy it outright.
 //
-// A COMPLETED envelope is the executed contract, so only an admin can delete one.
-// Everything short of that (draft, out for signature, voided) is an agent's own
-// housekeeping and any agent with access to the document can clear it.
+// ARCHIVE is the default and what everyone up to and including `admin` gets: the
+// envelope, its signers, its event log and every file stay exactly where they are,
+// the request just stops showing in the active lists. The signing history of a deal
+// is a business record, so an agent tidying their queue must not be able to erase it.
+//
+// PURGE (`?purge=1`) really deletes: the envelope plus its signers and events (both
+// cascade) plus every blob it owns — each signature/initials PNG and the executed
+// copy. Restricted to `super_admin`, deliberately NOT `isAdminRole` — admin includes
+// broker-level agents, and this is the one action that cannot be undone.
 export async function DELETE(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  const purge = req.nextUrl.searchParams.get('purge') === '1';
   if (!(await assertOwnsResource('crm_envelopes', id, ctx))) return notFound('Signature request not found');
 
   const supabase = adminClient();
   const { data: env } = await supabase.from('crm_envelopes')
     .select('id, title, status, executed_path').eq('id', id).maybeSingle();
   if (!env) return notFound('Signature request not found');
-  if (env.status === 'completed' && !isAdminRole(ctx.role)) {
-    return NextResponse.json({ error: 'This document is fully executed — ask an admin to delete it.' }, { status: 403 });
+
+  if (!purge) {
+    const { error } = await supabase.from('crm_envelopes')
+      .update({ archived_at: new Date().toISOString(), archived_by: ctx.userId, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) { console.error('[api/envelopes] archive', error); return NextResponse.json({ error: 'Could not archive the request' }, { status: 500 }); }
+    await logEvent(supabase, id, null, 'archived', { actor: ctx.userId });
+    return NextResponse.json({ archived: true, title: env.title });
+  }
+
+  if (!isSuperAdminRole(ctx.role)) {
+    return NextResponse.json({ error: 'Only the account owner can permanently delete a signature request. It has been kept in the archive instead.' }, { status: 403 });
   }
 
   const { data: signers } = await supabase.from('crm_envelope_signers')
@@ -247,10 +264,23 @@ export async function DELETE(req: NextRequest) {
   // Best-effort: a missing blob must not block removing the record.
   if (paths.length) {
     const { error: rmErr } = await supabase.storage.from(SIGN_BUCKET).remove(paths);
-    if (rmErr) console.error('[api/envelopes] delete blobs', rmErr);
+    if (rmErr) console.error('[api/envelopes] purge blobs', rmErr);
   }
 
   const { error } = await supabase.from('crm_envelopes').delete().eq('id', id);
-  if (error) { console.error('[api/envelopes] delete', error); return NextResponse.json({ error: 'Could not delete the signature request' }, { status: 500 }); }
+  if (error) { console.error('[api/envelopes] purge', error); return NextResponse.json({ error: 'Could not delete the signature request' }, { status: 500 }); }
   return NextResponse.json({ deleted: true, title: env.title });
+}
+
+// Put an archived request back into the working lists.
+export async function PUT(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  if (!(await assertOwnsResource('crm_envelopes', id, ctx))) return notFound('Signature request not found');
+  const { error } = await adminClient().from('crm_envelopes')
+    .update({ archived_at: null, archived_by: null, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { console.error('[api/envelopes] restore', error); return NextResponse.json({ error: 'Could not restore it' }, { status: 500 }); }
+  return NextResponse.json({ restored: true });
 }

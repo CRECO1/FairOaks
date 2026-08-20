@@ -7347,6 +7347,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               authToken={session?.access_token}
               showToast={showToast}
               refreshKey={esignFieldsVersion}
+              isSuperAdmin={isSuperAdmin}
               onCompose={({ file, doc }) => setComposer({ file: file ?? null, doc: doc ? { id: doc.id, title: doc.title, url: doc.url } : null })}
               onOpenDeal={(dealId) => { const d = deals.find(x => x.id === dealId); if (d) { openDeal(d); setDealTab('esign'); } else { setPage('deals'); showToast('Open the deal from All Deals'); } }}
             />
@@ -8143,6 +8144,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ padding: '4px 2px' }}>
                   <EsignPanel
                     dealId={activeDeal.id}
+                    isSuperAdmin={isSuperAdmin}
                     onPlaceFields={d => openFormEditor({ id: d.form_id || "", name: d.crm_forms?.name || d.title || "Form" }, d.id, d.crm_forms?.form_code)}
                     clients={clients}
                     dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
@@ -10743,7 +10745,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 onCancel={() => setEsignModal(null)}
                 onSent={() => { setEsignModal(null); loadDealForms(activeDeal.id); loadDealEnvelopes(activeDeal.id, activeDeal.listing_id); }} />
             ) : (
-              <ManageView doc={esignModal.doc} env={dealEnvMap[esignModal.doc.id]} authToken={session?.access_token} showToast={showToast}
+              <ManageView doc={esignModal.doc} env={dealEnvMap[esignModal.doc.id]} authToken={session?.access_token} isSuperAdmin={isSuperAdmin} showToast={showToast}
                 onBack={() => { setEsignModal(null); loadDealEnvelopes(activeDeal.id, activeDeal.listing_id); }}
                 onReload={() => loadDealEnvelopes(activeDeal.id, activeDeal.listing_id)} />
             )}

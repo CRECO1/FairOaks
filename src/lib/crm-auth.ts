@@ -85,6 +85,11 @@ export function notFound(msg = 'Not found') {
   return NextResponse.json({ error: msg }, { status: 404 });
 }
 
+/** True only for role='super_admin' — the tier that may destroy records. */
+export function isSuperAdminRole(role: string | null | undefined): boolean {
+  return role === 'super_admin';
+}
+
 /** True when the role is an admin tier (admin or super_admin). */
 export function isAdminRole(role: string | null | undefined): boolean {
   return !!role && (ADMIN_ROLES as readonly string[]).includes(role);

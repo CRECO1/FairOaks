@@ -5,13 +5,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
-interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
+interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
 export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; envelope?: { id: string; status: string } | null }
 
 interface Props {
   authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void;
+  // Only the account owner may destroy a signature request; everyone else archives.
+  isSuperAdmin?: boolean;
   // Opens the envelope composer: with a freshly dropped file, or on a document
   // already imported and still being prepared.
   onCompose?: (arg: { file?: File; doc?: ImportedDoc }) => void;
@@ -23,7 +25,7 @@ const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bear
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' };
 
-export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, refreshKey = 0 }: Props) {
+export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, isSuperAdmin, refreshKey = 0 }: Props) {
   const [envs, setEnvs] = useState<Envelope[]>([]);
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,14 +81,33 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       showToast?.(r.ok ? 'Signature request cancelled' : (j.error || 'Could not cancel it'));
     } finally { setBusy(null); load(); loadDocs(); }
   }
-  // …and remove one entirely, signatures and all.
-  async function removeEnv(env: Envelope) {
-    if (!window.confirm(`Delete "${env.title || 'this request'}"?\n\nThe request, its signers and any signatures collected so far are permanently deleted. This cannot be undone.`)) return;
+  // …file one away without losing it. The record, the signers and every signature
+  // are kept — a deal's signing history is a business record, not queue clutter.
+  async function archiveEnv(env: Envelope) {
+    if (!window.confirm(`Archive "${env.title || 'this request'}"?\n\nIt moves out of the active list. Everything is kept — tick “Show cancelled & completed” to find it again.`)) return;
     setBusy(env.id);
     try {
       const r = await fetch(`/api/crm/envelopes?id=${env.id}`, { method: 'DELETE', headers: auth(authToken) });
       const j = await r.json().catch(() => ({}));
-      showToast?.(r.ok ? 'Signature request deleted' : (j.error || 'Could not delete it'));
+      showToast?.(r.ok ? 'Signature request archived' : (j.error || 'Could not archive it'));
+    } finally { setBusy(null); load(); loadDocs(); }
+  }
+  async function restoreEnv(env: Envelope) {
+    setBusy(env.id);
+    try {
+      const r = await fetch(`/api/crm/envelopes?id=${env.id}`, { method: 'PUT', headers: auth(authToken) });
+      const j = await r.json().catch(() => ({}));
+      showToast?.(r.ok ? 'Restored' : (j.error || 'Could not restore it'));
+    } finally { setBusy(null); load(); loadDocs(); }
+  }
+  // …and the one action that actually destroys something. Owner only.
+  async function purgeEnv(env: Envelope) {
+    if (!window.confirm(`Permanently delete "${env.title || 'this request'}"?\n\nEvery signature${env.status === 'completed' ? ' and THE FULLY EXECUTED PDF' : ''} is destroyed. This cannot be undone — Archive keeps the history instead.`)) return;
+    setBusy(env.id);
+    try {
+      const r = await fetch(`/api/crm/envelopes?id=${env.id}&purge=1`, { method: 'DELETE', headers: auth(authToken) });
+      const j = await r.json().catch(() => ({}));
+      showToast?.(r.ok ? 'Permanently deleted' : (j.error || 'Could not delete it'));
     } finally { setBusy(null); load(); loadDocs(); }
   }
 
@@ -176,6 +197,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                           · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status}
                         </span>
                       )}
+                      {env.archived_at && <span style={{ marginLeft: 6, fontWeight: 700, color: '#6b7280' }}>· 🗄 Archived</span>}
                     </div>
                     {current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
@@ -184,8 +206,11 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     )}
                   </div>
                   {current && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
-                  {env.status !== 'voided' && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
-                  <button disabled={busy === env.id} onClick={() => removeEnv(env)} title="Delete this request entirely" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>🗑</button>
+                  {env.status !== 'voided' && !env.archived_at && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
+                  {env.archived_at
+                    ? <button disabled={busy === env.id} onClick={() => restoreEnv(env)} title="Put this back in the active list" style={{ ...mini }}>↩︎ Restore</button>
+                    : <button disabled={busy === env.id} onClick={() => archiveEnv(env)} title="File this away — everything is kept" style={{ ...mini }}>🗄 Archive</button>}
+                  {isSuperAdmin && <button disabled={busy === env.id} onClick={() => purgeEnv(env)} title="Permanently delete — destroys the signatures and the executed copy" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑</button>}
                   {env.deal_id && onOpenDeal && <button onClick={() => onOpenDeal(env.deal_id!)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Open →</button>}
                 </div>
               );
