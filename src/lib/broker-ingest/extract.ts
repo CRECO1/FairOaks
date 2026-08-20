@@ -233,3 +233,40 @@ export async function extractListing(email: FetchedEmail): Promise<Extraction> {
   const text = textBlock?.text ?? '';
   return normalizeExtraction(parseJsonObject(text));
 }
+
+/**
+ * Extract a single listing from uploaded flyer media (image(s) or a PDF) instead
+ * of an email — powers the agent-facing "Add Property from a flyer" feature.
+ * Reuses the SAME system prompt, model, and normalizer as the email pipeline, so
+ * the two extraction paths stay consistent.
+ */
+export async function extractListingFromMedia(
+  media: Array<{ kind: 'image' | 'pdf'; mimeType: string; data: string }>,
+): Promise<Extraction> {
+  const content: unknown[] = [
+    {
+      type: 'text',
+      text:
+        'The following is a commercial real estate property flyer / marketing sheet an agent uploaded to add to the CRM. ' +
+        'Extract the ONE primary listed property per your instructions. Read every image and page carefully — the street ' +
+        'address, size, price, and broker contact are frequently only in the graphics. If a field is not shown, use null.',
+    },
+  ];
+  for (const m of media) {
+    if (m.kind === 'pdf') {
+      content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: m.data } });
+    } else {
+      content.push({ type: 'image', source: { type: 'base64', media_type: m.mimeType, data: m.data } });
+    }
+  }
+
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system: SYSTEM,
+    messages: [{ role: 'user', content: content as Anthropic.MessageParam['content'] }],
+  });
+
+  const textBlock = msg.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+  return normalizeExtraction(parseJsonObject(textBlock?.text ?? ''));
+}

@@ -82,6 +82,10 @@ const ASSET_COLORS: Record<string, { bg: string; color: string }> = {
   Flex:        { bg: '#fff7ed', color: '#c2410c' },
 };
 
+// Options for the agent Add-Property form (see AddPropertyModal).
+const ADD_ASSET_TYPES = ['Retail', 'Office', 'Industrial', 'Flex', 'Mixed-Use', 'Land', 'Medical', 'Multifamily'];
+const ADD_VACANCY = ['Vacant', 'Occupied', 'Available', 'Under Contract', 'Leased', 'Sold', 'Off-Market'];
+
 function assetStyle(a?: string) {
   return ASSET_COLORS[a ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
 }
@@ -165,6 +169,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   const [sourceFilter, setSourceFilter]   = useState('');
   const [listingFilter, setListingFilter] = useState('');
   const [page, setPage]         = useState(1);
+  const [showAdd, setShowAdd]   = useState(false);
   const PAGE_SIZE = 50;
 
   const authHeaders = useMemo<Record<string, string>>(
@@ -308,6 +313,13 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setShowAdd(true)}
+          title="Add a property to the DB — upload a flyer to auto-fill"
+          style={{ padding: isMobile ? '11px 16px' : '9px 16px', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", background: '#c9922c', color: '#fff', whiteSpace: 'nowrap', ...(isMobile ? { width: '100%', minHeight: 44 } : {}) }}
+        >
+          ＋ Add Property
+        </button>
       </div>
 
       <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14, fontWeight: 600 }}>
@@ -555,6 +567,16 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
       )}
 
       {active && <DetailModal p={active} onClose={() => setActive(null)} isMobile={isMobile} />}
+      {showAdd && (
+        <AddPropertyModal
+          businessUnit={businessUnit}
+          authToken={authToken}
+          isMobile={isMobile}
+          onClose={() => setShowAdd(false)}
+          onToast={onToast}
+          onAdded={(created) => { setShowAdd(false); load(); if (created) setActive(created); }}
+        />
+      )}
     </div>
   );
 }
@@ -715,6 +737,218 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
               (p.updated_at && (!p.created_at || new Date(p.updated_at as string).getTime() - new Date(p.created_at as string).getTime() > 86_400_000))
                 ? `Updated ${new Date(p.updated_at as string).toLocaleDateString()}` : '',
             ].filter(Boolean).join('  ·  ')}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Add-Property modal (agent-facing: upload a flyer to auto-fill) ────────────
+
+function AddPropertyModal({
+  businessUnit, authToken, isMobile, onClose, onToast, onAdded,
+}: {
+  businessUnit: string;
+  authToken?: string;
+  isMobile: boolean;
+  onClose: () => void;
+  onToast: (msg: string) => void;
+  onAdded: (created: Property | null) => void;
+}) {
+  const [form, setForm] = useState<Record<string, string>>({ listing_type: 'Lease', vacancy_status: 'Vacant' });
+  const [flyerUrl, setFlyerUrl] = useState<string | null>(null);
+  const [brochureUrl, setBrochureUrl] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [readMsg, setReadMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showMore, setShowMore] = useState(false);
+
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const readFlyer = async (file: File) => {
+    setReading(true); setError(null); setReadMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const h: Record<string, string> = {};
+      if (authToken) h.Authorization = `Bearer ${authToken}`;
+      const res = await fetch('/api/crm/property-db/extract-flyer', { method: 'POST', headers: h, body: fd });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error || 'Could not read the flyer.'); setReading(false); return; }
+      const ex = (json.extraction ?? {}) as Record<string, unknown>;
+      setForm(prev => {
+        const next = { ...prev };
+        const put = (k: string, v: unknown) => { if (v !== null && v !== undefined && v !== '') next[k] = String(v); };
+        put('name', ex.name); put('address', ex.address); put('suite', ex.suite);
+        put('city', ex.city); put('state', ex.state); put('zip', ex.zip);
+        put('asset_type', ex.asset_type); put('property_subtype', ex.property_subtype);
+        put('building_class', ex.building_class);
+        put('size_sf', ex.size_sf); put('available_sf', ex.available_sf);
+        put('asking_rate', ex.asking_rate); put('sale_price', ex.sale_price);
+        put('price_per_sf', ex.price_per_sf);
+        put('year_built', ex.year_built); put('clear_height_ft', ex.clear_height_ft);
+        put('dock_doors', ex.dock_doors); put('grade_doors', ex.grade_doors);
+        put('zoning', ex.zoning); put('lease_type', ex.lease_type);
+        put('listing_company', ex.listing_company); put('listing_agent_name', ex.listing_agent_name);
+        put('listing_agent_phone', ex.listing_agent_phone);
+        put('notes', ex.notes);
+        if (typeof ex.brochure_url === 'string') put('brochure_url', ex.brochure_url);
+        if (Array.isArray(ex.highlights) && ex.highlights.length) next.highlights = (ex.highlights as string[]).join('\n');
+        const lt = typeof ex.listing_type === 'string' ? ex.listing_type : '';
+        if (lt) next.listing_type = /sale/i.test(lt) && /lease/i.test(lt) ? 'Both' : /sale/i.test(lt) ? 'Sale' : 'Lease';
+        return next;
+      });
+      if (json.flyerUrl) setFlyerUrl(json.flyerUrl as string);
+      if (json.brochureUrl) setBrochureUrl(json.brochureUrl as string);
+      setShowMore(true);
+      const hasListing = ex.name || ex.address;
+      setReadMsg(hasListing
+        ? '✓ Flyer read — review the fields below, then save.'
+        : 'Flyer uploaded, but no listing could be identified in it. Enter the details manually.');
+    } catch {
+      setError('Could not read the flyer. Enter the details manually.');
+    }
+    setReading(false);
+  };
+
+  const submit = async () => {
+    if (!form.name?.trim() && !form.address?.trim()) { setError('Enter at least a property name or address.'); return; }
+    setSaving(true); setError(null);
+    try {
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) h.Authorization = `Bearer ${authToken}`;
+      const payload: Record<string, unknown> = { ...form, business_unit: businessUnit };
+      if (flyerUrl) payload.flyer_url = flyerUrl;
+      if (brochureUrl && !form.brochure_url) payload.brochure_url = brochureUrl;
+      const res = await fetch('/api/crm/property-db', { method: 'POST', headers: h, body: JSON.stringify(payload) });
+      const json = await res.json();
+      if (!res.ok) { setError(json.error || 'Could not save the property.'); setSaving(false); return; }
+      onToast('✓ Property added to the DB');
+      onAdded((json.property ?? null) as Property | null);
+    } catch {
+      setError('Could not save the property.'); setSaving(false);
+    }
+  };
+
+  const inp: React.CSSProperties = {
+    padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
+    fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111', width: '100%', boxSizing: 'border-box',
+  };
+  const F = (key: string, label: string, o?: { area?: boolean; select?: string[]; ph?: string; span?: boolean; num?: boolean }) => (
+    <div style={{ marginBottom: 12, ...(o?.span ? { gridColumn: '1 / -1' } : {}) }}>
+      <div style={{ fontSize: 11, letterSpacing: .4, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      {o?.select ? (
+        <select value={form[key] ?? ''} onChange={e => set(key, e.target.value)} style={inp}>
+          <option value="">—</option>
+          {o.select.map(x => <option key={x} value={x}>{x}</option>)}
+        </select>
+      ) : o?.area ? (
+        <textarea value={form[key] ?? ''} onChange={e => set(key, e.target.value)} rows={3} placeholder={o?.ph} style={{ ...inp, resize: 'vertical' }} />
+      ) : (
+        <input value={form[key] ?? ''} onChange={e => set(key, e.target.value)} placeholder={o?.ph} inputMode={o?.num ? 'decimal' : undefined} style={inp} />
+      )}
+    </div>
+  );
+  const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0 16px' };
+  const secTitle: React.CSSProperties = { fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, margin: '6px 0 10px' };
+
+  return (
+    <div onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(17,17,17,.5)', zIndex: 1100, display: 'flex', justifyContent: 'center', alignItems: isMobile ? 'flex-end' : 'flex-start', padding: isMobile ? 0 : '5vh 16px', overflowY: isMobile ? 'hidden' : 'auto' }}>
+      <div onClick={e => e.stopPropagation()}
+        style={{ background: '#fff', maxWidth: isMobile ? '100%' : 720, width: '100%', boxShadow: '0 24px 70px rgba(0,0,0,.32)', fontFamily: "'DM Sans',sans-serif", borderRadius: isMobile ? '18px 18px 0 0' : 16, ...(isMobile ? { maxHeight: '94vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingBottom: 'env(safe-area-inset-bottom)' } : {}) }}>
+        <div style={{ height: 6, background: '#c9922c', borderTopLeftRadius: isMobile ? 18 : 16, borderTopRightRadius: isMobile ? 18 : 16, flexShrink: 0 }} />
+        <div style={{ padding: isMobile ? '18px 18px 20px' : 28, ...(isMobile ? { overflowY: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, minHeight: 0 } : {}) }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 23 : 26, fontWeight: 600, color: '#1a1a1a' }}>Add a Property</div>
+            <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: isMobile ? 44 : 34, height: isMobile ? 44 : 34, cursor: 'pointer', fontSize: 18, color: '#6b7280' }}>✕</button>
+          </div>
+
+          {/* Flyer dropzone — upload a PDF/image and Claude vision fills the form */}
+          <label
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) readFlyer(f); }}
+            style={{ display: 'block', border: '2px dashed #e0cfa0', background: reading ? '#fbf3df' : '#fffdf6', borderRadius: 12, padding: '18px 16px', textAlign: 'center', cursor: reading ? 'default' : 'pointer', marginBottom: 16 }}>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) readFlyer(f); e.target.value = ''; }} />
+            {reading ? (
+              <div style={{ color: '#a06a12', fontWeight: 700, fontSize: 14 }}>⏳ Reading the flyer with AI…</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>📄</div>
+                <div style={{ fontWeight: 700, color: '#8a6a1e', fontSize: 14 }}>Upload a flyer to auto-fill</div>
+                <div style={{ fontSize: 12, color: '#b08a4a', marginTop: 3 }}>Drop a PDF or image here, or click to browse — the details are read from it and filled in below for you to review.</div>
+              </>
+            )}
+          </label>
+          {readMsg && <div style={{ fontSize: 13, color: readMsg.startsWith('✓') ? '#15803d' : '#b45309', marginBottom: 14, fontWeight: 600 }}>{readMsg}</div>}
+
+          {/* Core fields */}
+          <div style={grid}>
+            {F('name', 'Property / Listing Name', { span: true })}
+            {F('address', 'Address')}
+            {F('suite', 'Suite')}
+            {F('city', 'City')}
+            {F('state', 'State')}
+            {F('zip', 'ZIP')}
+            {F('asset_type', 'Type', { select: ADD_ASSET_TYPES })}
+            {F('property_subtype', 'Subtype')}
+            {F('listing_type', 'For', { select: ['Lease', 'Sale', 'Both'] })}
+            {F('vacancy_status', 'Status', { select: ADD_VACANCY })}
+            {F('size_sf', 'Building SF', { num: true })}
+            {F('available_sf', 'Available SF', { num: true })}
+            {F('asking_rate', 'Asking Rate', { ph: '$18.00/SF NNN' })}
+            {F('sale_price', 'Sale Price', { num: true })}
+          </div>
+
+          <div style={secTitle}>Listing Broker</div>
+          <div style={grid}>
+            {F('listing_company', 'Company')}
+            {F('listing_agent_name', 'Agent')}
+            {F('listing_agent_phone', 'Phone')}
+          </div>
+
+          <div style={{ ...secTitle, cursor: 'pointer', userSelect: 'none' }} onClick={() => setShowMore(m => !m)}>
+            {showMore ? '▾' : '▸'} More details
+          </div>
+          {showMore && (
+            <>
+              <div style={grid}>
+                {F('building_class', 'Building Class', { select: ['A', 'B', 'C'] })}
+                {F('price_per_sf', 'Price / SF', { num: true })}
+                {F('cap_rate', 'Cap Rate %', { num: true })}
+                {F('lease_type', 'Lease Type', { select: ['NNN', 'FSG', 'MG', 'IG'] })}
+                {F('year_built', 'Year Built', { num: true })}
+                {F('clear_height_ft', 'Clear Height (ft)', { num: true })}
+                {F('dock_doors', 'Dock Doors', { num: true })}
+                {F('grade_doors', 'Grade Doors', { num: true })}
+                {F('parking_spaces', 'Parking Spaces', { num: true })}
+                {F('zoning', 'Zoning')}
+                {F('submarket', 'Submarket')}
+                {F('county', 'County')}
+                {F('owner_name', 'Owner')}
+              </div>
+              <div style={grid}>
+                {F('highlights', 'Highlights (one per line)', { area: true, span: true })}
+                {F('description', 'Description', { area: true, span: true })}
+                {F('notes', 'Notes', { area: true, span: true })}
+                {F('brochure_url', 'Brochure URL', { span: true })}
+                {F('listing_url', 'Listing URL', { span: true })}
+              </div>
+            </>
+          )}
+
+          {error && <div style={{ fontSize: 13, color: '#dc2626', marginTop: 6, fontWeight: 600 }}>{error}</div>}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16, ...(isMobile ? { position: 'sticky', bottom: 0, background: '#fff', paddingTop: 12 } : {}) }}>
+            <button onClick={onClose} disabled={saving}
+              style={{ padding: '10px 18px', border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer', minHeight: isMobile ? 44 : undefined }}>Cancel</button>
+            <button onClick={submit} disabled={saving || reading}
+              style={{ padding: '10px 20px', border: 'none', borderRadius: 8, background: (saving || reading) ? '#dcc79a' : '#c9922c', color: '#fff', fontWeight: 700, fontSize: 14, cursor: (saving || reading) ? 'default' : 'pointer', minHeight: isMobile ? 44 : undefined }}>
+              {saving ? 'Saving…' : 'Add to Property DB'}
+            </button>
           </div>
         </div>
       </div>
