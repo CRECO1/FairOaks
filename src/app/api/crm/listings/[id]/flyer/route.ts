@@ -153,18 +153,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }) : null)),
   ]);
 
-  // IABS (required in TX). Stable per-unit path first — replacing that file updates
-  // every flyer — then the form library's template. Never attach another unit's form.
+  // IABS (required in TX). The disclosure names the licence holder, so the agent's
+  // OWN form wins when there is one — it carries their name, licence number and
+  // contact details. Agent files are unit-agnostic for that reason: the licence
+  // doesn't change between commercial and residential.
+  //
+  // Order: listing agent → co-agent → the unit's shared form → the form library.
   let iabsPdf: Uint8Array | null = null;
-  const { data: iabsFile } = await supabase.storage.from('transaction-forms').download(`${unit}/iabs-current.pdf`);
-  if (iabsFile) iabsPdf = new Uint8Array(await iabsFile.arrayBuffer());
-  else {
+  const grabIabs = async (path: string) => {
+    const { data } = await supabase.storage.from('transaction-forms').download(path);
+    return data ? new Uint8Array(await data.arrayBuffer()) : null;
+  };
+  for (const uid of [L.listing_agent_id, L.co_agent_id]) {
+    if (!uid || iabsPdf) continue;
+    iabsPdf = await grabIabs(`agents/iabs-${uid}.pdf`);
+  }
+  if (!iabsPdf) iabsPdf = await grabIabs(`${unit}/iabs-current.pdf`);
+  if (!iabsPdf) {
     const { data: tpl } = await supabase.from('crm_forms').select('storage_path')
       .eq('business_unit', unit).ilike('name', '%Brokerage Services%').limit(1).maybeSingle();
-    if (tpl?.storage_path) {
-      const { data: b } = await supabase.storage.from('transaction-forms').download(tpl.storage_path);
-      if (b) iabsPdf = new Uint8Array(await b.arrayBuffer());
-    }
+    if (tpl?.storage_path) iabsPdf = await grabIabs(tpl.storage_path);
   }
 
   const nameOf = (a: Record<string, string> | null) => a ? `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() : '';

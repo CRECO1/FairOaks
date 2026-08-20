@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
-interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
+interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
 export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; envelope?: { id: string; status: string } | null }
@@ -31,6 +31,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);   // include cancelled + completed
+  const [byAgent, setByAgent] = useState('');     // '' = every agent
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -124,8 +125,19 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111' }}>✍️ E-Sign</h2>
-        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.length} ${showAll ? 'requests' : 'out for signature'}`}</span>
+        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.filter(e => !byAgent || e.sent_by === byAgent).length} ${showAll ? 'requests' : 'out for signature'}${byAgent ? ` · ${byAgent}` : ''}`}</span>
         <span style={{ flex: 1 }} />
+        {(() => {
+          const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
+          if (agents.length < 2) return null;
+          return (
+            <select value={byAgent} onChange={e => setByAgent(e.target.value)} title="Show only one agent's documents"
+              style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+              <option value="">All agents</option>
+              {agents.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          );
+        })()}
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; completed
         </label>
@@ -180,7 +192,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af' }}>{showAll ? 'All signature requests' : 'Out for signature'}</div>
-            {envs.map(env => {
+            {envs.filter(env => !byAgent || env.sent_by === byAgent).map(env => {
               const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
               const done = signers.filter(s => s.status === 'signed' || s.signed_at).length;
               const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
@@ -191,6 +203,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
                     <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
+                      {env.sent_by && <><span style={{ fontWeight: 700, color: '#6b7280' }}>{env.sent_by}</span> · </>}
                       {dealName} · {done}/{signers.length} signed
                       {showAll && env.status !== 'sent' && env.status !== 'in_progress' && (
                         <span style={{ marginLeft: 6, fontWeight: 700, color: env.status === 'completed' ? '#15803d' : '#b91c1c' }}>
