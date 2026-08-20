@@ -31,7 +31,8 @@ interface Field {
   value: string;
   size: number;             // font size in PDF points
   type: 'text' | 'check' | 'signature' | 'initial' | 'date';
-  signerRole?: 'client' | 'landlord' | 'agent';  // signature/initial/date placeholders belong to a party
+  signerRole?: string;      // signature/initial/date placeholders belong to a party
+  signerKey?: string;       // …and, when the signers are known by name, to that PERSON
   fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
   label?: string;           // human label, shown as the blank's placeholder
   defaultValue?: string;    // template's starting text, kept so re-saving the layout preserves it
@@ -61,8 +62,14 @@ const winAnsi = (s: string): string =>
 
 interface DealLite { id: string; client?: string; property?: string; type?: string; }
 
+// A named person this document will be sent to. When the caller knows the actual
+// recipients (the E-Sign composer does), fields are placed against a person rather
+// than an abstract role — so two clients on one document can't collide.
+export interface EditorRecipient { key: string; name: string; email: string; role: string; color: string }
+export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string };
+
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, onToast, onClose, onSaved,
+  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -75,6 +82,16 @@ export default function TransactionDocEditor({
   submissionId?: string;
   fieldPrefill?: Record<string, string>;  // field_key → value, seeded into a blank form (e.g. the agent's own info)
   isMobile?: boolean;
+  // The people signing, in order. Given these, the toolbar picks a PERSON instead of
+  // a role and every placed field is addressed to them by name.
+  recipients?: EditorRecipient[];
+  // Turns the editor into the middle step of the send flow: saves, then hands the
+  // placements up so the caller can review and send.
+  onSend?: (fields: EditorField[]) => void;
+  // Reports the placements as they change, so the caller can keep its own view of
+  // them current (e.g. to warn that a field's signer has just been removed).
+  onFieldsChange?: (fields: EditorField[]) => void;
+  onBack?: () => void;
   onToast?: (msg: string) => void;
   onClose: () => void;
   onSaved?: () => void;
@@ -83,7 +100,15 @@ export default function TransactionDocEditor({
   const [fields, setFields] = useState<Field[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [tool, setTool] = useState<'text' | 'check' | 'signature' | 'initial' | 'date' | 'select'>('select');
-  const [sigRole, setSigRole] = useState<'client' | 'landlord' | 'agent'>('client');
+  const [sigRole, setSigRole] = useState<string>('client');
+  // Which recipient the next field belongs to (composer mode).
+  const [sigKey, setSigKey] = useState<string>(recipients?.[0]?.key ?? '');
+  useEffect(() => {
+    // Keep the picker on a recipient that still exists after an edit upstream.
+    if (recipients?.length && !recipients.some(r => r.key === sigKey)) setSigKey(recipients[0].key);
+  }, [recipients, sigKey]);
+  const recByKey = React.useMemo(() => new Map((recipients ?? []).map(r => [r.key, r])), [recipients]);
+  const activeRec = recByKey.get(sigKey) ?? recipients?.[0];
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
@@ -188,7 +213,9 @@ export default function TransactionDocEditor({
     const id = nextId();
     const isSig = tool === 'signature' || tool === 'initial' || tool === 'date';
     const fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : 0.28;
-    setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' ? '✔' : '', size: 11, type: tool, signerRole: isSig ? sigRole : undefined }]);
+    setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' ? '✔' : '', size: 11, type: tool,
+      signerRole: isSig ? (activeRec?.role ?? sigRole) : undefined,
+      signerKey: isSig && activeRec ? activeRec.key : undefined }]);
     setSelected(id);
     setTool('select');
   }, [tool]);
@@ -354,6 +381,21 @@ export default function TransactionDocEditor({
     finally { setBusy(false); }
   }, [build, fields, dealSel, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
 
+  // Held in a ref so a caller that re-creates the callback each render can't
+  // re-fire this effect and loop.
+  const reportRef = useRef(onFieldsChange);
+  reportRef.current = onFieldsChange;
+  useEffect(() => {
+    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey })));
+  }, [fields]);
+
+  const sendNow = useCallback(async () => {
+    const sig = fields.filter(f => ['signature', 'initial', 'date'].includes(f.type));
+    if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
+    await saveToDeal();
+    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey })));
+  }, [fields, saveToDeal, onSend]);
+
   const toolBtn = (t: typeof tool, label: string) => (
     <button onClick={() => setTool(t)}
       style={{ padding: isMobile ? '10px 14px' : '7px 14px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
@@ -399,7 +441,14 @@ export default function TransactionDocEditor({
           reachable, and the actions scroll horizontally underneath. */}
       <div style={{ background: '#fff', borderBottom: '1px solid #eef0f2', padding: isMobile ? '9px 12px' : '10px 18px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 8 : 12, flexWrap: isMobile ? 'nowrap' : 'wrap', flexShrink: 0, paddingTop: isMobile ? 'calc(9px + env(safe-area-inset-top))' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 17 : 20, fontWeight: 600, color: '#1a1a1a', marginRight: isMobile ? 0 : 8, flex: isMobile ? 1 : undefined, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.name}</div>
+          {onBack && (
+            <button onClick={onBack} title="Back to Set Up Envelope"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 13, fontWeight: 700, padding: 0, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" }}>
+              ‹ Set Up Envelope
+            </button>
+          )}
+          {onBack && <span style={{ color: '#d1d5db', fontSize: 13 }}>›</span>}
+          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 17 : 20, fontWeight: 600, color: '#1a1a1a', marginRight: isMobile ? 0 : 8, flex: isMobile ? 1 : undefined, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{onBack ? 'Add Fields' : form.name}</div>
           {isMobile && (
             <>
               <button onClick={() => setZoom(z => (z === 'fit' ? 'full' : 'fit'))} aria-label="Toggle zoom"
@@ -420,13 +469,20 @@ export default function TransactionDocEditor({
               <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
               <RtFormatButtons compact />
               <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
-              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>Signer:</span>
-              <select value={sigRole} onChange={e => setSigRole(e.target.value as 'client' | 'landlord' | 'agent')} title="Which party will fill this signature/initial/date field"
-                style={{ padding: '7px 8px', fontSize: 12.5, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
-                <option value="client">Client</option>
-                <option value="landlord">Landlord</option>
-                <option value="agent">Agent</option>
-              </select>
+              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>{recipients?.length ? 'Placing for:' : 'Signer:'}</span>
+              {recipients?.length ? (
+                <select value={sigKey} onChange={e => setSigKey(e.target.value)} title="Whose signature, initials or date the next field is for"
+                  style={{ padding: '7px 8px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: `2px solid ${activeRec?.color ?? '#e5e7eb'}`, background: `${activeRec?.color ?? '#000'}14`, color: activeRec?.color ?? '#374151', fontFamily: "'DM Sans',sans-serif", maxWidth: 210 }}>
+                  {recipients.map((r, i) => <option key={r.key} value={r.key}>{i + 1}. {r.name || r.email || `Signer ${i + 1}`}</option>)}
+                </select>
+              ) : (
+                <select value={sigRole} onChange={e => setSigRole(e.target.value)} title="Which party will fill this signature/initial/date field"
+                  style={{ padding: '7px 8px', fontSize: 12.5, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+                  <option value="client">Client</option>
+                  <option value="landlord">Landlord</option>
+                  <option value="agent">Agent</option>
+                </select>
+              )}
               {toolBtn('signature', '✒ Signature')}
               {toolBtn('initial', '✎ Initials')}
               {toolBtn('date', '📅 Date')}
@@ -441,7 +497,7 @@ export default function TransactionDocEditor({
           style={isMobile
             ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          {isAdmin && !isMobile && !imported && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
+          {isAdmin && !isMobile && !imported && !onSend && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {!listingId && deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
               style={{ padding: isMobile ? '11px 10px' : '8px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
@@ -449,8 +505,9 @@ export default function TransactionDocEditor({
               {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
             </select>
           )}
-          <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : listingId ? '💾 Save to property' : '💾 Save')}</button>
-          <button onClick={download} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
+          {!onSend && <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : listingId ? '💾 Save to property' : '💾 Save')}</button>}
+          <button onClick={download} disabled={busy} style={{ ...actionBtn, background: onSend ? '#fff' : '#c9922c', color: onSend ? '#6b7280' : '#fff', border: onSend ? '1px solid #e5e7eb' : 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
+          {onSend && <button onClick={sendNow} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : 'Review & Send →'}</button>}
           {!isMobile && <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
         </div>
       </div>
@@ -504,18 +561,20 @@ export default function TransactionDocEditor({
               const em = f.size * 0.85;
               if (isSig) {
                 const role = f.signerRole || 'client';
-                const rc = role === 'landlord' ? '#2563eb' : role === 'agent' ? '#16a34a' : '#c9922c';
+                const rec = f.signerKey ? recByKey.get(f.signerKey) : undefined;
+                const rc = rec?.color ?? (role === 'landlord' ? '#2563eb' : role === 'agent' ? '#16a34a' : '#c9922c');
+                const who = rec ? (rec.name || rec.email || role) : role;
                 const kind = f.type === 'signature' ? 'Signature' : f.type === 'initial' ? 'Initials' : 'Date';
                 const glyph = f.type === 'signature' ? '✒' : f.type === 'initial' ? '✎' : '📅';
                 return (
                   <div key={f.id}
                     onMouseDown={e => onDragStart(e, f)} onTouchStart={e => onTouchDragStart(e, f)}
-                    title={`${role} — ${kind} · filled when ${role} signs`}
+                    title={`${who} — ${kind} · filled when they sign`}
                     style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
                       height: `max(16px, ${cqw(em * 1.6)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 3, overflow: 'hidden',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: isSel ? 'none' : undefined, cursor: 'move',
                       background: `${rc}22`, border: `1.5px dashed ${rc}`, outline: isSel ? `2px solid ${rc}` : 'none' }}>
-                    <span style={{ fontSize: `max(7px, ${cqw(6.5)})`, fontWeight: 700, color: rc, textTransform: 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 3px', pointerEvents: 'none' }}>{glyph} {role} {kind}</span>
+                    <span style={{ fontSize: `max(7px, ${cqw(6.5)})`, fontWeight: 700, color: rc, textTransform: rec ? 'none' : 'capitalize', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', padding: '0 3px', pointerEvents: 'none' }}>{glyph} {who} {kind}</span>
                     {isSel && (
                       <button onClick={e => { e.stopPropagation(); delField(f.id); }} onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} aria-label="Delete field"
                         style={{ position: 'absolute', top: isMobile ? -13 : -9, right: isMobile ? -13 : -9, width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>

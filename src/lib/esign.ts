@@ -198,12 +198,16 @@ export async function appendCertificate(
 
 export interface ExecutedSigner {
   name: string; email: string; role: string;
+  // 1-based position in the signing order — how a field addresses THIS person.
+  index?: number;
   signedAt?: string | null; ip?: string | null;
   signaturePng?: Uint8Array | null; typedName?: string;
 }
 
 // A signature/initial/date field the agent placed on the doc (from the submission).
-export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null }
+// A field addresses a specific signer by their place in the signing order. Role alone
+// can't: two clients on the same document would both resolve to the first one.
+export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null; signerIndex?: number | null }
 
 // Assemble the fully-executed PDF: stamp each signer's signature/initials/date onto
 // the fields the agent PLACED (inline, on the doc's own lines); any signer without
@@ -227,7 +231,10 @@ export async function buildExecutedPdf(
   const placed = (info.sigFields || []).filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(f.type));
   const inline = new Set<string>();
   for (const f of placed) {
-    const s = info.signers.find(x => (x.role || 'client') === (f.signerRole || 'client'));
+    // Prefer the exact signer the agent assigned; fall back to first-of-role for
+    // documents whose fields were placed before per-signer assignment existed.
+    const s = (f.signerIndex ? info.signers.find(x => x.index === f.signerIndex) : null)
+      ?? info.signers.find(x => (x.role || 'client') === (f.signerRole || 'client'));
     if (!s) continue;
     const pg = pages[(f.page || 1) - 1]; if (!pg) continue;
     const { width, height } = pg.getSize();
@@ -293,16 +300,16 @@ export async function finalizeEnvelope(
     for (const s of signers) {
       let png: Uint8Array | null = null;
       if (s.signature_path) { const { data: pb } = await admin.storage.from(SIGN_BUCKET).download(s.signature_path); if (pb) png = new Uint8Array(await pb.arrayBuffer()); }
-      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, signedAt: s.signed_at, ip: s.ip, signaturePng: png, typedName: s.typed_name || undefined });
+      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, index: execSigners.length + 1, signedAt: s.signed_at, ip: s.ip, signaturePng: png, typedName: s.typed_name || undefined });
     }
 
     let sigFields: PlacedField[] = [];
     if (env.submission_id) {
       const { data: sub } = await admin.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
-      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string }> = Array.isArray(sub?.values) ? sub!.values : [];
+      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number }> = Array.isArray(sub?.values) ? sub!.values : [];
       sigFields = vals
         .filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(String(f.type)))
-        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client' }));
+        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null }));
     }
 
     const executed = await buildExecutedPdf(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });

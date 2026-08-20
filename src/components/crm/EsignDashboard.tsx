@@ -12,10 +12,9 @@ export interface ImportedDoc { id: string; title?: string; url?: string | null; 
 
 interface Props {
   authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void;
-  // Opens the drag-and-drop editor so the agent can place where each party signs.
-  onPlaceFields?: (doc: ImportedDoc) => void;
-  // Opens the send flow (signers → review → send) for a prepared document.
-  onSend?: (doc: ImportedDoc) => void;
+  // Opens the envelope composer: with a freshly dropped file, or on a document
+  // already imported and still being prepared.
+  onCompose?: (arg: { file?: File; doc?: ImportedDoc }) => void;
   // Bumped by the parent whenever the editor saves, so the list re-reads the doc.
   refreshKey?: number;
 }
@@ -24,7 +23,7 @@ const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bear
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day' : `${d} days`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' };
 
-export default function EsignDashboard({ authToken, showToast, onOpenDeal, onPlaceFields, onSend, refreshKey = 0 }: Props) {
+export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, refreshKey = 0 }: Props) {
   const [envs, setEnvs] = useState<Envelope[]>([]);
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,33 +40,12 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onPla
   }, [authToken]);
   useEffect(() => { loadDocs(); }, [loadDocs, refreshKey]);
 
-  // Import: presign → the browser PUTs straight to storage (so a big scan never has
-  // to fit through a serverless request) → confirm, which validates the PDF.
-  const importFile = useCallback(async (file: File) => {
+  // A dropped file goes straight into the composer, which does the upload as its
+  // first step — so the agent lands on "Set Up Envelope" with the document in place.
+  const importFile = useCallback((file: File) => {
     if (!/\.pdf$/i.test(file.name)) { showToast?.('Only PDFs can be sent for signature — save it as a PDF first'); return; }
-    setUploading(true);
-    try {
-      const pre = await fetch('/api/crm/esign-import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) },
-        body: JSON.stringify({ filename: file.name, file_size: file.size }),
-      });
-      const pj = await pre.json().catch(() => ({}));
-      if (!pre.ok) { showToast?.(pj.error || 'Could not start the upload'); return; }
-      const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file });
-      if (!put.ok) { showToast?.('The upload failed — try again'); return; }
-      const conf = await fetch('/api/crm/esign-import', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json', ...auth(authToken) },
-        body: JSON.stringify({ storage_path: pj.storagePath, title: file.name }),
-      });
-      const cj = await conf.json().catch(() => ({}));
-      if (!conf.ok) { showToast?.(cj.error || 'Could not import that document'); return; }
-      await loadDocs();
-      showToast?.(`✓ ${cj.submission?.title || 'Document'} imported — place the signature fields`);
-      // Straight into the editor: placing the fields is the next thing to do.
-      if (cj.submission && onPlaceFields) onPlaceFields(cj.submission as ImportedDoc);
-    } catch { showToast?.('Could not import that document'); }
-    finally { setUploading(false); }
-  }, [authToken, showToast, loadDocs, onPlaceFields]);
+    onCompose?.({ file });
+  }, [showToast, onCompose]);
 
   const removeDoc = useCallback(async (d: ImportedDoc) => {
     if (!window.confirm(`Remove "${d.title || 'this document'}" from E-Sign? The file is deleted.`)) return;
@@ -120,9 +98,9 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onPla
         style={{ border: `2px dashed ${dragging ? '#c9922c' : '#e6d3a2'}`, background: dragging ? '#fdf6e9' : '#fffdf6', borderRadius: 12,
           padding: '20px 18px', textAlign: 'center', cursor: uploading ? 'default' : 'pointer', marginBottom: 22 }}>
         <div style={{ fontSize: 26, marginBottom: 4 }}>{uploading ? '⏳' : '📥'}</div>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>{uploading ? 'Importing…' : 'Import a document to be signed'}</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>{uploading ? 'Importing…' : 'Send a document for signature'}</div>
         <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 3 }}>
-          Drop a PDF here or click to browse — then drag the signature, initial and date fields onto the page before sending.
+          Drop a PDF here or click to browse — add the signers, drag where each of them signs and dates, then review before it goes out.
         </div>
       </div>
 
@@ -139,8 +117,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onPla
                   <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Imported{d.updated_at ? ` · ${ago(d.updated_at)} ago` : ''} · not sent yet</div>
                 </div>
                 <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }}>✕</button>
-                {onPlaceFields && <button onClick={() => onPlaceFields(d)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>✒ Place fields</button>}
-                {onSend && <button onClick={() => onSend(d)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Add signers →</button>}
+                {onCompose && <button onClick={() => onCompose({ doc: d })} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Prepare &amp; send →</button>}
               </div>
             ))}
           </div>

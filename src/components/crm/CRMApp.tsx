@@ -16,6 +16,7 @@ import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
+import EsignComposer, { type ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
@@ -469,6 +470,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [esignFieldsVersion, setEsignFieldsVersion] = useState(0); // bumped when placements change
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string; showDeals?: boolean } | null>(null);
   const [importSend, setImportSend] = useState<EsignDoc | null>(null);
+  // The E-Sign envelope composer: set up -> place fields -> review -> send.
+  const [composer, setComposer] = useState<{ file: File | null; doc: ComposerDoc | null } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
@@ -7344,8 +7347,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               authToken={session?.access_token}
               showToast={showToast}
               refreshKey={esignFieldsVersion}
-              onPlaceFields={d => openImportEditor(d)}
-              onSend={d => setImportSend({ id: d.id, title: d.title, url: d.url ?? undefined, imported: true })}
+              onCompose={({ file, doc }) => setComposer({ file: file ?? null, doc: doc ? { id: doc.id, title: doc.title, url: doc.url } : null })}
               onOpenDeal={(dealId) => { const d = deals.find(x => x.id === dealId); if (d) { openDeal(d); setDealTab('esign'); } else { setPage('deals'); showToast('Open the deal from All Deals'); } }}
             />
           )}
@@ -10764,6 +10766,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               onSent={() => { setImportSend(null); setEsignFieldsVersion(v => v + 1); }} />
           </div>
         </div>
+      )}
+
+      {composer && (
+        <EsignComposer
+          initialFile={composer.file}
+          initialDoc={composer.doc}
+          clients={clients}
+          deals={deals}
+          agentName={`${profile.first_name} ${profile.last_name}`.trim()}
+          agentEmail={profile.email}
+          authToken={session?.access_token}
+          businessUnit={businessUnit}
+          isAdmin={isAdmin}
+          isMobile={isMobile}
+          showToast={showToast}
+          onClose={() => { setComposer(null); setEsignFieldsVersion(v => v + 1); }}
+          onSent={() => { setComposer(null); setEsignFieldsVersion(v => v + 1); }}
+        />
       )}
 
       {dealFormEditor && (

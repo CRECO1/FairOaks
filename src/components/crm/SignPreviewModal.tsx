@@ -6,15 +6,19 @@ import React, { useEffect, useState } from 'react';
 // marker at each placed signature field — so the agent can SEE who signs where
 // before a send OR a resend (no blind sends). Canvas render sidesteps the app CSP
 // that blocks iframing PDFs; markers are positioned in % so they scale with the page.
-export interface PreviewField { page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string }
+export interface PreviewField { page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number | null }
+// The actual people, in signing order. Given these, a field is labelled with the
+// NAME of whoever signs it — two clients on one document read as two people.
+export interface PreviewSigner { name: string; role?: string; color?: string }
 
 const ROLE_COLORS: Record<string, string> = { client: '#c9922c', landlord: '#2563eb', agent: '#16a34a', seller: '#c9922c', buyer: '#7c3aed', witness: '#db2777', other: '#6b7280' };
 const typeLabel = (t?: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : (t === 'date' || t === 'date_signed') ? 'Date' : (t || 'Field');
 
-export default function SignPreviewModal({ url, fields, signerLabel, onClose, onConfirm, confirmLabel = 'Send', busy }: {
+export default function SignPreviewModal({ url, fields, signerLabel, signers, onClose, onConfirm, confirmLabel = 'Send', busy }: {
   url: string;
   fields: PreviewField[];
   signerLabel?: (role: string) => string;
+  signers?: PreviewSigner[];
   onClose: () => void;
   // When given, this is the last step before a document goes out: the review carries
   // the send button itself, so nothing is sent without the agent seeing the placements.
@@ -63,7 +67,15 @@ export default function SignPreviewModal({ url, fields, signerLabel, onClose, on
     return () => { cancelled = true; };
   }, [url]);
 
-  const roles = Array.from(new Set(fields.map(f => f.signerRole || 'client')));
+  // Identify a field by its signer when we know them, else fall back to the role.
+  const partyOf = (f: PreviewField) => (f.signerIndex && signers?.[f.signerIndex - 1]) ? `s${f.signerIndex}` : (f.signerRole || 'client');
+  const colorOf = (key: string) => key.startsWith('s') && signers?.[Number(key.slice(1)) - 1]
+    ? (signers[Number(key.slice(1)) - 1].color || ROLE_COLORS.other)
+    : (ROLE_COLORS[key] || ROLE_COLORS.other);
+  const nameOf = (key: string) => key.startsWith('s') && signers?.[Number(key.slice(1)) - 1]
+    ? signers[Number(key.slice(1)) - 1].name
+    : (signerLabel ? signerLabel(key) : key);
+  const roles = Array.from(new Set(fields.map(partyOf)));
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -72,7 +84,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, onClose, on
         <div style={{ color: '#fff', fontSize: 15, fontWeight: 800 }}>Review signature placements — who signs where</div>
         {roles.length > 0 && <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>{roles.map(r => (
           <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#e5e7eb', fontSize: 12, fontWeight: 600 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: ROLE_COLORS[r] || ROLE_COLORS.other }} />{signerLabel ? signerLabel(r) : r}
+            <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(r) }} />{nameOf(r)}
           </span>
         ))}</div>}
         <span style={{ flex: 1 }} />
@@ -94,12 +106,12 @@ export default function SignPreviewModal({ url, fields, signerLabel, onClose, on
             <div key={i} style={{ position: 'relative', width: 820, maxWidth: '100%', margin: '0 auto 18px', boxShadow: '0 2px 14px rgba(0,0,0,.45)' }}>
               <img src={pg.src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
               {pageFields.map((f, k) => {
-                const role = f.signerRole || 'client';
-                const color = ROLE_COLORS[role] || ROLE_COLORS.other;
+                const party = partyOf(f);
+                const color = colorOf(party);
                 const boxH = (f.type === 'date' || f.type === 'date_signed') ? 20 : 28;
                 return (
                   <div key={k} style={{ position: 'absolute', left: `${f.fx * 100}%`, width: `${Math.max(f.fw * 100, 9)}%`, top: `calc(${f.fy * 100}% - ${boxH}px)`, height: boxH, border: `2px solid ${color}`, background: color + '26', borderRadius: 3, boxSizing: 'border-box', pointerEvents: 'none' }}>
-                    <div style={{ position: 'absolute', top: -15, left: -2, fontSize: 9.5, fontWeight: 800, color: '#fff', background: color, padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>{(signerLabel ? signerLabel(role) : role)} · {typeLabel(f.type)}</div>
+                    <div style={{ position: 'absolute', top: -15, left: -2, fontSize: 9.5, fontWeight: 800, color: '#fff', background: color, padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>{nameOf(party)} · {typeLabel(f.type)}</div>
                   </div>
                 );
               })}
