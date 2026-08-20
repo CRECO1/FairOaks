@@ -748,6 +748,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // New deal form
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
+  const [ndNewClient, setNdNewClient] = useState({ show: false, name: '', email: '', phone: '', saving: false });
   // Closing-form packets to attach when the deal is created (keys into FORM_PACKETS).
   const [ndPackets, setNdPackets] = useState<string[]>([]);
   const ndPacketsTouched = useRef(false); // once the agent picks packets, stop auto-defaulting
@@ -1949,6 +1950,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Deal CRUD ────────────────────────────────────────────────────────────────
+  // Create a client inline from the New-Deal modal (no leaving the form), add it to
+  // the list and select it. Uses the master-contacts endpoint so it isn't duplicated.
+  async function createDealClient() {
+    const parts = ndNewClient.name.trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) { showToast('Enter a name for the new client.'); return; }
+    setNdNewClient(s => ({ ...s, saving: true }));
+    try {
+      const h: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/crm/contacts', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ first_name: parts[0], last_name: parts.slice(1).join(' ') || null, email: ndNewClient.email || null, phone: ndNewClient.phone || null, type: 'Buyer' }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.contact) { showToast(j.error || 'Could not create the client.'); setNdNewClient(s => ({ ...s, saving: false })); return; }
+      const nc = j.contact;
+      const newClient = {
+        id: nc.id, agent_id: '', assigned_agent_ids: [], first_name: nc.first_name || '', last_name: nc.last_name || '',
+        business_name: nc.business_name || '', email: nc.email || '', extra_emails: [], phone: nc.phone || '', cell_phone: nc.cell_phone || '',
+        address: '', city: '', state: '', zip: '', brokerage: nc.brokerage || '', license: '', budget: '', size_range: '', asset_types: [],
+        type: (nc.type || 'Buyer'), tags: [], lead_source: 'Deal', notes: '', created_at: new Date().toISOString(),
+      } as Client;
+      setClients(prev => [newClient, ...prev]);
+      setNd(prev => ({ ...prev, client_id: nc.id, client: `${nc.first_name ?? ''} ${nc.last_name ?? ''}`.trim(), client_email: nc.email || '', client_phone: nc.phone || '' }));
+      setNdNewClient({ show: false, name: '', email: '', phone: '', saving: false });
+    } catch { showToast('Could not create the client.'); setNdNewClient(s => ({ ...s, saving: false })); }
+  }
+
   async function createDeal() {
     if (!nd.client_id) { showToast('Please select a client first.'); return; }
     setSaving(true);
@@ -8428,6 +8457,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </option>
                     ))}
                   </select>
+                )}
+                <button type="button" onClick={() => setNdNewClient(s => ({ ...s, show: !s.show }))}
+                  style={{ marginTop: 8, background: 'none', border: 'none', color: '#c9922c', fontWeight: 600, cursor: 'pointer', fontSize: 13, padding: 0 }}>
+                  {ndNewClient.show ? '– Cancel new client' : '＋ New client'}
+                </button>
+                {ndNewClient.show && (
+                  <div style={{ marginTop: 8, padding: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input className="crm-input" placeholder="Full name *" value={ndNewClient.name} onChange={e => setNdNewClient(s => ({ ...s, name: e.target.value }))} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input className="crm-input" style={{ flex: 1 }} placeholder="Email" value={ndNewClient.email} onChange={e => setNdNewClient(s => ({ ...s, email: e.target.value }))} />
+                      <input className="crm-input" style={{ flex: 1 }} placeholder="Phone" value={ndNewClient.phone} onChange={e => setNdNewClient(s => ({ ...s, phone: e.target.value }))} />
+                    </div>
+                    <button type="button" onClick={createDealClient} disabled={ndNewClient.saving || !ndNewClient.name.trim()}
+                      style={{ alignSelf: 'flex-start', background: (ndNewClient.saving || !ndNewClient.name.trim()) ? '#dcc79a' : '#c9922c', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontWeight: 700, fontSize: 13, cursor: ndNewClient.saving ? 'default' : 'pointer' }}>
+                      {ndNewClient.saving ? 'Adding…' : 'Add client & select'}
+                    </button>
+                  </div>
                 )}
               </div>
 
