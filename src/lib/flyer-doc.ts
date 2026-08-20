@@ -343,8 +343,16 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   if (input.iabsPdf?.length) {
     try {
       const iabs = await PDFDocument.load(input.iabsPdf, { ignoreEncryption: true });
-      const pages = await pdf.copyPages(iabs, iabs.getPageIndices());
-      for (const pg of pages) pdf.addPage(pg);
+      // `ignoreEncryption` lets an encrypted PDF LOAD, but the content streams stay
+      // encrypted — copyPages then yields a page that is silently, perfectly blank.
+      // A blank sheet where the disclosure should be is worse than no sheet, because
+      // it looks like the IABS is there. Refuse it and say so.
+      if (iabs.isEncrypted) {
+        console.error('[flyer] IABS is encrypted — not appending (it would be a blank page). Decrypt it first: qpdf --decrypt in.pdf out.pdf');
+      } else {
+        const pages = await pdf.copyPages(iabs, iabs.getPageIndices());
+        for (const pg of pages) pdf.addPage(pg);
+      }
     } catch (e) { console.error('[flyer] IABS append failed', e); }
   }
 
