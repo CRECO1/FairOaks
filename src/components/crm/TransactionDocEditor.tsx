@@ -42,6 +42,7 @@ interface Field {
 interface PageDim { num: number; pw: number; ph: number; }
 
 const RENDER_W = 850;
+const THUMB_W = 150;          // page-navigator thumbnails render at their own small scale
 let _idc = 0;
 const nextId = () => `f${++_idc}`;
 
@@ -111,6 +112,9 @@ export default function TransactionDocEditor({
   const activeRec = recByKey.get(sigKey) ?? recipients?.[0];
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  // Page navigator: which page is currently in view, and the scroller to jump in.
+  const [activePage, setActivePage] = useState(1);
+  const pagesRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const subIdRef = useRef<string | undefined>(submissionId);
@@ -398,13 +402,42 @@ export default function TransactionDocEditor({
     onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey })));
   }, [fields, saveToDeal, onSend]);
 
-  const toolBtn = (t: typeof tool, label: string) => (
-    <button onClick={() => setTool(t)}
-      style={{ padding: isMobile ? '10px 14px' : '7px 14px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 13, fontWeight: 600, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
-        border: tool === t ? '1px solid #c9922c' : '1px solid #e5e7eb', background: tool === t ? '#fdf6e9' : '#fff', color: tool === t ? '#a06a12' : '#374151' }}>
-      {label}
+  // Jump the document pane to a page, and keep the navigator's highlight in step
+  // with wherever the reader actually is.
+  const goToPage = useCallback((n: number) => {
+    const el = pagesRef.current?.querySelector(`[data-pdf-page="${n}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActivePage(n);
+  }, []);
+  const onPagesScroll = useCallback(() => {
+    const box = pagesRef.current; if (!box) return;
+    const top = box.getBoundingClientRect().top;
+    let best = 1, bestDist = Infinity;
+    box.querySelectorAll('[data-pdf-page]').forEach(el => {
+      const d = Math.abs((el as HTMLElement).getBoundingClientRect().top - top);
+      if (d < bestDist) { bestDist = d; best = Number((el as HTMLElement).dataset.pdfPage); }
+    });
+    setActivePage(p => (p === best ? p : best));
+  }, []);
+
+  // One field tool, drawn as a tile in the left rail.
+  const tile = (t: typeof tool, glyph: string, label: string) => (
+    <button key={t} onClick={() => setTool(t)} title={label}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 10px', borderRadius: 9, cursor: 'pointer',
+        fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", textAlign: 'left',
+        border: tool === t ? '2px solid #c9922c' : '1px solid #e5e7eb',
+        background: tool === t ? '#fdf6e9' : '#fff', color: tool === t ? '#a06a12' : '#374151' }}>
+      <span style={{ width: 17, textAlign: 'center', fontSize: 13, flexShrink: 0 }}>{glyph}</span>
+      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </button>
   );
+  const railGroup = (label: string, items: React.ReactNode[]) => (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{items}</div>
+    </div>
+  );
+
   const actionBtn: React.CSSProperties = {
     padding: isMobile ? '11px 14px' : '8px 16px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap',
     fontSize: 13, fontWeight: 700, borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
@@ -463,37 +496,6 @@ export default function TransactionDocEditor({
           )}
         </div>
 
-        {!isMobile && (
-          <>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              {toolBtn('text', '➕ Text field')}
-              {toolBtn('check', '☑︎ Check')}
-              <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
-              <RtFormatButtons compact />
-              <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
-              <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>{recipients?.length ? 'Placing for:' : 'Signer:'}</span>
-              {recipients?.length ? (
-                <select value={sigKey} onChange={e => setSigKey(e.target.value)} title="Whose signature, initials or date the next field is for"
-                  style={{ padding: '7px 8px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, border: `2px solid ${activeRec?.color ?? '#e5e7eb'}`, background: `${activeRec?.color ?? '#000'}14`, color: activeRec?.color ?? '#374151', fontFamily: "'DM Sans',sans-serif", maxWidth: 210 }}>
-                  {recipients.map((r, i) => <option key={r.key} value={r.key}>{i + 1}. {r.name || r.email || `Signer ${i + 1}`}</option>)}
-                </select>
-              ) : (
-                <select value={sigRole} onChange={e => setSigRole(e.target.value)} title="Which party will fill this signature/initial/date field"
-                  style={{ padding: '7px 8px', fontSize: 12.5, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
-                  <option value="client">Client</option>
-                  <option value="landlord">Landlord</option>
-                  <option value="agent">Agent</option>
-                </select>
-              )}
-              {toolBtn('signature', '✒ Signature')}
-              {toolBtn('initial', '✎ Initials')}
-              {toolBtn('date', '📅 Date')}
-              <span style={{ width: 1, height: 22, background: '#e5e7eb', margin: '0 2px' }} />
-              {toolBtn('select', '↖︎ Select / move')}
-            </div>
-            <div style={{ fontSize: 12, color: '#9ca3af' }}>{fields.length} field{fields.length === 1 ? '' : 's'} · {tool !== 'select' ? 'click a page to place' : 'drag to move, click ✕ to delete'}</div>
-          </>
-        )}
 
         <div
           style={isMobile
@@ -526,11 +528,59 @@ export default function TransactionDocEditor({
         </div>
       )}
 
-      {/* Pages */}
+      {/* Fields rail · document · page navigator. On a phone the rails are dropped and
+          the tools stay in the header strip — there isn't width for three columns. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+
+      {!isMobile && (
+        <div style={{ width: 226, flexShrink: 0, background: '#fff', borderRight: '1px solid #eef0f2', overflowY: 'auto', padding: '16px 14px' }}>
+          <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, color: '#111', marginBottom: 12 }}>Fields</div>
+
+          {/* Who the next field belongs to — the one choice that changes what a click does. */}
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 6 }}>{recipients?.length ? 'Placing for' : 'Signer'}</div>
+          {recipients?.length ? (
+            <select value={sigKey} onChange={e => setSigKey(e.target.value)} title="Whose signature, initials or date the next field is for"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px', fontSize: 13, fontWeight: 700, borderRadius: 9, border: `2px solid ${activeRec?.color ?? '#e5e7eb'}`, background: `${activeRec?.color ?? '#000'}14`, color: activeRec?.color ?? '#374151', fontFamily: "'DM Sans',sans-serif", marginBottom: 16 }}>
+              {recipients.map((r, i) => <option key={r.key} value={r.key}>{i + 1}. {r.name || r.email || `Signer ${i + 1}`}</option>)}
+            </select>
+          ) : (
+            <select value={sigRole} onChange={e => setSigRole(e.target.value)} title="Which party will fill this signature/initial/date field"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px', fontSize: 13, borderRadius: 9, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif", marginBottom: 16 }}>
+              <option value="client">Client</option>
+              <option value="landlord">Landlord</option>
+              <option value="agent">Agent</option>
+            </select>
+          )}
+
+          {railGroup('Signature', [
+            tile('signature', '✒', 'Signature'),
+            tile('initial', '✎', 'Initials'),
+            tile('date', '📅', 'Date signed'),
+          ])}
+          {railGroup('Inputs', [
+            tile('text', 'T', 'Text'),
+            tile('check', '☑', 'Checkbox'),
+          ])}
+          {railGroup('Edit', [
+            tile('select', '↖︎', 'Select / move'),
+          ])}
+
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f2f4' }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 7 }}>Text format</div>
+            <RtFormatButtons compact />
+          </div>
+
+          <div style={{ marginTop: 16, fontSize: 11.5, color: '#9ca3af', lineHeight: 1.5 }}>
+            {fields.length} field{fields.length === 1 ? '' : 's'} placed.<br />
+            {tool !== 'select' ? 'Click the page to drop one.' : 'Drag by the handle, ✕ to delete.'}
+          </div>
+        </div>
+      )}
+
       {/* alignItems must not be `center` while the page overflows: a centered flex item
           overflows on BOTH sides and the leading half becomes unreachable by scrolling.
           'fit' never overflows, so it keeps the centring. */}
-      <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: isMobile ? '12px 6px calc(24px + env(safe-area-inset-bottom))' : '22px 12px', display: 'flex', flexDirection: 'column', alignItems: zoom === 'full' ? 'flex-start' : 'center' }}>
+      <div ref={pagesRef} onScroll={onPagesScroll} style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: isMobile ? '12px 6px calc(24px + env(safe-area-inset-bottom))' : '22px 12px', display: 'flex', flexDirection: 'column', alignItems: zoom === 'full' ? 'flex-start' : 'center' }}>
         {status === 'loading' && <div style={{ color: '#e5e7eb', padding: 60 }}>Loading document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', padding: 60 }}>Couldn’t open this document.</div>}
         {/* 'fit' fills the pane but caps at RENDER_W, so a wide screen still lands on
@@ -648,6 +698,34 @@ export default function TransactionDocEditor({
         })}
         </div>
       </div>
+
+      {!isMobile && pages.length > 0 && (
+        <div style={{ width: 186, flexShrink: 0, background: '#fff', borderLeft: '1px solid #eef0f2', overflowY: 'auto', padding: '16px 14px' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#111', lineHeight: 1.35, wordBreak: 'break-word' }}>{form.name}</div>
+          <div style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 12px' }}>{pages.length} page{pages.length === 1 ? '' : 's'}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pages.map(pd => {
+              const on = activePage === pd.num;
+              const placedHere = fields.filter(f => f.page === pd.num).length;
+              return (
+                <button key={pd.num} onClick={() => goToPage(pd.num)} title={`Go to page ${pd.num}`}
+                  style={{ padding: 5, borderRadius: 8, cursor: 'pointer', background: on ? '#fdf6e9' : '#fff',
+                    border: on ? '2px solid #c9922c' : '1px solid #e5e7eb', textAlign: 'center', fontFamily: "'DM Sans',sans-serif" }}>
+                  <div style={{ position: 'relative', width: '100%', aspectRatio: `${pd.pw}/${pd.ph}`, background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,.18)', overflow: 'hidden' }}>
+                    <PageCanvas pageNum={pd.num} pdfRef={pdfRef} width={THUMB_W} />
+                    {placedHere > 0 && (
+                      <span style={{ position: 'absolute', top: 3, right: 3, minWidth: 15, height: 15, borderRadius: 8, background: '#c9922c', color: '#fff', fontSize: 9.5, fontWeight: 800, lineHeight: '15px', padding: '0 3px' }}>{placedHere}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: on ? 800 : 600, color: on ? '#a06a12' : '#9ca3af', marginTop: 4 }}>{pd.num}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      </div>
     </div>
   );
 }
@@ -656,7 +734,7 @@ export default function TransactionDocEditor({
 interface PdfViewport { width: number; height: number; }
 interface PdfPage { getViewport: (o: { scale: number }) => PdfViewport; render: (o: { canvasContext: CanvasRenderingContext2D; viewport: PdfViewport; canvas: HTMLCanvasElement }) => { promise: Promise<void> }; }
 
-function PageCanvas({ pageNum, pdfRef }: { pageNum: number; pdfRef: React.RefObject<{ getPage: (n: number) => Promise<PdfPage> } | null> }) {
+function PageCanvas({ pageNum, pdfRef, width = RENDER_W }: { pageNum: number; pdfRef: React.RefObject<{ getPage: (n: number) => Promise<PdfPage> } | null>; width?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let cancelled = false;
@@ -665,7 +743,7 @@ function PageCanvas({ pageNum, pdfRef }: { pageNum: number; pdfRef: React.RefObj
       if (!pdf || !canvas) return;
       const page = await pdf.getPage(pageNum);
       const base = page.getViewport({ scale: 1 });
-      const scale = RENDER_W / base.width;
+      const scale = width / base.width;
       const vp = page.getViewport({ scale });
       canvas.width = Math.floor(vp.width);
       canvas.height = Math.floor(vp.height);
@@ -674,6 +752,6 @@ function PageCanvas({ pageNum, pdfRef }: { pageNum: number; pdfRef: React.RefObj
       await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
     })();
     return () => { cancelled = true; };
-  }, [pageNum, pdfRef]);
+  }, [pageNum, pdfRef, width]);
   return <canvas ref={ref} style={{ display: 'block', width: '100%', height: '100%' }} />;
 }
