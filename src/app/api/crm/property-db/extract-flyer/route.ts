@@ -1,98 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash } from 'crypto';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 import { extractListingFromMedia } from '@/lib/broker-ingest/extract';
 
 /**
- * POST /api/crm/property-db/extract-flyer
+ * Agent-facing flyer reader for "Add Property".
  *
- * Agent-facing: accepts an uploaded property flyer (image or PDF) as multipart
- * form-data (field name "file"), runs it through the same Claude-vision extractor
- * the broker-ingest pipeline uses, and returns the parsed fields so the Add-Property
- * form can pre-fill itself. Also stores the flyer in the public images bucket so it
- * can be attached to the property card (images → flyer thumbnail, PDF → brochure).
+ * Two-step, signed-URL upload so the flyer NEVER goes through the serverless
+ * function body (Vercel caps that at 4.5 MB, and real broker flyers routinely
+ * exceed it — a large upload returns a non-JSON 413 before the handler runs):
  *
- * The extraction itself is never persisted here — the agent reviews/edits the
- * fields and the separate POST /api/crm/property-db call does the insert.
+ *   POST → a signed upload URL; the browser PUTs the flyer straight to storage
+ *   PUT  → download the flyer from storage, run the SAME Claude-vision extractor
+ *          the broker crawl uses, and return the parsed fields + its public URL
+ *
+ * Mirrors the esign-import / listing-files presign pattern already used in prod.
  */
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+const BUCKET = 'images';
 const OK_IMAGE = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
-const MAX_BYTES = 12 * 1024 * 1024; // 12 MB upload cap
+const MAX_BYTES = 25 * 1024 * 1024; // 25 MB — well past any real flyer
 
-/** Store the flyer in the public "images" bucket; returns its public URL (or null). */
-async function storeFlyer(buf: Buffer, mime: string): Promise<string | null> {
-  try {
-    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const ext = mime === 'application/pdf' ? 'pdf' : (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
-    const hash = createHash('md5').update(buf).digest('hex').slice(0, 20);
-    const path = `property-flyers/${hash}.${ext}`;
-    const res = await fetch(`${url}/storage/v1/object/images/${path}`, {
-      method: 'POST',
-      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': mime, 'x-upsert': 'true' },
-      body: new Uint8Array(buf),
-    });
-    if (!res.ok && res.status !== 409) {
-      console.error('[extract-flyer] storage upload failed:', res.status);
-      return null;
-    }
-    return `${url}/storage/v1/object/public/images/${path}`;
-  } catch (err) {
-    console.error('[extract-flyer] storage upload error:', err);
-    return null;
-  }
-}
+const publicUrl = (path: string) =>
+  `${(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim()}/storage/v1/object/public/${BUCKET}/${path}`;
 
+// Step 1 — hand the browser a signed URL to upload the flyer directly to storage.
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  let file: File | null = null;
-  try {
-    const form = await req.formData();
-    const f = form.get('file');
-    if (f instanceof File) file = f;
-  } catch {
-    /* fallthrough to the missing-file error below */
+  const { filename, mime, file_size } = await req.json().catch(() => ({}));
+  const m = String(mime || '').toLowerCase();
+  const isPdf = m === 'application/pdf';
+  if (!isPdf && !OK_IMAGE.has(m)) {
+    return NextResponse.json({ error: 'Upload a PDF or an image (PNG, JPG, WEBP, or GIF).' }, { status: 400 });
   }
-  if (!file) return NextResponse.json({ error: 'No file uploaded.' }, { status: 400 });
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: 'File is too large (max 12 MB).' }, { status: 400 });
+  if (file_size && Number(file_size) > MAX_BYTES) {
+    return NextResponse.json({ error: 'That file is over 25 MB — try a smaller one.' }, { status: 400 });
   }
 
-  const mime = (file.type || '').toLowerCase();
-  const isPdf = mime === 'application/pdf';
-  const isImage = OK_IMAGE.has(mime);
-  if (!isPdf && !isImage) {
-    return NextResponse.json(
-      { error: 'Upload a PDF or an image (PNG, JPG, WEBP, or GIF).' },
-      { status: 400 },
-    );
+  const ext = isPdf ? 'pdf' : (m.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+  const safe = String(filename || `flyer.${ext}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `property-flyers/${ctx.userId}/${Date.now()}_${safe}`;
+
+  const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
+  if (error || !data) {
+    console.error('[extract-flyer] presign', error);
+    return NextResponse.json({ error: 'Could not start the upload.' }, { status: 500 });
+  }
+  return NextResponse.json({ uploadUrl: data.signedUrl, storagePath });
+}
+
+// Step 2 — read the uploaded flyer out of storage and extract the listing fields.
+export async function PUT(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+
+  const { storage_path, mime } = await req.json().catch(() => ({}));
+  if (!storage_path) return NextResponse.json({ error: 'storage_path required' }, { status: 400 });
+  // A caller can only process an upload under their own prefix.
+  if (!String(storage_path).startsWith(`property-flyers/${ctx.userId}/`)) {
+    return NextResponse.json({ error: 'Upload not found.' }, { status: 404 });
   }
 
-  const buf = Buffer.from(await file.arrayBuffer());
-  const data = buf.toString('base64');
+  const m = String(mime || '').toLowerCase();
+  const isPdf = m === 'application/pdf';
+  const isImage = OK_IMAGE.has(m);
+  if (!isPdf && !isImage) return NextResponse.json({ error: 'Unsupported file type.' }, { status: 400 });
+
+  const supabase = adminClient();
+  const { data: blob } = await supabase.storage.from(BUCKET).download(storage_path);
+  if (!blob) return NextResponse.json({ error: 'The upload did not finish — try again.' }, { status: 400 });
+  const data = Buffer.from(await blob.arrayBuffer()).toString('base64');
 
   let extraction;
   try {
-    extraction = await extractListingFromMedia([{ kind: isPdf ? 'pdf' : 'image', mimeType: mime, data }]);
+    extraction = await extractListingFromMedia([{ kind: isPdf ? 'pdf' : 'image', mimeType: m, data }]);
   } catch (err) {
     console.error('[extract-flyer] extraction failed:', err);
+    // Don't leave an orphan blob when we couldn't use it.
+    try { await supabase.storage.from(BUCKET).remove([storage_path]); } catch { /* best effort */ }
     return NextResponse.json(
       { error: 'Could not read the flyer automatically — please enter the details manually.' },
       { status: 502 },
     );
   }
 
-  // Best-effort: keep the flyer as the property's photo/brochure. Never fail the
-  // request over a storage hiccup — extraction is the valuable part.
-  const publicUrl = await storeFlyer(buf, mime);
-
-  return NextResponse.json({
-    extraction,
-    flyerUrl: isImage ? publicUrl : null,
-    brochureUrl: isPdf ? publicUrl : null,
-  });
+  const url = publicUrl(storage_path);
+  return NextResponse.json({ extraction, flyerUrl: isImage ? url : null, brochureUrl: isPdf ? url : null });
 }

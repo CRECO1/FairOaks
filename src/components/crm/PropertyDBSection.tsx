@@ -107,6 +107,47 @@ const contactLabel = (c: CrmContact) => personName(c) || c.business_name || c.em
 const contactCompany = (c: CrmContact) => c.business_name || c.brokerage || '';
 const contactPhone = (c: CrmContact) => c.phone || c.cell_phone || '';
 
+/**
+ * Shrink an oversized image flyer client-side before upload — a big photo blows
+ * past the vision model's ~5 MB per-image limit, which would look identical to the
+ * old size error. Never throws (falls back to the original); PDFs and small/GIF
+ * images pass through untouched.
+ */
+async function downscaleIfLargeImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.size <= 3_500_000) return file;
+  try {
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result as string);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+    const img: HTMLImageElement = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = dataUrl;
+    });
+    const maxDim = 2200;
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const cx = canvas.getContext('2d');
+    if (!cx) return file;
+    cx.drawImage(img, 0, 0, w, h);
+    const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+    if (blob && blob.size < file.size) {
+      return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    }
+  } catch {
+    /* fall back to the original file */
+  }
+  return file;
+}
+
 function assetStyle(a?: string) {
   return ASSET_COLORS[a ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
 }
@@ -972,11 +1013,29 @@ function AddPropertyModal({
   const readFlyer = async (file: File) => {
     setReading(true); setError(null); setReadMsg(null);
     try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const h: Record<string, string> = {};
-      if (authToken) h.Authorization = `Bearer ${authToken}`;
-      const res = await fetch('/api/crm/property-db/extract-flyer', { method: 'POST', headers: h, body: fd });
+      // Big flyers exceed Vercel's 4.5 MB serverless body limit, so upload the file
+      // STRAIGHT to storage via a signed URL and let the server read it back. Large
+      // photos also exceed the vision model's per-image limit, so shrink them first.
+      const prepared = await downscaleIfLargeImage(file);
+      const mime = prepared.type;
+      const authH: Record<string, string> = {};
+      if (authToken) authH.Authorization = `Bearer ${authToken}`;
+      const jsonH = { ...authH, 'Content-Type': 'application/json' };
+      // 1) signed upload URL (tiny request)
+      const pre = await fetch('/api/crm/property-db/extract-flyer', {
+        method: 'POST', headers: jsonH,
+        body: JSON.stringify({ filename: prepared.name, mime, file_size: prepared.size }),
+      });
+      const pj = await pre.json();
+      if (!pre.ok) { setError(pj.error || 'Could not start the upload.'); setReading(false); return; }
+      // 2) upload the flyer directly to storage — no serverless body limit applies
+      const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': mime }, body: prepared });
+      if (!put.ok) { setError('The upload did not finish — please try again.'); setReading(false); return; }
+      // 3) read it back from storage + extract the fields
+      const res = await fetch('/api/crm/property-db/extract-flyer', {
+        method: 'PUT', headers: jsonH,
+        body: JSON.stringify({ storage_path: pj.storagePath, mime }),
+      });
       const json = await res.json();
       if (!res.ok) { setError(json.error || 'Could not read the flyer.'); setReading(false); return; }
       const ex = (json.extraction ?? {}) as Record<string, unknown>;
