@@ -17,7 +17,11 @@ export async function GET(req: NextRequest) {
   for (let from = 0; from < 50_000; from += PAGE) {
     const { data, error } = await supabase
       .from('crm_prospective_properties')
-      .select('*')
+      .select(
+        '*,' +
+          ' contact:crm_clients!crm_prospective_properties_contact_id_fkey(id,first_name,last_name,business_name,brokerage,email,phone,cell_phone,type),' +
+          ' owner:crm_clients!crm_prospective_properties_owner_client_id_fkey(id,first_name,last_name,business_name,brokerage,email,phone,cell_phone,type)',
+      )
       .eq('business_unit', unit)
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);
@@ -38,7 +42,7 @@ const WRITABLE_TEXT = [
   'name', 'address', 'suite', 'city', 'state', 'zip', 'asset_type', 'property_subtype',
   'building_class', 'listing_type', 'vacancy_status', 'transaction_status', 'asking_rate',
   'lease_type', 'zoning', 'listing_company', 'listing_agent_name', 'listing_agent_phone', 'contact_id',
-  'submarket', 'county', 'owner_name', 'owner_phone', 'highlights', 'description', 'notes',
+  'submarket', 'county', 'owner_name', 'owner_phone', 'owner_client_id', 'highlights', 'description', 'notes',
   'brochure_url', 'flyer_url', 'listing_url', 'floorplan_url', 'virtual_tour_url',
 ] as const;
 const WRITABLE_NUM = [

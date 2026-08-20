@@ -59,6 +59,9 @@ interface Property {
   created_at?: string;
   updated_at?: string;
   last_status_at?: string;
+  /** Linked master-list contacts, embedded by the GET via contact_id / owner_client_id. */
+  contact?: CrmContact | null;
+  owner?: CrmContact | null;
   [k: string]: unknown;
 }
 
@@ -642,6 +645,39 @@ function StatTile({ label, value, accent }: { label: string; value?: string | nu
   );
 }
 
+// A broker/owner rendered as a real, actionable contact (call / email) with a
+// "Contact" badge when linked to the master list; falls back to the text fields.
+function ContactCardRow({ label, contact, fallbackName, fallbackCompany, fallbackPhone, isMobile }: {
+  label: string;
+  contact: CrmContact | null;
+  fallbackName?: string | null;
+  fallbackCompany?: string | null;
+  fallbackPhone?: string | null;
+  isMobile?: boolean;
+}) {
+  const name = contact ? contactLabel(contact) : (fallbackName || fallbackCompany || '');
+  const company = contact ? contactCompany(contact) : (fallbackCompany || '');
+  const phone = contact ? contactPhone(contact) : (fallbackPhone || '');
+  const email = contact?.email || '';
+  if (!name && !company && !phone) return null;
+  return (
+    <div style={{ background: contact ? '#f4f9f4' : '#fbfbfa', border: `1px solid ${contact ? '#cfe6cf' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {label}
+          {contact && <span style={{ color: '#15803d', background: '#dcfce7', padding: '2px 7px', borderRadius: 20, fontSize: 9.5, letterSpacing: .3 }}>👤 Contact</span>}
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginTop: 3 }}>{name || company}</div>
+        {company && name !== company && <div style={{ fontSize: 13, color: '#6b7280' }}>{company}</div>}
+        {email && <a href={`mailto:${email}`} style={{ fontSize: 12.5, color: '#a06a12', textDecoration: 'none', display: 'inline-block', marginTop: 2 }}>✉ {email}</a>}
+      </div>
+      {phone && (
+        <a href={`tel:${phone}`} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {phone}</a>
+      )}
+    </div>
+  );
+}
+
 function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: () => void; isMobile?: boolean }) {
   const as = assetStyle(p.asset_type);
   const st = statusPill(p.vacancy_status);
@@ -696,19 +732,11 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
             <StatTile label="Year Built" value={p.year_built ? String(p.year_built) : null} />
           </div>
 
-          {/* Broker card */}
-          {(p.listing_company || p.listing_agent_name) && (
-            <div style={{ background: '#fbfbfa', border: '1px solid #eef0f2', borderRadius: 12, padding: '14px 16px', marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700 }}>Listing Broker</div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginTop: 3 }}>{p.listing_agent_name || p.listing_company}</div>
-                {p.listing_agent_name && p.listing_company && <div style={{ fontSize: 13, color: '#6b7280' }}>{p.listing_company}</div>}
-              </div>
-              {p.listing_agent_phone && (
-                <a href={`tel:${p.listing_agent_phone}`} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {p.listing_agent_phone}</a>
-              )}
-            </div>
-          )}
+          {/* Listing broker + owner — real linked contacts (call / email) when available */}
+          <ContactCardRow label="Listing Broker" contact={p.contact ?? null}
+            fallbackName={p.listing_agent_name} fallbackCompany={p.listing_company} fallbackPhone={p.listing_agent_phone} isMobile={isMobile} />
+          <ContactCardRow label="Owner" contact={p.owner ?? null}
+            fallbackName={p.owner_name} fallbackPhone={(p.owner_phone as string | undefined) ?? null} isMobile={isMobile} />
 
           <Group title="Building & Specs">
             <Field label="Subtype" value={p.property_subtype} />
@@ -724,7 +752,6 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
           <Group title="Location">
             <Field label="Submarket" value={p.submarket} />
             <Field label="County" value={p.county} />
-            <Field label="Owner" value={p.owner_name} />
           </Group>
 
           {(p.description || p.highlights || p.notes) && (
@@ -762,15 +789,17 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
   );
 }
 
-// ── Broker contact picker — search the master contact list, link, or add once ─
-// Mirrors the RentRoll contact-linking pattern so brokers are never duplicated.
+// ── Contact picker — search the master contact list, link, or add once ────────
+// Mirrors the RentRoll contact-linking pattern so contacts are never duplicated.
+// Reused for the listing broker (contact_id) and the owner (owner_client_id).
 
-function BrokerContactPicker({ authToken, linked, initialQuery, draft, onLink }: {
+function ContactPicker({ authToken, linked, initialQuery, draft, onLink, createType = 'Broker' }: {
   authToken?: string;
   linked: CrmContact | null;
   initialQuery?: string;
   draft: { name?: string; company?: string; phone?: string; email?: string };
   onLink: (c: CrmContact | null) => void;
+  createType?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -822,7 +851,7 @@ function BrokerContactPicker({ authToken, linked, initialQuery, draft, onLink }:
           business_name: draft.company || null,
           phone: draft.phone || null,
           email: draft.email || null,
-          type: 'Broker',
+          type: createType,
         }),
       });
       const json = await res.json();
@@ -910,6 +939,7 @@ function AddPropertyModal({
   const [showMore, setShowMore] = useState(false);
   const [linkedContact, setLinkedContact] = useState<CrmContact | null>(null);
   const [brokerQuery, setBrokerQuery] = useState('');
+  const [ownerContact, setOwnerContact] = useState<CrmContact | null>(null);
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -923,6 +953,18 @@ function AddPropertyModal({
         listing_agent_name: personName(c) || f.listing_agent_name || '',
         listing_company: contactCompany(c) || f.listing_company || '',
         listing_agent_phone: contactPhone(c) || f.listing_agent_phone || '',
+      }));
+    }
+  };
+
+  // Same, for the property owner (owner_client_id + owner_name/owner_phone).
+  const handleOwnerLink = (c: CrmContact | null) => {
+    setOwnerContact(c);
+    if (c) {
+      setForm(f => ({
+        ...f,
+        owner_name: contactLabel(c) || f.owner_name || '',
+        owner_phone: contactPhone(c) || f.owner_phone || '',
       }));
     }
   };
@@ -986,6 +1028,7 @@ function AddPropertyModal({
       if (flyerUrl) payload.flyer_url = flyerUrl;
       if (brochureUrl && !form.brochure_url) payload.brochure_url = brochureUrl;
       if (linkedContact) payload.contact_id = linkedContact.id;
+      if (ownerContact) payload.owner_client_id = ownerContact.id;
       const res = await fetch('/api/crm/property-db', { method: 'POST', headers: h, body: JSON.stringify(payload) });
       const json = await res.json();
       if (!res.ok) { setError(json.error || 'Could not save the property.'); setSaving(false); return; }
@@ -1068,17 +1111,31 @@ function AddPropertyModal({
           </div>
 
           <div style={secTitle}>Listing Broker</div>
-          <BrokerContactPicker
+          <ContactPicker
             authToken={authToken}
             linked={linkedContact}
             initialQuery={brokerQuery}
             draft={{ name: form.listing_agent_name, company: form.listing_company, phone: form.listing_agent_phone }}
             onLink={handleLink}
+            createType="Broker"
           />
           <div style={grid}>
             {F('listing_company', 'Company')}
             {F('listing_agent_name', 'Agent')}
             {F('listing_agent_phone', 'Phone')}
+          </div>
+
+          <div style={secTitle}>Owner</div>
+          <ContactPicker
+            authToken={authToken}
+            linked={ownerContact}
+            draft={{ name: form.owner_name, phone: form.owner_phone }}
+            onLink={handleOwnerLink}
+            createType="Landlord/Investor"
+          />
+          <div style={grid}>
+            {F('owner_name', 'Owner Name')}
+            {F('owner_phone', 'Owner Phone')}
           </div>
 
           <div style={{ ...secTitle, cursor: 'pointer', userSelect: 'none' }} onClick={() => setShowMore(m => !m)}>
@@ -1099,7 +1156,6 @@ function AddPropertyModal({
                 {F('zoning', 'Zoning')}
                 {F('submarket', 'Submarket')}
                 {F('county', 'County')}
-                {F('owner_name', 'Owner')}
               </div>
               <div style={grid}>
                 {F('highlights', 'Highlights (one per line)', { area: true, span: true })}
