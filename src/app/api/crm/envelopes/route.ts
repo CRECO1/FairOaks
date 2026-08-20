@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, finalizeEnvelope, type FinalizeSigner } from '@/lib/esign';
+import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +23,9 @@ export async function GET(req: NextRequest) {
   if (listingId) q = q.eq('listing_id', listingId);
   if (submissionId) q = q.eq('submission_id', submissionId);
   if (req.nextUrl.searchParams.get('pending')) q = q.in('status', ['sent', 'in_progress']); // global dashboard: out-for-signature only
+  // …and the same dashboard asking for everything, so cancelled and completed
+  // requests stay reachable (to review, or to delete).
+  if (req.nextUrl.searchParams.get('scope') === 'all') q = q.limit(200);
   const { data, error } = await q;
   if (error) { console.error('[api/envelopes] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
   const envelopes = await Promise.all((data ?? []).map(async (e) => {
@@ -211,4 +214,43 @@ export async function PATCH(req: NextRequest) {
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+}
+
+// Delete a signature request outright. Voiding stops a request; this removes it —
+// the envelope, its signers, its event log (both cascade) and every file it owns:
+// each signer's signature/initials PNGs and the executed copy.
+//
+// A COMPLETED envelope is the executed contract, so only an admin can delete one.
+// Everything short of that (draft, out for signature, voided) is an agent's own
+// housekeeping and any agent with access to the document can clear it.
+export async function DELETE(req: NextRequest) {
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  const id = req.nextUrl.searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  if (!(await assertOwnsResource('crm_envelopes', id, ctx))) return notFound('Signature request not found');
+
+  const supabase = adminClient();
+  const { data: env } = await supabase.from('crm_envelopes')
+    .select('id, title, status, executed_path').eq('id', id).maybeSingle();
+  if (!env) return notFound('Signature request not found');
+  if (env.status === 'completed' && !isAdminRole(ctx.role)) {
+    return NextResponse.json({ error: 'This document is fully executed — ask an admin to delete it.' }, { status: 403 });
+  }
+
+  const { data: signers } = await supabase.from('crm_envelope_signers')
+    .select('signature_path, initials_path').eq('envelope_id', id);
+  const paths = [
+    ...(signers ?? []).flatMap(s => [s.signature_path, s.initials_path]),
+    env.executed_path,
+  ].filter(Boolean) as string[];
+  // Best-effort: a missing blob must not block removing the record.
+  if (paths.length) {
+    const { error: rmErr } = await supabase.storage.from(SIGN_BUCKET).remove(paths);
+    if (rmErr) console.error('[api/envelopes] delete blobs', rmErr);
+  }
+
+  const { error } = await supabase.from('crm_envelopes').delete().eq('id', id);
+  if (error) { console.error('[api/envelopes] delete', error); return NextResponse.json({ error: 'Could not delete the signature request' }, { status: 500 }); }
+  return NextResponse.json({ deleted: true, title: env.title });
 }

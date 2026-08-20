@@ -250,6 +250,22 @@ export function ManageView({ doc, env, authToken, showToast, onBack, onReload }:
     if (!r.ok) { showToast?.(j.error || 'Action failed'); return; }
     showToast?.(okMsg); if (back) onBack(); else onReload();
   }
+  // Void stops a request; delete removes it. Spelled out in the prompt because it
+  // takes the signatures and the executed copy with it.
+  async function remove() {
+    const done = env!.status === 'completed';
+    const warn = done
+      ? `Delete "${env!.title || 'this document'}"?\n\nThis is the FULLY EXECUTED copy. The signed PDF and every signature on it are permanently deleted. This cannot be undone.`
+      : `Delete this signature request?\n\nThe request, its signers and any signatures collected so far are permanently deleted. The document itself stays.`;
+    if (!window.confirm(warn)) return;
+    setBusy(true);
+    const r = await fetch(`/api/crm/envelopes?id=${env!.id}`, { method: 'DELETE', headers: authOf(authToken) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok) { showToast?.(j.error || 'Could not delete it'); return; }
+    showToast?.('Signature request deleted');
+    onBack();
+  }
   async function copyLink(signerId: string) {
     const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ envelope_id: env!.id, action: 'get_link', signer_id: signerId }) });
     const j = await r.json().catch(() => ({}));
@@ -333,7 +349,10 @@ export function ManageView({ doc, env, authToken, showToast, onBack, onReload }:
       <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 14, paddingTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
         {doc.url && <button onClick={() => setPreview(true)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4', background: '#fdf6e9', fontWeight: 800 }}>👁 Review — who signs where</button>}
         <span style={{ flex: 1 }} />
-        <button disabled={busy} onClick={() => { if (window.confirm('Cancel this signature request? Signers can no longer sign; the document stays so you can edit + re-send.')) act({ action: 'void' }, 'Signature request cancelled', true); }} style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Cancel request</button>
+        {env.status !== 'voided' && env.status !== 'completed' && (
+          <button disabled={busy} onClick={() => { if (window.confirm('Cancel this signature request? Signers can no longer sign; the document stays so you can edit + re-send.')) act({ action: 'void' }, 'Signature request cancelled', true); }} style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Cancel request</button>
+        )}
+        <button disabled={busy} onClick={remove} title="Remove this signature request entirely" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑 Delete</button>
       </div>
       {preview && doc.url && (
         <SignPreviewModal url={doc.url} fields={previewFields} signerLabel={(role) => { const s = signers.find(x => x.signer_role === role); return s ? `${s.name}${s.status === 'signed' || s.signed_at ? ' ✓' : ''}` : roleLabel(role); }} onClose={() => setPreview(false)} />

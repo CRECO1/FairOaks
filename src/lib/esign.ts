@@ -202,6 +202,9 @@ export interface ExecutedSigner {
   index?: number;
   signedAt?: string | null; ip?: string | null;
   signaturePng?: Uint8Array | null; typedName?: string;
+  // The signer's initials in the same hand as their signature. Falls back to drawn
+  // block letters when a signer typed a name instead of adopting a style.
+  initialsPng?: Uint8Array | null;
 }
 
 // A signature/initial/date field the agent placed on the doc (from the submission).
@@ -225,7 +228,11 @@ export async function buildExecutedPdf(
 
   // Embed each signer's drawn signature once.
   const png = new Map<string, PDFImage | null>();
-  for (const s of info.signers) if (s.signaturePng) { try { png.set(s.email, await doc.embedPng(s.signaturePng)); } catch { png.set(s.email, null); } }
+  const inits = new Map<string, PDFImage | null>();
+  for (const s of info.signers) {
+    if (s.signaturePng) { try { png.set(s.email, await doc.embedPng(s.signaturePng)); } catch { png.set(s.email, null); } }
+    if (s.initialsPng) { try { inits.set(s.email, await doc.embedPng(s.initialsPng)); } catch { inits.set(s.email, null); } }
+  }
 
   // Inline stamping onto agent-placed fields.
   const placed = (info.sigFields || []).filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(f.type));
@@ -244,7 +251,9 @@ export async function buildExecutedPdf(
       if (img) { const w = Math.max(40, f.fw * width); const h = Math.min(w / (img.width / img.height), 38); pg.drawImage(img, { x, y: baseline, width: h * (img.width / img.height), height: h }); }
       else pg.drawText(winAnsi(s.typedName || s.name), { x, y: baseline + 2, size: 15, font: cursive, color: rgb(0.05, 0.05, 0.35) });
     } else if (f.type === 'initial') {
-      pg.drawText(winAnsi(initialsOf(s.typedName || s.name)), { x, y: baseline + 2, size: 12, font: cursive, color: rgb(0.05, 0.05, 0.35) });
+      const ini = inits.get(s.email);
+      if (ini) { const w = Math.max(20, f.fw * width); const h = Math.min(w / (ini.width / ini.height), 26); pg.drawImage(ini, { x, y: baseline, width: h * (ini.width / ini.height), height: h }); }
+      else pg.drawText(winAnsi(initialsOf(s.typedName || s.name)), { x, y: baseline + 2, size: 12, font: cursive, color: rgb(0.05, 0.05, 0.35) });
     } else {
       pg.drawText(winAnsi(s.signedAt ? new Date(s.signedAt).toLocaleDateString('en-US') : ''), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
     }
@@ -284,6 +293,7 @@ export async function buildExecutedPdf(
 export interface FinalizeSigner {
   name: string; email: string; signer_role: string;
   signed_at: string | null; ip: string | null; signature_path: string | null; typed_name: string | null;
+  initials_path?: string | null;
 }
 export async function finalizeEnvelope(
   admin: SupabaseClient,
@@ -298,9 +308,14 @@ export async function finalizeEnvelope(
 
     const execSigners: ExecutedSigner[] = [];
     for (const s of signers) {
-      let png: Uint8Array | null = null;
-      if (s.signature_path) { const { data: pb } = await admin.storage.from(SIGN_BUCKET).download(s.signature_path); if (pb) png = new Uint8Array(await pb.arrayBuffer()); }
-      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, index: execSigners.length + 1, signedAt: s.signed_at, ip: s.ip, signaturePng: png, typedName: s.typed_name || undefined });
+      const grab = async (path?: string | null): Promise<Uint8Array | null> => {
+        if (!path) return null;
+        const { data: pb } = await admin.storage.from(SIGN_BUCKET).download(path);
+        return pb ? new Uint8Array(await pb.arrayBuffer()) : null;
+      };
+      const png = await grab(s.signature_path);
+      const ini = await grab(s.initials_path);
+      execSigners.push({ name: s.name, email: s.email, role: s.signer_role, index: execSigners.length + 1, signedAt: s.signed_at, ip: s.ip, signaturePng: png, initialsPng: ini, typedName: s.typed_name || undefined });
     }
 
     let sigFields: PlacedField[] = [];

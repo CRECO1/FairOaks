@@ -74,21 +74,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const typedName = String(b.typed_name || signer.name).slice(0, 120);
   const ip = clientIp(req); const ua = req.headers.get('user-agent'); const nowIso = new Date().toISOString();
 
-  let signature_path: string | null = null;
-  if (typeof b.signature_png === 'string' && b.signature_png.startsWith('data:image')) {
-    const bytes = Buffer.from(b.signature_png.split(',')[1] || '', 'base64');
-    if (bytes.length > 0 && bytes.length < 2_000_000) {
-      const p = `signatures/${env.id}/${signer.id}.png`;
-      const { error } = await db.storage.from(SIGN_BUCKET).upload(p, bytes, { contentType: 'image/png', upsert: true });
-      if (!error) signature_path = p;
-    }
-  }
+  // The signature and the matching initials are both stored as PNGs, so a doc that
+  // asks for initials gets the signer's own hand rather than generic block letters.
+  const storePng = async (dataUrl: unknown, name: string): Promise<string | null> => {
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) return null;
+    const bytes = Buffer.from(dataUrl.split(',')[1] || '', 'base64');
+    if (!bytes.length || bytes.length >= 2_000_000) return null;
+    const path = `signatures/${env.id}/${signer.id}${name}.png`;
+    const { error } = await db.storage.from(SIGN_BUCKET).upload(path, bytes, { contentType: 'image/png', upsert: true });
+    return error ? null : path;
+  };
+  const signature_path = await storePng(b.signature_png, '');
+  const initials_path = await storePng(b.initials_png, '-initials');
+  const signature_style = typeof b.signature_style === 'string' ? b.signature_style.slice(0, 40) : null;
 
   // Atomic claim: only the request that flips this signer not-signed → signed proceeds.
   // A double-click / concurrent retry matches 0 rows and returns early, so the next
   // signer is never emailed twice and finalize never runs (or completion-emails) twice.
   const { data: claimed } = await db.from('crm_envelope_signers')
-    .update({ status: 'signed', signed_at: nowIso, signature_path, typed_name: typedName, consent_at: nowIso, ip, user_agent: ua })
+    .update({ status: 'signed', signed_at: nowIso, signature_path, initials_path, signature_style, typed_name: typedName, consent_at: nowIso, ip, user_agent: ua })
     .eq('id', signer.id).neq('status', 'signed').select('id');
   if (!claimed || claimed.length === 0) return NextResponse.json({ status: 'signed', already: true });
   await logEvent(db, env.id, signer.id, 'signed', { actor: signer.email, ip, ua });

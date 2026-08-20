@@ -1,12 +1,112 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { Dancing_Script, Great_Vibes, Sacramento, Homemade_Apple, Caveat } from 'next/font/google';
+
+// Five hands to adopt from, self-hosted by next/font (so no external font request has
+// to survive the CSP, and there's no flash of a fallback face before the canvas draw).
+const dancing = Dancing_Script({ subsets: ['latin'], weight: '600', display: 'block' });
+const vibes = Great_Vibes({ subsets: ['latin'], weight: '400', display: 'block' });
+const sacramento = Sacramento({ subsets: ['latin'], weight: '400', display: 'block' });
+const homemade = Homemade_Apple({ subsets: ['latin'], weight: '400', display: 'block' });
+const caveat = Caveat({ subsets: ['latin'], weight: '600', display: 'block' });
+
+const STYLES = [
+  { key: 'dancing', label: 'Flowing', family: dancing.style.fontFamily },
+  { key: 'vibes', label: 'Formal', family: vibes.style.fontFamily },
+  { key: 'sacramento', label: 'Classic', family: sacramento.style.fontFamily },
+  { key: 'homemade', label: 'Handwritten', family: homemade.style.fontFamily },
+  { key: 'caveat', label: 'Casual', family: caveat.style.fontFamily },
+];
 
 type Party = { role: string; name: string; order: number; status: string };
 type SignData = { status: string; doc_url: string | null; title: string; signer: { name: string; role: string; email: string }; parties: Party[] };
 
 const GOLD = '#c9922c';
+const INK = '#0d1b4b';
+const initialsOf = (n: string) => (n || '').split(/\s+/).filter(Boolean).map(w => w[0]).join('').toUpperCase().slice(0, 4);
+
+// Draw text in one of the adopted hands onto a transparent canvas and hand back a PNG
+// — the same shape the drawn-signature path produces, so the server stores one thing.
+async function renderHand(text: string, family: string, boxW: number, boxH: number): Promise<string | undefined> {
+  const t = (text || '').trim();
+  if (!t) return undefined;
+  const dpr = 3;                                   // stamped small on the PDF; keep it crisp
+  const c = document.createElement('canvas');
+  c.width = boxW * dpr; c.height = boxH * dpr;
+  const ctx = c.getContext('2d');
+  if (!ctx) return undefined;
+  ctx.scale(dpr, dpr);
+  let size = Math.floor(boxH * 0.62);
+  const fit = () => { ctx.font = `${size}px ${family}`; return ctx.measureText(t).width; };
+  await document.fonts.load(`${size}px ${family}`, t).catch(() => { });
+  while (fit() > boxW - 12 && size > 9) size -= 1;
+  ctx.fillStyle = INK;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(t, 6, boxH / 2);
+  return c.toDataURL('image/png');
+}
+
+// The document itself. The signed URL lives on Supabase, and the app's CSP is
+// `frame-src 'self'` — an <iframe>/<embed> of it is blocked and renders blank, which
+// is what signers were seeing. Rendering the pages with pdf.js keeps everything
+// same-origin (fetch is allowed by connect-src) and shows a real preview.
+function DocView({ url }: { url: string }) {
+  const [pages, setPages] = useState<string[]>([]);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setState('loading');
+        const pdfjs = await import('pdfjs-dist');
+        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+        const data = await resp.arrayBuffer();
+        if (cancelled) return;
+        const pdf = await pdfjs.getDocument({ data }).promise;
+        const out: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          if (cancelled) return;
+          const base = page.getViewport({ scale: 1 });
+          const vp = page.getViewport({ scale: Math.min(1400, 900) / base.width });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
+          const ctx = canvas.getContext('2d'); if (!ctx) continue;
+          await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
+          if (cancelled) return;
+          out.push(canvas.toDataURL('image/jpeg', 0.85));
+          // Paint progressively: page 1 shows while the rest are still rendering.
+          setPages([...out]);
+        }
+        if (!cancelled) setState('ready');
+      } catch (e) { if (!cancelled) { console.error('[sign] preview', e); setState('error'); } }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (state === 'error') {
+    return (
+      <div style={{ padding: 34, textAlign: 'center', color: '#6b7280', fontSize: 14 }}>
+        We couldn’t display the document here.{' '}
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: GOLD, fontWeight: 700 }}>Open it in a new tab ↗</a>{' '}
+        to read it before signing.
+      </div>
+    );
+  }
+  return (
+    <div style={{ maxHeight: 560, overflowY: 'auto', background: '#4b4f52', padding: 12 }}>
+      {pages.map((src, i) => (
+        <img key={i} src={src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%', marginBottom: i === pages.length - 1 ? 0 : 12, boxShadow: '0 2px 10px rgba(0,0,0,.4)' }} />
+      ))}
+      {state === 'loading' && <div style={{ color: '#cbd5e1', textAlign: 'center', padding: pages.length ? '12px 0 4px' : 60, fontSize: 13 }}>Loading document…</div>}
+    </div>
+  );
+}
 
 export default function SignPage() {
   const params = useParams();
@@ -15,6 +115,10 @@ export default function SignPage() {
   const [data, setData] = useState<SignData | null>(null);
   const [finalStatus, setFinalStatus] = useState('');
   const [typed, setTyped] = useState('');
+  const [initials, setInitials] = useState('');
+  const [initialsEdited, setInitialsEdited] = useState(false);
+  const [mode, setMode] = useState<'pick' | 'draw'>('pick');
+  const [styleKey, setStyleKey] = useState(STYLES[0].key);
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
@@ -34,8 +138,11 @@ export default function SignPage() {
       .catch(() => setView('error'));
   }, [token]);
 
+  // Initials track the name until the signer types their own.
+  useEffect(() => { if (!initialsEdited) setInitials(initialsOf(typed)); }, [typed, initialsEdited]);
+
   useEffect(() => {
-    if (view !== 'ready') return;
+    if (view !== 'ready' || mode !== 'draw') return;
     const c = canvasRef.current; if (!c) return;
     const ctx = c.getContext('2d'); if (!ctx) return;
     ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
@@ -47,23 +154,35 @@ export default function SignPage() {
     c.addEventListener('pointerdown', down); c.addEventListener('pointermove', move);
     c.addEventListener('pointerup', up); c.addEventListener('pointerleave', up);
     return () => { c.removeEventListener('pointerdown', down); c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointerleave', up); };
-  }, [view]);
+  }, [view, mode]);
 
   function clearSig() { const c = canvasRef.current; const ctx = c?.getContext('2d'); if (c && ctx) { ctx.clearRect(0, 0, c.width, c.height); drew.current = false; } }
 
-  async function submit() {
+  const active = useMemo(() => STYLES.find(s => s.key === styleKey) ?? STYLES[0], [styleKey]);
+
+  const submit = useCallback(async () => {
     setErr('');
     if (!consent) { setErr('Please check the box to consent to sign electronically.'); return; }
-    if (!typed.trim() && !drew.current) { setErr('Draw your signature above, or type your full name.'); return; }
+    if (!typed.trim()) { setErr('Enter your full legal name.'); return; }
+    if (mode === 'draw' && !drew.current) { setErr('Draw your signature above, or switch to “Choose a style”.'); return; }
     setSubmitting(true);
-    const png = drew.current ? canvasRef.current?.toDataURL('image/png') : undefined;
-    const res = await fetch(`/api/sign/${token}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ signature_png: png, typed_name: typed, consent }) });
-    const j = await res.json().catch(() => ({}));
-    setSubmitting(false);
-    if (!res.ok) { setErr(j.error || 'Could not submit your signature. Please try again.'); return; }
-    setFinalStatus(j.status || 'signed');
-    setView('signed');
-  }
+    try {
+      // Both paths hand the server a PNG, so the executed PDF stamps the signer's own
+      // hand either way. Initials are always rendered in the adopted style.
+      const signature_png = mode === 'draw'
+        ? canvasRef.current?.toDataURL('image/png')
+        : await renderHand(typed, active.family, 640, 150);
+      const initials_png = await renderHand(initials, mode === 'draw' ? active.family : active.family, 220, 150);
+      const res = await fetch(`/api/sign/${token}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signature_png, initials_png, typed_name: typed, signature_style: mode === 'draw' ? 'drawn' : active.key, consent }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(j.error || 'Could not submit your signature. Please try again.'); return; }
+      setFinalStatus(j.status || 'signed');
+      setView('signed');
+    } finally { setSubmitting(false); }
+  }, [consent, typed, initials, mode, active, token]);
 
   const wrap: React.CSSProperties = { minHeight: '100vh', background: '#f4f5f7', fontFamily: "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif", color: '#1a1a1a', padding: '0 0 48px' };
   const card: React.CSSProperties = { maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 14, boxShadow: '0 6px 24px rgba(0,0,0,.06)', padding: 24 };
@@ -94,6 +213,14 @@ export default function SignPage() {
   if (view === 'signed') return msg(finalStatus === 'completed' ? '🎉' : '✅', 'Signature recorded — thank you!', finalStatus === 'completed' ? 'All parties have now signed. The fully executed copy is on its way to your inbox.' : 'Your signature has been recorded. We’ll route the document to the next party and email you the final copy when it’s complete.');
 
   // view === 'ready'
+  const tab = (k: 'pick' | 'draw', label: string) => (
+    <button onClick={() => setMode(k)}
+      style={{ flex: 1, padding: '9px 0', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', border: 'none', borderRadius: 8,
+        background: mode === k ? '#fff' : 'transparent', color: mode === k ? INK : '#6b7280', boxShadow: mode === k ? '0 1px 3px rgba(0,0,0,.12)' : 'none' }}>
+      {label}
+    </button>
+  );
+
   return (
     <div style={wrap}>
       {header}
@@ -104,11 +231,9 @@ export default function SignPage() {
         </div>
 
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
-          {data?.doc_url ? (
-            <iframe title="Document" src={data.doc_url} style={{ width: '100%', height: 520, border: 'none', display: 'block' }} />
-          ) : (
-            <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>
-          )}
+          {data?.doc_url
+            ? <DocView url={data.doc_url} />
+            : <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>}
           {data?.doc_url && (
             <div style={{ padding: '10px 16px', borderTop: '1px solid #eef0f2', textAlign: 'center' }}>
               <a href={data.doc_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: GOLD, fontWeight: 600, textDecoration: 'none' }}>Open document in a new tab ↗</a>
@@ -117,16 +242,61 @@ export default function SignPage() {
         </div>
 
         <div style={card}>
-          <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 10 }}>Your signature</div>
-          <div style={{ position: 'relative' }}>
-            <canvas ref={canvasRef} width={640} height={180} style={{ width: '100%', height: 160, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, touchAction: 'none', cursor: 'crosshair' }} />
-            <button onClick={clearSig} style={{ position: 'absolute', top: 8, right: 8, fontSize: 12, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>Clear</button>
-          </div>
-          <div style={{ fontSize: 12, color: '#9ca3af', margin: '6px 2px 14px' }}>Draw above with your mouse or finger — or just type your full legal name below.</div>
+          <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 12 }}>Adopt your signature</div>
 
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Full legal name</label>
-          <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Your full name"
-            style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box', marginBottom: 14 }} />
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ flex: '2 1 260px', minWidth: 0 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Full legal name</label>
+              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Your full name"
+                style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' }} />
+            </div>
+            <div style={{ flex: '1 1 110px', minWidth: 0 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Initials</label>
+              <input value={initials} onChange={e => { setInitialsEdited(true); setInitials(e.target.value.slice(0, 4)); }} placeholder="ABC"
+                style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' }} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 4, background: '#f1f2f4', borderRadius: 10, padding: 4, marginBottom: 14 }}>
+            {tab('pick', '✍️  Choose a style')}
+            {tab('draw', '🖊  Draw it yourself')}
+          </div>
+
+          {mode === 'pick' ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(288px,1fr))', gap: 10 }}>
+                {STYLES.map(s => {
+                  const on = s.key === styleKey;
+                  return (
+                    <button key={s.key} onClick={() => setStyleKey(s.key)}
+                      style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 10, cursor: 'pointer', background: on ? '#fffdf6' : '#fff',
+                        border: on ? `2px solid ${GOLD}` : '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+                      <span style={{ flex: 1, minWidth: 0, fontFamily: s.family, fontSize: 23, color: INK, lineHeight: 1.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {typed.trim() || 'Your name'}
+                      </span>
+                      <span style={{ flexShrink: 0, fontFamily: s.family, fontSize: 20, color: INK, opacity: .75, borderLeft: '1px solid #eef0f2', paddingLeft: 10 }}>
+                        {initials || 'AB'}
+                      </span>
+                      {on && <span style={{ flexShrink: 0, color: GOLD, fontSize: 14, fontWeight: 800 }}>✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: '#9ca3af', margin: '10px 2px 16px' }}>
+                Pick the hand you want. It’s used for your signature <em>and</em> your initials wherever the document asks for them.
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ position: 'relative' }}>
+                <canvas ref={canvasRef} width={640} height={180} style={{ width: '100%', height: 160, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, touchAction: 'none', cursor: 'crosshair' }} />
+                <button onClick={clearSig} style={{ position: 'absolute', top: 8, right: 8, fontSize: 12, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>Clear</button>
+              </div>
+              <div style={{ fontSize: 12, color: '#9ca3af', margin: '6px 2px 16px' }}>
+                Draw above with your mouse or finger. Your initials use the <strong>{active.label}</strong> style.
+              </div>
+            </>
+          )}
 
           <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: '#374151', lineHeight: 1.5, cursor: 'pointer', marginBottom: 16 }}>
             <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 3, accentColor: GOLD, width: 16, height: 16, flexShrink: 0 }} />

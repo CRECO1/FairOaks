@@ -110,6 +110,7 @@ export default function TransactionDocEditor({
   const recByKey = React.useMemo(() => new Map((recipients ?? []).map(r => [r.key, r])), [recipients]);
   const activeRec = recByKey.get(sigKey) ?? recipients?.[0];
   const [selected, setSelected] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const subIdRef = useRef<string | undefined>(submissionId);
@@ -224,7 +225,7 @@ export default function TransactionDocEditor({
   // The page's pixel size is read live off the DOM at drag time — it varies with the
   // viewport now that pages are width-driven, and measuring on demand can't go stale.
   const beginDrag = (id: string, clientX: number, clientY: number, f: Field, fieldBox: HTMLElement) => {
-    const page = fieldBox.parentElement;
+    const page = fieldBox.closest('[data-pdf-page]');
     if (!page) return;
     const r = page.getBoundingClientRect();
     setSelected(id);
@@ -236,8 +237,9 @@ export default function TransactionDocEditor({
   };
   // Only an already-selected field takes over touch, so a finger landing on any of
   // the dozens of blank-line fields still scrolls the page rather than dragging.
-  const onTouchDragStart = (e: React.TouchEvent<HTMLDivElement>, f: Field) => {
-    if (selected !== f.id) return;
+  // The grip is exempt: touching it is already an unambiguous "move this".
+  const onTouchDragStart = (e: React.TouchEvent<HTMLDivElement>, f: Field, viaGrip = false) => {
+    if (!viaGrip && selected !== f.id) return;
     const t = e.touches[0]; if (!t) return;
     e.stopPropagation();
     beginDrag(f.id, t.clientX, t.clientY, f, e.currentTarget);
@@ -549,6 +551,7 @@ export default function TransactionDocEditor({
           const cqw = (pts: number) => `${(pts / pd.pw * 100).toFixed(4)}cqw`;
           return (
           <div key={pd.num} onClick={e => onPageClick(e, pd)}
+            data-pdf-page={pd.num}
             style={{ position: 'relative', width: '100%', aspectRatio: `${pd.pw}/${pd.ph}`, containerType: 'inline-size', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair' }}>
             <PageCanvas pageNum={pd.num} pdfRef={pdfRef} />
             {fields.filter(f => f.page === pd.num).map(f => {
@@ -582,10 +585,13 @@ export default function TransactionDocEditor({
                   </div>
                 );
               }
+              const showGrip = isSel || hovered === f.id;
               return (
               <div key={f.id}
                 onMouseDown={e => onDragStart(e, f)}
                 onTouchStart={e => onTouchDragStart(e, f)}
+                onMouseEnter={() => setHovered(f.id)}
+                onMouseLeave={() => setHovered(h => (h === f.id ? null : h))}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
                   height: `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
                   display: 'flex', alignItems: isCheck ? 'center' : 'flex-end', touchAction: isSel ? 'none' : undefined,
@@ -615,6 +621,18 @@ export default function TransactionDocEditor({
                     style={{ width: '100%', minHeight: 0, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
                       textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
+                )}
+                {(showGrip || isMobile) && (
+                  <div
+                    onMouseDown={e => onDragStart(e, f)}
+                    onTouchStart={e => onTouchDragStart(e, f, true)}
+                    title="Drag to move this field"
+                    aria-label="Move field"
+                    style={{ position: 'absolute', top: isMobile ? -13 : -9, left: isMobile ? -13 : -9,
+                      width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%',
+                      background: '#c9922c', color: '#fff', cursor: 'move', touchAction: 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: isMobile ? 13 : 9, lineHeight: 1, userSelect: 'none', zIndex: 2 }}>✥</div>
                 )}
                 {isSel && (
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}

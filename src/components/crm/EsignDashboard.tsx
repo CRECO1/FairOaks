@@ -28,6 +28,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);   // include cancelled + completed
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -58,15 +59,36 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const j = await fetch('/api/crm/envelopes?pending=1', { headers: auth(authToken) }).then(r => r.json());
+      const j = await fetch(`/api/crm/envelopes?${showAll ? 'scope=all' : 'pending=1'}`, { headers: auth(authToken) }).then(r => r.json());
       const list = (Array.isArray(j.envelopes) ? j.envelopes : []) as Envelope[];
       list.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')); // oldest (most overdue) first
       setEnvs(list);
     } catch { setEnvs([]); }
     finally { setLoading(false); }
-  }, [authToken]);
+  }, [authToken, showAll]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
+
+  // Stop a request that shouldn't go through…
+  async function voidEnv(env: Envelope) {
+    if (!window.confirm(`Cancel "${env.title || 'this request'}"?\n\nSigners can no longer sign it. The document stays, so you can fix it and re-send.`)) return;
+    setBusy(env.id);
+    try {
+      const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: env.id, action: 'void' }) });
+      const j = await r.json().catch(() => ({}));
+      showToast?.(r.ok ? 'Signature request cancelled' : (j.error || 'Could not cancel it'));
+    } finally { setBusy(null); load(); loadDocs(); }
+  }
+  // …and remove one entirely, signatures and all.
+  async function removeEnv(env: Envelope) {
+    if (!window.confirm(`Delete "${env.title || 'this request'}"?\n\nThe request, its signers and any signatures collected so far are permanently deleted. This cannot be undone.`)) return;
+    setBusy(env.id);
+    try {
+      const r = await fetch(`/api/crm/envelopes?id=${env.id}`, { method: 'DELETE', headers: auth(authToken) });
+      const j = await r.json().catch(() => ({}));
+      showToast?.(r.ok ? 'Signature request deleted' : (j.error || 'Could not delete it'));
+    } finally { setBusy(null); load(); loadDocs(); }
+  }
 
   async function nudge(env: Envelope) {
     setBusy(env.id);
@@ -81,8 +103,11 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111' }}>✍️ E-Sign</h2>
-        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.length} out for signature`}</span>
+        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.length} ${showAll ? 'requests' : 'out for signature'}`}</span>
         <span style={{ flex: 1 }} />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; completed
+        </label>
         <button onClick={load} style={{ ...mini, color: '#9ca3af' }}>⟳ Refresh</button>
       </div>
       <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 18 }}>Import a document to be signed, or track the ones already out. Nudge the current signer or jump to the deal to manage.</p>
@@ -133,7 +158,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af' }}>Out for signature</div>
+            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af' }}>{showAll ? 'All signature requests' : 'Out for signature'}</div>
             {envs.map(env => {
               const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
               const done = signers.filter(s => s.status === 'signed' || s.signed_at).length;
@@ -144,7 +169,14 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
-                    <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>{dealName} · {done}/{signers.length} signed</div>
+                    <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
+                      {dealName} · {done}/{signers.length} signed
+                      {showAll && env.status !== 'sent' && env.status !== 'in_progress' && (
+                        <span style={{ marginLeft: 6, fontWeight: 700, color: env.status === 'completed' ? '#15803d' : '#b91c1c' }}>
+                          · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status}
+                        </span>
+                      )}
+                    </div>
                     {current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
                         ⏳ Waiting on {current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.viewed_at ? ' · viewed' : current.sent_at ? ` · ${ago(current.sent_at)}` : ''}</span>
@@ -152,6 +184,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     )}
                   </div>
                   {current && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
+                  {env.status !== 'voided' && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
+                  <button disabled={busy === env.id} onClick={() => removeEnv(env)} title="Delete this request entirely" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>🗑</button>
                   {env.deal_id && onOpenDeal && <button onClick={() => onOpenDeal(env.deal_id!)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Open →</button>}
                 </div>
               );

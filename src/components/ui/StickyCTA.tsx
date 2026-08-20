@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { trackPhoneClick } from '@/lib/analytics';
 
-const EXCLUDED = ['/crm', '/manage', '/admin'];
+const EXCLUDED = ['/crm', '/manage', '/admin', '/sign'];
 
 export default function StickyCTA() {
   const pathname = usePathname();
