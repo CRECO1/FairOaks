@@ -86,6 +86,24 @@ const ASSET_COLORS: Record<string, { bg: string; color: string }> = {
 const ADD_ASSET_TYPES = ['Retail', 'Office', 'Industrial', 'Flex', 'Mixed-Use', 'Land', 'Medical', 'Multifamily'];
 const ADD_VACANCY = ['Vacant', 'Occupied', 'Available', 'Under Contract', 'Leased', 'Sold', 'Off-Market'];
 
+// A row from the master contact list (crm_clients). Listing brokers LINK to one of
+// these (crm_prospective_properties.contact_id) instead of being re-typed per property.
+interface CrmContact {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  business_name?: string | null;
+  brokerage?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  cell_phone?: string | null;
+  type?: string | null;
+}
+const personName = (c: CrmContact) => `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
+const contactLabel = (c: CrmContact) => personName(c) || c.business_name || c.email || 'Unnamed contact';
+const contactCompany = (c: CrmContact) => c.business_name || c.brokerage || '';
+const contactPhone = (c: CrmContact) => c.phone || c.cell_phone || '';
+
 function assetStyle(a?: string) {
   return ASSET_COLORS[a ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
 }
@@ -744,6 +762,132 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
   );
 }
 
+// ── Broker contact picker — search the master contact list, link, or add once ─
+// Mirrors the RentRoll contact-linking pattern so brokers are never duplicated.
+
+function BrokerContactPicker({ authToken, linked, initialQuery, draft, onLink }: {
+  authToken?: string;
+  linked: CrmContact | null;
+  initialQuery?: string;
+  draft: { name?: string; company?: string; phone?: string; email?: string };
+  onLink: (c: CrmContact | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<CrmContact[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+
+  const headers = useMemo<Record<string, string>>(() => {
+    const h: Record<string, string> = {};
+    if (authToken) h.Authorization = `Bearer ${authToken}`;
+    return h;
+  }, [authToken]);
+
+  // Debounced search whenever the query changes while the picker is open.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setBusy(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/crm/contacts?q=${encodeURIComponent(q.trim())}&limit=20`, { headers });
+        const json = await res.json();
+        if (!cancelled) setResults(res.ok ? (json.contacts ?? []) : []);
+      } catch {
+        if (!cancelled) setResults([]);
+      }
+      if (!cancelled) setBusy(false);
+    }, 220);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q, open, headers]);
+
+  // When the flyer hands us a broker name, open the picker pre-searched on it.
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim() && !linked) { setQ(initialQuery.trim()); setOpen(true); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
+
+  const createFromDraft = async () => {
+    const name = (draft.name || q).trim();
+    const parts = name.split(/\s+/).filter(Boolean);
+    setCreating(true);
+    try {
+      const res = await fetch('/api/crm/contacts', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: parts[0] || null,
+          last_name: parts.slice(1).join(' ') || null,
+          business_name: draft.company || null,
+          phone: draft.phone || null,
+          email: draft.email || null,
+          type: 'Broker',
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.contact) { onLink(json.contact); setOpen(false); }
+    } catch { /* ignore — agent can retry */ }
+    setCreating(false);
+  };
+
+  const inp: React.CSSProperties = {
+    padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14,
+    fontFamily: "'DM Sans',sans-serif", background: '#fff', color: '#111', width: '100%', boxSizing: 'border-box',
+  };
+
+  if (linked) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#f4f9f4', border: '1px solid #cfe6cf', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+        <span style={{ fontSize: 16 }}>🔗</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#166534' }}>{contactLabel(linked)}</div>
+          <div style={{ fontSize: 12, color: '#4b7a4b' }}>{[contactCompany(linked), contactPhone(linked), linked.email].filter(Boolean).join(' · ') || 'Linked contact'}</div>
+        </div>
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, color: '#15803d', background: '#dcfce7', padding: '3px 8px', borderRadius: 20 }}>from contacts</span>
+        <button type="button" onClick={() => onLink(null)} style={{ border: 'none', background: 'transparent', color: '#6b7280', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>✕ Unlink</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {!open ? (
+        <button type="button" onClick={() => setOpen(true)}
+          style={{ ...inp, textAlign: 'left', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', gap: 8 }}>
+          🔗 Link a contact from your list…
+        </button>
+      ) : (
+        <div style={{ border: '1px solid #c9922c', borderRadius: 10, padding: 8, background: '#fff', boxShadow: '0 8px 24px rgba(0,0,0,.10)' }}>
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search contacts by name, company, phone…" style={inp} />
+          <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 6 }}>
+            {busy && <div style={{ fontSize: 12, color: '#9ca3af', padding: '8px 4px' }}>Searching…</div>}
+            {!busy && results.map(c => (
+              <button type="button" key={c.id} onClick={() => { onLink(c); setOpen(false); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', padding: '8px 6px', cursor: 'pointer', borderRadius: 6 }}
+                onMouseOver={e => (e.currentTarget.style.background = '#f7f4ec')}
+                onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: '#111' }}>{contactLabel(c)}{c.type ? <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}> · {c.type}</span> : null}</div>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>{[contactCompany(c), contactPhone(c), c.email].filter(Boolean).join(' · ')}</div>
+              </button>
+            ))}
+            {!busy && results.length === 0 && (
+              <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '8px 4px' }}>No contacts match{q.trim() ? ` “${q.trim()}”` : ''}.</div>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 6, borderTop: '1px solid #f3f4f6', paddingTop: 8 }}>
+            <button type="button" onClick={createFromDraft} disabled={creating || !(draft.name || draft.company || q.trim())}
+              style={{ border: 'none', background: (creating || !(draft.name || draft.company || q.trim())) ? '#dcc79a' : '#c9922c', color: '#fff', fontWeight: 700, fontSize: 12.5, padding: '7px 12px', borderRadius: 7, cursor: creating ? 'default' : 'pointer' }}>
+              {creating ? 'Adding…' : `＋ Add ${(draft.name || q.trim() || 'new').slice(0, 24)} to contacts`}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} style={{ border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 7, cursor: 'pointer' }}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Add-Property modal (agent-facing: upload a flyer to auto-fill) ────────────
 
 function AddPropertyModal({
@@ -764,8 +908,24 @@ function AddPropertyModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [linkedContact, setLinkedContact] = useState<CrmContact | null>(null);
+  const [brokerQuery, setBrokerQuery] = useState('');
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  // Link (or unlink) a master-list contact as the listing broker; mirror its
+  // name/company/phone into the text fields so the card + list still show them.
+  const handleLink = (c: CrmContact | null) => {
+    setLinkedContact(c);
+    if (c) {
+      setForm(f => ({
+        ...f,
+        listing_agent_name: personName(c) || f.listing_agent_name || '',
+        listing_company: contactCompany(c) || f.listing_company || '',
+        listing_agent_phone: contactPhone(c) || f.listing_agent_phone || '',
+      }));
+    }
+  };
 
   const readFlyer = async (file: File) => {
     setReading(true); setError(null); setReadMsg(null);
@@ -803,6 +963,9 @@ function AddPropertyModal({
       if (json.flyerUrl) setFlyerUrl(json.flyerUrl as string);
       if (json.brochureUrl) setBrochureUrl(json.brochureUrl as string);
       setShowMore(true);
+      const bq = typeof ex.listing_agent_name === 'string' ? ex.listing_agent_name
+        : typeof ex.listing_company === 'string' ? ex.listing_company : '';
+      if (bq && !linkedContact) setBrokerQuery(bq);
       const hasListing = ex.name || ex.address;
       setReadMsg(hasListing
         ? '✓ Flyer read — review the fields below, then save.'
@@ -822,6 +985,7 @@ function AddPropertyModal({
       const payload: Record<string, unknown> = { ...form, business_unit: businessUnit };
       if (flyerUrl) payload.flyer_url = flyerUrl;
       if (brochureUrl && !form.brochure_url) payload.brochure_url = brochureUrl;
+      if (linkedContact) payload.contact_id = linkedContact.id;
       const res = await fetch('/api/crm/property-db', { method: 'POST', headers: h, body: JSON.stringify(payload) });
       const json = await res.json();
       if (!res.ok) { setError(json.error || 'Could not save the property.'); setSaving(false); return; }
@@ -904,6 +1068,13 @@ function AddPropertyModal({
           </div>
 
           <div style={secTitle}>Listing Broker</div>
+          <BrokerContactPicker
+            authToken={authToken}
+            linked={linkedContact}
+            initialQuery={brokerQuery}
+            draft={{ name: form.listing_agent_name, company: form.listing_company, phone: form.listing_agent_phone }}
+            onLink={handleLink}
+          />
           <div style={grid}>
             {F('listing_company', 'Company')}
             {F('listing_agent_name', 'Agent')}

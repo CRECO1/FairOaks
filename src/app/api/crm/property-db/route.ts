@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
 const WRITABLE_TEXT = [
   'name', 'address', 'suite', 'city', 'state', 'zip', 'asset_type', 'property_subtype',
   'building_class', 'listing_type', 'vacancy_status', 'transaction_status', 'asking_rate',
-  'lease_type', 'zoning', 'listing_company', 'listing_agent_name', 'listing_agent_phone',
+  'lease_type', 'zoning', 'listing_company', 'listing_agent_name', 'listing_agent_phone', 'contact_id',
   'submarket', 'county', 'owner_name', 'owner_phone', 'highlights', 'description', 'notes',
   'brochure_url', 'flyer_url', 'listing_url', 'floorplan_url', 'virtual_tour_url',
 ] as const;
