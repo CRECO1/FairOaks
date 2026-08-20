@@ -38,10 +38,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!L) return notFound('Listing not found');
 
   const fileName = (L.name || L.address || 'listing').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 50) || 'flyer';
+  // `?download=1` saves to disk; otherwise it opens in the browser's PDF viewer
+  // (from which the reader can still save it).
+  const asAttachment = req.nextUrl.searchParams.get('download') === '1';
   const serve = (bytes: Uint8Array | Buffer, generatedAt: string | null) => new NextResponse(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${fileName}-flyer.pdf"`,
+      'Content-Disposition': `${asAttachment ? 'attachment' : 'inline'}; filename="${fileName}-flyer.pdf"`,
       // The stored copy is the flyer until someone rebuilds it, so let the browser
       // reuse it rather than re-downloading on every open.
       'Cache-Control': 'private, max-age=300',
@@ -50,14 +53,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 
   // A flyer is built once and kept. Rebuilding costs a geocode, every photo, two map
-  // tile stitches and the IABS merge — so it only happens when the agent asks for an
-  // updated one (or nothing has been built yet).
+  // tile stitches and the IABS merge — so it only happens when the listing has
+  // actually changed since, or the agent explicitly asks for an updated one.
+  //
+  // The staleness check matters: without it a cached flyer would keep coming back
+  // after new photos were added, with no way to tell it's out of date.
   const force = req.nextUrl.searchParams.get('force') === '1';
-  if (!force && L.flyer_path) {
-    const { data: cached } = await supabase.storage.from('listing-files').download(L.flyer_path);
-    if (cached) return serve(Buffer.from(await cached.arrayBuffer()), L.flyer_generated_at ?? null);
-    // Path recorded but the blob is gone — fall through and rebuild rather than 404.
-    console.warn('[flyer] stored flyer missing, rebuilding:', L.flyer_path);
+  if (!force && L.flyer_path && L.flyer_generated_at) {
+    const builtAt = new Date(L.flyer_generated_at).getTime();
+    // Newest upload on the property — photos, floor plans, anything the flyer draws.
+    const { data: newestFile } = await supabase.from('crm_listing_files')
+      .select('created_at').eq('listing_id', id)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const changedAt = Math.max(
+      L.updated_at ? new Date(L.updated_at).getTime() : 0,
+      newestFile?.created_at ? new Date(newestFile.created_at).getTime() : 0,
+    );
+    if (changedAt <= builtAt) {
+      const { data: cached } = await supabase.storage.from('listing-files').download(L.flyer_path);
+      if (cached) return serve(Buffer.from(await cached.arrayBuffer()), L.flyer_generated_at);
+      // Path recorded but the blob is gone — fall through and rebuild rather than 404.
+      console.warn('[flyer] stored flyer missing, rebuilding:', L.flyer_path);
+    }
   }
 
   const loadAgent = async (uid?: string | null) => uid
