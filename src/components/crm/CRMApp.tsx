@@ -110,6 +110,14 @@ function fmtPhone(v: string): string {
   return `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
 }
 
+// Display-only. fmtPhone() is for input (it truncates to 10 digits, which would
+// mangle an extension or an international number), so tables use this instead.
+function phoneDisp(v?: string | null): string {
+  const s = String(v ?? '').trim();
+  const d = s.replace(/\D/g, '');
+  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : s;
+}
+
 function titleCase(v: string): string {
   return v.replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
 }
@@ -446,10 +454,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'activity'] as const;
+  // The sidebar says "Marketing" but the page is called 'campaigns', so a
+  // #marketing link silently left you wherever you already were.
+  const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties' };
   type PageType = typeof VALID_PAGES[number];
   const [page, setPage] = useState<PageType>(() => {
     if (typeof window === 'undefined') return 'dashboard';
-    const hash = window.location.hash.slice(1) as PageType;
+    const raw = window.location.hash.slice(1);
+    const hash = (PAGE_ALIASES[raw] ?? raw) as PageType;
     return VALID_PAGES.includes(hash) ? hash : 'dashboard';
   });
   const [filter, setFilter] = useState('');
@@ -858,7 +870,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Sync URL hash → page state on browser back/forward
   useEffect(() => {
     const handler = () => {
-      const hash = window.location.hash.slice(1) as PageType;
+      const raw = window.location.hash.slice(1);
+      const hash = (PAGE_ALIASES[raw] ?? raw) as PageType;
       if (VALID_PAGES.includes(hash)) setPage(hash);
     };
     window.addEventListener('hashchange', handler);
@@ -4131,12 +4144,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     onClick={e => { e.stopPropagation(); setActiveClient(c); }}
                                     style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', maxWidth: '100%' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <span style={{ fontWeight: 600, color: '#111', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      <span title={`${c.first_name} ${c.last_name}`.trim()} style={{ fontWeight: 600, color: '#111', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                         {c.first_name} {c.last_name}
                                       </span>
                                       {c.is_shared && <span title="Team contact — visible to all agents" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, background: '#ede9fe', color: '#6d28d9', borderRadius: 6, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase' }}>Team</span>}
                                     </div>
-                                    {c.business_name && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
+                                    {c.business_name && <div title={c.business_name} style={{ fontSize: 12, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
                                   </button>
                                   {/* Type pill — inline select below name */}
                                   {(() => {
@@ -4173,7 +4186,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                             {/* Phone */}
                             <td style={{ fontSize: 13 }}>
-                              {c.phone ? <a href={`tel:${c.phone}`} style={{ color: '#374151', textDecoration: 'none' }}>{c.phone}</a> : '—'}
+                              {c.phone ? <a href={`tel:${c.phone}`} style={{ color: '#374151', textDecoration: 'none' }}>{phoneDisp(c.phone)}</a> : '—'}
                             </td>
 
                             {/* Deals — every deal on this contact, plus an always-available add */}
@@ -5456,7 +5469,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div>
                 {/* Header */}
                 <div style={{ marginBottom: 20 }}>
-                  <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Commissions</h2>
+                  <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Deal commissions</h2>
                   <p style={{ fontSize: 14, color: '#6b7280' }}>Deal-level commission tracking across all agents</p>
                 </div>
 
@@ -9009,7 +9022,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3 }}>Phone</div>
                       {c.phone ? (
-                        <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: '#374151', textDecoration: 'none' }}>{c.phone}</a>
+                        <a href={`tel:${c.phone}`} style={{ fontSize: 14, fontWeight: 500, color: '#374151', textDecoration: 'none' }}>{phoneDisp(c.phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>
                     <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px' }}>

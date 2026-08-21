@@ -2838,7 +2838,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: isMobile ? 24 : 32, fontWeight: 700, color: '#1a1a2e', margin: 0, marginBottom: 4 }}>
-            Social Media
+            Publish &amp; schedule
           </h1>
           <p style={{ fontSize: 13, color: '#6b7280', margin: 0 }}>
             Manage all your social platforms from one place
