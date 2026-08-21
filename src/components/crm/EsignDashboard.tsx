@@ -124,9 +124,11 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>✍️ E-Sign</h2>
+        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>✍️ Signature requests</h2>
         <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.filter(e => !byAgent || e.sent_by === byAgent).length} ${showAll ? 'requests' : 'out for signature'}${byAgent ? ` · ${byAgent}` : ''}`}</span>
-        <span style={{ flex: '1 0 0', minWidth: 0 }} />
+        {/* Pushes the controls right without forcing them onto their own line;
+            `flex-grow` on a zero-basis spacer was wrapping Refresh on desktop. */}
+        <span style={{ flex: '1 1 auto', minWidth: 0 }} />
         {(() => {
           const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
           if (agents.length < 2) return null;

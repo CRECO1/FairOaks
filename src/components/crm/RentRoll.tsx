@@ -313,7 +313,8 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
     if (!res.ok) { onToast?.('Could not add the row'); return; }
     const j = await res.json(); setVendors(vs => [...vs, j.row]);
   };
-  const removeVendor = async (id: string) => {
+  const removeVendor = async (id: string, label?: string) => {
+    if (!window.confirm(`Remove ${label ? `"${label}"` : 'this row'}?`)) return;
     const res = await fetch(`/api/crm/listing-vendors?id=${id}`, { method: 'DELETE', headers: authOf(authToken) });
     if (!res.ok) { onToast?.('Could not remove the row'); return; }
     setVendors(vs => vs.filter(v => v.id !== id));
@@ -400,8 +401,8 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
           </button>
         )}
         <button onClick={exportCsv} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>⤓ CSV</button>
-        <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Back to the property card' : 'Open the full sheet'}
-          style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>{expanded ? '✕ Close' : '⛶ Expand'}</button>
+        <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Back to the property card' : 'Open the full sheet — every column, full width'}
+          style={{ fontSize: 12.5, fontWeight: 700, color: expanded ? '#6b7280' : '#a06a12', background: expanded ? '#fff' : '#fffdf6', border: `1px solid ${expanded ? '#e5e7eb' : '#e6d3a2'}`, borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{expanded ? '✕ Close' : '⛶ Full screen'}</button>
         <button onClick={addSuite} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '7px 13px', cursor: 'pointer' }}>＋ Suite</button>
       </div>
 
@@ -481,7 +482,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
                   <td style={TD}><Cell value={v.contact} onSave={x => saveVendor(v.id, 'contact', x)} /></td>
                   <td style={TD}><Cell value={v.phone} onSave={x => saveVendor(v.id, 'phone', x)} /></td>
                   <td style={TD}><Cell value={v.notes} onSave={x => saveVendor(v.id, 'notes', x)} /></td>
-                  <td style={{ ...TD, textAlign: 'center' }}>{isAdmin && <button onClick={() => removeVendor(v.id)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}</td>
+                  <td style={{ ...TD, textAlign: 'center' }}>{isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}</td>
                 </tr>
               ))}
               {vendorRows.length === 0 && <tr><td colSpan={6} style={{ padding: 18, textAlign: 'center', color: '#9ca3af', fontSize: 12.5 }}>No vendors yet.</td></tr>}
@@ -502,7 +503,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
             <div key={v.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fff', border: '1px solid #eef0f2', borderRadius: 8, padding: '2px 4px 2px 0' }}>
               <div style={{ flex: '0 0 210px' }}><Cell value={v.label} bold onSave={x => saveVendor(v.id, 'label', x)} /></div>
               <div style={{ flex: 1 }}><Cell value={v.notes} onSave={x => saveVendor(v.id, 'notes', x)} /></div>
-              {isAdmin && <button onClick={() => removeVendor(v.id)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '8px 6px' }}>✕</button>}
+              {isAdmin && <button onClick={() => removeVendor(v.id, v.label || v.vendor || undefined)} style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '8px 6px' }}>✕</button>}
             </div>
           ))}
           {infoRows.length === 0 && <div style={{ fontSize: 12.5, color: '#9ca3af', padding: '6px 2px' }}>No building notes yet.</div>}

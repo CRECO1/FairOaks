@@ -461,7 +461,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     await addContact(contact.id); // links it to the listing with the selected role + reloads
   }
 
-  async function removeContact(id: string) {
+  async function removeContact(id: string, name?: string) {
+    if (!window.confirm(`Remove ${name || 'this contact'} from this property?\n\nThe contact record itself is kept — only the link to this property is removed.`)) return;
     setListingContacts(prev => prev.filter(c => c.id !== id));
     await fetch(`/api/crm/listing-contacts?id=${id}`, { method: 'DELETE', headers: authHeaders });
   }
@@ -794,6 +795,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // through Documents with the right category selected.
   const [photoBusy, setPhotoBusy] = useState(false);
   const [dragPhoto, setDragPhoto] = useState<string | null>(null);
+  const [hoverPhoto, setHoverPhoto] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const replaceRef = useRef<HTMLInputElement>(null);
   const replacingRef = useRef<ListingFile | null>(null);
@@ -1162,7 +1164,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {active && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) closePanel(); }}>
           <div style={{ flex: 1 }} onClick={closePanel} />
-          <div style={{ width: Math.min(560, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div style={{ width: Math.min(activeTab === 'rentroll' ? 1100 : 560, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
 
             {/* Panel header */}
             <div style={{ padding: '20px 24px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: 0 }}>
@@ -1175,7 +1177,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {(() => {
                     const built = active.flyer_generated_at ? new Date(active.flyer_generated_at) : null;
                     // Same test the server makes, so the header agrees with what an open
@@ -1213,7 +1215,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 </div>
               </div>
               {/* Tabs */}
-              <div style={{ display: 'flex', gap: 0 }}>
+              <div style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
                 {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'rentroll', label: '📊 Rent Roll' }, { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
                   <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
@@ -1505,7 +1507,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               {activeTab === 'photos' && (
                 <div>
                   {(() => {
-                    const photos = files.filter(f => f.category === 'photo');
+                    // A file can be filed under "photo" without being one — a survey PDF
+                    // was showing here as a broken image, and the flyer would have tried
+                    // to use it as artwork. Judge by the actual type.
+                    const isImage = (f: ListingFile) => (f.file_type || '').toLowerCase().startsWith('image/')
+                      || /\.(jpe?g|png|gif|webp|heic|avif)$/i.test(f.name || '');
+                    const allPhotoCat = files.filter(f => f.category === 'photo');
+                    const photos = allPhotoCat.filter(isImage);
+                    const notImages = allPhotoCat.filter(f => !isImage(f));
                     if (filesLoading) return <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 14 }}>Loading…</div>;
                     const act: React.CSSProperties = { border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700, padding: '3px 7px', cursor: 'pointer', lineHeight: 1.4, fontFamily: "'DM Sans',sans-serif" };
                     return (
@@ -1525,6 +1534,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           </span>
                         </div>
 
+                        {notImages.length > 0 && (
+                          <div style={{ fontSize: 12.5, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 9, padding: '9px 12px', marginBottom: 12 }}>
+                            ⚠ {notImages.length} file{notImages.length === 1 ? '' : 's'} here {notImages.length === 1 ? 'is' : 'are'} not an image ({notImages.map(f => f.name).join(', ')}) — {notImages.length === 1 ? 'it won\u2019t' : 'they won\u2019t'} appear on the flyer. Move {notImages.length === 1 ? 'it' : 'them'} to Documents.
+                          </div>
+                        )}
                         {photos.length === 0 ? (
                           <div
                             onDragOver={e => e.preventDefault()}
@@ -1546,6 +1560,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                 onDragEnd={() => setDragPhoto(null)}
                                 onDragOver={e => e.preventDefault()}
                                 onDrop={e => { e.preventDefault(); e.stopPropagation(); if (dragPhoto) movePhoto(photos, dragPhoto, f.id); setDragPhoto(null); }}
+                                onMouseEnter={() => setHoverPhoto(f.id)}
+                                onMouseLeave={() => setHoverPhoto(h => (h === f.id ? null : h))}
+                                onTouchStart={() => setHoverPhoto(f.id)}
                                 style={{ position: 'relative', borderRadius: 10, overflow: 'hidden', aspectRatio: '4 / 3', background: '#f3f4f6',
                                   border: i === 0 ? `2px solid #c9922c` : '1px solid #eef0f2',
                                   opacity: dragPhoto === f.id ? 0.4 : 1, cursor: 'grab' }}>
@@ -1553,7 +1570,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                 {i === 0 && (
                                   <span style={{ position: 'absolute', top: 6, left: 6, background: '#c9922c', color: '#fff', fontSize: 10.5, fontWeight: 800, padding: '2px 7px', borderRadius: 20 }}>★ COVER</span>
                                 )}
-                                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 4, justifyContent: 'center', padding: 5, background: 'linear-gradient(transparent, rgba(0,0,0,.6))' }}>
+                                <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 4, justifyContent: 'center', padding: 5, background: 'linear-gradient(transparent, rgba(0,0,0,.6))',
+                                  opacity: hoverPhoto === f.id || dragPhoto === f.id ? 1 : 0, transition: 'opacity .12s', pointerEvents: hoverPhoto === f.id || dragPhoto === f.id ? 'auto' : 'none' }}>
                                   {i !== 0 && <button onClick={() => makeCover(photos, f.id)} title="Use as the flyer cover" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#a06a12' }}>★ Cover</button>}
                                   <button onClick={() => { replacingRef.current = f; replaceRef.current?.click(); }} disabled={photoBusy} title="Swap this photo, keeping its position" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#374151' }}>⇄ Replace</button>
                                   <button onClick={() => deleteFile(f.id, f.name)} title="Remove this photo" style={{ ...act, background: 'rgba(255,255,255,.92)', color: '#b91c1c' }}>✕</button>
@@ -1626,7 +1644,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             </div>
                             {phone && <a href={`tel:${phone}`} title="Call" style={{ fontSize: 13, color: '#16a34a', textDecoration: 'none', border: '1px solid #bbf7d0', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>📞</a>}
                             {c?.email && <a href={`mailto:${c.email}`} title="Email" style={{ fontSize: 13, color: '#2563eb', textDecoration: 'none', border: '1px solid #bfdbfe', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>✉️</a>}
-                            {isAdmin && <button onClick={() => removeContact(lc.id)} title="Remove" style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>🗑</button>}
+                            {isAdmin && <button onClick={() => removeContact(lc.id, lc.crm_clients ? (lc.crm_clients.business_name || `${lc.crm_clients.first_name ?? ''} ${lc.crm_clients.last_name ?? ''}`.trim()) : undefined)} title="Remove from this property" style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 15, flexShrink: 0 }}>🗑</button>}
                           </div>
                         );
                       })}
