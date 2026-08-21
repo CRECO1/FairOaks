@@ -5652,7 +5652,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Header */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                     <div>
-                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Campaigns</h2>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Email campaigns</h2>
                       <p style={{ fontSize: 14, color: '#6b7280' }}>Organized by project — campaigns auto-send to enrolled contacts</p>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
