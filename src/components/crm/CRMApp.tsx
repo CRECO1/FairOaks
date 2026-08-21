@@ -205,12 +205,20 @@ function activityIcon(type: CRMActivity['type']): string {
   return type === 'call' ? '📞' : type === 'email' ? '✉️' : type === 'meeting' ? '🤝' : type === 'note' ? '📝' : '🔄';
 }
 
+// A lease deal's value is the GROSS LEASE VALUE — total consideration over the
+// term, which is also what lease commission is figured on. It is NOT a rent, so
+// it carries no per-period suffix; it used to render "/mo", which read a $402,595
+// lease as a monthly payment. Because it's a total like a sale price, it also
+// sums correctly alongside purchases in the pipeline figures.
 function fmtVal(deal: Deal) {
   // Whole dollars, like every other money figure in the app — an unrounded value
-  // was rendering as "$270,439.2/mo" on the deal cards.
-  const v = Number(deal.value).toLocaleString('en-US', { maximumFractionDigits: 0 });
-  return deal.type === 'Tenant Lease' ? `$${v}/mo` : `$${v}`;
+  // was rendering as "$270,439.2" on the deal cards.
+  return `$${Number(deal.value).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 }
+const LEASE_TYPES = ['Tenant Lease', 'Landlord Listing'];
+const isLease = (t?: string) => LEASE_TYPES.includes(t ?? '');
+// Shown next to the figure so nobody reads a lease total as a sale price.
+const valNote = (t?: string) => isLease(t) ? 'gross lease value — total over the term' : 'deal value';
 
 // ── Kanban Board ──────────────────────────────────────────────────────────────
 const STAGE_COLORS: Record<string, { bg: string; border: string; dot: string }> = {
@@ -255,7 +263,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                       <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((s: string) => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>
                         {deal.type.split(' ')[0]}
                       </span>
-                      {deal.value > 0 && <span style={{ fontSize: 13, color: '#374151', fontWeight: 700 }}>{fmtVal(deal)}</span>}
+                      {deal.value > 0 && <span title={valNote(deal.type)} style={{ fontSize: 13, color: '#374151', fontWeight: 700 }}>{fmtVal(deal)}</span>}
                       {deal.earned_commission != null && deal.earned_commission > 0 && (
                         <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
                       )}
@@ -343,7 +351,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                       {deal.type.split(' ')[0]}
                     </span>
                     {deal.value > 0 && (
-                      <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>
+                      <span title={valNote(deal.type)} style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>{fmtVal(deal)}</span>
                     )}
                     {deal.earned_commission != null && deal.earned_commission > 0 && (
                       <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
@@ -8536,8 +8544,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <input className="crm-input" style={{ marginTop: 4 }} placeholder="123 Main St, City, State" value={nd.property} onChange={e => { const property = e.target.value; setNd({ ...nd, property }); if (!ndPacketsTouched.current) setNdPackets(defaultPacketKeys(nd.type, property)); }} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Deal Value ($)</label>
+                  <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>{isLease(nd.type) ? 'Gross Lease Value ($)' : 'Deal Value ($)'}</label>
                   <input className="crm-input" type="number" style={{ marginTop: 4 }} value={nd.value} onChange={e => setNd({ ...nd, value: +e.target.value })} />
+                  {isLease(nd.type) && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Total over the lease term — not the monthly rent.</div>}
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Notes</label>
@@ -9183,7 +9192,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 10, fontWeight: 600, ...({ 'Prospect': { background: '#f3f4f6', color: '#6b7280' }, 'Active': { background: '#dbeafe', color: '#1e40af' }, 'LOI': { background: '#f3e8ff', color: '#7e22ce' }, 'In Contract': { background: '#fef3c7', color: '#92400e' }, 'Closed': { background: '#dcfce7', color: '#166534' }, 'Lost': { background: '#fee2e2', color: '#991b1b' } }[d.stage] ?? {}) } as React.CSSProperties}>
                             {d.stage}
                           </span>
-                          {d.value > 0 && <span style={{ fontSize: 13, color: '#6b7280', flexShrink: 0 }}>{fmtVal(d)}</span>}
+                          {d.value > 0 && <span title={valNote(d.type)} style={{ fontSize: 13, color: '#6b7280', flexShrink: 0 }}>{fmtVal(d)}</span>}
                         </button>
                       ))}
                     </div>
