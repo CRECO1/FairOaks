@@ -198,9 +198,10 @@ function activityIcon(type: CRMActivity['type']): string {
 }
 
 function fmtVal(deal: Deal) {
-  return deal.type === 'Tenant Lease'
-    ? `$${Number(deal.value).toLocaleString()}/mo`
-    : `$${Number(deal.value).toLocaleString()}`;
+  // Whole dollars, like every other money figure in the app — an unrounded value
+  // was rendering as "$270,439.2/mo" on the deal cards.
+  const v = Number(deal.value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  return deal.type === 'Tenant Lease' ? `$${v}/mo` : `$${v}`;
 }
 
 // ── Kanban Board ──────────────────────────────────────────────────────────────
