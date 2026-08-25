@@ -33,7 +33,7 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
@@ -1366,6 +1366,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ...nc,
       agent_id: profile!.id,
       business_unit: businessUnit,
+      // Contacts @-tagged in the notes — who else was in the meeting.
+      tagged_contact_ids: parseMentionContactIds(nc.notes, clients),
       // date columns reject empty strings — coerce to null
       lease_expiration_date: nc.lease_expiration_date || null,
       birthday: nc.birthday || null,
@@ -1442,6 +1444,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (ec.lease_expiration_date && !ec.lxp_follow_up_days) { showToast('Please select a contact window (90/120/180/360d) for the LXP date.'); return; }
     setSaving(true);
     const { error } = await supabase.from('crm_clients').update({
+      // Who else was in the meeting — parsed out of the notes, so the tag and the
+      // sentence it appears in can never drift apart.
+      tagged_contact_ids: parseMentionContactIds(ec.notes, clients).filter(id => id !== editClient.id),
       first_name: ec.first_name,
       last_name: ec.last_name,
       business_name: ec.business_name,
@@ -8868,8 +8873,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <MentionTextarea
                   className="crm-input"
                   style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
-                  placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, relationship notes… (type @ to tag a teammate)' : 'Pre-approval status, timeline, special requirements… (type @ to tag a teammate)'}
-                  profiles={profiles} value={nc.notes}
+                  placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, who was in the meeting… (type @ to tag a teammate or a contact)' : 'Pre-approval status, timeline, who was in the meeting… (type @ to tag a teammate or a contact)'}
+                  profiles={profiles} contacts={clients} value={nc.notes}
                   onChange={v => setNc({ ...nc, notes: v })}
                   onMentionedIds={setMentionedIds} />
               </div>
@@ -9340,6 +9345,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </button>
                     </div>
                   </div>
+
+                  {/* Other CONTACTS this person is tied to through notes — both the
+                      people named in their notes, and the people who named them. This
+                      is the "who was in that meeting" trail. */}
+                  {(() => {
+                    const namedHere = (c.tagged_contact_ids || [])
+                      .map(id => clients.find(x => x.id === id)).filter(Boolean) as Client[];
+                    const namedElsewhere = clients.filter(x => x.id !== c.id && (x.tagged_contact_ids || []).includes(c.id));
+                    if (!namedHere.length && !namedElsewhere.length) return null;
+                    const chip = (x: Client, why: string) => (
+                      <button key={why + x.id} onClick={() => setActiveClient(x)} title={why}
+                        style={{ fontSize: 12.5, fontWeight: 700, color: '#3730a3', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 20, padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                        {x.business_name || `${x.first_name} ${x.last_name}`.trim()}
+                      </button>
+                    );
+                    return (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 6 }}>👥 Also in the room</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                          {namedHere.map(x => chip(x, `Tagged in ${c.first_name}'s notes`))}
+                          {namedElsewhere.map(x => chip(x, `${x.first_name || x.business_name} tagged ${c.first_name} in their notes`))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Deals where this contact is @-tagged in the deal notes */}
                   {(() => {
@@ -10284,10 +10314,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <MentionTextarea
                   className="crm-input"
                   style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
-                  placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, relationship notes… (type @ to tag a teammate)' : 'Pre-approval status, timeline, special requirements… (type @ to tag a teammate)'}
-                  profiles={profiles} value={ec.notes}
+                  placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, who was in the meeting… (type @ to tag a teammate or a contact)' : 'Pre-approval status, timeline, who was in the meeting… (type @ to tag a teammate or a contact)'}
+                  profiles={profiles} contacts={clients} value={ec.notes}
                   onChange={v => setEc({ ...ec, notes: v })}
                   onMentionedIds={setMentionedIds} />
+                {(() => {
+                  const tagged = parseMentionContactIds(ec.notes, clients).filter(id => id !== editClient?.id);
+                  if (!tagged.length) return null;
+                  return (
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
+                      👥 {tagged.length} contact{tagged.length === 1 ? '' : 's'} tagged — they&apos;ll show on this record and on theirs. Contacts are never notified.
+                    </div>
+                  );
+                })()}
                 {/* Also apply note to other contacts in the same company */}
                 {(() => {
                   const companyContacts = ec.business_name.trim()
