@@ -56,13 +56,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A contact name or company is required.' }, { status: 400 });
   }
 
+  // Several crm_clients columns are NOT NULL with an empty-string DEFAULT
+  // (business_name, last_name, cell_phone, brokerage, address, city, state, zip).
+  // Sending an explicit null OVERRIDES the default and trips the not-null
+  // constraint, so a contact with no company — or no cell phone — used to 500.
+  // Only send the optional columns we actually have values for and let the
+  // defaults do their job. first_name is NOT NULL with no default, so it always
+  // needs a value: a company-only contact gets an empty one.
   const rec: Record<string, unknown> = {
-    first_name: first,
-    last_name: last,
-    business_name: business,
-    email: str(body.email),
-    phone: str(body.phone),
-    cell_phone: str(body.cell_phone),
+    first_name: first ?? '',
     type: str(body.type) || 'Broker',
     business_unit: scopedUnit(req, ctx),
     agent_id: ctx.userId,
@@ -70,6 +72,14 @@ export async function POST(req: NextRequest) {
     lead_source: str(body.lead_source) || 'Property DB',
     unsubscribe_token: randomUUID(),
   };
+  const optional = {
+    last_name: last,
+    business_name: business,
+    email: str(body.email),
+    phone: str(body.phone),
+    cell_phone: str(body.cell_phone),
+  };
+  for (const [k, v] of Object.entries(optional)) if (v !== null) rec[k] = v;
 
   const { data, error } = await adminClient().from('crm_clients').insert(rec).select(CLIENT_COLS).single();
   if (error) return dbError('api/crm/contacts POST', error);

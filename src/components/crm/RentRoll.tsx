@@ -248,14 +248,23 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
   };
   // Create a brand-new contact in the master list (crm_clients) so a suite tenant
   // that isn't a contact yet gets added ONCE and linked — no duplicates.
-  const createContact = async (name: string): Promise<CrmContact | null> => {
+  const createContact = async (name: string, row?: RentRollRow): Promise<CrmContact | null> => {
     const parts = name.trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return null;
     try {
       const res = await fetch('/api/crm/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
-        body: JSON.stringify({ first_name: parts[0], last_name: parts.slice(1).join(' ') || null, type: 'Tenant' }),
+        body: JSON.stringify({
+          first_name: parts[0],
+          last_name: parts.slice(1).join(' ') || null,
+          type: 'Tenant',
+          // Carry across what the suite already knows, so the new contact isn't a
+          // bare name: the tenant is their company, and the row often has an email.
+          business_name: row && !isVacant(row) ? (row.tenant_name ?? null) : null,
+          email: row?.email ?? null,
+          lead_source: 'Rent Roll',
+        }),
       });
       const j = await res.json();
       if (!res.ok || !j.contact) { onToast?.('Could not create the contact'); return null; }
@@ -444,7 +453,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
                   <td style={TD}><Cell value={r.mailbox_box} onSave={v => saveCell(r.id, 'mailbox_box', v)} /></td>
                   <td style={TD}><Cell value={r.keys} align="right" type="number" onSave={v => saveCell(r.id, 'keys', v)} /></td>
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
-                  <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={createContact} /></td>
+                  <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
                   <td style={TD}><Cell value={r.notes} onSave={v => saveCell(r.id, 'notes', v)} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>
                     {isAdmin && <button onClick={() => removeSuite(r)} title="Remove suite" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
