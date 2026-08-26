@@ -104,7 +104,8 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
   /** Draw a blank: its value over a rule, and record where it landed. */
   function drawBlank(key: string, x: number, baseline: number, type: LeaseBlank['type'] = 'text', role?: 'landlord' | 'client', width?: number) {
     const val = (v as Record<string, string | undefined>)[key] ?? '';
-    const bw = width ?? blankWidth(reg, val);
+    // Never let a rule run past the right margin, whatever width was asked for.
+    const bw = Math.min(width ?? blankWidth(reg, val), PAGE_W - MR - x);
     if (val) page.drawText(val, { x: x + BLANK_PAD, y: baseline, size: BODY, font: reg, color: INK });
     page.drawLine({ start: { x, y: baseline - 2.5 }, end: { x: x + bw, y: baseline - 2.5 }, thickness: 0.6, color: RULE });
     // Recorded so the transaction-doc editor's overlay lands exactly on this rule:
@@ -156,27 +157,40 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
     y -= LEAD + 1.5;
   }
 
+  // Per-blank widths inside the notice block: the tenant column is narrow, so the
+  // generous default rules would push the suite clean off the right edge.
+  const NOTICE_BLANK: Record<string, number> = {
+    tenant_name: 150, building: 34, suite: 82, tenant_phone: 110, tenant_email: 150,
+  };
+
   function noticesBlock() {
     const rows: Array<[string, string]> = [
       ['LANDLORD:', 'TENANT:'],
       [LANDLORD.name, '{{tenant_name}}'],
-      [LANDLORD.addr, '8000 Fair Oaks Parkway, Bldg. {{building}}, Ste {{suite}}'],
-      [LANDLORD.city, 'Fair Oaks Ranch, TX 78015'],
+      [LANDLORD.addr, '8000 Fair Oaks Parkway'],
+      [LANDLORD.city, 'Bldg. {{building}}, Ste {{suite}}'],
+      ['', 'Fair Oaks Ranch, TX 78015'],
       [`Attn: ${LANDLORD.attn}`, 'Attn: {{tenant_name}}'],
       [`Phone: ${LANDLORD.phone}`, 'Phone: {{tenant_phone}}'],
       [`Email: ${LANDLORD.email}`, 'Email: {{tenant_email}}'],
     ];
-    need(LEAD * rows.length + 8);
-    const RX = ML + 250;
+    const LX = ML + 10, RX = ML + 236;
+    const RW = PAGE_W - MR - RX;
+    need(LEAD * rows.length + 10);
     for (const [l, r] of rows) {
-      page.drawText(l, { x: ML + 10, y, size: BODY, font: l.endsWith(':') && !l.includes(' ') ? bold : reg, color: INK });
+      const top = y;
+      if (l) page.drawText(l, { x: LX, y, size: BODY, font: l === 'LANDLORD:' ? bold : reg, color: INK });
+      // The tenant side wraps inside its column, so no value can run off the page.
       let x = RX;
       for (const t of tokenize(r)) {
-        if (t.kind === 'b') { x += drawBlank(t.key, x, y, 'text', undefined, t.key === 'tenant_name' ? 150 : undefined) + 3; continue; }
+        const bw = t.kind === 'b' ? Math.min(NOTICE_BLANK[t.key] ?? 110, RW) : 0;
+        const tw = t.kind === 'b' ? bw : w(reg, t.s);
+        if (x > RX && x + tw > RX + RW) { y -= LEAD; x = RX; }
+        if (t.kind === 'b') { drawBlank(t.key, x, y, 'text', undefined, bw); x += bw + 3; continue; }
         page.drawText(t.s, { x, y, size: BODY, font: r === 'TENANT:' ? bold : reg, color: INK });
-        x += w(reg, t.s) + w(reg, ' ');
+        x += tw + w(reg, ' ');
       }
-      y -= LEAD;
+      y = Math.min(y, top) - LEAD;
     }
     y -= 6;
   }
@@ -245,6 +259,15 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
   page.drawText('LEGAL DESCRIPTION:', { x: ML, y, size: BODY, font: bold, color: INK });
   y -= LEAD * 2;
   para('Lot 8000, Fair Oaks Parkway at Fair Oaks Ranch, City of Fair Oaks Ranch, Bexar County, Texas, according to plat recorded in Volume 9561, Page 164, Deed and Plat Records, Bexar County, Texas. Building {{building}}, Suite {{suite}}.');
+
+  // Nothing may sit outside the printable column — a blank that runs off the page
+  // is invisible in the PDF and silently loses whatever was typed into it.
+  for (const b of blanks) {
+    const right = (b.fx + b.fw) * PAGE_W;
+    if (right > PAGE_W - MR + 1 || b.fx * PAGE_W < ML - 1) {
+      throw new Error(`lease-doc: blank "${b.label}" on p${b.page} runs outside the margins (${Math.round(b.fx * PAGE_W)}–${Math.round(right)}pt)`);
+    }
+  }
 
   return { pdf: await doc.save(), blanks };
 }
