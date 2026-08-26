@@ -65,6 +65,15 @@ const LABELS: Record<string, string> = {
 
 type Tok = { kind: 'w'; s: string } | { kind: 'b'; key: string };
 
+/** Resolve {{ref:Clause Title}} to that clause's current number. */
+function resolveRefs(text: string): string {
+  return text.replace(/\{\{ref:([^}]+)\}\}/g, (_, title: string) => {
+    const i = LEASE_CLAUSES.findIndex(c => c.title === title);
+    if (i < 0) throw new Error(`lease-doc: cross-reference to unknown clause "${title}"`);
+    return String(i + 1);
+  });
+}
+
 /** Split "…on {{effective_date}}, and…" into words and blank tokens. */
 function tokenize(text: string): Tok[] {
   const out: Tok[] = [];
@@ -111,7 +120,7 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
   /** Flow a paragraph, breaking pages as it goes, with inline blanks. */
   function para(text: string, opts: { indent?: number; gap?: number } = {}) {
     const indent = opts.indent ?? 0;
-    const toks = tokenize(text);
+    const toks = tokenize(resolveRefs(text));
     let line: Tok[] = [];
     let lineW = 0;
     const flush = (last: boolean) => {
@@ -302,7 +311,7 @@ export const LEASE_CLAUSES: Clause[] = [
       { t: 'p', text: 'Tenant will make no alterations (including painting and decorating) in, or additions of any kind to, the Premises or its fixtures, or equipment without Landlord’s prior written consent, which Landlord may refuse, or condition in any manner, in accordance with Landlord’s sole determination, which is conclusive. All alterations completed or additions or installed equipment in place, at the time this Lease is signed are approved by Landlord. All such alterations or additions that Landlord approve are at Tenant’s sole expense, and Tenant will hold Landlord harmless from all liabilities in any way connected with them.' },
       { t: 'p', text: 'All additions, hardware, fixtures, and improvement placed in the Premises by Tenant are Tenant’s property and may be removed by Tenant on any termination of the lease term except the following:' },
       { t: 'ul', items: ['HVACequipment', 'Electrical and lighting equipment', 'Plumbing', 'Bathroom fixtures'] },
-      { t: 'p', text: 'If Tenant alters or improves the Premises or paints or redecorates without Landlord’s prior written consent, Tenant will bear and must promptly pay Landlord – on written demand – the full cost of restoring the Premises to their prior condition. Notwithstanding the foregoing, Tenant must continue to maintain the Leased Premises in good condition for its use as set forth in Section 6. This will require maintenance of the Leased Premises. Such maintenance is not considered to be alteration or improvement of the Premises.' },
+      { t: 'p', text: 'If Tenant alters or improves the Premises or paints or redecorates without Landlord’s prior written consent, Tenant will bear and must promptly pay Landlord – on written demand – the full cost of restoring the Premises to their prior condition. Notwithstanding the foregoing, Tenant must continue to maintain the Leased Premises in good condition for its use as set forth in Section {{ref:Use of Premises}}. This will require maintenance of the Leased Premises. Such maintenance is not considered to be alteration or improvement of the Premises.' },
     ],
   },
   {
@@ -415,12 +424,6 @@ export const LEASE_CLAUSES: Clause[] = [
     title: 'Indemnity',
     blocks: [
       { t: 'p', text: 'Tenant will not permit any mechanic’s lien or liens to be placed on the Premises or building or improvements there on during the term hereof, and in case of the filing of any such lien Tenant will promptly pay same. If default in payment thereof shall continue for twenty (20) days after written notice thereof from Landlord, the Landlord shall have the right and privilege at Landlord’s option of paying the same or any portion thereof without inquiry as to the validity indebtedness hereunder due from Tenant to Landlord and shall be repaid to Landlord immediately on rendition of bill therefore, together with interest thereon at the rate of eighteen (18) percent per annum from the date of such payment until repaid by Tenant (which shall be reduced to the lower legal rate if so required under Texas Law).' },
-    ],
-  },
-  {
-    title: 'Assignment by Landlord',
-    blocks: [
-      { t: 'p', text: 'Landlord may assign or otherwise transfer any or all of its interest under the terms of this lease.' },
     ],
   },
   {
