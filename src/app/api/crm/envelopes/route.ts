@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const submissionId = req.nextUrl.searchParams.get('submission_id');
   const supabase = adminClient();
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) q = q.eq('deal_id', dealId);
@@ -40,11 +40,16 @@ export async function GET(req: NextRequest) {
   }
   const envelopes = await Promise.all((data ?? []).map(async (e) => {
     let executed_url: string | null = null;
+    let executed_clean_url: string | null = null;
+    if (e.executed_clean_path) {
+      const { data: sg } = await supabase.storage.from('transaction-forms').createSignedUrl(e.executed_clean_path, 3600);
+      executed_clean_url = sg?.signedUrl ?? null;
+    }
     if (e.executed_path) {
       const { data: sg } = await supabase.storage.from('transaction-forms').createSignedUrl(e.executed_path, 3600);
       executed_url = sg?.signedUrl ?? null;
     }
-    return { ...e, executed_url, sent_by: e.created_by ? senderById.get(e.created_by) ?? 'Agent' : null };
+    return { ...e, executed_url, executed_clean_url, sent_by: e.created_by ? senderById.get(e.created_by) ?? 'Agent' : null };
   }));
   return NextResponse.json({ envelopes });
 }

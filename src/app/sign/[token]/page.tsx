@@ -21,7 +21,11 @@ const STYLES = [
 ];
 
 type Party = { role: string; name: string; order: number; status: string };
-type SignData = { status: string; doc_url: string | null; title: string; signer: { name: string; role: string; email: string }; parties: Party[] };
+// A spot this signer has to confirm. Positions are page fractions, y measured from
+// the top to the field's baseline — the same frame the editor placed them in.
+type SignField = { id: string; page: number; fx: number; fy: number; fw: number; type: string };
+type SignData = { status: string; doc_url: string | null; title: string; fields?: SignField[]; signer: { name: string; role: string; email: string }; parties: Party[] };
+const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : 'Date';
 
 const GOLD = '#c9922c';
 const INK = '#0d1b4b';
@@ -52,7 +56,16 @@ async function renderHand(text: string, family: string, boxW: number, boxH: numb
 // `frame-src 'self'` — an <iframe>/<embed> of it is blocked and renders blank, which
 // is what signers were seeing. Rendering the pages with pdf.js keeps everything
 // same-origin (fetch is allowed by connect-src) and shows a real preview.
-function DocView({ url }: { url: string }) {
+function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, initialsPng, dateStr }: {
+  url: string;
+  fields?: SignField[];
+  filled?: Record<string, boolean>;
+  onFill?: (f: SignField) => void;
+  activeId?: string | null;
+  signaturePng?: string;
+  initialsPng?: string;
+  dateStr?: string;
+}) {
   const [pages, setPages] = useState<string[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
 
@@ -99,10 +112,44 @@ function DocView({ url }: { url: string }) {
     );
   }
   return (
-    <div style={{ maxHeight: 560, overflowY: 'auto', background: '#4b4f52', padding: 12 }}>
-      {pages.map((src, i) => (
-        <img key={i} src={src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%', marginBottom: i === pages.length - 1 ? 0 : 12, boxShadow: '0 2px 10px rgba(0,0,0,.4)' }} />
-      ))}
+    <div id="doc-scroll" style={{ maxHeight: '60vh', overflowY: 'auto', background: '#4b4f52', padding: 12 }}>
+      {pages.map((src, i) => {
+        const pageFields = fields.filter(f => (f.page || 1) === i + 1);
+        return (
+          <div key={i} style={{ position: 'relative', marginBottom: i === pages.length - 1 ? 0 : 12, boxShadow: '0 2px 10px rgba(0,0,0,.4)' }}>
+            <img src={src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
+            {pageFields.map(f => {
+              const done = !!filled?.[f.id];
+              const isNext = activeId === f.id;
+              const img = f.type === 'signature' ? signaturePng : f.type === 'initial' ? initialsPng : undefined;
+              return (
+                <div key={f.id} id={`fld-${f.id}`}
+                  onClick={() => !done && onFill?.(f)}
+                  title={done ? 'Done' : `Click to ${typeLabel(f.type).toLowerCase()} here`}
+                  style={{
+                    position: 'absolute', left: `${f.fx * 100}%`, width: `${Math.max(f.fw * 100, 10)}%`,
+                    top: `${f.fy * 100}%`, transform: 'translateY(-100%)',
+                    height: f.type === 'date' ? 26 : 34, boxSizing: 'border-box', borderRadius: 4,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                    cursor: done ? 'default' : 'pointer',
+                    background: done ? 'rgba(255,255,255,.96)' : isNext ? '#c9922c' : 'rgba(201,146,44,.22)',
+                    border: done ? '1px solid #d6d9de' : `2px solid ${GOLD}`,
+                    boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.35)' : 'none',
+                    transition: 'background .15s, box-shadow .15s',
+                  }}>
+                  {done
+                    ? (img
+                        ? <img src={img} alt="" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                        : <span style={{ fontSize: 12, color: INK, fontWeight: 600 }}>{dateStr}</span>)
+                    : <span style={{ fontSize: 11.5, fontWeight: 800, color: isNext ? '#fff' : '#8a6d3b', whiteSpace: 'nowrap' }}>
+                        {isNext ? `▶ ${typeLabel(f.type)} here` : typeLabel(f.type)}
+                      </span>}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
       {state === 'loading' && <div style={{ color: '#cbd5e1', textAlign: 'center', padding: pages.length ? '12px 0 4px' : 60, fontSize: 13 }}>Loading document…</div>}
     </div>
   );
@@ -124,6 +171,45 @@ export default function SignPage() {
   const [err, setErr] = useState('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drew = useRef(false);
+
+  // ── Guided signing ────────────────────────────────────────────────────────
+  // Every spot the agent placed for this signer has to be clicked. Nothing is
+  // applied wholesale: the signature only lands where the signer put it.
+  const [filled, setFilled] = useState<Record<string, boolean>>({});
+  const [adopted, setAdopted] = useState<{ signature?: string; initials?: string } | null>(null);
+  const fields = useMemo(() => data?.fields ?? [], [data]);
+  const remaining = useMemo(() => fields.filter(f => !filled[f.id]), [fields, filled]);
+  const nextField = remaining[0] ?? null;
+  const allDone = fields.length > 0 && remaining.length === 0;
+  const dateStr = useMemo(() => new Date().toLocaleDateString('en-US'), []);
+
+  const scrollToField = useCallback((id: string) => {
+    const el = document.getElementById(`fld-${id}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+
+  // Turn the chosen hand into the images the page stamps into each spot, once.
+  const adopt = useCallback(async () => {
+    if (adopted) return adopted;
+    const sig = mode === 'draw'
+      ? (drew.current ? canvasRef.current?.toDataURL('image/png') : undefined)
+      : await renderHand(typed, active.family, 640, 150);
+    const ini = await renderHand(initials, active.family, 220, 150);
+    const a = { signature: sig, initials: ini };
+    setAdopted(a);
+    return a;
+  }, [adopted, mode, typed, initials]); // eslint-disable-line
+
+  const fillField = useCallback(async (f: SignField) => {
+    if (!typed.trim()) { setErr('Enter your full legal name first.'); return; }
+    if (mode === 'draw' && !drew.current) { setErr('Draw your signature first, or choose a style.'); return; }
+    setErr('');
+    await adopt();
+    setFilled(prev => ({ ...prev, [f.id]: true }));
+    // Move them along to the next one without making them hunt for it.
+    const rest = fields.filter(x => x.id !== f.id && !filled[x.id]);
+    if (rest[0]) setTimeout(() => scrollToField(rest[0].id), 180);
+  }, [typed, mode, adopt, fields, filled, scrollToField]);
 
   useEffect(() => {
     if (!token) return;
@@ -165,14 +251,19 @@ export default function SignPage() {
     if (!consent) { setErr('Please check the box to consent to sign electronically.'); return; }
     if (!typed.trim()) { setErr('Enter your full legal name.'); return; }
     if (mode === 'draw' && !drew.current) { setErr('Draw your signature above, or switch to “Choose a style”.'); return; }
+    if (fields.length && remaining.length) {
+      setErr(`You still have ${remaining.length} spot${remaining.length === 1 ? '' : 's'} to confirm on the document.`);
+      scrollToField(remaining[0].id);
+      return;
+    }
     setSubmitting(true);
     try {
       // Both paths hand the server a PNG, so the executed PDF stamps the signer's own
-      // hand either way. Initials are always rendered in the adopted style.
-      const signature_png = mode === 'draw'
-        ? canvasRef.current?.toDataURL('image/png')
-        : await renderHand(typed, active.family, 640, 150);
-      const initials_png = await renderHand(initials, mode === 'draw' ? active.family : active.family, 220, 150);
+      // hand either way. Initials are always rendered in the adopted style. These are
+      // the very images the signer already saw dropped into each spot.
+      const a = await adopt();
+      const signature_png = a.signature;
+      const initials_png = a.initials;
       const res = await fetch(`/api/sign/${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ signature_png, initials_png, typed_name: typed, signature_style: mode === 'draw' ? 'drawn' : active.key, consent }),
@@ -232,8 +323,24 @@ export default function SignPage() {
 
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
           {data?.doc_url
-            ? <DocView url={data.doc_url} />
+            ? <DocView url={data.doc_url} fields={fields} filled={filled} onFill={fillField}
+                activeId={nextField?.id ?? null}
+                signaturePng={adopted?.signature} initialsPng={adopted?.initials} dateStr={dateStr} />
             : <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>}
+          {fields.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderTop: '1px solid #eef0f2', background: allDone ? '#ecfdf5' : '#fffdf6', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: allDone ? '#15803d' : '#7c5a12' }}>
+                {allDone ? `✓ All ${fields.length} spot${fields.length === 1 ? '' : 's'} confirmed` : `${fields.length - remaining.length} of ${fields.length} confirmed`}
+              </span>
+              <span style={{ flex: 1 }} />
+              {!allDone && (
+                <button onClick={() => nextField && scrollToField(nextField.id)}
+                  style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>
+                  {Object.keys(filled).length ? `Next — ${typeLabel(nextField?.type ?? 'signature')} ▸` : 'Start signing ▸'}
+                </button>
+              )}
+            </div>
+          )}
           {data?.doc_url && (
             <div style={{ padding: '10px 16px', borderTop: '1px solid #eef0f2', textAlign: 'center' }}>
               <a href={data.doc_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: GOLD, fontWeight: 600, textDecoration: 'none' }}>Open document in a new tab ↗</a>
@@ -307,7 +414,9 @@ export default function SignPage() {
 
           <button onClick={submit} disabled={submitting}
             style={{ width: '100%', padding: '14px 0', background: GOLD, color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1 }}>
-            {submitting ? 'Submitting…' : 'Adopt & Sign'}
+            {submitting ? 'Submitting…'
+              : fields.length && remaining.length ? `${remaining.length} spot${remaining.length === 1 ? '' : 's'} left to confirm`
+              : 'Finish & Sign'}
           </button>
 
           {data && data.parties.length > 1 && (

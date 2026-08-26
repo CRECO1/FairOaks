@@ -51,8 +51,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     await logEvent(db, env.id, signer.id, 'opened', { actor: signer.email, ip: clientIp(req), ua: req.headers.get('user-agent') });
   }
 
+  // The spots THIS signer has to confirm. The page walks them through these one at
+  // a time, so it needs their positions — matched the same way buildExecutedPdf
+  // matches them: by the signer's place in the signing order, falling back to role
+  // for documents placed before per-signer assignment existed.
+  const SIG = ['signature', 'initial', 'date', 'date_signed'];
+  let fields: Array<{ id: string; page: number; fx: number; fy: number; fw: number; type: string }> = [];
+  if (env.submission_id) {
+    const { data: sub } = await db.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
+    const vals: Array<Record<string, unknown>> = Array.isArray(sub?.values) ? sub!.values : [];
+    fields = vals
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => SIG.includes(String(f.type)) && (
+        f.signerIndex
+          ? Number(f.signerIndex) === signer.signing_order
+          : String(f.signerRole ?? 'client') === String(signer.signer_role ?? 'client')))
+      .map(({ f, i }) => ({
+        id: `f${i}`, page: Number(f.page) || 1,
+        fx: Number(f.fx), fy: Number(f.fy), fw: Number(f.fw),
+        type: String(f.type) === 'date_signed' ? 'date' : String(f.type),
+      }))
+      // top-to-bottom, page by page — the order a person would read them
+      .sort((a, b) => a.page - b.page || a.fy - b.fy || a.fx - b.fx);
+  }
+
   return NextResponse.json({
-    status, doc_url,
+    status, doc_url, fields,
     title: env.title ?? 'Document',
     signer: { name: signer.name, role: signer.signer_role, email: signer.email },
     parties: signers.map(s => ({ role: s.signer_role, name: s.name, order: s.signing_order, status: s.signed_at ? 'signed' : s.status })),

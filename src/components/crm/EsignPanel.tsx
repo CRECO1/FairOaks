@@ -9,7 +9,7 @@ import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPrevie
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
 interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
-export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
+export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; executed_clean_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
 
 const GOLD = '#c9922c';
@@ -442,7 +442,19 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
                   </div>
                   {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280' }}>PDF ↗</a>}
                   {st === 'sent' ? <button onClick={() => setView({ t: 'manage', doc })} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>Manage</button>
-                    : st === 'completed' ? (env?.executed_url ? <a href={env.executed_url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>Signed ↗</a> : <span style={{ ...mini, color: '#9ca3af', cursor: 'default' }}>Signed</span>)
+                    : st === 'completed' ? (env?.executed_url ? (
+                        <span style={{ display: 'inline-flex', gap: 6 }}>
+                          {/* The document on its own — what you'd send a counterparty. */}
+                          {env.executed_clean_url && (
+                            <a href={env.executed_clean_url} target="_blank" rel="noreferrer" title="The signed document only — no Certificate of Completion"
+                              style={{ ...mini, textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>Signed doc ↗</a>
+                          )}
+                          <a href={env.executed_url} target="_blank" rel="noreferrer" title="The signed document plus the Certificate of Completion"
+                            style={{ ...mini, textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>
+                            {env.executed_clean_url ? '+ Certificate ↗' : 'Signed ↗'}
+                          </a>
+                        </span>
+                      ) : <span style={{ ...mini, color: '#9ca3af', cursor: 'default' }}>Signed</span>)
                     : <button onClick={() => setView({ t: 'send', doc })} disabled={!doc.form_id} style={{ ...mini, background: GOLD, color: '#fff', border: 'none', cursor: doc.form_id ? 'pointer' : 'default' }}>📤 Send</button>}
                 </div>
               );

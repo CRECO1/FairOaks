@@ -5,7 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
-interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
+interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
 export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; envelope?: { id: string; status: string } | null }
@@ -19,13 +19,15 @@ interface Props {
   onCompose?: (arg: { file?: File; doc?: ImportedDoc }) => void;
   // Bumped by the parent whenever the editor saves, so the list re-reads the doc.
   refreshKey?: number;
+  // Opens a PDF in the app's own viewer rather than forcing a download.
+  onPreview?: (file: { url: string; name: string }) => void;
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap' };
 
-export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, isSuperAdmin, refreshKey = 0 }: Props) {
+export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, refreshKey = 0 }: Props) {
   const [envs, setEnvs] = useState<Envelope[]>([]);
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,6 +225,25 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     )}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginLeft: 'auto' }}>
+                  {/* A completed request is where you come to fetch the executed
+                      document — view it, or save it without the certificate. */}
+                  {env.status === 'completed' && (env.executed_clean_url || env.executed_url) && (() => {
+                    const view = env.executed_clean_url || env.executed_url!;
+                    const file = `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`;
+                    const dl = (u: string) => `${u}${u.includes('?') ? '&' : '?'}download=${encodeURIComponent(file)}`;
+                    return (
+                      <>
+                        <button onClick={() => onPreview?.({ url: view, name: file })} title="View the signed document"
+                          style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>📄 View signed</button>
+                        <a href={dl(view)} title="Download the signed document (no Certificate of Completion)"
+                          style={{ ...mini, textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4', display: 'inline-flex', alignItems: 'center' }}>⬇</a>
+                        {env.executed_url && env.executed_clean_url && (
+                          <a href={dl(env.executed_url)} title="Download with the Certificate of Completion"
+                            style={{ ...mini, textDecoration: 'none', color: '#6b7280', display: 'inline-flex', alignItems: 'center' }}>⬇ + cert</a>
+                        )}
+                      </>
+                    );
+                  })()}
                   {current && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
                   {env.status !== 'voided' && !env.archived_at && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
                   {env.archived_at

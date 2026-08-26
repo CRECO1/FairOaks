@@ -219,6 +219,18 @@ export async function buildExecutedPdf(
   sourceBytes: Uint8Array,
   info: { docTitle: string; envelopeId: string; signers: ExecutedSigner[]; sigFields?: PlacedField[] },
 ): Promise<Uint8Array> {
+  return (await buildExecutedParts(sourceBytes, info)).full;
+}
+
+// Both copies of the executed document, from one pass:
+//   clean — the signed document itself, nothing appended after it
+//   full  — the same plus the Certificate of Completion (the audit trail)
+// Agents usually want to send a counterparty the clean one; the certificate is
+// what makes it enforceable, so it's what we keep and email.
+export async function buildExecutedParts(
+  sourceBytes: Uint8Array,
+  info: { docTitle: string; envelopeId: string; signers: ExecutedSigner[]; sigFields?: PlacedField[] },
+): Promise<{ clean: Uint8Array; full: Uint8Array }> {
   const doc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -282,7 +294,7 @@ export async function buildExecutedPdf(
   }
 
   const withSigs = await doc.save();
-  return appendCertificate(withSigs, info);
+  return { clean: withSigs, full: await appendCertificate(withSigs, info) };
 }
 
 // ── Finalize ─────────────────────────────────────────────────────────────────
@@ -327,13 +339,18 @@ export async function finalizeEnvelope(
         .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null }));
     }
 
-    const executed = await buildExecutedPdf(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });
+    const { clean, full: executed } = await buildExecutedParts(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });
     const execPath = `executed/${env.id}.pdf`;
+    const cleanPath = `executed/${env.id}-signed.pdf`;
     const { error: upErr } = await admin.storage.from(SIGN_BUCKET).upload(execPath, Buffer.from(executed), { contentType: 'application/pdf', upsert: true });
     if (upErr) return { ok: false, error: upErr.message };
+    // Best-effort: the certificate copy is the record of truth, so a failure here
+    // must not fail completion — it only means no clean download.
+    const { error: cleanErr } = await admin.storage.from(SIGN_BUCKET).upload(cleanPath, Buffer.from(clean), { contentType: 'application/pdf', upsert: true });
+    if (cleanErr) console.error('[esign] clean copy upload failed', cleanErr);
 
     const nowIso = new Date().toISOString();
-    await admin.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
+    await admin.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, executed_clean_path: cleanErr ? null : cleanPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
     await logEvent(admin, env.id, null, 'completed', { actor: 'system' });
 
     // Email the executed copy to every signer + the broker (best-effort; the doc is
