@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const submissionId = req.nextUrl.searchParams.get('submission_id');
   const supabase = adminClient();
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) q = q.eq('deal_id', dealId);
@@ -178,6 +178,7 @@ export async function PATCH(req: NextRequest) {
 
   // ── Nudge the current pending signer (no new envelope) ──
   if (action === 'nudge') {
+    if (env.status === 'declined') return NextResponse.json({ error: 'This request was declined — send a new one instead.' }, { status: 400 });
     const signers = await loadSigners();
     const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
     if (!current) return NextResponse.json({ error: 'No one is waiting to sign.' }, { status: 400 });

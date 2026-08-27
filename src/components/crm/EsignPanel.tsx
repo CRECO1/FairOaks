@@ -8,7 +8,7 @@ import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPrevie
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
-interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
+interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null }
 export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; executed_clean_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
 
@@ -405,15 +405,16 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
 
   useEffect(() => { load(); }, [load]);
 
-  const statusOf = useCallback((doc: Doc): 'draft' | 'sent' | 'completed' => {
+  const statusOf = useCallback((doc: Doc): 'draft' | 'sent' | 'completed' | 'declined' => {
     const e = envByDoc[doc.id];
     if (!e || e.status === 'voided') return 'draft';
     if (e.status === 'completed') return 'completed';
+    if (e.status === 'declined') return 'declined';
     return 'sent';
   }, [envByDoc]);
 
   const ordered = useMemo(() => {
-    const rank = (d: Doc) => ({ sent: 0, draft: 1, completed: 2 }[statusOf(d)]);
+    const rank = (d: Doc) => ({ declined: 0, sent: 1, draft: 2, completed: 3 }[statusOf(d)]);
     return [...docs].sort((a, b) => rank(a) - rank(b) || (b.updated_at || '').localeCompare(a.updated_at || ''));
   }, [docs, statusOf]);
 

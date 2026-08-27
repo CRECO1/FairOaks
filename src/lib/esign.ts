@@ -84,6 +84,26 @@ export function routingEmail(unit: string, opts: { signerName: string; docTitle:
   return { subject: `Your signature is requested: ${opts.docTitle}`, html: shell(brandName(unit), body) };
 }
 
+// Tells the sender their request is dead rather than merely slow — a declined
+// envelope looks exactly like a pending one until somebody says so.
+export function declinedEmail(unit: string, opts: { senderName: string; signerName: string; signerEmail: string; docTitle: string; reason?: string }) {
+  const body = `<p>Hi ${esc(opts.senderName)},</p>
+    <p><strong>${esc(opts.signerName)}</strong> (${esc(opts.signerEmail)}) declined to sign <strong>${esc(opts.docTitle)}</strong>.</p>
+    ${opts.reason ? `<p style="background:#fef2f2;border-left:3px solid #dc2626;padding:10px 12px;border-radius:4px"><strong>Reason given:</strong><br>${esc(opts.reason)}</p>` : '<p style="color:#6b7280">No reason was given.</p>'}
+    <p>The signature request has been cancelled, and no one else on it will be asked to sign. Sort out whatever is blocking it, then send a fresh request.</p>`;
+  return { subject: `Declined: ${opts.docTitle}`, html: shell(brandName(unit), body) };
+}
+
+// Chases a signer who has gone quiet. Deliberately gentler than the first invite.
+export function reminderEmail(unit: string, opts: { signerName: string; docTitle: string; senderName: string; url: string; daysWaiting: number }) {
+  const body = `<p>Hi ${esc(opts.signerName)},</p>
+    <p>Just a reminder that <strong>${esc(opts.docTitle)}</strong> is still waiting for your signature — ${esc(opts.senderName)} sent it ${opts.daysWaiting} day${opts.daysWaiting === 1 ? '' : 's'} ago.</p>
+    <p style="margin:22px 0"><a href="${esc(opts.url)}" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:8px;display:inline-block">Review &amp; Sign</a></p>
+    <p style="font-size:12px;color:#6b7280">Or paste this link into your browser:<br>${esc(opts.url)}</p>
+    <p style="font-size:12px;color:#6b7280">If you have questions about the document, reply to this email rather than signing.</p>`;
+  return { subject: `Reminder — please sign: ${opts.docTitle}`, html: shell(brandName(unit), body) };
+}
+
 export function completedEmail(unit: string, opts: { recipientName: string; docTitle: string }) {
   const body = `<p>Hi ${esc(opts.recipientName)},</p>
     <p><strong>${esc(opts.docTitle)}</strong> has been signed by all parties. The fully executed copy is attached to this email for your records.</p>

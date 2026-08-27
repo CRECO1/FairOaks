@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
+import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, declinedEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so external
 // signers (no login) reach it. Uses the service-role client directly.
@@ -26,8 +26,9 @@ async function load(token: string) {
   return { db, signer: signer as Signer, env: env as Envelope, signers: (signers ?? []) as Signer[] };
 }
 
-function turnStatus(env: Envelope, signer: Signer, signers: Signer[]): 'voided' | 'completed' | 'done' | 'waiting' | 'ready' {
+function turnStatus(env: Envelope, signer: Signer, signers: Signer[]): 'voided' | 'declined' | 'completed' | 'done' | 'waiting' | 'ready' {
   if (!env || env.status === 'voided') return 'voided';
+  if (env.status === 'declined') return 'declined';
   if (env.status === 'completed') return 'completed';
   if (signer.status === 'signed' || signer.signed_at) return 'done';
   if (signers.some(s => s.signing_order < signer.signing_order && s.status !== 'signed')) return 'waiting';
@@ -94,6 +95,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   }
 
   const b = await req.json().catch(() => ({}));
+
+  if (b.action === 'decline') {
+    const reason = String(b.reason ?? '').trim().slice(0, 500) || null;
+    const ipD = clientIp(req); const uaD = req.headers.get('user-agent'); const at = new Date().toISOString();
+    // Same atomic claim the signing path uses: a double-tap must not send two emails.
+    const { data: claimed } = await db.from('crm_envelope_signers')
+      .update({ status: 'declined', declined_at: at, decline_reason: reason, ip: ipD, user_agent: uaD })
+      .eq('id', signer.id).neq('status', 'declined').select('id');
+    if (!claimed?.length) return NextResponse.json({ status: 'declined', already: true });
+
+    // One party declining ends the whole request — nobody further down the order
+    // should be asked to sign a document that is not going to be executed.
+    await db.from('crm_envelopes').update({ status: 'declined', updated_at: at }).eq('id', env.id);
+    await logEvent(db, env.id, signer.id, 'declined', { actor: signer.email, ip: ipD, ua: uaD, meta: { reason } });
+
+    if (env.created_by) {
+      const { data: sender } = await db.from('crm_profiles').select('email, first_name, last_name').eq('id', env.created_by).maybeSingle();
+      if (sender?.email) {
+        const { subject, html } = declinedEmail(env.business_unit, {
+          senderName: [sender.first_name, sender.last_name].filter(Boolean).join(' ') || 'there',
+          signerName: signer.name, signerEmail: signer.email,
+          docTitle: env.title, reason: reason ?? undefined,
+        });
+        await sendEsignEmail(env.business_unit, sender.email, subject, html);
+      }
+    }
+    return NextResponse.json({ status: 'declined' });
+  }
+
   if (!b.consent) return NextResponse.json({ error: 'Please check the box to consent to sign electronically.' }, { status: 400 });
   const typedName = String(b.typed_name || signer.name).slice(0, 120);
   const ip = clientIp(req); const ua = req.headers.get('user-agent'); const nowIso = new Date().toISOString();

@@ -158,7 +158,9 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
 export default function SignPage() {
   const params = useParams();
   const token = String((params as Record<string, string>)?.token ?? '');
-  const [view, setView] = useState<'loading' | 'ready' | 'waiting' | 'done' | 'completed' | 'voided' | 'notfound' | 'signed' | 'error'>('loading');
+  const [view, setView] = useState<'loading' | 'ready' | 'waiting' | 'done' | 'completed' | 'voided' | 'declined' | 'notfound' | 'signed' | 'error'>('loading');
+  const [declining, setDeclining] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
   const [data, setData] = useState<SignData | null>(null);
   const [finalStatus, setFinalStatus] = useState('');
   const [typed, setTyped] = useState('');
@@ -219,7 +221,7 @@ export default function SignPage() {
         if (!ok) { setView('notfound'); return; }
         setData(j);
         setTyped(j.signer?.name || '');
-        setView(['ready', 'waiting', 'done', 'completed', 'voided'].includes(j.status) ? j.status : 'error');
+        setView(['ready', 'waiting', 'done', 'completed', 'voided', 'declined'].includes(j.status) ? j.status : 'error');
       })
       .catch(() => setView('error'));
   }, [token]);
@@ -245,6 +247,22 @@ export default function SignPage() {
   function clearSig() { const c = canvasRef.current; const ctx = c?.getContext('2d'); if (c && ctx) { ctx.clearRect(0, 0, c.width, c.height); drew.current = false; } }
 
   const active = useMemo(() => STYLES.find(s => s.key === styleKey) ?? STYLES[0], [styleKey]);
+
+  // Declining ends the request for everyone — the sender needs to know it is dead,
+  // not merely slow. A reason is invited but never required; forcing one just
+  // produces "n/a".
+  const decline = useCallback(async () => {
+    setSubmitting(true); setErr('');
+    try {
+      const r = await fetch(`/api/sign/${token}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'decline', reason: declineReason }),
+      });
+      if (!r.ok) { setErr((await r.json().catch(() => ({})))?.error || 'Could not submit.'); return; }
+      setView('declined');
+    } catch { setErr('Could not reach the server. Check your connection and try again.'); }
+    finally { setSubmitting(false); }
+  }, [token, declineReason]);
 
   const submit = useCallback(async () => {
     setErr('');
@@ -298,6 +316,7 @@ export default function SignPage() {
   if (view === 'notfound') return msg('🔍', 'Link not found', 'This signing link is invalid or has expired. Please contact your broker for a new one.');
   if (view === 'error') return msg('⚠️', 'Something went wrong', 'We couldn’t load this document. Please try the link again in a moment.');
   if (view === 'voided') return msg('🚫', 'Request canceled', 'This signature request was canceled by the sender.');
+  if (view === 'declined') return msg('✋', 'Declined', 'This document was declined and is no longer available to sign. The sender has been notified.');
   if (view === 'waiting') return msg('⏱️', 'Waiting on a previous signer', 'It’s not your turn yet. We’ll email you the moment the document is ready for your signature.');
   if (view === 'done') return msg('✅', 'You’ve already signed', 'Your signature is on file. You’ll receive the fully executed copy once everyone has signed.');
   if (view === 'completed') return msg('🎉', 'Fully executed', `“${data?.title ?? 'This document'}” has been signed by all parties. A copy has been emailed to you.`);
@@ -418,6 +437,33 @@ export default function SignPage() {
               : fields.length && remaining.length ? `${remaining.length} spot${remaining.length === 1 ? '' : 's'} left to confirm`
               : 'Finish & Sign'}
           </button>
+
+          {!declining ? (
+            <button onClick={() => setDeclining(true)} disabled={submitting}
+              style={{ width: '100%', marginTop: 10, padding: '10px 0', background: 'none', color: '#9ca3af', border: 'none', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+              I can’t sign this
+            </button>
+          ) : (
+            <div style={{ marginTop: 14, padding: 14, border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 10 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#b91c1c', marginBottom: 6 }}>Decline to sign?</div>
+              <div style={{ fontSize: 12.5, color: '#7f1d1d', lineHeight: 1.5, marginBottom: 10 }}>
+                This cancels the request for everyone and notifies the sender. It can’t be undone — a new request would have to be sent.
+              </div>
+              <textarea value={declineReason} onChange={e => setDeclineReason(e.target.value)} rows={3}
+                placeholder="What’s the problem? (optional, but it helps)"
+                style={{ width: '100%', padding: '8px 10px', border: '1px solid #fecaca', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', marginBottom: 10 }} />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => { setDeclining(false); setDeclineReason(''); }} disabled={submitting}
+                  style={{ flex: 1, padding: '10px 0', background: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                  Never mind
+                </button>
+                <button onClick={decline} disabled={submitting}
+                  style={{ flex: 1, padding: '10px 0', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1 }}>
+                  {submitting ? '…' : 'Decline'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {data && data.parties.length > 1 && (
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #f3f4f6', fontSize: 12, color: '#9ca3af' }}>

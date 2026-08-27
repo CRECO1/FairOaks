@@ -4,7 +4,7 @@
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null }
+interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
@@ -199,7 +199,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
             {envs.filter(env => !byAgent || env.sent_by === byAgent).map(env => {
               const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
               const done = signers.filter(s => s.status === 'signed' || s.signed_at).length;
-              const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
+              const declinedBy = signers.find(s => s.status === 'declined' || s.declined_at);
+              const current = declinedBy ? undefined : signers.find(s => s.status !== 'signed' && !s.signed_at);
               const dealName = env.crm_deals?.property || env.crm_deals?.client || 'Deal';
               return (
                 <div key={env.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
@@ -213,12 +214,17 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                       {dealName} · {done}/{signers.length} signed
                       {showAll && env.status !== 'sent' && env.status !== 'in_progress' && (
                         <span style={{ marginLeft: 6, fontWeight: 700, color: env.status === 'completed' ? '#15803d' : '#b91c1c' }}>
-                          · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status}
+                          · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status === 'declined' ? 'Declined' : env.status}
                         </span>
                       )}
                       {env.archived_at && <span style={{ marginLeft: 6, fontWeight: 700, color: '#6b7280' }}>· 🗄 Archived</span>}
                     </div>
-                    {current && (
+                    {declinedBy ? (
+                      <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 3, fontWeight: 600 }}>
+                        ✋ Declined by {declinedBy.name}
+                        {declinedBy.decline_reason && <span style={{ color: '#6b7280', fontWeight: 400 }}> — “{declinedBy.decline_reason}”</span>}
+                      </div>
+                    ) : current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
                         ⏳ Waiting on {current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.viewed_at ? ' · viewed' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
                       </div>
