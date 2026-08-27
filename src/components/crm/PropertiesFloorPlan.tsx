@@ -26,6 +26,7 @@ interface SuiteRow {
   status: SuiteStatus | null;
   color: string | null;
   sq_ft: number | null;
+  lease_expiration: string | null;
   notes: string | null;
 }
 
@@ -199,6 +200,12 @@ const GEO: Record<string, FloorGeo> = {
   },
 };
 
+/** Lease expiration for the compact floor-plan label: "2027-04-30" -> "4/30/27". */
+function fmtExp(d: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  return m ? `${Number(m[2])}/${Number(m[3])}/${m[1].slice(2)}` : d;
+}
+
 function wrapName(name: string): string[] {
   if (name.length <= 15 || !name.includes(' ')) return [name];
   const words = name.split(' ');
@@ -225,8 +232,8 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
   const [selKey, setSelKey] = useState<string | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<{ suite_number: string; tenant_name: string; status: SuiteStatus; color: string; sq_ft: string; notes: string }>(
-    { suite_number: '', tenant_name: '', status: 'occupied', color: 'teal', sq_ft: '', notes: '' }
+  const [form, setForm] = useState<{ suite_number: string; tenant_name: string; status: SuiteStatus; color: string; lease_expiration: string; notes: string }>(
+    { suite_number: '', tenant_name: '', status: 'occupied', color: 'teal', lease_expiration: '', notes: '' }
   );
 
   useEffect(() => { void load(building); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [businessUnit, building]);
@@ -253,6 +260,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
       status: (r?.status ?? def.defStatus ?? 'occupied') as SuiteStatus,
       color: r?.color && PALETTE[r.color] ? r.color : def.defColor,
       sq_ft: r?.sq_ft ?? null,
+      lease_expiration: r?.lease_expiration ?? null,
       notes: r?.notes ?? '',
     };
   }
@@ -265,7 +273,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
       tenant_name: c.tenant_name,
       status: c.status,
       color: c.color,
-      sq_ft: c.sq_ft == null ? '' : String(c.sq_ft),
+      lease_expiration: c.lease_expiration ?? '',
       notes: c.notes,
     });
   }
@@ -281,7 +289,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
         body: JSON.stringify({
           building: def.building, business_unit: businessUnit, floor: def.floor, suite_key: def.key,
           suite_number: form.suite_number, tenant_name: form.tenant_name, status: form.status,
-          color: form.color, sq_ft: form.sq_ft, notes: form.notes,
+          color: form.color, lease_expiration: form.lease_expiration, notes: form.notes,
         }),
       });
       const data = await res.json();
@@ -349,10 +357,10 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
         {suitesF.map(def => {
           const c = current(def);
           const accent = c.status === 'vacant' ? '#9aa0a8' : (PALETTE[c.color]?.accent ?? '#5b6776');
-          const lines = c.tenant_name && c.tenant_name !== def.name.lines.join(' ') ? wrapName(c.tenant_name) : def.name.lines;
+          const lines = c.tenant_name ? wrapName(c.tenant_name) : def.name.lines;
           const startY = def.name.y - (lines.length - 1) * 14;
           const extras: string[] = [];
-          if (c.sq_ft != null) extras.push(`${Number(c.sq_ft).toLocaleString()} SF`);
+          if (c.lease_expiration) extras.push(`Exp ${fmtExp(c.lease_expiration)}`);
           if (c.status !== 'occupied') extras.push(c.status.toUpperCase());
           return (
             <g key={`l-${def.key}`} pointerEvents="none">
@@ -476,8 +484,8 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
             <option value="reserved">Reserved</option>
           </select>
 
-          <label style={lbl}>Square footage</label>
-          <input value={form.sq_ft} onChange={e => setForm({ ...form, sq_ft: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" placeholder="e.g. 1200" style={inp} />
+          <label style={lbl}>Lease expiration</label>
+          <input type="date" value={form.lease_expiration} onChange={e => setForm({ ...form, lease_expiration: e.target.value })} style={inp} />
 
           <label style={lbl}>Color</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>

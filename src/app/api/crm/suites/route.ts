@@ -51,6 +51,7 @@ export async function PUT(req: NextRequest) {
     status,
     color,
     sq_ft,
+    lease_expiration,
     notes,
   } = body ?? {};
 
@@ -86,6 +87,7 @@ export async function PUT(req: NextRequest) {
     status: toStatus(status),
     color: color ?? null,
     sq_ft: sq_ft === '' || sq_ft == null ? null : Number(sq_ft),
+    lease_expiration: lease_expiration === '' || lease_expiration == null ? null : lease_expiration,
     notes: notes ?? null,
     updated_by: caller.id,
     updated_at: new Date().toISOString(),
