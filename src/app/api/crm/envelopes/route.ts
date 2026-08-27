@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const submissionId = req.nextUrl.searchParams.get('submission_id');
   const supabase = adminClient();
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) q = q.eq('deal_id', dealId);
@@ -83,11 +83,12 @@ export async function POST(req: NextRequest) {
     .map((s: { signer_role?: string; name: string; email: string; signing_order?: number }, i: number) => ({ ...s, signing_order: s.signing_order ?? (i + 1) }))
     .sort((a: { signing_order: number }, z: { signing_order: number }) => a.signing_order - z.signing_order);
   const now = new Date().toISOString();
-  const rows = ordered.map((s: { signer_role?: string; name: string; email: string }, i: number) => ({
+  const rows = ordered.map((s: { signer_role?: string; name: string; email: string; in_person?: boolean }, i: number) => ({
     envelope_id: env.id, signer_role: s.signer_role || 'client', name: String(s.name).trim(), email: String(s.email).trim().toLowerCase(),
     signing_order: i + 1, access_token: genToken(), status: i === 0 ? 'sent' : 'pending', sent_at: i === 0 ? now : null,
+    in_person: !!s.in_person,
   }));
-  const { data: created, error: sErr } = await supabase.from('crm_envelope_signers').insert(rows).select('id, name, email, signer_role, signing_order, access_token');
+  const { data: created, error: sErr } = await supabase.from('crm_envelope_signers').insert(rows).select('id, name, email, signer_role, signing_order, access_token, in_person');
   if (sErr) { console.error('[api/envelopes] signers', sErr); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
 
   await logEvent(supabase, env.id, null, 'created', { actor: ctx.userId, meta: { signers: rows.length } });
@@ -98,8 +99,10 @@ export async function POST(req: NextRequest) {
   const { data: prof } = await supabase.from('crm_profiles').select('first_name, last_name').eq('id', ctx.userId).maybeSingle();
   if (prof) senderName = `${prof.first_name ?? ''} ${prof.last_name ?? ''}`.trim() || senderName;
 
+  // An in-person signer gets the device handed to them, not an email — mailing a
+  // link to someone standing at the desk is just noise they have to go find.
   let sent = false;
-  if (first) {
+  if (first && !first.in_person) {
     const { subject, html } = inviteEmail(unit, { signerName: first.name, docTitle, senderName, url: signUrl(first.access_token), message });
     const r = await sendEsignEmail(unit, first.email, subject, html);
     sent = r.ok;
@@ -107,14 +110,14 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({
     envelope_id: env.id,
-    first_signer: first ? { id: first.id, name: first.name, email: first.email, sign_url: signUrl(first.access_token) } : null,
+    first_signer: first ? { id: first.id, name: first.name, email: first.email, sign_url: signUrl(first.access_token), in_person: !!first.in_person } : null,
     sent,
   });
 }
 
 // Manage a signature request: cancel it, nudge the current signer, fix a pending
 // signer's email, or add another signer — without creating a duplicate envelope.
-interface SignerRow { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; access_token: string; signed_at: string | null }
+interface SignerRow { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; access_token: string; signed_at: string | null; in_person?: boolean }
 
 export async function PATCH(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -177,6 +180,22 @@ export async function PATCH(req: NextRequest) {
   };
 
   // ── Nudge the current pending signer (no new envelope) ──
+  if (action === 'in_person_url') {
+    if (env.status === 'completed' || env.status === 'voided' || env.status === 'declined') {
+      return NextResponse.json({ error: 'This request is closed.' }, { status: 400 });
+    }
+    const signers = await loadSigners();
+    const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
+    if (!current) return NextResponse.json({ error: 'No one is waiting to sign.' }, { status: 400 });
+    if (current.status === 'pending') {
+      await supabase.from('crm_envelope_signers').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', current.id);
+    }
+    // Recorded so the audit trail shows the agent hosted this, rather than the
+    // signer having followed an emailed link.
+    await logEvent(supabase, env.id, current.id, 'in_person_started', { actor: ctx.userId, meta: { signer: current.email } });
+    return NextResponse.json({ url: signUrl(current.access_token), signer: { id: current.id, name: current.name, email: current.email } });
+  }
+
   if (action === 'nudge') {
     if (env.status === 'declined') return NextResponse.json({ error: 'This request was declined — send a new one instead.' }, { status: 400 });
     const signers = await loadSigners();

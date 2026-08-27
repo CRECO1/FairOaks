@@ -10,6 +10,7 @@ type Signer = {
   id: string; envelope_id: string; signer_role: string; name: string; email: string;
   signing_order: number; status: string; access_token: string; signature_path: string | null;
   typed_name: string | null; signed_at: string | null; viewed_at: string | null; ip: string | null;
+  in_person: boolean | null;
 };
 type Envelope = { id: string; title: string; business_unit: string; status: string; source_path: string | null; executed_path: string | null; created_by: string | null; submission_id: string | null };
 
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   return NextResponse.json({
     status, doc_url, fields,
     title: env.title ?? 'Document',
-    signer: { name: signer.name, role: signer.signer_role, email: signer.email },
+    signer: { name: signer.name, role: signer.signer_role, email: signer.email, in_person: !!signer.in_person },
     parties: signers.map(s => ({ role: s.signer_role, name: s.name, order: s.signing_order, status: s.signed_at ? 'signed' : s.status })),
   });
 }
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     .update({ status: 'signed', signed_at: nowIso, signature_path, initials_path, signature_style, typed_name: typedName, consent_at: nowIso, ip, user_agent: ua })
     .eq('id', signer.id).neq('status', 'signed').select('id');
   if (!claimed || claimed.length === 0) return NextResponse.json({ status: 'signed', already: true });
-  await logEvent(db, env.id, signer.id, 'signed', { actor: signer.email, ip, ua });
+  await logEvent(db, env.id, signer.id, 'signed', { actor: signer.email, ip, ua, meta: signer.in_person ? { in_person: true } : undefined });
 
   const { data: freshData } = await db.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');
   const all = (freshData ?? []) as Signer[];
@@ -158,10 +159,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   if (next) {
     await db.from('crm_envelope_signers').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', next.id);
     await db.from('crm_envelopes').update({ status: 'in_progress', updated_at: nowIso }).eq('id', env.id);
-    await logEvent(db, env.id, next.id, 'sent', { actor: 'system', meta: { to: next.email } });
-    const { subject, html } = routingEmail(env.business_unit, { signerName: next.name, docTitle: env.title, url: signUrl(next.access_token) });
-    await sendEsignEmail(env.business_unit, next.email, subject, html);
-    return NextResponse.json({ status: 'signed', next: true });
+    await logEvent(db, env.id, next.id, 'sent', { actor: 'system', meta: { to: next.email, in_person: !!next.in_person } });
+    // Someone signing in person is handed the device by the agent, so there is no
+    // link to email them — the dashboard offers "Sign in person" for their turn.
+    if (!next.in_person) {
+      const { subject, html } = routingEmail(env.business_unit, { signerName: next.name, docTitle: env.title, url: signUrl(next.access_token) });
+      await sendEsignEmail(env.business_unit, next.email, subject, html);
+    }
+    return NextResponse.json({ status: 'signed', next: true, next_in_person: !!next.in_person });
   }
 
   // Everyone has signed → assemble + store the executed PDF and email it to all parties.

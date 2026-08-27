@@ -8,7 +8,7 @@ import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPrevie
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
-interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null }
+interface Signer { id: string; signer_role: string; name: string; email: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean }
 export interface Envelope { id: string; submission_id?: string | null; status: string; executed_url?: string | null; executed_clean_url?: string | null; title?: string; created_at?: string; archived_at?: string | null; crm_envelope_signers?: Signer[] }
 interface Draft { role: string; name: string; email: string }
 
@@ -273,6 +273,16 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
     showToast?.('Signature request permanently deleted');
     onBack();
   }
+  // Hand the device over. Opens the signer's page directly rather than copying a
+  // link the agent then has to paste somewhere, and logs who hosted the session.
+  async function signInPerson() {
+    const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ envelope_id: env!.id, action: 'in_person_url' }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.url) { showToast?.(j.error || 'Could not open the signing page'); return; }
+    showToast?.(`🖊 Hand the device to ${j.signer?.name ?? 'the signer'}`);
+    window.open(j.url, '_blank', 'noopener');
+  }
+
   async function copyLink(signerId: string) {
     const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ envelope_id: env!.id, action: 'get_link', signer_id: signerId }) });
     const j = await r.json().catch(() => ({}));
@@ -306,7 +316,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
                   <div style={{ fontSize: 12, color: '#6b7280' }}>{s.email}</div>
                 </div>
                 <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap', ...(done ? { background: '#dcfce7', color: '#15803d' } : isCurrent ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f3f4f6', color: '#6b7280' }) }}>
-                  {done ? '✓ Signed' : isCurrent ? (s.viewed_at ? '👁 Viewed' : `⏳ Waiting ${ago(s.sent_at)}`) : 'Up next'}
+                  {done ? '✓ Signed' : isCurrent ? (s.in_person ? '🖊 In person' : s.viewed_at ? '👁 Viewed' : `⏳ Waiting ${ago(s.sent_at)}`) : 'Up next'}
                 </span>
               </div>
               {!done && (
@@ -325,7 +335,8 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
                     </div>
                   ) : (
                     <>
-                      {isCurrent && <button disabled={busy} onClick={() => act({ action: 'nudge' }, `Reminder sent to ${s.email} ✓`)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>🔔 Nudge</button>}
+                      {isCurrent && <button disabled={busy} onClick={signInPerson} title="Open this signer's page on this device" style={{ ...mini, color: '#5b3d91', borderColor: '#ded2f2', background: '#faf7ff' }}>🖊 In person</button>}
+                      {isCurrent && !s.in_person && <button disabled={busy} onClick={() => act({ action: 'nudge' }, `Reminder sent to ${s.email} ✓`)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>🔔 Nudge</button>}
                       <button onClick={() => { setEditId(s.id); setEditName(s.name); setEditEmail(s.email); setEditRole(s.signer_role); }} title="Change who signs — name, email, or role" style={mini}>✎ Edit signer</button>
                       <button onClick={() => copyLink(s.id)} title="Copy this signer's private link to share manually" style={mini}>🔗 Link</button>
                     </>

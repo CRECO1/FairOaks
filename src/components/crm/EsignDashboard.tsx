@@ -4,7 +4,7 @@
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null }
+interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
@@ -112,6 +112,19 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       const j = await r.json().catch(() => ({}));
       showToast?.(r.ok ? 'Permanently deleted' : (j.error || 'Could not delete it'));
     } finally { setBusy(null); load(); loadDocs(); }
+  }
+
+  // Fetches the signing link on demand rather than shipping every access token to
+  // the browser with the list, and records that the agent hosted the session.
+  async function signInPerson(env: Envelope) {
+    setBusy(env.id);
+    try {
+      const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: env.id, action: 'in_person_url' }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.url) { showToast?.(j.error || 'Could not open the signing page'); return; }
+      showToast?.(`🖊 Hand the device to ${j.signer?.name ?? 'the signer'}`);
+      window.open(j.url, '_blank', 'noopener');
+    } finally { setBusy(null); load(); }
   }
 
   async function nudge(env: Envelope) {
@@ -226,7 +239,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                       </div>
                     ) : current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
-                        ⏳ Waiting on {current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.viewed_at ? ' · viewed' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
+                        {current.in_person ? '🖊 To sign in person: ' : '⏳ Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · viewed' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
                       </div>
                     )}
                   </div>
@@ -250,7 +263,16 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                       </>
                     );
                   })()}
-                  {current && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
+                  {/* Offered for whoever's turn it is, not only pre-marked recipients —
+                      a tenant can turn up at the office without anyone planning for it. */}
+                  {current && (
+                    <button disabled={busy === env.id} onClick={() => signInPerson(env)}
+                      title={`Open ${current.name}'s signing page on this device`}
+                      style={{ ...mini, color: '#5b3d91', borderColor: '#ded2f2', background: '#faf7ff' }}>
+                      {busy === env.id ? '…' : '🖊 In person'}
+                    </button>
+                  )}
+                  {current && !current.in_person && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
                   {env.status !== 'voided' && !env.archived_at && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
                   {env.archived_at
                     ? <button disabled={busy === env.id} onClick={() => restoreEnv(env)} title="Put this back in the active list" style={{ ...mini }}>↩︎ Restore</button>

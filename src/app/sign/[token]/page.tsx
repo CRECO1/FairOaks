@@ -24,7 +24,7 @@ type Party = { role: string; name: string; order: number; status: string };
 // A spot this signer has to confirm. Positions are page fractions, y measured from
 // the top to the field's baseline — the same frame the editor placed them in.
 type SignField = { id: string; page: number; fx: number; fy: number; fw: number; type: string };
-type SignData = { status: string; doc_url: string | null; title: string; fields?: SignField[]; signer: { name: string; role: string; email: string }; parties: Party[] };
+type SignData = { status: string; doc_url: string | null; title: string; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
 const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : 'Date';
 
 const GOLD = '#c9922c';
@@ -339,6 +339,15 @@ export default function SignPage() {
           <h1 style={{ fontSize: 22, margin: 0 }}>{data?.title ?? 'Document'}</h1>
           <span style={{ fontSize: 13, color: '#6b7280' }}>for {data?.signer?.name} · signing as <strong style={{ textTransform: 'capitalize' }}>{data?.signer?.role}</strong></span>
         </div>
+
+        {/* The device was handed over by the agent, so the person now holding it
+            should be in no doubt about whose signature is about to be recorded. */}
+        {data?.signer?.in_person && (
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '11px 14px', marginBottom: 14, fontSize: 13.5, color: '#78350f', lineHeight: 1.5 }}>
+            <strong>In-person signing.</strong> You are signing as <strong>{data.signer.name}</strong> ({data.signer.email}) on your agent’s device.
+            If that isn’t you, hand it back before going any further.
+          </div>
+        )}
 
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
           {data?.doc_url

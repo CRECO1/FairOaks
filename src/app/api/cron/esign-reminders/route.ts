@@ -24,7 +24,7 @@ const daysSince = (iso: string | null) => (iso ? (Date.now() - new Date(iso).get
 interface Signer {
   id: string; envelope_id: string; name: string; email: string; signing_order: number;
   status: string; access_token: string; sent_at: string | null; signed_at: string | null;
-  declined_at: string | null; reminded_at: string | null; reminder_count: number;
+  declined_at: string | null; reminded_at: string | null; reminder_count: number; in_person: boolean;
 }
 
 export async function GET(req: NextRequest) {
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   const { data: allSigners } = await db
     .from('crm_envelope_signers')
-    .select('id, envelope_id, name, email, signing_order, status, access_token, sent_at, signed_at, declined_at, reminded_at, reminder_count')
+    .select('id, envelope_id, name, email, signing_order, status, access_token, sent_at, signed_at, declined_at, reminded_at, reminder_count, in_person')
     .in('envelope_id', envs.map(e => e.id))
     .order('signing_order');
   const byEnv = new Map<string, Signer[]>();
@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
     if (signers.some(s => s.declined_at || s.status === 'declined')) continue;
     const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
     if (!current || !current.sent_at) continue;                       // not yet invited
+    if (current.in_person) continue;                                  // no emailed link to chase
     if (current.reminder_count >= MAX_REMINDERS) continue;
 
     const waited = daysSince(current.sent_at);

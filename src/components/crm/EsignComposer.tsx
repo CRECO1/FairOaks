@@ -25,7 +25,7 @@ const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Be
 const cName = (c: PickContact) => c.business_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'Contact';
 
 export interface ComposerDoc { id: string; title?: string; url?: string | null; pageCount?: number }
-interface Recipient { key: string; name: string; email: string; role: string }
+interface Recipient { key: string; name: string; email: string; role: string; inPerson?: boolean }
 interface DealLite { id: string; client?: string; property?: string }
 
 const INP: React.CSSProperties = { width: '100%', padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans',sans-serif", color: '#1a1a1a', background: '#fff', boxSizing: 'border-box' };
@@ -74,7 +74,7 @@ export default function EsignComposer({
 
   const [onlySigner, setOnlySigner] = useState(false);
   const [ordered, setOrdered] = useState(true);
-  const [recipients, setRecipients] = useState<Recipient[]>([{ key: newKey(), name: '', email: '', role: 'client' }]);
+  const [recipients, setRecipients] = useState<Recipient[]>([{ key: newKey(), name: '', email: '', role: 'client', inPerson: false }]);
   const [pick, setPick] = useState<string | null>(null);   // which recipient's name box is showing suggestions
 
   const [subject, setSubject] = useState('');
@@ -161,12 +161,19 @@ export default function EsignComposer({
         method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) },
         body: JSON.stringify({
           submission_id: doc.id, title: doc.title, message: message || null,
-          signers: valid.map((x, i) => ({ signer_role: x.role, name: x.name.trim(), email: x.email.trim(), signing_order: ordered ? i + 1 : 1 })),
+          signers: valid.map((x, i) => ({ signer_role: x.role, name: x.name.trim(), email: x.email.trim(), signing_order: ordered ? i + 1 : 1, in_person: !!x.inPerson })),
         }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast?.(j.error || 'Could not send'); return; }
-      showToast?.(j.sent ? `📤 Sent to ${valid[0].email} ✓` : 'Signature request created');
+      // Nobody is waiting on an email when the first signer is standing right here —
+      // open their signing page so the device can be handed straight over.
+      if (j.first_signer?.in_person && j.first_signer?.sign_url) {
+        showToast?.(`🖊 Ready for ${valid[0].name} to sign — hand them the device`);
+        window.open(j.first_signer.sign_url, '_blank', 'noopener');
+      } else {
+        showToast?.(j.sent ? `📤 Sent to ${valid[0].email} ✓` : 'Signature request created');
+      }
       onSent();
     } finally { setSending(false); }
   }, [doc, valid, placed, signerIndex, message, ordered, authToken, showToast, onSent]);
@@ -350,13 +357,20 @@ export default function EsignComposer({
                               <input value={r.email} onChange={e => set(r.key, { email: e.target.value })} placeholder="name@company.com" style={INP} />
                             </div>
                           </div>
+                          {/* For the tenant standing at the desk. We still take the email —
+                              that is where their executed copy goes — but no link is sent. */}
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: 12.5, color: '#6b7280', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={!!r.inPerson} onChange={e => set(r.key, { inPerson: e.target.checked })}
+                              style={{ accentColor: '#c9922c', width: 15, height: 15 }} />
+                            <span>🖊 Signs in person — hand them this device instead of emailing a link</span>
+                          </label>
                         </div>
                       </div>
                     );
                   })}
                 </div>
                 <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-                  <button onClick={() => setRecipients(rs => [...rs, { key: newKey(), name: '', email: '', role: 'client' }])}
+                  <button onClick={() => setRecipients(rs => [...rs, { key: newKey(), name: '', email: '', role: 'client', inPerson: false }])}
                     style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '8px 14px', cursor: 'pointer' }}>＋ Add recipient</button>
                   {agentName && !recipients.some(r => r.email && r.email === agentEmail) && (
                     <button onClick={() => setRecipients(rs => [...rs, { key: newKey(), name: agentName, email: agentEmail || '', role: 'agent' }])}
