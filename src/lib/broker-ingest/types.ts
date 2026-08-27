@@ -108,7 +108,7 @@ export interface PropertyRecord {
   listing_company: string | null;
   listing_agent_name: string | null;
   listing_agent_phone: string | null;
-  source: 'broker_email';
+  source: string; // 'broker_email' | 'digest' | 'agent_manual' — free text in the DB
   notes: string | null;
   business_unit: 'commercial';
   created_by: string;

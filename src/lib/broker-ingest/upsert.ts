@@ -68,7 +68,7 @@ export function compositeKey(
 }
 
 /** Map an Extraction onto a uniform-keyed PropertyRecord. */
-export function toRecord(e: Extraction): PropertyRecord {
+export function toRecord(e: Extraction, source = 'broker_email'): PropertyRecord {
   return {
     name: e.name ?? e.address ?? null,
     address: e.address ?? null,
@@ -83,7 +83,7 @@ export function toRecord(e: Extraction): PropertyRecord {
     listing_company: e.listing_company ?? null,
     listing_agent_name: e.listing_agent_name ?? null,
     listing_agent_phone: e.listing_agent_phone ?? null,
-    source: 'broker_email',
+    source,
     notes: e.notes ?? null,
     business_unit: 'commercial',
     created_by: CREATED_BY,
@@ -188,19 +188,27 @@ interface ExistingRow { id: string; flyer_url: string | null; }
 async function fetchExistingRows(): Promise<{ seen: Set<string>; byKey: Map<string, ExistingRow> }> {
   const seen = new Set<string>();
   const byKey = new Map<string, ExistingRow>();
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/crm_prospective_properties?select=id,name,address,size_sf,city,listing_company,flyer_url&business_unit=eq.commercial`,
-    { headers: serviceHeaders() },
-  );
-  if (!res.ok) return { seen, byKey };
-  const rows: Array<{ id: string; name: string | null; address: string | null; size_sf: number | null; city: string | null; listing_company: string | null; flyer_url: string | null }> = await res.json();
   const add = (k: string | null, row: ExistingRow) => { if (!k) return; seen.add(k); if (!byKey.has(k)) byKey.set(k, row); };
-  for (const r of rows ?? []) {
-    const row: ExistingRow = { id: r.id, flyer_url: r.flyer_url };
-    add(dedupKey(r.name, r.address), row);
-    add(compositeKey(r.size_sf, r.city, r.listing_company), row);
-    const nk = normalizeAddress(r.name);
-    add(nk ? 'name:' + nk : null, row);
+  // PostgREST caps a single response at 1000 rows and the table is well past that,
+  // so page through ALL of it — otherwise dedup silently misses every row beyond
+  // the first page and the pipeline re-inserts duplicates of them.
+  const PAGE = 1000;
+  for (let from = 0; from < 100_000; from += PAGE) {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/crm_prospective_properties?select=id,name,address,size_sf,city,listing_company,flyer_url&business_unit=eq.commercial&order=id`,
+      { headers: { ...serviceHeaders(), Range: `${from}-${from + PAGE - 1}` } },
+    );
+    if (!res.ok) break;
+    const rows: Array<{ id: string; name: string | null; address: string | null; size_sf: number | null; city: string | null; listing_company: string | null; flyer_url: string | null }> = await res.json();
+    if (!rows || rows.length === 0) break;
+    for (const r of rows) {
+      const row: ExistingRow = { id: r.id, flyer_url: r.flyer_url };
+      add(dedupKey(r.name, r.address), row);
+      add(compositeKey(r.size_sf, r.city, r.listing_company), row);
+      const nk = normalizeAddress(r.name);
+      add(nk ? 'name:' + nk : null, row);
+    }
+    if (rows.length < PAGE) break;
   }
   return { seen, byKey };
 }
@@ -226,7 +234,7 @@ export interface UpsertResult {
  */
 export async function upsertProperties(
   items: Array<{ extraction: Extraction; flyer?: GmailImage }>,
-  opts: { commit: boolean },
+  opts: { commit: boolean; source?: string },
 ): Promise<UpsertResult> {
   const { seen: existing, byKey } = await fetchExistingRows();
   const seen = new Set<string>(existing);
@@ -245,7 +253,7 @@ export async function upsertProperties(
   };
 
   for (const { extraction: e, flyer } of items) {
-    const rec = toRecord(e);
+    const rec = toRecord(e, opts.source ?? 'broker_email');
     if (!rec.address && !rec.name) { skippedNoAddress++; continue; }
     const key = dedupKey(rec.name, rec.address);
     if (!key) { skippedNoAddress++; continue; }

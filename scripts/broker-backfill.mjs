@@ -105,6 +105,9 @@ console.log(`  extract errors:  ${res.extractErrors}`);
 console.log(`  dup skipped:     ${res.dupSkipped}`);
 console.log(`  no address/name: ${res.skippedNoAddress}`);
 console.log(`  model:           ${res.model}`);
+console.log(`  digest found:    ${res.digestListingsFound}`);
+console.log(`  digest new:      ${commit ? res.digestInserted : res.digestWouldInsert.length}${commit ? '' : ' (would insert)'}`);
+console.log(`  digest dup skip: ${res.digestDupSkipped}`);
 
 if (res.wouldInsert.length) {
   console.log(`\n=== ${commit ? 'Inserted' : 'Would insert'} ${res.wouldInsert.length} new propert${res.wouldInsert.length === 1 ? 'y' : 'ies'} ===`);
@@ -119,8 +122,17 @@ if (res.wouldInsert.length) {
   }
 }
 
+if (res.digestWouldInsert.length) {
+  console.log(`\n=== Digest listings (thin, source='digest') — ${commit ? 'inserted' : 'would insert'} ${res.digestWouldInsert.length} ===`);
+  for (const r of res.digestWouldInsert.slice(0, 50)) {
+    const loc = [r.city, r.state].filter(Boolean).join(', ');
+    console.log(`  • ${r.name ?? r.address ?? '?'}${loc ? ` — ${loc}` : ''} [${r.asset_type ?? '?'}${r.size_sf ? `, ${r.size_sf} SF` : ''}]${r.asking_rate ? ` — ${r.asking_rate}` : ''}`);
+  }
+  if (res.digestWouldInsert.length > 50) console.log(`  … +${res.digestWouldInsert.length - 50} more`);
+}
+
 console.log(
   commit
-    ? `\nDone. Inserted ${res.inserted} row(s).`
-    : `\nDry run complete. Re-run with --commit to insert ${res.wouldInsert.length} row(s).`,
+    ? `\nDone. Inserted ${res.inserted} broker row(s) + ${res.digestInserted} digest row(s).`
+    : `\nDry run complete. Re-run with --commit to insert ${res.wouldInsert.length} broker + ${res.digestWouldInsert.length} digest row(s).`,
 );

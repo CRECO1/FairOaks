@@ -6,7 +6,7 @@
  */
 
 import { getBrokerAccessToken, listMessageIds, fetchEmail } from './gmail';
-import { extractListing, MODEL } from './extract';
+import { extractListing, extractDigestListings, MODEL } from './extract';
 import { upsertProperties } from './upsert';
 import type { Extraction, GmailImage, PropertyRecord } from './types';
 
@@ -14,6 +14,19 @@ import type { Extraction, GmailImage, PropertyRecord } from './types';
 function pickFlyer(images: GmailImage[]): GmailImage | undefined {
   if (!images.length) return undefined;
   return images.reduce((a, b) => (b.data.length > a.data.length ? b : a));
+}
+
+/**
+ * Cheap gate for the digest path: only spend a second model call mining a
+ * roundup when the email is plausibly one (a marketplace sender, or a subject
+ * that reads like a "recommended/featured/new listings" blast). Keeps us from
+ * hallucinating listings out of newsletters and tenant-need broadcasts.
+ */
+function looksLikeDigest(email: { from: string; subject: string }): boolean {
+  const from = (email.from || '').toLowerCase();
+  if (/crexi|loopnet|commercialcafe|commercialsearch|commercialexchange|catylist|brevitas|biproxi|commercialedge/.test(from)) return true;
+  const subj = (email.subject || '').toLowerCase();
+  return /(recommended|featured|new listings|listings for you|properties for you|just listed|matching your search|weekly (update|listings)|top (listings|properties))/.test(subj);
 }
 
 /**
@@ -34,6 +47,8 @@ export interface PipelineOptions {
   maxImages?: number;
   /** Optional progress callback for CLI logging. */
   onProgress?: (msg: string) => void;
+  /** Also mine marketplace digests (Crexi/LoopNet roundups) for many listings. Default true. */
+  digests?: boolean;
 }
 
 export interface PipelineResult {
@@ -50,6 +65,11 @@ export interface PipelineResult {
   model: string;
   /** The de-duplicated records that were (or, on a dry run, would be) inserted. */
   wouldInsert: PropertyRecord[];
+  /** Multi-listing marketplace-digest path (Crexi/LoopNet roundups), source='digest'. */
+  digestListingsFound: number;
+  digestInserted: number;
+  digestDupSkipped: number;
+  digestWouldInsert: PropertyRecord[];
 }
 
 export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineResult> {
@@ -57,6 +77,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const limit = opts.limit ?? 50;
   const commit = opts.commit ?? false;
   const maxImages = opts.maxImages ?? 6;
+  const digests = opts.digests ?? true;
   const log = opts.onProgress ?? (() => {});
 
   const token = await getBrokerAccessToken();
@@ -64,6 +85,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   log(`Scanning ${ids.length} message(s)...`);
 
   const items: Array<{ extraction: Extraction; flyer?: GmailImage }> = [];
+  const digestItems: Array<{ extraction: Extraction }> = [];
   let nonListings = 0;
   let extractErrors = 0;
   const errorSample: string[] = [];
@@ -86,7 +108,19 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
       const ex = await extractListing(email);
       if (!ex.is_listing) {
         nonListings++;
-        log(`  [${i}/${ids.length}] not a listing — "${email.subject.slice(0, 60)}"`);
+        // A roundup the single-listing pass discards — mine it for ALL its listings.
+        if (digests && looksLikeDigest(email)) {
+          try {
+            const ds = await extractDigestListings(email);
+            for (const d of ds) digestItems.push({ extraction: d });
+            log(`  [${i}/${ids.length}] DIGEST — ${ds.length} listing(s) from "${email.subject.slice(0, 50)}"`);
+          } catch (err) {
+            noteError('digest: ' + (err as Error).message);
+            log(`  [${i}/${ids.length}] digest error — ${(err as Error).message}`);
+          }
+        } else {
+          log(`  [${i}/${ids.length}] not a listing — "${email.subject.slice(0, 60)}"`);
+        }
         continue;
       }
       items.push({ extraction: ex, flyer: pickFlyer(email.images) });
@@ -103,6 +137,18 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
 
   const up = await upsertProperties(items, { commit });
 
+  // Digest listings insert separately, tagged source='digest'. When committing,
+  // the broker rows above are already in the DB so this pass dedups against them too.
+  let digestInserted = 0;
+  let digestDupSkipped = 0;
+  let digestWouldInsert: PropertyRecord[] = [];
+  if (digestItems.length) {
+    const dup = await upsertProperties(digestItems, { commit, source: 'digest' });
+    digestInserted = dup.inserted;
+    digestDupSkipped = dup.dupSkipped;
+    digestWouldInsert = dup.records;
+  }
+
   return {
     scanned: ids.length,
     listings: items.length,
@@ -115,5 +161,9 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     photosAdded: up.photosAdded,
     model: MODEL,
     wouldInsert: up.records,
+    digestListingsFound: digestItems.length,
+    digestInserted,
+    digestDupSkipped,
+    digestWouldInsert,
   };
 }

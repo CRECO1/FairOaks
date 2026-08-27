@@ -270,3 +270,88 @@ export async function extractListingFromMedia(
   const textBlock = msg.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
   return normalizeExtraction(parseJsonObject(textBlock?.text ?? ''));
 }
+
+/** Parse a JSON array from model output; returns [] on any failure (never throws). */
+function parseJsonArray(text: string): any[] {
+  const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const start = cleaned.indexOf('[');
+  const end = cleaned.lastIndexOf(']');
+  if (start === -1 || end === -1 || end < start) return [];
+  try {
+    const v = JSON.parse(cleaned.slice(start, end + 1));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+const DIGEST_SYSTEM = `You are a data-extraction engine for a commercial real estate CRM (San Antonio / South Texas). You read ONE email and decide whether it is a MARKETPLACE DIGEST — a roundup that lists MULTIPLE distinct commercial properties in a single email (e.g. Crexi "recommended for you" / "featured listings", LoopNet roundups, CommercialSearch / CommercialCafe digests).
+
+Return ONLY a JSON array (no prose, no markdown fences):
+- If it IS a multi-listing digest: return one object per DISTINCT property shown. Digests are sparse — usually just a name, a general location, a property type, and a size or price. Extract only what is actually shown; NEVER invent an address, price, size, or zip.
+- If it is NOT a multi-listing digest (a single-property email, a tenant/buyer "looking for" broadcast, a newsletter, an event invite, a sold/leased/under-contract notice, or the recipient's own deal thread): return [].
+
+Each object:
+{
+  "name": string|null,          // listing title / property name exactly as shown
+  "address": string|null,       // street line ONLY if explicitly shown, else null (digests often omit it)
+  "city": string|null,
+  "state": string|null,
+  "zip": string|null,
+  "asset_type": "Retail"|"Industrial"|"Office"|"Flex"|"Mixed-Use"|"Land"|"Medical"|null,
+  "size_sf": number|null,       // plain number if a single building size is shown, else null
+  "asking_rate": string|null,   // free text as shown, e.g. "$18.00/SF NNN" or "$1,550,000", else null
+  "listing_company": string|null,
+  "notes": string|null          // anything else short & useful: submarket, $/SF, broker, "For Sale/Lease"
+}
+
+Map asset_type to EXACTLY one of the seven allowed values (warehouse/distribution/IOS -> Industrial; office+warehouse -> Flex; unsure -> null). Ignore anything that isn't commercial real estate.`;
+
+/**
+ * Multi-listing DIGEST path. A broker "available space" email is one property, but a
+ * marketplace roundup (Crexi/LoopNet/CommercialCafe "recommended"/"featured") packs
+ * many — and extractListing() marks those is_listing=false and drops them. This reads
+ * the same email and returns EVERY listing in it (thin: name/location/type/size).
+ * Returns [] for anything that isn't a genuine multi-listing digest.
+ */
+export async function extractDigestListings(email: FetchedEmail): Promise<Extraction[]> {
+  const content: Block[] = [
+    {
+      type: 'text',
+      text: [
+        `SUBJECT: ${email.subject}`,
+        `FROM: ${email.from}`,
+        `DATE: ${email.date}`,
+        '',
+        'BODY:',
+        (email.body || '(no text body)').slice(0, 16000),
+      ].join('\n'),
+    },
+  ];
+  // Some digests are image-based; give the model a few images but keep the call cheap.
+  for (const img of email.images.slice(0, 4)) {
+    content.push({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.data } });
+  }
+
+  const msg = await client().messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    system: DIGEST_SYSTEM,
+    messages: [{ role: 'user', content: content as Anthropic.MessageParam['content'] }],
+  });
+
+  const textBlock = msg.content.find((b): b is Anthropic.TextBlock => b.type === 'text');
+  const rows = parseJsonArray(textBlock?.text ?? '');
+  const out: Extraction[] = [];
+  for (const raw of rows) {
+    const ex = normalizeExtraction({ ...raw, is_listing: true });
+    if (!ex.name && !ex.address) continue; // nothing to key on
+    // South/Central Texas brokerage — drop the out-of-state deals national digests
+    // slip in (net-lease etc.). A blank state is assumed local and kept.
+    const st = (ex.state || '').trim().toLowerCase();
+    if (st && st !== 'tx' && st !== 'texas') continue;
+    ex.notes = ex.notes ? `[Digest] ${ex.notes}` : '[Digest — thin data, verify]';
+    out.push(ex);
+  }
+  return out;
+}
