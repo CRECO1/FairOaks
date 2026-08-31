@@ -249,6 +249,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [sendValues, setSendValues] = useState<Array<Record<string, unknown>>>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   // Which document row is being renamed, and the draft name in the box.
+  // Whether the API will serve this caller the rent roll at all — the same probe
+  // gates both the Rent Roll and Reconciliation tabs, so a hidden tab and a refused
+  // request can never disagree.
+  const [canSeeRentRoll, setCanSeeRentRoll] = useState(false);
   const [hasRentRoll, setHasRentRoll] = useState(false);
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -353,12 +357,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     activeListingIdRef.current = l.id;
     setActive(l);
     setActiveTab('info');
-    // Reconciliation only makes sense where there are tenants to bill.
-    setHasRentRoll(false);
+    // Rent roll is owner-level information, so the tabs follow what the server will
+    // actually serve: a 404 here means this agent isn't tagged on the property.
+    setCanSeeRentRoll(false); setHasRentRoll(false);
     fetch(`/api/crm/rent-roll?listing_id=${l.id}`, { headers: authHeaders })
-      .then(r => r.json())
-      .then(j => { if (activeListingIdRef.current === l.id) setHasRentRoll((j.rows ?? []).length > 0); })
-      .catch(() => { /* tab just stays hidden */ });
+      .then(async r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (activeListingIdRef.current !== l.id || !j) return;
+        setCanSeeRentRoll(true);
+        setHasRentRoll((j.rows ?? []).length > 0);
+      })
+      .catch(() => { /* tabs just stay hidden */ });
     setEditForm({
       name: l.name ?? '', address: l.address ?? '', city: l.city ?? '',
       state: l.state ?? 'TX', zip: l.zip ?? '', type: l.type ?? 'Retail',
@@ -1243,9 +1252,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'rentroll', label: '📊 Rent Roll' },
-                  // Only where there is a rent roll to bill against.
-                  ...(hasRentRoll ? [{ k: 'recon', label: '🧾 Reconciliation' }] : []),
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' },
+                  ...(canSeeRentRoll ? [{ k: 'rentroll', label: '📊 Rent Roll' }] : []),
+                  // Only where there is a rent roll, and only for someone allowed to see it.
+                  ...(canSeeRentRoll && hasRentRoll ? [{ k: 'recon', label: '🧾 Reconciliation' }] : []),
                   { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
                   <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'recon' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
@@ -1422,7 +1432,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               )}
 
               {/* ── Rent Roll tab (per-suite tenancy, vendors, building info) ── */}
-              {activeTab === 'recon' && (
+              {activeTab === 'recon' && canSeeRentRoll && (
                 <CamReconciliation
                   listingId={active.id} listingName={active.address || 'the property'}
                   address={[active.address, active.city, active.state].filter(Boolean).join(', ')}
@@ -1430,7 +1440,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })} />
               )}
 
-              {activeTab === 'rentroll' && (
+              {activeTab === 'rentroll' && canSeeRentRoll && (
                 <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} />
               )}
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
-import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   if (!ctx) return unauthorized();
   const listingId = req.nextUrl.searchParams.get('listing_id');
   if (!listingId) return NextResponse.json({ error: 'listing_id required' }, { status: 400 });
-  if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
+  if (!(await assertCanSeeRentRoll(listingId, ctx))) return notFound('Listing not found');
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_property_tenants')
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const listingId = body.listing_id as string | undefined;
   if (!listingId) return NextResponse.json({ error: 'listing_id required' }, { status: 400 });
-  if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
+  if (!(await assertCanSeeRentRoll(listingId, ctx))) return notFound('Listing not found');
   const supabase = adminClient();
   const row = clean(body);
   const { data, error } = await supabase.from('crm_property_tenants')
@@ -99,7 +99,7 @@ export async function PATCH(req: NextRequest) {
   const supabase = adminClient();
   const { data: cur } = await supabase.from('crm_property_tenants').select('listing_id, business_unit, suite').eq('id', id).maybeSingle();
   if (!cur?.listing_id) return notFound('Suite not found');
-  if (!(await assertCanAccessListing(cur.listing_id, ctx))) return notFound('Suite not found');
+  if (!(await assertCanSeeRentRoll(cur.listing_id, ctx))) return notFound('Suite not found');
   const row = clean(body);
   const { data, error } = await supabase.from('crm_property_tenants')
     .update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select(SELECT).single();
@@ -117,7 +117,7 @@ export async function DELETE(req: NextRequest) {
   const supabase = adminClient();
   const { data: cur } = await supabase.from('crm_property_tenants').select('listing_id').eq('id', id).maybeSingle();
   if (!cur?.listing_id) return notFound('Suite not found');
-  if (!(await assertCanAccessListing(cur.listing_id, ctx))) return notFound('Suite not found');
+  if (!(await assertCanSeeRentRoll(cur.listing_id, ctx))) return notFound('Suite not found');
   const { error } = await supabase.from('crm_property_tenants').delete().eq('id', id);
   if (error) { console.error('[rent-roll] DELETE', error); return NextResponse.json({ error: 'Could not remove the suite' }, { status: 500 }); }
   return NextResponse.json({ ok: true });

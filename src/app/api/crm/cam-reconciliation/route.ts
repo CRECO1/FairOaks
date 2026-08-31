@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
-import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildCamPackets, type CamData, type CamTenant } from '@/lib/cam-doc';
 
@@ -19,7 +19,8 @@ async function guard(req: NextRequest) {
   if (!ctx) return { err: unauthorized() };
   const listingId = req.nextUrl.searchParams.get('listing_id');
   if (!listingId) return { err: NextResponse.json({ error: 'listing_id required' }, { status: 400 }) };
-  if (!(await assertCanAccessListing(listingId, ctx))) return { err: notFound('Property not found') };
+  // The packets bill straight off the rent roll, so they answer to the same gate.
+  if (!(await assertCanSeeRentRoll(listingId, ctx))) return { err: notFound('Property not found') };
   const year = Number(req.nextUrl.searchParams.get('year')) || new Date().getFullYear() - 1;
   return { ctx, listingId, year };
 }
