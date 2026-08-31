@@ -7,6 +7,7 @@ import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import RentRoll from '@/components/crm/RentRoll';
+import CamReconciliation from '@/components/crm/CamReconciliation';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
 // coordinate-overlay editor.
@@ -182,7 +183,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // is active by the time it resolves — so A's docs/deals/envelopes can't paint
   // into B's panel.
   const activeListingIdRef = useRef<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'rentroll' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'rentroll' | 'recon' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -248,6 +249,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [sendValues, setSendValues] = useState<Array<Record<string, unknown>>>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   // Which document row is being renamed, and the draft name in the box.
+  const [hasRentRoll, setHasRentRoll] = useState(false);
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
@@ -351,6 +353,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     activeListingIdRef.current = l.id;
     setActive(l);
     setActiveTab('info');
+    // Reconciliation only makes sense where there are tenants to bill.
+    setHasRentRoll(false);
+    fetch(`/api/crm/rent-roll?listing_id=${l.id}`, { headers: authHeaders })
+      .then(r => r.json())
+      .then(j => { if (activeListingIdRef.current === l.id) setHasRentRoll((j.rows ?? []).length > 0); })
+      .catch(() => { /* tab just stays hidden */ });
     setEditForm({
       name: l.name ?? '', address: l.address ?? '', city: l.city ?? '',
       state: l.state ?? 'TX', zip: l.zip ?? '', type: l.type ?? 'Retail',
@@ -1235,8 +1243,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'rentroll', label: '📊 Rent Roll' }, { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'deals' | 'photos' | 'contacts' | 'team')}
+                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' }, { k: 'rentroll', label: '📊 Rent Roll' },
+                  // Only where there is a rent roll to bill against.
+                  ...(hasRentRoll ? [{ k: 'recon', label: '🧾 Reconciliation' }] : []),
+                  { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'recon' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -1411,6 +1422,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               )}
 
               {/* ── Rent Roll tab (per-suite tenancy, vendors, building info) ── */}
+              {activeTab === 'recon' && (
+                <CamReconciliation
+                  listingId={active.id} listingName={active.address || 'the property'}
+                  address={[active.address, active.city, active.state].filter(Boolean).join(', ')}
+                  authToken={authToken} isAdmin={isAdmin} onToast={onToast}
+                  onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })} />
+              )}
+
               {activeTab === 'rentroll' && (
                 <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} />
               )}
