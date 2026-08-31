@@ -484,6 +484,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+  // Which document row is being renamed, and the draft name in the box.
+  const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
   const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
@@ -1093,6 +1096,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const loadDealForms = useCallback(async (dealId: string) => {
     try { const r = await authGet(`/api/crm/form-submissions?deal_id=${dealId}`); const j = await r.json(); setDealForms(j.submissions ?? []); } catch { /* ignore */ }
   }, [authGet]);
+  // Rename a document from the deal's Docs list. Forms arrive named after the template
+  // they came from, which stops being useful the moment a deal has two of them.
+  const renameDealDoc = useCallback(async (id: string, title: string) => {
+    const name = title.trim();
+    if (!name) { showToast('Give the document a name'); return; }
+    try {
+      const r = await fetch(`/api/crm/form-submissions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ title: name }),
+      });
+      if (!r.ok) { showToast((await r.json().catch(() => ({})))?.error || 'Could not rename the document'); return; }
+      setDealForms(fs => fs.map(f => f.id === id ? { ...f, title: name } : f));
+      showToast('Renamed ✓');
+    } catch { showToast('Could not rename the document'); }
+  }, [session?.access_token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // E-sign envelopes for this deal's documents, keyed by submission_id (newest kept).
   // The deal Docs list now mirrors in property-level docs (deal_id null), so we also
   // fetch the deal's listing envelopes to cover those rows.
@@ -8119,7 +8139,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w ? '#fbfbfc' : '#fffdf6', border: '1px solid ' + (w ? '#ececf0' : '#f0e2c4'), borderRadius: 8, padding: '10px 14px' }}>
                           <span style={{ fontSize: 20, flexShrink: 0, opacity: w ? 0.5 : 1 }}>{w ? '◻️' : '📄'}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 600, color: w ? '#6b7280' : '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              {renamingDoc === f.id ? (
+                                <input autoFocus value={renameDraft}
+                                  onChange={e => setRenameDraft(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') { renameDealDoc(f.id, renameDraft); setRenamingDoc(null); }
+                                    if (e.key === 'Escape') setRenamingDoc(null);
+                                  }}
+                                  onBlur={() => { renameDealDoc(f.id, renameDraft); setRenamingDoc(null); }}
+                                  style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: '#1a1a1a', border: '1px solid #c9922c', borderRadius: 6, padding: '3px 7px', fontFamily: "'DM Sans',sans-serif", background: '#fff' }} />
+                              ) : (
+                                <>
+                                  <span onDoubleClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
+                                    title="Double-click to rename"
+                                    style={{ fontSize: 14, fontWeight: 600, color: w ? '#6b7280' : '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}>{f.title || f.crm_forms?.name || 'Form'}</span>
+                                  <button onClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
+                                    title="Rename this document"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d6c08a', fontSize: 12, padding: '0 2px', flexShrink: 0, lineHeight: 1 }}>✎</button>
+                                </>
+                              )}
+                            </div>
                             <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}</div>
                           </div>
                           {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}

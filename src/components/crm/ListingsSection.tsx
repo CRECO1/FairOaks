@@ -247,6 +247,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [sendFieldGroups, setSendFieldGroups] = useState<{ origRole: string; role: string; types: string[]; keep: boolean }[]>([]);
   const [sendValues, setSendValues] = useState<Array<Record<string, unknown>>>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+  // Which document row is being renamed, and the draft name in the box.
+  const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
   const [sendMsg, setSendMsg] = useState('');
@@ -657,6 +660,22 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     setCrmForms(prev => prev.map(x => x.id === fm.id ? { ...x, pinned: next } : x)); // optimistic
     const res = await fetch(`/api/crm/forms/${fm.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders }, body: JSON.stringify({ pinned: next }) });
     if (!res.ok) { setCrmForms(prev => prev.map(x => x.id === fm.id ? { ...x, pinned: !next } : x)); onToast('Could not update'); }
+  }
+
+  // Rename a document in place. Forms come in named after the template they were
+  // filled from ("Building Lease Agreement"), which is useless once a property has
+  // three of them — the agent needs to call it what it actually is.
+  async function renameSubmission(id: string, title: string, opts?: { dealId?: string }) {
+    const name = title.trim();
+    if (!name) { onToast('Give the document a name'); return; }
+    const res = await fetch(`/api/crm/form-submissions/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders },
+      body: JSON.stringify({ title: name }),
+    });
+    if (!res.ok) { onToast((await res.json().catch(() => ({})))?.error || 'Could not rename the document'); return; }
+    if (opts?.dealId) loadDealForms(opts.dealId);
+    if (active) loadListingForms(active.id);
+    onToast('Renamed ✓');
   }
 
   async function copySubmission(id: string, opts?: { dealId?: string }) {
@@ -1249,7 +1268,25 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                                <span style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title || f.crm_forms?.name || 'Form'}</span>
+                                {renamingDoc === f.id ? (
+                                  <input autoFocus value={renameDraft}
+                                    onChange={e => setRenameDraft(e.target.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }
+                                      if (e.key === 'Escape') setRenamingDoc(null);
+                                    }}
+                                    onBlur={() => { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }}
+                                    style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: '#1a1a1a', border: '1px solid #c9922c', borderRadius: 6, padding: '3px 7px', fontFamily: "'DM Sans',sans-serif", background: '#fff' }} />
+                                ) : (
+                                  <span onDoubleClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
+                                    title="Double-click to rename"
+                                    style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}>{f.title || f.crm_forms?.name || 'Form'}</span>
+                                )}
+                                {renamingDoc !== f.id && (
+                                  <button onClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
+                                    title="Rename this document"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d6c08a', fontSize: 12, padding: '0 2px', flexShrink: 0, lineHeight: 1 }}>✎</button>
+                                )}
                                 {/* Mirrored in from a deal at this property — same row, edited either side */}
                                 {f.deal_id && (() => {
                                   const d = deals.find(x => x.id === f.deal_id);

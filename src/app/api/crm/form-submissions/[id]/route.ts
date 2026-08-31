@@ -42,29 +42,46 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({ submission: data, blankUrl, filledUrl, edits });
 }
 
-// Targeted update of just the signature/field placements (`values`) — used when an
-// agent trims placed signature fields at send time (e.g. dropping a 2nd seller block
-// on a single-seller deal). Kept separate from the full POST so it can't clobber
-// business_unit / title / deal_id, and it records the trim in the edit log.
+// Targeted update of a document's field placements (`values`) and/or its `title`.
+// Used when an agent trims placed signature fields at send time (e.g. dropping a 2nd
+// seller block on a single-seller deal), and when renaming a document on the property
+// Documents list. Kept separate from the full POST so it can't clobber business_unit
+// or deal_id, and it records what changed in the edit log.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const { id } = await params;
   if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound();
   const body = await req.json().catch(() => ({}));
-  if (!Array.isArray(body.values)) return NextResponse.json({ error: 'values array required' }, { status: 400 });
+  const hasValues = Array.isArray(body.values);
+  const hasTitle = typeof body.title === 'string';
+  if (!hasValues && !hasTitle) return NextResponse.json({ error: 'values array or title required' }, { status: 400 });
+
+  // A document with no name is unfindable in the list, so an empty rename is refused
+  // rather than quietly saved.
+  const title = hasTitle ? body.title.trim().slice(0, 200) : null;
+  if (hasTitle && !title) return NextResponse.json({ error: 'Give the document a name.' }, { status: 400 });
+
   const supabase = adminClient();
-  const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit').eq('id', id).maybeSingle();
+  const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit, title').eq('id', id).maybeSingle();
   const { error } = await supabase.from('crm_form_submissions')
-    .update({ values: body.values, updated_at: new Date().toISOString() }).eq('id', id);
+    .update({
+      ...(hasValues ? { values: body.values } : {}),
+      ...(title ? { title } : {}),
+      updated_at: new Date().toISOString(),
+    }).eq('id', id);
   if (error) { console.error('[api/form-submissions/[id]] PATCH', error); return NextResponse.json({ error: 'Update failed' }, { status: 500 }); }
-  if (typeof body.logSummary === 'string' && body.logSummary.trim()) {
+  // A rename logs itself — the old name is how somebody finds the document again.
+  const summary = typeof body.logSummary === 'string' && body.logSummary.trim()
+    ? body.logSummary.trim()
+    : (title && cur?.title !== title ? `Renamed “${cur?.title ?? 'Untitled'}” → “${title}”` : '');
+  if (summary) {
     try {
       await supabase.from('crm_form_submission_edits').insert({
         submission_id: id, editor_id: ctx.userId, business_unit: cur?.business_unit ?? ctx.businessUnit,
-        summary: body.logSummary.trim(), changes: { kind: 'field_trim' },
+        summary, changes: { kind: title ? 'rename' : 'field_trim', ...(title ? { from: cur?.title ?? null, to: title } : {}) },
       });
     } catch (e) { console.error('[api/form-submissions/[id]] PATCH edit-log', e); }
   }
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, title: title ?? cur?.title ?? null });
 }
