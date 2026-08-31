@@ -116,6 +116,9 @@ export default function TransactionDocEditor({
   const [activePage, setActivePage] = useState(1);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  // Edit history for this document (who changed what, from /form-submissions/[id]).
+  const [edits, setEdits] = useState<{ id: string; summary: string; editor: string; created_at: string }[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const subIdRef = useRef<string | undefined>(submissionId);
   // Pages used to render at a hard 850px, which overflows any phone. They now fill
@@ -179,6 +182,7 @@ export default function TransactionDocEditor({
           const r = await fetch(`/api/crm/form-submissions/${submissionId}`, { headers: h });
           const j = await r.json();
           if (cancelled) return;
+          setEdits(Array.isArray(j.edits) ? j.edits : []);
           const vals = j.submission?.values;
           if (Array.isArray(vals) && vals.length) {
             setFields(vals.map((f: Field) => ({ ...f, id: nextId() })));
@@ -374,6 +378,14 @@ export default function TransactionDocEditor({
         if (j.submission?.id) subIdRef.current = j.submission.id;
         onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
         onSaved?.();
+        // Pull the freshly-written audit entry so History reflects this save.
+        if (subIdRef.current) {
+          try {
+            const hr = await fetch(`/api/crm/form-submissions/${subIdRef.current}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+            const hj = await hr.json();
+            setEdits(Array.isArray(hj.edits) ? hj.edits : []);
+          } catch { /* history is non-critical */ }
+        }
       } else {
         let detail = '';
         try { detail = (await res.json())?.error || ''; } catch { /* non-JSON */ }
@@ -501,6 +513,7 @@ export default function TransactionDocEditor({
           style={isMobile
             ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {subIdRef.current && !isMobile && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ ...actionBtn, background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', flexShrink: 0 }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
           {isAdmin && !isMobile && !imported && !onSend && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {!listingId && deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
@@ -721,6 +734,30 @@ export default function TransactionDocEditor({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Edit history — the audit trail of who changed what on this document */}
+      {showHistory && (
+        <div onClick={() => setShowHistory(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(15,18,20,0.4)', display: 'flex', justifyContent: 'flex-end', zIndex: 30, fontFamily: "'DM Sans',sans-serif" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 380, maxWidth: '92%', background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-8px 0 30px rgba(0,0,0,0.15)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid #eef0f2', position: 'sticky', top: 0, background: '#fff' }}>
+              <div style={{ flex: 1, fontSize: 15, fontWeight: 800, color: '#1a1a1a' }}>🕘 Edit history</div>
+              <button onClick={() => setShowHistory(false)} style={{ background: 'none', border: 'none', fontSize: 16, color: '#9ca3af', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ padding: 14 }}>
+              {edits.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No changes recorded yet. Every save logs who changed what.</div> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {edits.map(e => (
+                    <div key={e.id} style={{ borderLeft: '2px solid #e6d3a2', paddingLeft: 12 }}>
+                      <div style={{ fontSize: 13, color: '#1a1a1a', fontWeight: 600 }}>{e.summary}</div>
+                      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{e.editor} · {new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

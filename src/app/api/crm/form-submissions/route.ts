@@ -23,6 +23,55 @@ function diffBuilder(oldD: LoiData | null, newD: LoiData) {
   return { removed, added, edited, fields: Array.from(fields) };
 }
 
+// ── Overlay-doc edit log ────────────────────────────────────────────────────
+// Builder docs (the LOIs) diff their term list; every OTHER transaction doc is a
+// flat overlay of placed fields, so diff the typed values instead. Fields are
+// matched by their stable `id`, and a field that wraps across lines is stored as
+// `key_l0`/`key_l1` — group those so the summary says "Rent" once, not "Rent, Rent".
+interface OverlayField { id?: string; type?: string; value?: string; label?: string; fieldKey?: string }
+
+function overlayLabel(f: OverlayField): string {
+  const base = (f.fieldKey || '').replace(/_l\d+$/, '');
+  return (f.label || base || 'field').replace(/\s*[:#]$/, '');
+}
+
+function diffOverlay(oldVals: unknown, newVals: unknown) {
+  const list = (v: unknown): OverlayField[] => Array.isArray(v) ? (v as OverlayField[]) : [];
+  // Signature/initial/date placeholders are stamped at signing, not typed by the
+  // agent — they'd churn the log on every send, so leave them out.
+  const typed = (f: OverlayField) => !f.type || f.type === 'text' || f.type === 'check';
+  const byId = (arr: OverlayField[]) => new Map(arr.filter(f => f.id && typed(f)).map(f => [f.id as string, f]));
+  const oldMap = byId(list(oldVals)), newMap = byId(list(newVals));
+  const filled = new Set<string>(), cleared = new Set<string>(), edited = new Set<string>();
+  for (const [id, f] of newMap) {
+    const before = (oldMap.get(id)?.value ?? '').trim();
+    const after = (f.value ?? '').trim();
+    if (before === after) continue;
+    if (!before) filled.add(overlayLabel(f));
+    else if (!after) cleared.add(overlayLabel(f));
+    else edited.add(overlayLabel(f));
+  }
+  for (const [id, f] of oldMap) {
+    if (newMap.has(id)) continue;
+    if ((f.value ?? '').trim()) cleared.add(overlayLabel(f));   // the whole field was removed
+  }
+  return { filled: [...filled], cleared: [...cleared], edited: [...edited] };
+}
+
+// Keep summaries readable when someone fills a 40-blank contract in one pass.
+function nameList(names: string[], cap = 4): string {
+  if (names.length <= cap) return names.join(', ');
+  return `${names.slice(0, cap).join(', ')} +${names.length - cap} more`;
+}
+
+function summarizeOverlay(d: ReturnType<typeof diffOverlay>): string {
+  const parts: string[] = [];
+  if (d.edited.length) parts.push(`Edited ${nameList(d.edited)}`);
+  if (d.filled.length) parts.push(`Filled ${nameList(d.filled)}`);
+  if (d.cleared.length) parts.push(`Cleared ${nameList(d.cleared)}`);
+  return parts.join(' · ');
+}
+
 function summarizeDiff(d: ReturnType<typeof diffBuilder>): string {
   const parts: string[] = [];
   if (d.removed.length) parts.push(`Removed ${d.removed.join(', ')}`);
@@ -152,11 +201,13 @@ export async function POST(req: NextRequest) {
   // Snapshot the prior builder state so the save can log what the agent changed,
   // and the prior links so a save never silently unfiles the doc (below).
   let priorBuilder: LoiData | null = null;
+  let priorValues: unknown = null;
   let priorLinks: { deal_id: string | null; listing_id: string | null } | null = null;
   if (submission_id) {
     const { data: prior } = await supabase.from('crm_form_submissions')
-      .select('builder_data, deal_id, listing_id').eq('id', submission_id).maybeSingle();
+      .select('builder_data, values, deal_id, listing_id').eq('id', submission_id).maybeSingle();
     priorBuilder = (prior?.builder_data as LoiData) ?? null;
+    priorValues = prior?.values ?? null;
     if (prior) priorLinks = { deal_id: prior.deal_id ?? null, listing_id: prior.listing_id ?? null };
   }
 
@@ -185,11 +236,16 @@ export async function POST(req: NextRequest) {
 
   if (res.error) { console.error('[api/form-submissions] save', res.error); return NextResponse.json({ error: 'Save failed' }, { status: 500 }); }
 
-  // Audit trail: record what an agent changed on a builder doc (LOI term edits/deletions).
-  if (builder_data !== undefined && res.data) {
+  // Audit trail: what an agent changed, on EVERY transaction doc — builder docs
+  // (LOI term edits/deletions) and flat overlay forms alike. A save that changed
+  // nothing writes nothing, so the history stays signal.
+  if (res.data) {
     try {
       let summary = 'Created'; let changes: unknown = {};
-      if (submission_id) { const d = diffBuilder(priorBuilder, builder_data as LoiData); summary = summarizeDiff(d); changes = d; }
+      if (submission_id) {
+        if (builder_data !== undefined) { const d = diffBuilder(priorBuilder, builder_data as LoiData); summary = summarizeDiff(d); changes = d; }
+        else { const d = diffOverlay(priorValues, values ?? []); summary = summarizeOverlay(d); changes = d; }
+      }
       if (summary) await supabase.from('crm_form_submission_edits').insert({ submission_id: (res.data as { id: string }).id, editor_id: ctx.userId, business_unit: unit, summary, changes });
     } catch (e) { console.error('[api/form-submissions] edit-log', e); }
   }
