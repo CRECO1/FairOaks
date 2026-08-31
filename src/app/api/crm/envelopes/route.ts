@@ -273,7 +273,7 @@ export async function DELETE(req: NextRequest) {
 
   const supabase = adminClient();
   const { data: env } = await supabase.from('crm_envelopes')
-    .select('id, title, status, executed_path').eq('id', id).maybeSingle();
+    .select('id, title, status, executed_path, executed_clean_path').eq('id', id).maybeSingle();
   if (!env) return notFound('Signature request not found');
 
   if (!purge) {
@@ -293,7 +293,7 @@ export async function DELETE(req: NextRequest) {
     .select('signature_path, initials_path').eq('envelope_id', id);
   const paths = [
     ...(signers ?? []).flatMap(s => [s.signature_path, s.initials_path]),
-    env.executed_path,
+    env.executed_path, env.executed_clean_path,
   ].filter(Boolean) as string[];
   // Best-effort: a missing blob must not block removing the record.
   if (paths.length) {

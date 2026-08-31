@@ -204,15 +204,36 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound('Document not found');
   const supabase = adminClient();
+
+  // A document that has been signed is a business record, and the envelope carries
+  // the only proof of it: the executed PDF, each signer's signature image, the
+  // consent, the timestamps and the IP. Deleting the document used to destroy all of
+  // that — walking straight past the archive-not-delete rule on /api/crm/envelopes.
+  const { data: envs } = await supabase.from('crm_envelopes')
+    .select('id, status, executed_path, executed_clean_path').eq('submission_id', id);
+  const executed = (envs ?? []).filter(e => e.status === 'completed');
+  if (executed.length) {
+    return NextResponse.json({
+      error: 'This document has been signed, so it can’t be deleted — the executed copy and the record of who signed it live with it. Archive the signature request instead.',
+    }, { status: 400 });
+  }
+
   const { data: sub } = await supabase.from('crm_form_submissions').select('filled_path').eq('id', id).maybeSingle();
   if (sub?.filled_path) { await supabase.storage.from('transaction-forms').remove([sub.filled_path]); }
-  // Cancel + clean up any signature request on this document (voids pending signers by
-  // removing the envelope, so their sign links stop working) before deleting the row.
-  const { data: envs } = await supabase.from('crm_envelopes').select('id, executed_path').eq('submission_id', id);
+  // Cancel + clean up any UNSIGNED signature request on this document (voids pending
+  // signers by removing the envelope, so their sign links stop working).
   for (const e of envs ?? []) {
+    const { data: signers } = await supabase.from('crm_envelope_signers')
+      .select('signature_path, initials_path').eq('envelope_id', e.id);
+    // Every blob the envelope owns, not just the certificate copy — the clean copy
+    // was being left behind in storage with nothing pointing at it.
+    const blobs = [
+      ...(signers ?? []).flatMap(s => [s.signature_path, s.initials_path]),
+      e.executed_path, e.executed_clean_path,
+    ].filter(Boolean) as string[];
     await supabase.from('crm_envelope_events').delete().eq('envelope_id', e.id);
     await supabase.from('crm_envelope_signers').delete().eq('envelope_id', e.id);
-    if (e.executed_path) await supabase.storage.from('transaction-forms').remove([e.executed_path]);
+    if (blobs.length) await supabase.storage.from('transaction-forms').remove(blobs);
     await supabase.from('crm_envelopes').delete().eq('id', e.id);
   }
   const { error } = await supabase.from('crm_form_submissions').delete().eq('id', id);
