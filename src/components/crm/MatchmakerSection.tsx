@@ -57,6 +57,8 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     () => Array.from(new Set(props.map(p => p.submarket).filter(Boolean) as string[])).sort().slice(0, 40),
     [props]);
 
+  const clearReq = () => setReq({ assetTypes: [], sizeMin: '', sizeMax: '', priceMin: '', priceMax: '', submarkets: [] });
+
   function pick(b: Buyer) {
     setSel(b); setCalled(new Set());
     setReq({
@@ -89,7 +91,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
   const hasCriteria = req.assetTypes.length > 0 || req.sizeMin || req.sizeMax || req.priceMin || req.priceMax || req.submarkets.length > 0;
 
   const matches = useMemo(() => {
-    if (!sel || !hasCriteria) return [];
+    if (!hasCriteria) return [];
     const sMin = num(req.sizeMin), sMax = num(req.sizeMax), pMin = num(req.priceMin), pMax = num(req.priceMax);
     const rows = props.filter(p => {
       if (p.transaction_status && !['Available', 'available', ''].includes(p.transaction_status)) return false;
@@ -104,7 +106,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     // rank: properties with the most concrete data matched first, then by price
     const score = (p: Prop) => (p.asset_type ? 1 : 0) + (p.size_sf ? 1 : 0) + (p.sale_price ? 1 : 0);
     return rows.sort((a, b) => score(b) - score(a) || (a.sale_price ?? 9e15) - (b.sale_price ?? 9e15)).slice(0, 60);
-  }, [sel, props, req, hasCriteria]);
+  }, [props, req, hasCriteria]);
 
   const buyerName = (b: Buyer) => [b.first_name, b.last_name].filter(Boolean).join(' ') || b.business_name || 'Contact';
 
@@ -164,80 +166,98 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
 
         {/* Requirements + matches */}
         <div>
-          {!sel ? (
-            <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af', background: '#fff', border: '1px solid #eef0f2', borderRadius: 12 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
-              <div style={{ fontSize: 15, fontWeight: 600 }}>Pick a buyer or tenant to start matching</div>
-            </div>
-          ) : (
-            <>
-              {/* Requirements editor */}
-              <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>{buyerName(sel)} <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500 }}>· {sel.type}</span></div>
-                  <button onClick={saveReq} disabled={busy} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save criteria'}</button>
+          {/* The criteria panel is always here. Matchmaker used to hide it behind
+              picking a buyer, so the tab opened with nothing to search with — but
+              most of the time you just want to know what fits a shape, and only
+              sometimes is that shape a particular person's. */}
+          <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+              {sel ? (
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buyerName(sel)}</span>
+                  <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500, flexShrink: 0 }}>· {sel.type}</span>
+                  <button onClick={() => setSel(null)} title="Search without a buyer — keeps these criteria"
+                    style={{ background: 'none', border: 'none', color: '#c9b48a', cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0 }}>✕</button>
                 </div>
-                <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>Asset types</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-                  {ASSET_TYPES.map(t => {
-                    const on = req.assetTypes.includes(t);
-                    return <button key={t} onClick={() => setReq(r => ({ ...r, assetTypes: on ? r.assetTypes.filter(x => x !== t) : [...r.assetTypes, t] }))} style={chip(on)}>{t}</button>;
+              ) : (
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>Property search
+                  <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500, marginLeft: 8 }}>· pick a buyer on the left to save these to them</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                {hasCriteria && <button onClick={clearReq} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Clear</button>}
+                {sel && <button onClick={saveReq} disabled={busy} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save to ' + buyerName(sel).split(' ')[0]}</button>}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>Asset types</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+              {ASSET_TYPES.map(t => {
+                const on = req.assetTypes.includes(t);
+                return <button key={t} onClick={() => setReq(r => ({ ...r, assetTypes: on ? r.assetTypes.filter(x => x !== t) : [...r.assetTypes, t] }))} style={chip(on)}>{t}</button>;
+              })}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 6 }}>Size (SF)</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input value={req.sizeMin} onChange={e => setReq(r => ({ ...r, sizeMin: e.target.value }))} placeholder="min" style={inp} />
+                  <span style={{ color: '#9ca3af' }}>–</span>
+                  <input value={req.sizeMax} onChange={e => setReq(r => ({ ...r, sizeMax: e.target.value }))} placeholder="max" style={inp} />
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 6 }}>Sale price ($)</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input value={req.priceMin} onChange={e => setReq(r => ({ ...r, priceMin: e.target.value }))} placeholder="min" style={inp} />
+                  <span style={{ color: '#9ca3af' }}>–</span>
+                  <input value={req.priceMax} onChange={e => setReq(r => ({ ...r, priceMax: e.target.value }))} placeholder="max" style={inp} />
+                </div>
+              </div>
+            </div>
+            {submarkets.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>Submarkets</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
+                  {submarkets.map(m => {
+                    const on = req.submarkets.includes(m);
+                    return <button key={m} onClick={() => setReq(r => ({ ...r, submarkets: on ? r.submarkets.filter(x => x !== m) : [...r.submarkets, m] }))} style={chip(on)}>{m}</button>;
                   })}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 6 }}>Size (SF)</div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input value={req.sizeMin} onChange={e => setReq(r => ({ ...r, sizeMin: e.target.value }))} placeholder="min" style={inp} />
-                      <span style={{ color: '#9ca3af' }}>–</span>
-                      <input value={req.sizeMax} onChange={e => setReq(r => ({ ...r, sizeMax: e.target.value }))} placeholder="max" style={inp} />
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 6 }}>Price ($)</div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input value={req.priceMin} onChange={e => setReq(r => ({ ...r, priceMin: e.target.value }))} placeholder="min" style={inp} />
-                      <span style={{ color: '#9ca3af' }}>–</span>
-                      <input value={req.priceMax} onChange={e => setReq(r => ({ ...r, priceMax: e.target.value }))} placeholder="max" style={inp} />
-                    </div>
-                  </div>
-                </div>
-                {submarkets.length > 0 && (
-                  <>
-                    <div style={{ fontSize: 11, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>Submarkets</div>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 96, overflowY: 'auto' }}>
-                      {submarkets.map(s => {
-                        const on = req.submarkets.includes(s);
-                        return <button key={s} onClick={() => setReq(r => ({ ...r, submarkets: on ? r.submarkets.filter(x => x !== s) : [...r.submarkets, s] }))} style={chip(on)}>{s}</button>;
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
+              </>
+            )}
+          </div>
 
-              {/* Matches */}
-              <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>
-                {hasCriteria ? `${matches.length} matching propert${matches.length === 1 ? 'y' : 'ies'}` : 'Set criteria above to see matches'}
+          {/* Matches */}
+          <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>
+            {hasCriteria ? `${matches.length} matching propert${matches.length === 1 ? 'y' : 'ies'}` : 'Set criteria above to search'}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {matches.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || p.address || 'Property'}</div>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{[p.asset_type, fmtSf(p.size_sf), fmt$(p.sale_price), p.submarket || p.city].filter(Boolean).join(' · ')}</div>
+                </div>
+                {p.listing_url && <a href={p.listing_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>View ↗</a>}
+                {/* Queueing a showing call needs somebody to show it TO. */}
+                {!sel
+                  ? null
+                  : called.has(p.id)
+                    ? <span style={{ fontSize: 12.5, fontWeight: 700, color: '#16a34a', flexShrink: 0 }}>✓ Queued</span>
+                    : <button onClick={() => addCall(p)} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Call</button>}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {matches.map(p => (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || p.address || 'Property'}</div>
-                      <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{[p.asset_type, fmtSf(p.size_sf), fmt$(p.sale_price), p.submarket || p.city].filter(Boolean).join(' · ')}</div>
-                    </div>
-                    {p.listing_url && <a href={p.listing_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, color: '#6b7280', textDecoration: 'none', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', flexShrink: 0 }}>View ↗</a>}
-                    {called.has(p.id)
-                      ? <span style={{ fontSize: 12.5, fontWeight: 700, color: '#16a34a', flexShrink: 0 }}>✓ Queued</span>
-                      : <button onClick={() => addCall(p)} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 12px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>＋ Call</button>}
-                  </div>
-                ))}
-                {hasCriteria && matches.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10 }}>No available properties fit these criteria yet.</div>
-                )}
+            ))}
+            {hasCriteria && matches.length === 0 && (
+              <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 13, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10 }}>No available properties fit these criteria yet.</div>
+            )}
+            {!hasCriteria && (
+              <div style={{ textAlign: 'center', padding: 50, color: '#9ca3af', background: '#fff', border: '1px solid #eef0f2', borderRadius: 12 }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Pick an asset type or a size to search {props.length.toLocaleString()} properties</div>
+                <div style={{ fontSize: 13, marginTop: 5 }}>Or choose a buyer on the left to load the criteria you saved for them.</div>
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
