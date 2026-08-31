@@ -2350,9 +2350,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function loadCampaignProjects() {
     const { data } = await supabase.from('crm_campaign_projects').select('*').order('created_at', { ascending: true });
     setCampaignProjects(data ?? []);
-    // Expand every project (and the ungrouped bucket) by default so campaigns are
-    // visible at a glance without a click; users can still collapse individually.
-    setExpandedProjects(new Set([...(data ?? []).map((p: any) => p.id), '__ungrouped__']));
+    // Everything starts closed — with a dozen projects open at once the page was a
+    // wall of campaign rows. The collapsed header still shows the name, the campaign
+    // count and when it last sent, so the summary is there without the noise.
+    setExpandedProjects(new Set());
   }
 
   async function createCampaignProject() {
@@ -5809,6 +5810,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             if (!rated.length) return null;
                             const avg = Math.round(rated.reduce((s, c) => s + (c.open_rate ?? 0), 0) / rated.length);
                             return <span style={{ marginLeft: 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif" }}>Avg open rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
+                          })()}
+                          {(campaignProjects.length > 0 || visibleCampaigns.some(c => !c.project_id)) && (() => {
+                            const allKeys = [...campaignProjects.map(p => p.id), '__ungrouped__'];
+                            const anyOpen = allKeys.some(k => expandedProjects.has(k));
+                            // The open-rate note above already claims the auto margin; a second
+                            // one would split the gap and drag it away from the right edge.
+                            const hasAvg = allFiltered.some(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
+                            return (
+                              <button onClick={() => setExpandedProjects(anyOpen ? new Set() : new Set(allKeys))}
+                                style={{ marginLeft: hasAvg ? 12 : 'auto', background: 'none', border: 'none', fontSize: 12.5, color: '#9ca3af', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+                                {anyOpen ? '▴ Collapse all' : '▾ Expand all'}
+                              </button>
+                            );
                           })()}
                         </div>
 
