@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 
+const SHOW = 60;   // rendered at once; the heading always reports the true total
 const ASSET_TYPES = ['Retail', 'Office', 'Industrial', 'Flex', 'Land', 'Medical', 'Mixed-Use'];
 
 interface Buyer {
@@ -39,16 +40,21 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [b, p] = await Promise.all([
-      supabase.from('crm_clients')
-        .select('id,first_name,last_name,business_name,type,agent_id,phone,email,asset_types,req_size_min,req_size_max,req_price_min,req_price_max,req_submarkets')
-        .eq('business_unit', businessUnit).in('type', ['Buyer', 'Tenant', 'Landlord/Investor']).order('first_name'),
-      supabase.from('crm_prospective_properties')
+    const PAGE = 1000;   // PostgREST's hard ceiling per response, whatever .range() asks
+    const allProps: Prop[] = [];
+    const buyersQ = supabase.from('crm_clients')
+      .select('id,first_name,last_name,business_name,type,agent_id,phone,email,asset_types,req_size_min,req_size_max,req_price_min,req_price_max,req_submarkets')
+      .eq('business_unit', businessUnit).in('type', ['Buyer', 'Tenant', 'Landlord/Investor']).order('first_name');
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabase.from('crm_prospective_properties')
         .select('id,name,address,city,submarket,asset_type,size_sf,sale_price,asking_rate,transaction_status,listing_url,listing_agent_name,listing_agent_phone')
-        .eq('business_unit', businessUnit).range(0, 4999),
-    ]);
+        .eq('business_unit', businessUnit).order('id').range(from, from + PAGE - 1);
+      allProps.push(...((data ?? []) as Prop[]));
+      if (!data || data.length < PAGE) break;
+    }
+    const b = await buyersQ;
     setBuyers((b.data ?? []) as Buyer[]);
-    setProps((p.data ?? []) as Prop[]);
+    setProps(allProps);
     setLoading(false);
   }, [supabase, businessUnit]);
   useEffect(() => { load(); }, [load]);
@@ -105,7 +111,7 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
     });
     // rank: properties with the most concrete data matched first, then by price
     const score = (p: Prop) => (p.asset_type ? 1 : 0) + (p.size_sf ? 1 : 0) + (p.sale_price ? 1 : 0);
-    return rows.sort((a, b) => score(b) - score(a) || (a.sale_price ?? 9e15) - (b.sale_price ?? 9e15)).slice(0, 60);
+    return rows.sort((a, b) => score(b) - score(a) || (a.sale_price ?? 9e15) - (b.sale_price ?? 9e15));
   }, [props, req, hasCriteria]);
 
   const buyerName = (b: Buyer) => [b.first_name, b.last_name].filter(Boolean).join(' ') || b.business_name || 'Contact';
@@ -229,10 +235,12 @@ export default function MatchmakerSection({ businessUnit, onToast, currentUserId
 
           {/* Matches */}
           <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, marginBottom: 10 }}>
-            {hasCriteria ? `${matches.length} matching propert${matches.length === 1 ? 'y' : 'ies'}` : 'Set criteria above to search'}
+            {hasCriteria
+              ? `${matches.length.toLocaleString()} matching propert${matches.length === 1 ? 'y' : 'ies'}${matches.length > SHOW ? ` · showing the first ${SHOW}` : ''}`
+              : 'Set criteria above to search'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {matches.map(p => (
+            {matches.slice(0, SHOW).map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '11px 14px' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || p.address || 'Property'}</div>
