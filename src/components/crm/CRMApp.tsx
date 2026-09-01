@@ -485,6 +485,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   // Which document row is being renamed, and the draft name in the box.
+  // Editing a contact's notes without leaving their card — this is where you are
+  // when you want to record who was in the room, so it is where @-tagging has to work.
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesDraft, setNotesDraft] = useState('');
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
@@ -835,6 +839,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadContactEmails(activeClient.id);
       loadClientTasks(activeClient.id);
       setNewActivity({ type: 'call', note: '' });
+      // A half-written note must not follow you onto the next contact's card.
+      setEditingNotes(false); setNotesDraft('');
       setShowContactCompose(false);
       setReplyToContactEmail(null);
       setReplyingToThreadKey(null);
@@ -9199,13 +9205,50 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 )}
 
-                {/* Notes */}
-                {c.notes && (
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>Notes</div>
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 14px', fontSize: 14, color: '#374151', lineHeight: 1.6 }}>{c.notes}</div>
+                {/* Notes — editable in place, and the one place @-tagging is actually
+                    reached for: you are looking at the person when you remember who
+                    else was in the meeting. */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Notes</div>
+                    {!editingNotes && (
+                      <button onClick={() => { setNotesDraft(c.notes || ''); setEditingNotes(true); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c9922c', fontSize: 12, fontWeight: 700, padding: 0 }}>
+                        {c.notes ? '✎ Edit' : '＋ Add a note'}
+                      </button>
+                    )}
                   </div>
-                )}
+                  {editingNotes ? (
+                    <div>
+                      <MentionTextarea
+                        profiles={profiles} contacts={clients} value={notesDraft}
+                        onChange={setNotesDraft}
+                        placeholder="Who was in the meeting, what was agreed… (type @ to tag a teammate or a contact)"
+                        className="crm-input"
+                        style={{ minHeight: 96, resize: 'vertical', fontSize: 14, width: '100%' }} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button className="crm-btn crm-btn-primary crm-btn-sm" disabled={saving}
+                          onClick={async () => {
+                            const tagged = parseMentionContactIds(notesDraft, clients).filter(id => id !== c.id);
+                            setSaving(true);
+                            const { error } = await supabase.from('crm_clients')
+                              .update({ notes: notesDraft, tagged_contact_ids: tagged }).eq('id', c.id);
+                            setSaving(false);
+                            if (error) { showToast('Could not save the note'); return; }
+                            setClients(prev => prev.map(x => x.id === c.id ? { ...x, notes: notesDraft, tagged_contact_ids: tagged } : x));
+                            setActiveClient(prev => prev ? { ...prev, notes: notesDraft, tagged_contact_ids: tagged } : prev);
+                            setEditingNotes(false);
+                            showToast(tagged.length ? `Saved · ${tagged.length} contact${tagged.length === 1 ? '' : 's'} tagged` : 'Note saved ✓');
+                          }}>{saving ? 'Saving…' : 'Save'}</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setEditingNotes(false)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : c.notes ? (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '12px 14px', fontSize: 14, color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{c.notes}</div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: '#d1d5db' }}>No notes yet.</div>
+                  )}
+                </div>
 
                 {/* Tagged Agents */}
                 <div>
