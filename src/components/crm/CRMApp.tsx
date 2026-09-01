@@ -4149,9 +4149,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
                           />
                         </th>
+                        {/* Email and phone live on the contact's card, not here — the
+                            list is for finding somebody, the card is for reaching them.
+                            Both are still searchable and still in the export. */}
                         <th>Contact</th>
-                        <th>Email</th>
-                        <th>Phone</th>
                         <th>Deals</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Last Touch</th>
@@ -4160,7 +4161,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredContacts.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
+                      {filteredContacts.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
                       {filteredContacts.map(c => {
                         const clientDeals = deals.filter(d => d.client_id === c.id);
                         const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
@@ -4241,16 +4242,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   })()}
                                 </div>
                               </div>
-                            </td>
-
-                            {/* Email */}
-                            <td style={{ fontSize: 13 }}>
-                              {c.email ? <a href={`mailto:${c.email}`} style={{ color: '#c9922c', textDecoration: 'none' }}>{c.email}</a> : '—'}
-                            </td>
-
-                            {/* Phone */}
-                            <td style={{ fontSize: 13 }}>
-                              {c.phone ? <a href={`tel:${c.phone}`} style={{ color: '#374151', textDecoration: 'none' }}>{phoneDisp(c.phone)}</a> : '—'}
                             </td>
 
                             {/* Deals — every deal on this contact, plus an always-available add */}
