@@ -1831,12 +1831,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function logActivity(clientId: string, type: CRMActivity['type'], note: string) {
     const now = new Date().toISOString();
+    // Who else was on the call / in the meeting, parsed from the note itself so the
+    // tag and the sentence can never drift apart.
+    const tagged = parseMentionContactIds(note, clients).filter(id => id !== clientId);
     const { error } = await supabase.from('crm_client_activities').insert([{
       client_id: clientId,
       agent_id: profile!.id,
       type,
       note,
+      tagged_contact_ids: tagged,
     }]);
+    // Also roll them onto the contact, so the card's "Also in the room" list covers
+    // people tagged in a touch as well as in the notes field.
+    if (tagged.length) {
+      const cur = clients.find(c => c.id === clientId)?.tagged_contact_ids ?? [];
+      const merged = Array.from(new Set([...cur, ...tagged]));
+      if (merged.length !== cur.length) {
+        await supabase.from('crm_clients').update({ tagged_contact_ids: merged }).eq('id', clientId);
+        setClients(prev => prev.map(c => c.id === clientId ? { ...c, tagged_contact_ids: merged } : c));
+        setActiveClient(prev => prev && prev.id === clientId ? { ...prev, tagged_contact_ids: merged } : prev);
+      }
+    }
     if (error) { console.error('Activity log error:', error.message); }
     // Always stamp last_touched_at on client regardless of activity insert outcome
     await supabase.from('crm_clients').update({ last_touched_at: now }).eq('id', clientId);
@@ -4156,12 +4171,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <th>Deals</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Last Touch</th>
-                        <th>Source</th>
                         <th style={{ width: 90 }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredContacts.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
+                      {filteredContacts.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
                       {filteredContacts.map(c => {
                         const clientDeals = deals.filter(d => d.client_id === c.id);
                         const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
@@ -4309,11 +4323,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </span>
                                 );
                               })()}
-                            </td>
-
-                            {/* Source */}
-                            <td style={{ fontSize: 12 }}>
-                              {c.lead_source ? <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 7px', borderRadius: 8, fontWeight: 600 }}>{c.lead_source}</span> : <span style={{ color: '#d1d5db' }}>—</span>}
                             </td>
 
                             {/* Actions — hover-reveal */}
@@ -9443,10 +9452,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </button>
                       ))}
                     </div>
-                    <textarea className="crm-input" style={{ minHeight: 54, resize: 'none', fontSize: 13, marginBottom: 8 }}
-                      placeholder={newActivity.type === 'call' ? 'Notes from the call…' : newActivity.type === 'email' ? 'Subject / summary…' : newActivity.type === 'meeting' ? 'Meeting outcome…' : 'Add a note…'}
+                    {/* Logging a touch is exactly when you record who else was on the
+                        call or in the meeting, so it needs the same @ picker. */}
+                    <MentionTextarea
+                      className="crm-input"
+                      style={{ minHeight: 54, resize: 'vertical', fontSize: 13, marginBottom: 8, width: '100%' }}
+                      placeholder={newActivity.type === 'call' ? 'Notes from the call… (@ to tag who was on it)' : newActivity.type === 'email' ? 'Subject / summary… (@ to tag who was copied)' : newActivity.type === 'meeting' ? 'Meeting outcome… (@ to tag who was there)' : 'Add a note… (@ to tag a teammate or contact)'}
+                      profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
                       value={newActivity.note}
-                      onChange={e => setNewActivity(a => ({ ...a, note: e.target.value }))} />
+                      onChange={v => setNewActivity(a => ({ ...a, note: v }))} />
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                       <button className="crm-btn crm-btn-gold crm-btn-sm"
                         disabled={activityLoading}
