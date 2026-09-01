@@ -14,6 +14,12 @@ interface Props {
   onMentionedContactIds?: (ids: string[]) => void;
   profiles: Profile[];
   contacts?: MentionContact[];
+  /**
+   * Called when the typed name matches nobody and the user chooses to add them.
+   * Should create the contact and resolve to it (or null on failure). Without this
+   * the "add" row simply isn't offered.
+   */
+  onCreateContact?: (name: string) => Promise<MentionContact | null>;
   placeholder?: string;
   className?: string;
   style?: React.CSSProperties;
@@ -42,7 +48,8 @@ export function parseMentionContactIds(text: string, contacts: MentionContact[])
   return contacts.filter(c => { const t = contactToken(c).toLowerCase(); return t && hits.includes(t); }).map(c => c.id);
 }
 
-export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], placeholder, className, style, id }: Props) {
+export default function MentionTextarea({ value, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts = [], onCreateContact, placeholder, className, style, id }: Props) {
+  const [creating, setCreating] = useState(false);
   const [search, setSearch]     = useState('');
   const [showDrop, setShowDrop] = useState(false);
   const [atPos, setAtPos]       = useState(-1);
@@ -101,6 +108,19 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
       }
     }, 0);
   }, [value, atPos, search, onChange, onMentionedIds, onMentionedContactIds, profiles, contacts]);
+  // Somebody from outside the CRM — the other side's broker, a lender, an attorney.
+  // Offered only once the name looks like a name, so the row doesn't flash up on the
+  // first keystroke of every mention.
+  const canCreate = !!onCreateContact && search.trim().length >= 2 && suggestions.length === 0 && contactHits.length === 0;
+  const createAndPick = useCallback(async () => {
+    if (!onCreateContact) return;
+    setCreating(true);
+    try {
+      const made = await onCreateContact(search.trim());
+      if (made) insertMention(contactToken(made) || search.trim());
+    } finally { setCreating(false); }
+  }, [onCreateContact, search, insertMention]);
+
   const pickProfile = useCallback((p: Profile) => insertMention(p.first_name), [insertMention]);
   const pickContact = useCallback((c: MentionContact) => insertMention(contactToken(c)), [insertMention]);
 
@@ -136,7 +156,7 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
       </div>
 
       {/* Dropdown rendered fixed to viewport — bypasses all overflow clipping */}
-      {showDrop && (suggestions.length > 0 || contactHits.length > 0) && rect && (
+      {showDrop && (suggestions.length > 0 || contactHits.length > 0 || canCreate) && rect && (
         <div style={{
           position: 'fixed',
           top: rect.top,
@@ -176,6 +196,22 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
               </div>
             </button>
           ))}
+
+          {canCreate && (
+            <button
+              onMouseDown={e => { e.preventDefault(); createAndPick(); }}
+              disabled={creating}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 12px', background: '#fffdf6', border: 'none', cursor: creating ? 'default' : 'pointer', textAlign: 'left', fontFamily: "'DM Sans', sans-serif" }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#fdf6e8')}
+              onMouseLeave={e => (e.currentTarget.style.background = '#fffdf6')}
+            >
+              <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#fdf6e8', color: '#a06a12', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, flexShrink: 0, border: '1px dashed #e6d3a2' }}>＋</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#a06a12' }}>{creating ? 'Adding…' : `Add “${search.trim()}” as a contact`}</div>
+                <div style={{ fontSize: 11, color: '#b8935a' }}>Not in the CRM yet — creates the record and tags them</div>
+              </div>
+            </button>
+          )}
 
           {contactHits.length > 0 && (
             <div style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, borderTop: suggestions.length ? '1px solid #f1f5f9' : undefined, borderBottom: '1px solid #f1f5f9' }}>

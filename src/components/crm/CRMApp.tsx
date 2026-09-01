@@ -487,6 +487,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Which document row is being renamed, and the draft name in the box.
   // Editing a contact's notes without leaving their card — this is where you are
   // when you want to record who was in the room, so it is where @-tagging has to work.
+  // Tagging somebody who isn't in the CRM yet — the other side's broker, a lender.
+  // Creates the minimum that makes them a real contact; the rest can be filled in on
+  // their card later. Goes through the contacts API so the column defaults that bite
+  // on a raw insert (business_name, cell_phone) are handled in one place.
+  const createContactFromMention = useCallback(async (name: string) => {
+    const parts = name.trim().split(/\s+/);
+    const body = {
+      first_name: parts[0], last_name: parts.slice(1).join(' '),
+      type: 'Buyer', lead_source: 'Tagged in a note',
+    };
+    try {
+      const r = await fetch('/api/crm/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.contact) { showToast(j.error || 'Could not add that contact'); return null; }
+      setClients(prev => [j.contact, ...prev]);
+      showToast(`Added ${name.trim()} to contacts ✓`);
+      return j.contact;
+    } catch { showToast('Could not add that contact'); return null; }
+  }, [session?.access_token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
@@ -7559,6 +7583,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           placeholder="Deal notes… (type @ to tag a teammate or a contact)"
                           profiles={profiles}
                           contacts={clients}
+                          onCreateContact={createContactFromMention}
                           value={dealNotesText}
                           onChange={v => setDealNotesText(v)}
                           onMentionedIds={ids => {
@@ -8935,7 +8960,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   className="crm-input"
                   style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
                   placeholder={nc.type === 'Agent' || nc.type === 'Broker' ? 'Co-op deals, referral history, who was in the meeting… (type @ to tag a teammate or a contact)' : 'Pre-approval status, timeline, who was in the meeting… (type @ to tag a teammate or a contact)'}
-                  profiles={profiles} contacts={clients} value={nc.notes}
+                  profiles={profiles} contacts={clients} onCreateContact={createContactFromMention} value={nc.notes}
                   onChange={v => setNc({ ...nc, notes: v })}
                   onMentionedIds={setMentionedIds} />
               </div>
@@ -9221,7 +9246,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {editingNotes ? (
                     <div>
                       <MentionTextarea
-                        profiles={profiles} contacts={clients} value={notesDraft}
+                        profiles={profiles} contacts={clients} onCreateContact={createContactFromMention} value={notesDraft}
                         onChange={setNotesDraft}
                         placeholder="Who was in the meeting, what was agreed… (type @ to tag a teammate or a contact)"
                         className="crm-input"
@@ -10413,7 +10438,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   className="crm-input"
                   style={{ minHeight: 70, resize: 'vertical', width: '100%' }}
                   placeholder={ec.type === 'Agent' || ec.type === 'Broker' ? 'Co-op deals, referral history, who was in the meeting… (type @ to tag a teammate or a contact)' : 'Pre-approval status, timeline, who was in the meeting… (type @ to tag a teammate or a contact)'}
-                  profiles={profiles} contacts={clients} value={ec.notes}
+                  profiles={profiles} contacts={clients} onCreateContact={createContactFromMention} value={ec.notes}
                   onChange={v => setEc({ ...ec, notes: v })}
                   onMentionedIds={setMentionedIds} />
                 {(() => {
