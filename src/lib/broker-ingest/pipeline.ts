@@ -7,7 +7,7 @@
 
 import { getBrokerAccessToken, listMessageIds, fetchEmail } from './gmail';
 import { extractListing, extractDigestListings, MODEL } from './extract';
-import { upsertProperties } from './upsert';
+import { upsertProperties, fetchExistingRows } from './upsert';
 import type { Extraction, GmailImage, PropertyRecord } from './types';
 
 /** The flyer is almost always the largest image (logos/signatures/pixels are tiny). */
@@ -88,90 +88,119 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const ids = await listMessageIds(token, query, limit);
   log(`Scanning ${ids.length} message(s)...`);
 
-  const items: Array<{ extraction: Extraction; flyer?: GmailImage }> = [];
-  const digestItems: Array<{ extraction: Extraction }> = [];
+  // Accumulators. We flush to the DB in chunks (below) rather than once at the end,
+  // so a run that hits the serverless time limit mid-label still persists — and
+  // enriches — every chunk it finished, instead of losing the whole run's work.
   let nonListings = 0;
   let extractErrors = 0;
+  let listings = 0;
   const errorSample: string[] = [];
   const noteError = (msg: string) => {
     const m = (msg || 'unknown error').slice(0, 300);
     if (errorSample.length < 5 && !errorSample.includes(m)) errorSample.push(m);
   };
-
-  let i = 0;
-  for (const id of ids) {
-    i++;
-    const email = await fetchEmail(token, id, maxImages);
-    if (!email) {
-      extractErrors++;
-      noteError(`fetch failed (message ${id})`);
-      log(`  [${i}/${ids.length}] fetch failed (${id})`);
-      continue;
-    }
-    try {
-      const ex = await extractListing(email);
-      if (!ex.is_listing) {
-        nonListings++;
-        // A roundup the single-listing pass discards — mine it for ALL its listings.
-        if (digests && looksLikeDigest(email)) {
-          try {
-            const ds = await extractDigestListings(email);
-            for (const d of ds) digestItems.push({ extraction: d });
-            log(`  [${i}/${ids.length}] DIGEST — ${ds.length} listing(s) from "${email.subject.slice(0, 50)}"`);
-          } catch (err) {
-            noteError('digest: ' + (err as Error).message);
-            log(`  [${i}/${ids.length}] digest error — ${(err as Error).message}`);
-          }
-        } else {
-          log(`  [${i}/${ids.length}] not a listing — "${email.subject.slice(0, 60)}"`);
-        }
-        continue;
-      }
-      items.push({ extraction: ex, flyer: pickFlyer(email.images) });
-      log(
-        `  [${i}/${ids.length}] LISTING — ${ex.name ?? ex.address ?? '(no name)'} ` +
-          `[${ex.asset_type ?? 'Office'}${ex.size_sf ? `, ${ex.size_sf} SF` : ''}]`,
-      );
-    } catch (err) {
-      extractErrors++;
-      noteError((err as Error).message);
-      log(`  [${i}/${ids.length}] extract error — ${(err as Error).message}`);
-    }
-  }
-
-  const up = await upsertProperties(items, { commit });
-
-  // Digest listings insert separately, tagged source='digest'. When committing,
-  // the broker rows above are already in the DB so this pass dedups against them too.
+  let inserted = 0;
+  let dupSkipped = 0;
+  let skippedNoAddress = 0;
+  let photosAdded = 0;
+  let enriched = 0;
+  let fieldsEnriched = 0;
+  const wouldInsert: PropertyRecord[] = [];
+  let digestListingsFound = 0;
   let digestInserted = 0;
   let digestDupSkipped = 0;
-  let digestWouldInsert: PropertyRecord[] = [];
-  let digestEnriched = 0;
-  let digestFieldsEnriched = 0;
-  if (digestItems.length) {
-    const dup = await upsertProperties(digestItems, { commit, source: 'digest' });
-    digestInserted = dup.inserted;
-    digestDupSkipped = dup.dupSkipped;
-    digestWouldInsert = dup.records;
-    digestEnriched = dup.enriched;
-    digestFieldsEnriched = dup.fieldsEnriched;
+  const digestWouldInsert: PropertyRecord[] = [];
+
+  // One dedup index for the whole run, mutated as each chunk commits so later
+  // chunks (and the digest pass) dedup against what earlier chunks just inserted.
+  const existing = await fetchExistingRows();
+
+  const CHUNK = 6;
+  let i = 0;
+  for (let c = 0; c < ids.length; c += CHUNK) {
+    const items: Array<{ extraction: Extraction; flyer?: GmailImage }> = [];
+    const digestItems: Array<{ extraction: Extraction }> = [];
+
+    for (const id of ids.slice(c, c + CHUNK)) {
+      i++;
+      const email = await fetchEmail(token, id, maxImages);
+      if (!email) {
+        extractErrors++;
+        noteError(`fetch failed (message ${id})`);
+        log(`  [${i}/${ids.length}] fetch failed (${id})`);
+        continue;
+      }
+      try {
+        const ex = await extractListing(email);
+        if (!ex.is_listing) {
+          nonListings++;
+          // A roundup the single-listing pass discards — mine it for ALL its listings.
+          if (digests && looksLikeDigest(email)) {
+            try {
+              const ds = await extractDigestListings(email);
+              for (const d of ds) digestItems.push({ extraction: d });
+              log(`  [${i}/${ids.length}] DIGEST — ${ds.length} listing(s) from "${email.subject.slice(0, 50)}"`);
+            } catch (err) {
+              noteError('digest: ' + (err as Error).message);
+              log(`  [${i}/${ids.length}] digest error — ${(err as Error).message}`);
+            }
+          } else {
+            log(`  [${i}/${ids.length}] not a listing — "${email.subject.slice(0, 60)}"`);
+          }
+          continue;
+        }
+        items.push({ extraction: ex, flyer: pickFlyer(email.images) });
+        listings++;
+        log(
+          `  [${i}/${ids.length}] LISTING — ${ex.name ?? ex.address ?? '(no name)'} ` +
+            `[${ex.asset_type ?? 'Office'}${ex.size_sf ? `, ${ex.size_sf} SF` : ''}]`,
+        );
+      } catch (err) {
+        extractErrors++;
+        noteError((err as Error).message);
+        log(`  [${i}/${ids.length}] extract error — ${(err as Error).message}`);
+      }
+    }
+
+    // Flush this chunk. Broker listings first, then any digest listings (tagged
+    // source='digest'), which dedup against the broker rows just inserted via the
+    // shared index. upsertProperties also enriches existing dups in place.
+    if (items.length) {
+      const up = await upsertProperties(items, { commit, existing });
+      inserted += up.inserted;
+      dupSkipped += up.dupSkipped;
+      skippedNoAddress += up.skippedNoAddress;
+      photosAdded += up.photosAdded;
+      enriched += up.enriched;
+      fieldsEnriched += up.fieldsEnriched;
+      wouldInsert.push(...up.records);
+    }
+    if (digestItems.length) {
+      digestListingsFound += digestItems.length;
+      const dup = await upsertProperties(digestItems, { commit, source: 'digest', existing });
+      digestInserted += dup.inserted;
+      digestDupSkipped += dup.dupSkipped;
+      enriched += dup.enriched;
+      fieldsEnriched += dup.fieldsEnriched;
+      digestWouldInsert.push(...dup.records);
+    }
   }
 
   return {
     scanned: ids.length,
-    listings: items.length,
+    listings,
     nonListings,
     extractErrors,
     errorSample,
-    inserted: up.inserted,
-    dupSkipped: up.dupSkipped,
-    skippedNoAddress: up.skippedNoAddress,
-    photosAdded: up.photosAdded,
-    enriched: up.enriched + digestEnriched,
-    fieldsEnriched: up.fieldsEnriched + digestFieldsEnriched,
+    inserted,
+    dupSkipped,
+    skippedNoAddress,
+    photosAdded,
+    enriched,
+    fieldsEnriched,
     model: MODEL,
-    wouldInsert: up.records,
-    digestListingsFound: digestItems.length,
+    wouldInsert,
+    digestListingsFound,
     digestInserted,
     digestDupSkipped,
     digestWouldInsert,

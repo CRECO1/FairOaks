@@ -203,7 +203,10 @@ export async function fetchExistingKeys(): Promise<Set<string>> {
 }
 
 /** An existing row we might enrich: its id plus its current column values. */
-interface ExistingRow { id: string; data: Record<string, unknown>; }
+export interface ExistingRow { id: string; data: Record<string, unknown>; }
+
+/** Prefetched dedup index, shared across chunked upsert passes within one run. */
+export interface ExistingIndex { seen: Set<string>; byKey: Map<string, ExistingRow>; }
 
 /** Columns pulled for each existing row — dedup keys + flyer + every enrichable field. */
 const EXISTING_SELECT =
@@ -219,7 +222,7 @@ const EXISTING_SELECT =
  * can backfill a flyer photo AND fill in missing data fields on an existing row
  * when a richer duplicate arrives.
  */
-async function fetchExistingRows(): Promise<{ seen: Set<string>; byKey: Map<string, ExistingRow> }> {
+export async function fetchExistingRows(): Promise<ExistingIndex> {
   const seen = new Set<string>();
   const byKey = new Map<string, ExistingRow>();
   const add = (k: string | null, row: ExistingRow) => { if (!k) return; seen.add(k); if (!byKey.has(k)) byKey.set(k, row); };
@@ -272,10 +275,11 @@ export interface UpsertResult {
  */
 export async function upsertProperties(
   items: Array<{ extraction: Extraction; flyer?: GmailImage }>,
-  opts: { commit: boolean; source?: string },
+  opts: { commit: boolean; source?: string; existing?: ExistingIndex },
 ): Promise<UpsertResult> {
-  const { seen: existing, byKey } = await fetchExistingRows();
-  const seen = new Set<string>(existing);
+  // Reuse a caller-provided dedup index when chunking a run (one fetch, mutated as
+  // we go so later chunks see earlier chunks' inserts); otherwise fetch our own.
+  const { seen, byKey } = opts.existing ?? (await fetchExistingRows());
   const toInsert: PropertyRecord[] = [];
   let dupSkipped = 0;
   let skippedNoAddress = 0;
