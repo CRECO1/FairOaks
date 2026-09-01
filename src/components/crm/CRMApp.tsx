@@ -4171,7 +4171,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <th>Deals</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Last Touch</th>
-                        <th style={{ width: 90 }}></th>
+                        <th style={{ width: 168 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4326,7 +4326,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </td>
 
                             {/* Actions — hover-reveal */}
-                            <td onClick={e => e.stopPropagation()}>
+                            <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                               <div className="row-actions" style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
                                 {(() => {
                                   const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
