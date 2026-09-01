@@ -140,13 +140,36 @@ async function uploadFlyer(flyer: GmailImage): Promise<string | null> {
   }
 }
 
-/** PATCH just the flyer_url on an existing row (used to backfill photos onto dups). */
-async function patchFlyerUrl(id: string, url: string): Promise<void> {
+/** PATCH arbitrary columns on an existing row (flyer backfill + duplicate enrichment). */
+async function patchRow(id: string, patch: Record<string, unknown>): Promise<void> {
   await fetch(`${SUPABASE_URL}/rest/v1/crm_prospective_properties?id=eq.${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...serviceHeaders(), Prefer: 'return=minimal' },
-    body: JSON.stringify({ flyer_url: url }),
+    body: JSON.stringify(patch),
   });
+}
+
+/**
+ * Columns we FILL IN on an existing row when a duplicate arrives carrying data the
+ * row is missing. Fill-empty only: an incoming dup can ADD data points but never
+ * overwrites a value already there, so manual edits and first-sighting provenance
+ * survive. Excludes identity/provenance (name, source, business_unit, created_by),
+ * the always-defaulted fields (asset_type, transaction_status, vacancy_status),
+ * and notes + flyer_url (each handled specially in the dup path below).
+ */
+const ENRICHABLE_FIELDS: readonly string[] = [
+  'address', 'suite', 'city', 'state', 'zip', 'size_sf', 'asking_rate',
+  'listing_company', 'listing_agent_name', 'listing_agent_phone',
+  'property_subtype', 'building_class', 'year_built', 'lot_size_acres', 'office_sf',
+  'clear_height_ft', 'dock_doors', 'grade_doors', 'power', 'sprinklered', 'zoning',
+  'elevator', 'listing_type', 'sale_price', 'price_per_sf', 'lease_rate_min',
+  'lease_rate_max', 'lease_type', 'opex_psf', 'available_sf', 'divisible',
+  'highlights', 'brochure_url', 'available_date',
+];
+
+/** null / undefined / blank-string all count as "no value yet" for enrichment. */
+function isEmpty(v: unknown): boolean {
+  return v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
 }
 
 /**
@@ -179,11 +202,22 @@ export async function fetchExistingKeys(): Promise<Set<string>> {
   return set;
 }
 
-interface ExistingRow { id: string; flyer_url: string | null; }
+/** An existing row we might enrich: its id plus its current column values. */
+interface ExistingRow { id: string; data: Record<string, unknown>; }
+
+/** Columns pulled for each existing row — dedup keys + flyer + every enrichable field. */
+const EXISTING_SELECT =
+  'id,name,address,suite,city,state,zip,size_sf,asking_rate,listing_company,' +
+  'listing_agent_name,listing_agent_phone,notes,property_subtype,building_class,' +
+  'year_built,lot_size_acres,office_sf,clear_height_ft,dock_doors,grade_doors,' +
+  'power,sprinklered,zoning,elevator,listing_type,sale_price,price_per_sf,' +
+  'lease_rate_min,lease_rate_max,lease_type,opex_psf,available_sf,divisible,' +
+  'highlights,brochure_url,available_date,flyer_url';
 
 /**
- * Like fetchExistingKeys, but also returns a key → { id, flyer_url } map so the
- * upsert can backfill a flyer photo onto an existing row that has none.
+ * Like fetchExistingKeys, but also returns a key → { id, data } map so the upsert
+ * can backfill a flyer photo AND fill in missing data fields on an existing row
+ * when a richer duplicate arrives.
  */
 async function fetchExistingRows(): Promise<{ seen: Set<string>; byKey: Map<string, ExistingRow> }> {
   const seen = new Set<string>();
@@ -195,17 +229,17 @@ async function fetchExistingRows(): Promise<{ seen: Set<string>; byKey: Map<stri
   const PAGE = 1000;
   for (let from = 0; from < 100_000; from += PAGE) {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/crm_prospective_properties?select=id,name,address,size_sf,city,listing_company,flyer_url&business_unit=eq.commercial&order=id`,
+      `${SUPABASE_URL}/rest/v1/crm_prospective_properties?select=${EXISTING_SELECT}&business_unit=eq.commercial&order=id`,
       { headers: { ...serviceHeaders(), Range: `${from}-${from + PAGE - 1}` } },
     );
     if (!res.ok) break;
-    const rows: Array<{ id: string; name: string | null; address: string | null; size_sf: number | null; city: string | null; listing_company: string | null; flyer_url: string | null }> = await res.json();
+    const rows: Array<Record<string, unknown>> = await res.json();
     if (!rows || rows.length === 0) break;
     for (const r of rows) {
-      const row: ExistingRow = { id: r.id, flyer_url: r.flyer_url };
-      add(dedupKey(r.name, r.address), row);
-      add(compositeKey(r.size_sf, r.city, r.listing_company), row);
-      const nk = normalizeAddress(r.name);
+      const row: ExistingRow = { id: String(r.id), data: r };
+      add(dedupKey(r.name as string | null, r.address as string | null), row);
+      add(compositeKey(r.size_sf as number | null, r.city as string | null, r.listing_company as string | null), row);
+      const nk = normalizeAddress(r.name as string | null);
       add(nk ? 'name:' + nk : null, row);
     }
     if (rows.length < PAGE) break;
@@ -222,6 +256,10 @@ export interface UpsertResult {
   skippedNoAddress: number;
   /** Flyer photos uploaded + attached (new inserts + backfilled dups). */
   photosAdded: number;
+  /** Existing duplicate rows that gained at least one previously-missing data field. */
+  enriched: number;
+  /** Total individual fields filled in across all enriched rows. */
+  fieldsEnriched: number;
   /** The de-duplicated records that were (or on a dry run, would be) inserted. */
   records: PropertyRecord[];
 }
@@ -242,6 +280,8 @@ export async function upsertProperties(
   let dupSkipped = 0;
   let skippedNoAddress = 0;
   let photosAdded = 0;
+  let enriched = 0;
+  let fieldsEnriched = 0;
 
   // Upload each distinct flyer at most once per run (same content → same path anyway).
   const uploadCache = new Map<GmailImage, string | null>();
@@ -262,12 +302,41 @@ export async function upsertProperties(
 
     if (seen.has(key) || (ck && seen.has(ck)) || (nk && seen.has(nk))) {
       dupSkipped++;
-      // Backfill: attach a flyer to an existing row that has none.
-      if (flyer && opts.commit) {
+      // A duplicate isn't just skipped: fold any data it carries that the existing
+      // row is missing back onto that row (fill-empty), append genuinely-new notes,
+      // and backfill a flyer if the row has none — all in one PATCH. Never overwrite.
+      if (opts.commit) {
         const row = byKey.get(key) ?? (ck ? byKey.get(ck) : undefined) ?? (nk ? byKey.get(nk) : undefined);
-        if (row && !row.flyer_url) {
-          const url = await doUpload(flyer);
-          if (url) { await patchFlyerUrl(row.id, url); row.flyer_url = url; photosAdded++; }
+        if (row) {
+          const patch: Record<string, unknown> = {};
+          const recFields = rec as unknown as Record<string, unknown>;
+          for (const f of ENRICHABLE_FIELDS) {
+            const incoming = recFields[f];
+            if (isEmpty(row.data[f]) && !isEmpty(incoming)) patch[f] = incoming;
+          }
+          // If we just learned the street address, refresh the stored dedup key too.
+          if ('address' in patch) {
+            patch.address_key = dedupKey(String(row.data.name ?? rec.name ?? ''), String(patch.address)) || null;
+          }
+          // Notes: append new detail (deduped by substring) rather than fill-only, so
+          // a richer email adds its notes past a thin [Digest] placeholder — but the
+          // same email re-scanned tomorrow won't append twice.
+          if (!isEmpty(rec.notes)) {
+            const incoming = String(rec.notes).trim();
+            const cur = isEmpty(row.data.notes) ? '' : String(row.data.notes);
+            if (!cur.includes(incoming)) patch.notes = cur ? `${cur}\n${incoming}` : incoming;
+          }
+          const dataKeys = Object.keys(patch).filter((k) => k !== 'address_key');
+          // Attach a flyer to an existing row that has none (same PATCH).
+          if (flyer && isEmpty(row.data.flyer_url)) {
+            const url = await doUpload(flyer);
+            if (url) { patch.flyer_url = url; photosAdded++; }
+          }
+          if (Object.keys(patch).length) {
+            await patchRow(row.id, patch);
+            for (const [k, v] of Object.entries(patch)) row.data[k] = v;
+            if (dataKeys.length) { enriched++; fieldsEnriched += dataKeys.length; }
+          }
         }
       }
       continue;
@@ -300,6 +369,8 @@ export async function upsertProperties(
     dupSkipped,
     skippedNoAddress,
     photosAdded,
+    enriched,
+    fieldsEnriched,
     records: toInsert,
   };
 }

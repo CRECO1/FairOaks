@@ -62,6 +62,10 @@ export interface PipelineResult {
   dupSkipped: number;
   skippedNoAddress: number;
   photosAdded: number;
+  /** Existing duplicate rows enriched with previously-missing data (broker + digest). */
+  enriched: number;
+  /** Total individual fields filled in across all enriched rows. */
+  fieldsEnriched: number;
   model: string;
   /** The de-duplicated records that were (or, on a dry run, would be) inserted. */
   wouldInsert: PropertyRecord[];
@@ -142,11 +146,15 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   let digestInserted = 0;
   let digestDupSkipped = 0;
   let digestWouldInsert: PropertyRecord[] = [];
+  let digestEnriched = 0;
+  let digestFieldsEnriched = 0;
   if (digestItems.length) {
     const dup = await upsertProperties(digestItems, { commit, source: 'digest' });
     digestInserted = dup.inserted;
     digestDupSkipped = dup.dupSkipped;
     digestWouldInsert = dup.records;
+    digestEnriched = dup.enriched;
+    digestFieldsEnriched = dup.fieldsEnriched;
   }
 
   return {
@@ -159,6 +167,8 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     dupSkipped: up.dupSkipped,
     skippedNoAddress: up.skippedNoAddress,
     photosAdded: up.photosAdded,
+    enriched: up.enriched + digestEnriched,
+    fieldsEnriched: up.fieldsEnriched + digestFieldsEnriched,
     model: MODEL,
     wouldInsert: up.records,
     digestListingsFound: digestItems.length,

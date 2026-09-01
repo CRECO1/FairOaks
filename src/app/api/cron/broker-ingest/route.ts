@@ -134,6 +134,9 @@ export async function GET(req: NextRequest) {
       inserted: r.inserted,
       dupSkipped: r.dupSkipped,
       photosAdded: r.photosAdded,
+      // Duplicates that folded previously-missing data onto the existing row.
+      dupEnriched: r.enriched,
+      fieldsEnriched: r.fieldsEnriched,
       geocoded,
       enriched,
       model: r.model,

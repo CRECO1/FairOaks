@@ -103,6 +103,7 @@ console.log(`  listings:        ${res.listings}`);
 console.log(`  non-listings:    ${res.nonListings}`);
 console.log(`  extract errors:  ${res.extractErrors}`);
 console.log(`  dup skipped:     ${res.dupSkipped}`);
+console.log(`  dup enriched:    ${res.enriched} (${res.fieldsEnriched} field(s) filled)`);
 console.log(`  no address/name: ${res.skippedNoAddress}`);
 console.log(`  model:           ${res.model}`);
 console.log(`  digest found:    ${res.digestListingsFound}`);
