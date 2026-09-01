@@ -11,7 +11,7 @@ export interface RentRollRow {
   id: string; suite?: string | null; building?: string | null; tenant_name?: string | null;
   size_sf?: number | null; lease_type?: string | null; lease_start?: string | null; lease_expiration?: string | null;
   monthly_rent?: number | null; annual_rent?: number | null; rent_psf?: number | null; pct_share?: number | null;
-  mailbox_box?: string | null; keys?: number | null; email?: string | null; contact_name?: string | null;
+  mailbox_box?: string | null; keys?: number | null; email?: string | null; phone?: string | null; contact_name?: string | null;
   contact_id?: string | null; crm_clients?: CrmContact | null;
   renewal_status?: string | null; notes?: string | null; sort_order?: number | null;
 }
@@ -39,7 +39,7 @@ function leaseStatus(exp?: string | null): { label: string; bg: string; color: s
   return { label: 'Current', bg: '#f0fdf4', color: '#15803d' };
 }
 
-type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'contact_name';
+type SortKey = 'suite' | 'building' | 'tenant_name' | 'size_sf' | 'lease_expiration' | 'monthly_rent' | 'annual_rent' | 'lease_type' | 'mailbox_box' | 'keys' | 'email' | 'phone' | 'contact_name';
 const NUMERIC_COLS = new Set<SortKey>(['size_sf', 'monthly_rent', 'annual_rent', 'keys']);
 // Column headers. `k` makes the column sortable; Status has no key of its own because
 // it's derived from the expiration date — sort by Lease Exp to get the same order.
@@ -56,6 +56,7 @@ const HEAD: { label: string; w: number; k?: SortKey; right?: boolean }[] = [
   { label: 'Box', w: 58, k: 'mailbox_box' },
   { label: 'Keys', w: 48, k: 'keys', right: true },
   { label: 'Email', w: 178, k: 'email' },
+  { label: 'Phone', w: 116, k: 'phone' },
   { label: 'Contact', w: 130, k: 'contact_name' },
   { label: 'Notes', w: 160 },
 ];
@@ -363,7 +364,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
   }, [rows, q, showVacant, sort]);
 
   const exportCsv = () => {
-    const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'mailbox_box', 'keys', 'email', 'contact_name', 'renewal_status', 'notes'];
+    const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'renewal_status', 'notes'];
     const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
     const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const csv = [head.join(','), ...rows.map(r => cols.map(c => esc(c === 'contact_name' ? rowContact(r) : r[c])).join(','))].join('\n');
@@ -453,6 +454,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
                   <td style={TD}><Cell value={r.mailbox_box} onSave={v => saveCell(r.id, 'mailbox_box', v)} /></td>
                   <td style={TD}><Cell value={r.keys} align="right" type="number" onSave={v => saveCell(r.id, 'keys', v)} /></td>
                   <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
+                  <td style={TD}><Cell value={r.phone} onSave={v => saveCell(r.id, 'phone', v)} /></td>
                   <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
                   <td style={TD}><Cell value={r.notes} onSave={v => saveCell(r.id, 'notes', v)} /></td>
                   <td style={{ ...TD, textAlign: 'center' }}>

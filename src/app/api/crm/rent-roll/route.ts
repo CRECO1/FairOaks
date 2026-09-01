@@ -11,7 +11,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 // Columns an agent may write. Everything else (ids, timestamps) is server-owned.
 const EDITABLE = ['tenant_name', 'suite', 'building', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration',
-  'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'mailbox_box', 'keys', 'email', 'contact_name',
+  'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'mail_only',
   'contact_id', 'renewal_status', 'notes', 'sort_order'] as const;
 const NUMERIC = new Set(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'keys', 'sort_order']);
 const DATE = new Set(['lease_start', 'lease_expiration']);

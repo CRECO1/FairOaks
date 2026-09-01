@@ -34,13 +34,14 @@ export async function GET(req: NextRequest) {
   const [{ data: row }, { data: roll }] = await Promise.all([
     db.from('crm_cam_reconciliations').select('*').eq('listing_id', listingId).eq('year', year).maybeSingle(),
     db.from('crm_property_tenants')
-      .select('suite, tenant_name, building, size_sf, monthly_rent, contact_name, email')
+      .select('suite, tenant_name, building, size_sf, monthly_rent, contact_name, email, mail_only')
       .eq('listing_id', listingId).order('suite'),
   ]);
 
   // The rent roll is the tenant list; the saved row only carries the numbers that
   // can't be derived from it (what each tenant actually paid, next year's base rent).
-  const tenants = (roll ?? []).map(t => ({
+  // Mail-only tenants rent no space: they are neither billed nor counted.
+  const tenants = (roll ?? []).filter(t => !t.mail_only).map(t => ({
     suite: String(t.suite ?? ''), name: t.tenant_name ?? '', building: t.building ?? '',
     sf: t.size_sf == null ? null : Number(t.size_sf),
     monthly_rent: t.monthly_rent == null ? null : Number(t.monthly_rent),
@@ -89,12 +90,12 @@ export async function POST(req: NextRequest) {
   if (!data.propertySf) return NextResponse.json({ error: 'Set the property’s total leasable square footage first — every allocation divides by it.' }, { status: 400 });
 
   const { data: roll } = await db.from('crm_property_tenants')
-    .select('suite, tenant_name, building, size_sf, contact_name')
+    .select('suite, tenant_name, building, size_sf, contact_name, mail_only')
     .eq('listing_id', listingId).order('suite');
 
   const saved = data.tenants ?? {};
   const tenants: CamTenant[] = (roll ?? [])
-    .filter(t => t.suite && t.tenant_name && !/^vacant$/i.test(t.tenant_name))
+    .filter(t => t.suite && t.tenant_name && !/^vacant$/i.test(t.tenant_name) && !t.mail_only)
     .filter(t => !suite || String(t.suite) === suite)
     // A tenant with no square footage cannot be allocated to, and billing them a
     // guess is worse than leaving them out of the run.
