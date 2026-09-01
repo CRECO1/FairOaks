@@ -4171,7 +4171,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <th>Deals</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Last Touch</th>
-                        <th style={{ width: 168 }}></th>
+                        <th style={{ width: 130 }}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4333,9 +4333,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   return (
                                     <button
                                       onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
-                                      style={{ position: 'relative', background: pendingCount > 0 ? '#fef3e2' : '#f8fafc', border: `1px solid ${pendingCount > 0 ? '#fde68a' : '#e2e8f0'}`, borderRadius: 7, color: pendingCount > 0 ? '#92400e' : '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 7px', display: 'flex', alignItems: 'center', gap: 3, fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}
-                                      title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''}` : 'Add task'}>
-                                      {pendingCount > 0 ? `${pendingCount} task${pendingCount !== 1 ? 's' : ''}` : '+ Task'}
+                                      style={{ position: 'relative', background: pendingCount > 0 ? '#fef3e2' : '#f8fafc', border: `1px solid ${pendingCount > 0 ? '#fde68a' : '#e2e8f0'}`, borderRadius: 7, color: pendingCount > 0 ? '#92400e' : '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 0', width: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }}
+                                      title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''} — click to add another` : 'Add a task for this contact'}>
+                                      {pendingCount > 0 ? pendingCount : '＋'}
                                     </button>
                                   );
                                 })()}
