@@ -98,7 +98,6 @@ const SUITES: SuiteDef[] = [
   { key: 'tbi_3216', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 760, y: 170, w: 180, h: 210 }, name: { x: 850, y: 282, lines: ['TBI Warrior'], size: 19 }, num: { x: 850, y: 333 }, defNumber: '3216', defColor: 'green' },
   { key: 'tbi_3218', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 940, y: 170, w: 200, h: 210 }, name: { x: 1040, y: 282, lines: ['TBI Warrior'], size: 19 }, num: { x: 1040, y: 333 }, defNumber: '3218', defColor: 'green' },
   { key: 'here_now', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 320, y: 600, w: 170, h: 310 }, name: { x: 405, y: 700, lines: ['Here & Now'], size: 19 }, num: { x: 405, y: 752 }, defNumber: '3201', defColor: 'amber' },
-  { key: 'open_3210', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 490, y: 600, w: 110, h: 310 }, name: { x: 545, y: 752, lines: ['Open'], size: 18 }, num: { x: 545, y: 752 }, defNumber: '', defColor: 'gray', defStatus: 'vacant' },
   { key: 'mhs_parks', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 600, y: 600, w: 170, h: 310 }, name: { x: 685, y: 700, lines: ['MHS Parks'], size: 19 }, num: { x: 685, y: 752 }, defNumber: '3222', defColor: 'purple' },
   { key: 'tbi_3217a', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 770, y: 600, w: 170, h: 310 }, name: { x: 855, y: 700, lines: ['TBI Warrior'], size: 19 }, num: { x: 855, y: 752 }, defNumber: '3217', defColor: 'green' },
   { key: 'tbi_3217b', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 940, y: 600, w: 200, h: 310 }, name: { x: 1040, y: 700, lines: ['TBI Warrior'], size: 19 }, num: { x: 1040, y: 752 }, defNumber: '3217', defColor: 'green' },
@@ -229,6 +228,10 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
   const [rows, setRows] = useState<Record<string, SuiteRow>>({});
   const [building, setBuilding] = useState<BuildingKey>('bldg1');
   const [floor, setFloor] = useState<1 | 2>(1);
+  // Lease dates are useful internally and inappropriate on a plan you hand to a
+  // tenant or a prospect, so they can be switched off — for the screen and for the
+  // printed sheets alike, since both render from this same state.
+  const [showExp, setShowExp] = useState(true);
   const [selKey, setSelKey] = useState<string | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -360,7 +363,7 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
           const lines = c.tenant_name ? wrapName(c.tenant_name) : def.name.lines;
           const startY = def.name.y - (lines.length - 1) * 14;
           const extras: string[] = [];
-          if (c.lease_expiration) extras.push(`Exp ${fmtExp(c.lease_expiration)}`);
+          if (showExp && c.lease_expiration) extras.push(`Exp ${fmtExp(c.lease_expiration)}`);
           if (c.status !== 'occupied') extras.push(c.status.toUpperCase());
           return (
             <g key={`l-${def.key}`} pointerEvents="none">
@@ -414,8 +417,8 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
       `.hd{font-family:Helvetica,Arial,sans-serif;font-weight:700;font-size:20px;color:#243140;margin:0 0 8px}` +
       `.sub{font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#8a8f98;margin:0 0 12px}` +
       `svg{width:100%;height:auto;display:block}</style></head><body>` +
-      `<div class="sheet"><p class="hd">8000 Fair Oaks Pkwy — ${bLabel}</p><p class="sub">First Floor</p>${svg1}</div>` +
-      `<div class="sheet"><p class="hd">8000 Fair Oaks Pkwy — ${bLabel}</p><p class="sub">Second Floor</p>${svg2}</div>` +
+      `<div class="sheet"><p class="hd">8000 Fair Oaks Pkwy — ${bLabel}</p><p class="sub">First Floor${showExp ? '' : ' · lease dates hidden'}</p>${svg1}</div>` +
+      `<div class="sheet"><p class="hd">8000 Fair Oaks Pkwy — ${bLabel}</p><p class="sub">Second Floor${showExp ? '' : ' · lease dates hidden'}</p>${svg2}</div>` +
       `</body></html>`
     );
     w.document.close();
@@ -451,6 +454,12 @@ export default function PropertiesFloorPlan({ businessUnit, isAdmin, authToken, 
                 </button>
               ))}
             </div>
+            <label title="Hide lease expiry dates on screen and in the PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '8px 12px', border: '1px solid #d7dadf', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#243140', fontFamily: 'inherit' }}>
+              <input type="checkbox" checked={showExp} onChange={e => setShowExp(e.target.checked)}
+                style={{ accentColor: '#c9922c', width: 15, height: 15, cursor: 'pointer' }} />
+              Lease dates
+            </label>
             <button onClick={downloadPdf} title="Download both floors of this building as PDF"
               style={{ border: '1px solid #d7dadf', background: '#fff', cursor: 'pointer', padding: '8px 14px', borderRadius: 8, fontSize: 14, fontWeight: 600, fontFamily: 'inherit', color: '#243140' }}>
               ⬇ PDF
