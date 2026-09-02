@@ -8,17 +8,22 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
 function applyMergeFields(template: string, ctx: {
-  client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
+  client: { first_name: string; last_name: string; business_name?: string | null; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
   brokerage: string;
   defaultPhone: string;
 }): string {
   const BASE_URL = 'https://www.fairoaksrealtygroup.com';
   const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+  // A commercial contact is often a company with no person's name on it, and
+  // "{{first_name}}" then rendered empty — tenant notices have gone out addressed
+  // to "Hi ,". Fall back to the business, then to a plain greeting.
+  const person = `${ctx.client.first_name ?? ''} ${ctx.client.last_name ?? ''}`.trim();
+  const greeting = (ctx.client.first_name || '').trim() || (ctx.client.business_name || '').trim() || 'there';
   return template
-    .replaceAll('{{first_name}}', ctx.client.first_name || '')
+    .replaceAll('{{first_name}}', greeting)
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
-    .replaceAll('{{full_name}}', `${ctx.client.first_name} ${ctx.client.last_name}`.trim())
+    .replaceAll('{{full_name}}', person || (ctx.client.business_name || '').trim() || 'there')
     .replaceAll('{{email}}', ctx.client.email || '')
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
@@ -59,7 +64,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, campaign_id, client_id, next_send_at,
       campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit, org_id),
-      client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
+      client:crm_clients!inner(id, first_name, last_name, business_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
     .eq('campaign.status', 'active')

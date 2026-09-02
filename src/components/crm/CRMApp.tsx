@@ -6013,7 +6013,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const camp = campaigns.find(c => c.id === send.campaign_id);
                 const renderedBody = camp?.email_body
                   ? camp.email_body
-                    .replaceAll('{{first_name}}', contact.first_name ?? '')
+                    .replaceAll('{{first_name}}', (contact.first_name || '').trim() || (contact.business_name || '').trim() || 'there')
                     .replaceAll('{{last_name}}', contact.last_name ?? '')
                     .replaceAll('{{full_name}}', [contact.first_name, contact.last_name].filter(Boolean).join(' '))
                     .replaceAll('{{email}}', contact.email ?? '')
