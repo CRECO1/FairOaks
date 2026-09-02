@@ -97,8 +97,8 @@ const SUITES: SuiteDef[] = [
   { key: 'kjf_3206', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 395, y: 170, w: 115, h: 210 }, name: { x: 452, y: 275, lines: ['KJF', 'Insurance'], size: 16 }, num: { x: 452, y: 332 }, defNumber: '3206', defColor: 'blue' },
   { key: 'tbi_3216', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 760, y: 170, w: 180, h: 210 }, name: { x: 850, y: 282, lines: ['TBI Warrior'], size: 19 }, num: { x: 850, y: 333 }, defNumber: '3216', defColor: 'green' },
   { key: 'tbi_3218', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 940, y: 170, w: 200, h: 210 }, name: { x: 1040, y: 282, lines: ['TBI Warrior'], size: 19 }, num: { x: 1040, y: 333 }, defNumber: '3218', defColor: 'green' },
-  { key: 'here_now', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 320, y: 600, w: 170, h: 310 }, name: { x: 405, y: 700, lines: ['Here & Now'], size: 19 }, num: { x: 405, y: 752 }, defNumber: '3201', defColor: 'amber' },
-  { key: 'mhs_parks', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 600, y: 600, w: 170, h: 310 }, name: { x: 685, y: 700, lines: ['MHS Parks'], size: 19 }, num: { x: 685, y: 752 }, defNumber: '3222', defColor: 'purple' },
+  { key: 'here_now', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 320, y: 600, w: 225, h: 310 }, name: { x: 433, y: 700, lines: ['Here & Now'], size: 19 }, num: { x: 433, y: 752 }, defNumber: '3201', defColor: 'amber' },
+  { key: 'mhs_parks', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 545, y: 600, w: 225, h: 310 }, name: { x: 658, y: 700, lines: ['MHS Parks'], size: 19 }, num: { x: 658, y: 752 }, defNumber: '3222', defColor: 'purple' },
   { key: 'tbi_3217a', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 770, y: 600, w: 170, h: 310 }, name: { x: 855, y: 700, lines: ['TBI Warrior'], size: 19 }, num: { x: 855, y: 752 }, defNumber: '3217', defColor: 'green' },
   { key: 'tbi_3217b', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 940, y: 600, w: 200, h: 310 }, name: { x: 1040, y: 700, lines: ['TBI Warrior'], size: 19 }, num: { x: 1040, y: 752 }, defNumber: '3217', defColor: 'green' },
 ];
