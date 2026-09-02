@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
 </html>`;
 
       await resend.emails.send({
-        from: 'VultStack CRM <noreply@vultstack.com>',
+        from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
         to: agent.email,
         subject: `📋 ${total} task${total !== 1 ? 's' : ''} need your attention today`,
         html,
