@@ -215,6 +215,9 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
   // The number comes from position in the list, never from the data, so dropping
   // a clause renumbers everything below it automatically.
   const steppedRent = !!(v.monthly_rent_year2 || '').trim();
+  // No deposit taken. Leaving the blank empty would read as an unfinished form on a
+  // signed lease, so the clause states the position instead of trailing a blank rule.
+  const noDeposit = !(v.security_deposit || '').trim() || Number(String(v.security_deposit).replace(/[^0-9.]/g, '')) === 0;
 
   LEASE_CLAUSES.forEach((c, i) => {
     if (c.title === 'Notices and Addresses') {
@@ -226,6 +229,10 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
     heading(`${i + 1}. ${c.title}`);
     for (const b of c.blocks) {
       if (b.t === 'p') {
+        if (noDeposit && c.title === 'Security Deposit') {
+          para('No security deposit is required under this lease. Tenant remains responsible for all covenants and obligations under this lease, including any damage to the Leased Premises beyond ordinary wear and tear.');
+          continue;
+        }
         para(b.text);
         if (steppedRent && c.title === 'Basic Rent') {
           para('Beginning {{year2_start}}, the monthly rental amount increases to ${{monthly_rent_year2}} per month for the remainder of the term.');
