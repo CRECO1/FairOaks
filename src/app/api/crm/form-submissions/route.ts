@@ -93,10 +93,11 @@ export async function GET(req: NextRequest) {
   if (!ctx) return unauthorized();
   const dealId = req.nextUrl.searchParams.get('deal_id');
   const listingId = req.nextUrl.searchParams.get('listing_id');
+  const clientId = req.nextUrl.searchParams.get('client_id');
   const supabase = adminClient();
   let q = supabase
     .from('crm_form_submissions')
-    .select('id, form_id, deal_id, listing_id, title, filled_path, status, created_at, updated_at, crm_forms(name, form_code)')
+    .select('id, form_id, deal_id, listing_id, client_id, title, filled_path, status, created_at, updated_at, crm_forms(name, form_code)')
     .order('updated_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   // A document lives in ONE row that both surfaces read, so an edit made from a deal
@@ -115,6 +116,18 @@ export async function GET(req: NextRequest) {
       ? q.or(`deal_id.eq.${dealId},and(listing_id.eq.${lid},deal_id.is.null)`)
       : q.eq('deal_id', dealId);
   }
+  // A contact's documents: the ones filed directly on them, plus the ones on their
+  // deals — a lease filed against the deal is still that person's lease.
+  if (clientId) {
+    let dq = supabase.from('crm_deals').select('id').eq('client_id', clientId);
+    if (!isAdminRole(ctx.role)) dq = dq.eq('business_unit', ctx.businessUnit);
+    const { data: theirDeals } = await dq;
+    const ids = (theirDeals ?? []).map(d => d.id as string);
+    q = ids.length
+      ? q.or(`client_id.eq.${clientId},deal_id.in.(${ids.join(',')})`)
+      : q.eq('client_id', clientId);
+  }
+
   if (listingId) {
     if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
     let dq = supabase.from('crm_deals').select('id').eq('listing_id', listingId);
@@ -169,7 +182,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ submission: copy });
   }
 
-  const { form_id, deal_id, listing_id, title, values, pdfBase64, business_unit, submission_id, builder_data } = body;
+  const { form_id, deal_id, listing_id, client_id, title, values, pdfBase64, business_unit, submission_id, builder_data } = body;
   if (!form_id && !submission_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();
 
@@ -202,13 +215,13 @@ export async function POST(req: NextRequest) {
   // and the prior links so a save never silently unfiles the doc (below).
   let priorBuilder: LoiData | null = null;
   let priorValues: unknown = null;
-  let priorLinks: { deal_id: string | null; listing_id: string | null } | null = null;
+  let priorLinks: { deal_id: string | null; listing_id: string | null; client_id: string | null } | null = null;
   if (submission_id) {
     const { data: prior } = await supabase.from('crm_form_submissions')
-      .select('builder_data, values, deal_id, listing_id').eq('id', submission_id).maybeSingle();
+      .select('builder_data, values, deal_id, listing_id, client_id').eq('id', submission_id).maybeSingle();
     priorBuilder = (prior?.builder_data as LoiData) ?? null;
     priorValues = prior?.values ?? null;
-    if (prior) priorLinks = { deal_id: prior.deal_id ?? null, listing_id: prior.listing_id ?? null };
+    if (prior) priorLinks = { deal_id: prior.deal_id ?? null, listing_id: prior.listing_id ?? null, client_id: prior.client_id ?? null };
   }
 
   const base = {
@@ -219,6 +232,7 @@ export async function POST(req: NextRequest) {
     // property. Keep whichever link the caller didn't speak to.
     deal_id: deal_id || priorLinks?.deal_id || null,
     listing_id: listing_id || priorLinks?.listing_id || null,
+    client_id: client_id || priorLinks?.client_id || null,
     business_unit: unit,
     title: title || null,
     values: values ?? [],

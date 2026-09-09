@@ -25,6 +25,13 @@ export interface LeaseValues {
   effective_date?: string; tenant_name?: string; building?: string; suite?: string;
   term_months?: string; end_date?: string; monthly_rent?: string; security_deposit?: string;
   tenant_phone?: string; tenant_email?: string; exec_day?: string; exec_month?: string;
+  /**
+   * A stepped rent. Leases longer than a year here quote a second-year rate, and
+   * the single {{monthly_rent}} blank cannot say so — a 24-month lease at one
+   * figure would understate what the tenant owes from month 13. Setting these adds
+   * a sentence to Basic Rent; leaving them unset renders exactly as before.
+   */
+  monthly_rent_year2?: string; year2_start?: string;
 }
 
 /** A fill-in blank, positioned the way crm_form_fields records one. */
@@ -61,6 +68,7 @@ const LABELS: Record<string, string> = {
   suite: 'Suite #', term_months: 'Term (months)', end_date: 'Lease end date',
   monthly_rent: 'Monthly rent ($)', security_deposit: 'Security deposit ($)',
   tenant_phone: 'Tenant phone', tenant_email: 'Tenant email', exec_day: 'Day', exec_month: 'Month',
+  monthly_rent_year2: 'Year 2 monthly rent ($)', year2_start: 'Year 2 starts',
 };
 
 type Tok = { kind: 'w'; s: string } | { kind: 'b'; key: string };
@@ -77,9 +85,9 @@ function resolveRefs(text: string): string {
 /** Split "…on {{effective_date}}, and…" into words and blank tokens. */
 function tokenize(text: string): Tok[] {
   const out: Tok[] = [];
-  for (const chunk of text.split(/(\{\{[a-z_]+\}\})/)) {
+  for (const chunk of text.split(/(\{\{[a-z0-9_]+\}\})/)) {
     if (!chunk) continue;
-    const m = chunk.match(/^\{\{([a-z_]+)\}\}$/);
+    const m = chunk.match(/^\{\{([a-z0-9_]+)\}\}$/);
     if (m) { out.push({ kind: 'b', key: m[1] }); continue; }
     for (const w of chunk.split(/\s+/)) if (w) out.push({ kind: 'w', s: w });
   }
@@ -206,6 +214,8 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
   // ── Numbered clauses ───────────────────────────────────────────────────────
   // The number comes from position in the list, never from the data, so dropping
   // a clause renumbers everything below it automatically.
+  const steppedRent = !!(v.monthly_rent_year2 || '').trim();
+
   LEASE_CLAUSES.forEach((c, i) => {
     if (c.title === 'Notices and Addresses') {
       need(LEAD * 4); y -= 8;
@@ -215,7 +225,13 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
     }
     heading(`${i + 1}. ${c.title}`);
     for (const b of c.blocks) {
-      if (b.t === 'p') para(b.text);
+      if (b.t === 'p') {
+        para(b.text);
+        if (steppedRent && c.title === 'Basic Rent') {
+          para('Beginning {{year2_start}}, the monthly rental amount increases to ${{monthly_rent_year2}} per month for the remainder of the term.');
+        }
+        continue;
+      }
       else if (b.t === 'notices') noticesBlock();
       else for (const item of b.items) {
         need(LEAD);
@@ -288,7 +304,7 @@ export const LEASE_CLAUSES: Clause[] = [
   {
     title: 'Basic Rent',
     blocks: [
-      { t: 'p', text: 'The monthly rental amount for Suite {{suite}} is ${{monthly_rent}} per month for the term of the Lease. Lease includes shared use of conference room with all Tenants.' },
+      { t: 'p', text: 'The monthly rental amount for Suite {{suite}} is ${{monthly_rent}} per month. Lease includes shared use of conference room with all Tenants.' },
     ],
   },
   {

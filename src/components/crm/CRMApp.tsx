@@ -557,6 +557,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Tasks
   const [allTasks, setAllTasks] = useState<CRMTask[]>([]);
   const [clientCardTasks, setClientCardTasks] = useState<Task[]>([]);
+  // Documents belonging to a contact — filed on them directly, or on one of their
+  // deals. Until now a lease lived only on the property or the deal, so opening the
+  // person you signed it with showed nothing.
+  const [clientDocs, setClientDocs] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [taskClientId, setTaskClientId] = useState<string | null>(null);
   const [taskForm, setTaskForm] = useState<{ type: 'call'|'email'|'follow_up'; title: string; due_date: string; notes: string }>({ type: 'follow_up', title: '', due_date: '', notes: '' });
@@ -862,6 +866,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadClientCampaignSends(activeClient.id);
       loadContactEmails(activeClient.id);
       loadClientTasks(activeClient.id);
+      loadClientDocs(activeClient.id);
       setNewActivity({ type: 'call', note: '' });
       // A half-written note must not follow you onto the next contact's card.
       setEditingNotes(false); setNotesDraft('');
@@ -1123,6 +1128,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     (path: string) => fetch(path, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} }),
     [session?.access_token],
   );
+  const loadClientDocs = useCallback(async (clientId: string) => {
+    try {
+      const r = await authGet(`/api/crm/form-submissions?client_id=${clientId}`);
+      const j = await r.json();
+      setClientDocs(j.submissions ?? []);
+    } catch { setClientDocs([]); }
+  }, [authGet]);
+
   const loadDealForms = useCallback(async (dealId: string) => {
     try { const r = await authGet(`/api/crm/form-submissions?deal_id=${dealId}`); const j = await r.json(); setDealForms(j.submissions ?? []); } catch { /* ignore */ }
   }, [authGet]);
@@ -9229,6 +9242,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   </div>
                 )}
+
+                {/* Documents — leases and forms tied to this person, whether they were
+                    filed on the contact or on one of their deals. */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>
+                    Documents{clientDocs.length ? ` (${clientDocs.length})` : ''}
+                  </div>
+                  {clientDocs.length === 0 ? (
+                    <div style={{ fontSize: 13, color: '#d1d5db' }}>No documents yet. Anything filed on this contact or on their deals shows here.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {clientDocs.map(d => (
+                        <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '9px 12px' }}>
+                          <span style={{ fontSize: 17, flexShrink: 0 }}>📄</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {d.title || d.crm_forms?.name || 'Document'}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{d.updated_at ? `updated ${new Date(d.updated_at).toLocaleDateString()}` : ''}</div>
+                          </div>
+                          {d.url && (
+                            <button onClick={() => setPreviewFile({ url: d.url!, name: `${d.title || 'Document'}.pdf`, type: 'application/pdf' })}
+                              style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {/* Notes — editable in place, and the one place @-tagging is actually
                     reached for: you are looking at the person when you remember who
