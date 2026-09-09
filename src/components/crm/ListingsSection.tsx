@@ -8,6 +8,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import RentRoll from '@/components/crm/RentRoll';
 import CamReconciliation from '@/components/crm/CamReconciliation';
+import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
 
 // Forms whose form_code opens the dynamic term-list builder instead of the
 // coordinate-overlay editor.
@@ -254,6 +255,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // request can never disagree.
   const [canSeeRentRoll, setCanSeeRentRoll] = useState(false);
   const [hasRentRoll, setHasRentRoll] = useState(false);
+  const [draftingLease, setDraftingLease] = useState(false);
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
@@ -1278,7 +1280,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                       <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction Docs</div>
-                      <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormSearch(''); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                      <div style={{ display: 'flex', gap: 7 }}>
+                        {canSeeRentRoll && (
+                          <button onClick={() => setDraftingLease(true)} title="Describe a lease in a sentence and review what it fills in"
+                            style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fffdf6', color: '#a06a12', border: '1px dashed #e6d3a2', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✨ Draft a lease</button>
+                        )}
+                        <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormSearch(''); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
+                      </div>
                     </div>
                     {listingForms.length === 0 ? (
                       <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
@@ -1432,6 +1440,23 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               )}
 
               {/* ── Rent Roll tab (per-suite tenancy, vendors, building info) ── */}
+              {draftingLease && active && (
+                <LeaseDraftModal
+                  listingId={active.id} authToken={authToken} onToast={onToast}
+                  onClose={() => setDraftingLease(false)}
+                  onCreate={async (v: LeaseDraftValues) => {
+                    const r = await fetch('/api/crm/lease-draft', {
+                      method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders },
+                      body: JSON.stringify({ listing_id: active.id, values: v }),
+                    });
+                    const j = await r.json().catch(() => ({}));
+                    if (!r.ok) { onToast(j.error || 'Could not create the lease'); return; }
+                    onToast(j.linked_to_contact ? '✓ Lease created — filed on the property and the contact' : '✓ Lease created');
+                    setDraftingLease(false);
+                    loadListingForms(active.id);
+                  }} />
+              )}
+
               {activeTab === 'recon' && canSeeRentRoll && (
                 <CamReconciliation
                   listingId={active.id} listingName={active.address || 'the property'}
