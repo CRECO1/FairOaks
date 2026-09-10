@@ -41,15 +41,17 @@ export function resendConfig(businessUnit: string): { from: string; apiKey?: str
 export async function sendEsignEmail(
   businessUnit: string, to: string, subject: string, html: string,
   attachments?: Array<{ filename: string; content: string }>,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; id?: string }> {
   const { from, apiKey } = resendConfig(businessUnit);
   if (!apiKey) return { ok: false, error: 'RESEND API key not configured' };
   try {
-    const { error } = await new Resend(apiKey).emails.send({
+    // Resend's id is what turns "sent an hour ago" into delivered / opened / bounced
+    // later; it used to be discarded here.
+    const { data, error } = await new Resend(apiKey).emails.send({
       from, to, subject, html,
       ...(attachments && attachments.length ? { attachments } : {}),
     });
-    return error ? { ok: false, error: error.message } : { ok: true };
+    return error ? { ok: false, error: error.message } : { ok: true, id: data?.id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

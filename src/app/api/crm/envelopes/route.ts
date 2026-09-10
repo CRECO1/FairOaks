@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
+import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, resendConfig, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +38,30 @@ export async function GET(req: NextRequest) {
     const { data: profs } = await supabase.from('crm_profiles').select('id, first_name, last_name').in('id', senderIds);
     for (const p of profs ?? []) senderById.set(p.id, `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Agent');
   }
+  // Whether the invite actually landed. Resend knows delivered / opened / bounced;
+  // without it the dashboard can only say "sent an hour ago", which cannot tell a
+  // bounce from a junk folder from a signer who is simply ignoring you. One list
+  // call covers every row on the page — never one request per signer.
+  const deliveryById = new Map<string, string>();
+  const wanted = new Set<string>();
+  for (const e of data ?? []) {
+    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null }>) {
+      if (sg.last_email_id) wanted.add(sg.last_email_id);
+    }
+  }
+  if (wanted.size) {
+    const { apiKey } = resendConfig((data ?? [])[0]?.business_unit ?? 'commercial');
+    if (apiKey) {
+      try {
+        const r = await fetch('https://api.resend.com/emails?limit=100', { headers: { Authorization: `Bearer ${apiKey}` } });
+        if (r.ok) {
+          const j = await r.json() as { data?: Array<{ id: string; last_event?: string }> };
+          for (const row of j.data ?? []) if (wanted.has(row.id) && row.last_event) deliveryById.set(row.id, row.last_event);
+        }
+      } catch { /* delivery is a nicety — never fail the list over it */ }
+    }
+  }
+
   const envelopes = await Promise.all((data ?? []).map(async (e) => {
     let executed_url: string | null = null;
     let executed_clean_url: string | null = null;
@@ -48,6 +72,9 @@ export async function GET(req: NextRequest) {
     if (e.executed_path) {
       const { data: sg } = await supabase.storage.from('transaction-forms').createSignedUrl(e.executed_path, 3600);
       executed_url = sg?.signedUrl ?? null;
+    }
+    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null; delivery?: string | null }>) {
+      sg.delivery = sg.last_email_id ? deliveryById.get(sg.last_email_id) ?? null : null;
     }
     return { ...e, executed_url, executed_clean_url, sent_by: e.created_by ? senderById.get(e.created_by) ?? 'Agent' : null };
   }));
@@ -106,6 +133,7 @@ export async function POST(req: NextRequest) {
     const { subject, html } = inviteEmail(unit, { signerName: first.name, docTitle, senderName, url: signUrl(first.access_token), message });
     const r = await sendEsignEmail(unit, first.email, subject, html);
     sent = r.ok;
+    if (r.id) await supabase.from('crm_envelope_signers').update({ last_email_id: r.id }).eq('id', first.id);
     if (!r.ok) console.error('[api/envelopes] invite send failed:', r.error);
   }
   return NextResponse.json({
@@ -174,9 +202,12 @@ export async function PATCH(req: NextRequest) {
     const { data } = await supabase.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');
     return (data ?? []) as SignerRow[];
   };
-  const invite = (s: { name: string; email: string; access_token: string }) => {
+  // Records the Resend id so a later "did it arrive?" can be answered.
+  const invite = async (s: { id: string; name: string; email: string; access_token: string }) => {
     const { subject, html } = inviteEmail(env.business_unit, { signerName: s.name, docTitle: env.title, senderName, url: signUrl(s.access_token), message: env.message || undefined });
-    return sendEsignEmail(env.business_unit, s.email, subject, html);
+    const sendRes = await sendEsignEmail(env.business_unit, s.email, subject, html);
+    if (sendRes.id) await supabase.from('crm_envelope_signers').update({ last_email_id: sendRes.id }).eq('id', s.id);
+    return sendRes;
   };
 
   // ── Nudge the current pending signer (no new envelope) ──
@@ -224,7 +255,7 @@ export async function PATCH(req: NextRequest) {
     await logEvent(supabase, env.id, signer.id, 'signer_updated', { actor: ctx.userId, meta: patch });
     const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
     let resent = false;
-    if (current && current.id === signer.id) resent = (await invite({ name: patch.name || signer.name, email: patch.email || signer.email, access_token: signer.access_token })).ok;
+    if (current && current.id === signer.id) resent = (await invite({ id: signer.id, name: patch.name || signer.name, email: patch.email || signer.email, access_token: signer.access_token })).ok;
     return NextResponse.json({ ok: true, resent });
   }
 

@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
     // silently burn through the allowance.
     const nth = current.reminder_count + 1;
     await db.from('crm_envelope_signers')
-      .update({ reminded_at: new Date().toISOString(), reminder_count: nth })
+      .update({ reminded_at: new Date().toISOString(), reminder_count: nth, ...(res.id ? { last_email_id: res.id } : {}) })
       .eq('id', current.id);
     await logEvent(db, env.id, current.id, 'sent', { actor: 'system', meta: { reminder: nth, to: current.email } });
     reminded.push({ envelope: env.id, to: current.email, nth });

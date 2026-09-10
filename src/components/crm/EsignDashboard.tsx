@@ -4,7 +4,7 @@
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean }
+interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
@@ -240,6 +240,22 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     ) : current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
                         {current.in_person ? '🖊 To sign in person: ' : '⏳ Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · viewed' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
+                        {!current.in_person && current.delivery && (() => {
+                          const d = current.delivery;
+                          const bad = d === 'bounced' || d === 'complained' || d === 'failed';
+                          const seen = d === 'opened' || d === 'clicked';
+                          const label = bad ? `✉︎ ${d}` : seen ? `✉︎ ${d}` : '✉︎ delivered, not opened';
+                          const hint = bad
+                            ? 'The email did not reach them — check the address before resending.'
+                            : seen ? 'They opened it.'
+                            : 'It reached their mailbox but has not been opened — often a junk folder. Sending it again usually lands in the same place; try the 🔗 link another way.';
+                          return (
+                            <span title={hint} style={{ marginLeft: 8, fontSize: 11.5, fontWeight: 700, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap', cursor: 'help',
+                              ...(bad ? { background: '#fef2f2', color: '#b91c1c' } : seen ? { background: '#dcfce7', color: '#15803d' } : { background: '#fef3e2', color: '#92400e' }) }}>
+                              {label}
+                            </span>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

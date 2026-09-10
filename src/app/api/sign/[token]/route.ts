@@ -164,7 +164,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     // link to email them — the dashboard offers "Sign in person" for their turn.
     if (!next.in_person) {
       const { subject, html } = routingEmail(env.business_unit, { signerName: next.name, docTitle: env.title, url: signUrl(next.access_token) });
-      await sendEsignEmail(env.business_unit, next.email, subject, html);
+      const routed = await sendEsignEmail(env.business_unit, next.email, subject, html);
+      if (routed.id) await db.from('crm_envelope_signers').update({ last_email_id: routed.id }).eq('id', next.id);
     }
     return NextResponse.json({ status: 'signed', next: true, next_in_person: !!next.in_person });
   }
