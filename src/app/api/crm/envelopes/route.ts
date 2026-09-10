@@ -15,6 +15,24 @@ export async function GET(req: NextRequest) {
   const listingId = req.nextUrl.searchParams.get('listing_id');
   const submissionId = req.nextUrl.searchParams.get('submission_id');
   const supabase = adminClient();
+
+  // Document activity: the full audit trail for one request — sent, opened,
+  // signed, declined — each row with its time and the IP it came from. Every
+  // signer action already writes here; this is the read side. Kept as its own
+  // branch so the list query stays one round trip.
+  const activityFor = req.nextUrl.searchParams.get('activity');
+  if (activityFor) {
+    const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit').eq('id', activityFor).maybeSingle();
+    if (!env) return notFound();
+    if (!isAdminRole(ctx.role) && env.business_unit !== ctx.businessUnit) return unauthorized();
+    const { data: evs } = await supabase.from('crm_envelope_events')
+      .select('id, event, actor, ip, user_agent, meta, created_at, signer_id')
+      .eq('envelope_id', activityFor).order('created_at', { ascending: true });
+    const { data: sgs } = await supabase.from('crm_envelope_signers').select('id, name').eq('envelope_id', activityFor);
+    const nameById = new Map((sgs ?? []).map(x => [x.id, x.name]));
+    return NextResponse.json({ events: (evs ?? []).map(e => ({ ...e, signer_name: e.signer_id ? nameById.get(e.signer_id) ?? null : null })) });
+  }
+
   let q = supabase.from('crm_envelopes')
     .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person)')
     .order('created_at', { ascending: false });

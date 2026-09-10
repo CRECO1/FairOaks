@@ -48,9 +48,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const path = status === 'completed' && env.executed_path ? env.executed_path : env.source_path;
   if (path) { const { data: sg } = await db.storage.from(SIGN_BUCKET).createSignedUrl(path, 3600); doc_url = sg?.signedUrl ?? null; }
 
-  if (status === 'ready' && !signer.viewed_at) {
-    await db.from('crm_envelope_signers').update({ status: 'viewed', viewed_at: new Date().toISOString() }).eq('id', signer.id);
-    await logEvent(db, env.id, signer.id, 'opened', { actor: signer.email, ip: clientIp(req), ua: req.headers.get('user-agent') });
+  // Every visit is logged, not just the first — a client who opened the document
+  // four times and still has not signed is a different conversation from one who
+  // opened it once. Repeats inside 30 minutes are the same sitting (refreshes,
+  // stepping through fields), so they collapse into one entry.
+  if (status === 'ready') {
+    if (!signer.viewed_at) {
+      await db.from('crm_envelope_signers').update({ status: 'viewed', viewed_at: new Date().toISOString() }).eq('id', signer.id);
+    }
+    const { data: recent } = await db.from('crm_envelope_events')
+      .select('created_at').eq('envelope_id', env.id).eq('signer_id', signer.id).eq('event', 'opened')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const fresh = recent && Date.now() - new Date(recent.created_at).getTime() < 30 * 60 * 1000;
+    if (!fresh) await logEvent(db, env.id, signer.id, 'opened', { actor: signer.email, ip: clientIp(req), ua: req.headers.get('user-agent') });
   }
 
   // The spots THIS signer has to confirm. The page walks them through these one at

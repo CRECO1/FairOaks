@@ -4,6 +4,8 @@
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+interface ActEvent { id: string; event: string; actor: string | null; ip: string | null; user_agent: string | null; meta: Record<string, unknown> | null; created_at: string; signer_name: string | null }
+
 interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
@@ -36,6 +38,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [byAgent, setByAgent] = useState('');     // '' = every agent
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [actFor, setActFor] = useState<string | null>(null);        // envelope whose activity is open
+  const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = useCallback(async () => {
@@ -125,6 +129,19 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       showToast?.(`🖊 Hand the device to ${j.signer?.name ?? 'the signer'}`);
       window.open(j.url, '_blank', 'noopener');
     } finally { setBusy(null); load(); }
+  }
+
+  // Document activity. Fetched on demand — most rows are never expanded, and the
+  // trail only grows, so a cached copy stays correct for the life of the page.
+  async function toggleActivity(env: Envelope) {
+    if (actFor === env.id) { setActFor(null); return; }
+    setActFor(env.id);
+    if (acts[env.id]) return;
+    try {
+      const r = await fetch(`/api/crm/envelopes?activity=${env.id}`, { headers: auth(authToken) });
+      const j = await r.json();
+      if (r.ok) setActs(prev => ({ ...prev, [env.id]: j.events ?? [] }));
+    } catch { /* leave it unexpanded rather than erroring the page */ }
   }
 
   async function nudge(env: Envelope) {
@@ -288,6 +305,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                       {busy === env.id ? '…' : '🖊 In person'}
                     </button>
                   )}
+                  <button onClick={() => toggleActivity(env)} title="Every open, signature and send on this document" style={{ ...mini, ...(actFor === env.id ? { color: '#1e40af', borderColor: '#bfdbfe', background: '#eff6ff' } : {}) }}>📊 Activity</button>
                   {current && !current.in_person && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
                   {env.status !== 'voided' && !env.archived_at && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
                   {env.archived_at
@@ -296,6 +314,44 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   {isSuperAdmin && <button disabled={busy === env.id} onClick={() => purgeEnv(env)} title="Permanently delete — destroys the signatures and the executed copy" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑</button>}
                   {env.deal_id && onOpenDeal && <button onClick={() => onOpenDeal(env.deal_id!)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Open →</button>}
                   </div>
+                  {actFor === env.id && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef0f3' }}>
+                      {!acts[env.id] ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Loading activity…</div>
+                        : acts[env.id].length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>No activity recorded yet.</div>
+                        : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                          {acts[env.id].map(ev => {
+                            const look: Record<string, { icon: string; label: string; color: string }> = {
+                              created:   { icon: '📄', label: 'Request created', color: '#6b7280' },
+                              sent:      { icon: '📤', label: 'Email sent', color: '#6b7280' },
+                              opened:    { icon: '👀', label: 'Opened the document', color: '#1e40af' },
+                              signed:    { icon: '✍️', label: 'Signed', color: '#15803d' },
+                              declined:  { icon: '🚫', label: 'Declined to sign', color: '#b91c1c' },
+                              completed: { icon: '✅', label: 'Fully executed', color: '#15803d' },
+                              voided:    { icon: '⊘', label: 'Voided', color: '#b91c1c' },
+                            };
+                            const l = look[ev.event] ?? { icon: '•', label: ev.event, color: '#6b7280' };
+                            const who = ev.signer_name || (ev.actor && ev.actor !== 'system' && ev.actor.includes('@') ? ev.actor : null);
+                            const d = new Date(ev.created_at);
+                            // The browser is the proof it was a real person on a real
+                            // device, so keep it — but the raw UA string is unreadable.
+                            const ua = ev.user_agent || '';
+                            const dev = /iPhone|Android|iPad|Mobile/i.test(ua) ? 'mobile' : ua ? 'desktop' : '';
+                            return (
+                              <div key={ev.id} style={{ display: 'flex', alignItems: 'baseline', gap: 9, fontSize: 12.5 }}>
+                                <span style={{ width: 16, flexShrink: 0 }}>{l.icon}</span>
+                                <span style={{ color: l.color, fontWeight: 600, minWidth: 150 }}>{l.label}</span>
+                                <span style={{ color: '#374151', flex: 1 }}>{who || '—'}</span>
+                                {dev && <span style={{ color: '#9ca3af' }}>{dev}</span>}
+                                {ev.ip && <span style={{ color: '#c8ccd2', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{ev.ip}</span>}
+                                <span style={{ color: '#9ca3af', whiteSpace: 'nowrap' }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
