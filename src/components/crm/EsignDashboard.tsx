@@ -311,16 +311,28 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                       </div>
                     ) : current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
-                        {current.in_person ? '🖊 To sign in person: ' : '⏳ Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · viewed' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
+                        {current.in_person ? '🖊 To sign in person: ' : '⏳ Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · opened the doc' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
                         {!current.in_person && current.delivery && (() => {
                           const d = current.delivery;
                           const bad = d === 'bounced' || d === 'complained' || d === 'failed';
                           const seen = d === 'opened' || d === 'clicked';
-                          const label = bad ? `✉︎ ${d}` : seen ? `✉︎ ${d}` : '✉︎ delivered, not opened';
+                          // Every label says EMAIL, because the row also carries a
+                          // document-open state and a bare "opened" reads as the
+                          // wrong one of the two.
+                          const LABEL: Record<string, string> = {
+                            opened: '✉︎ email opened', clicked: '✉︎ link clicked',
+                            bounced: '✉︎ email bounced', complained: '✉︎ marked as spam',
+                            failed: '✉︎ email failed', delayed: '✉︎ delivery delayed',
+                            delivered: '✉︎ email delivered, unopened',
+                          };
+                          const label = LABEL[d] ?? `✉︎ ${d}`;
                           const hint = bad
                             ? 'The email did not reach them — check the address before resending.'
-                            : seen ? 'They opened it.'
-                            : 'It reached their mailbox but has not been opened — often a junk folder. Sending it again usually lands in the same place; try the 🔗 link another way.';
+                            : seen
+                              ? (current.viewed_at
+                                  ? 'They opened the email and have opened the document.'
+                                  : 'They opened the email but have NOT opened the document yet — the invite landed, the link did not get clicked. Nudging rarely helps here; call them, or send the 🔗 link another way.')
+                              : 'It reached their mailbox but has not been opened — often a junk folder. Sending it again usually lands in the same place; try the 🔗 link another way.';
                           return (
                             <span title={hint} style={{ marginLeft: 8, fontSize: 11.5, fontWeight: 700, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap', cursor: 'help',
                               ...(bad ? { background: '#fef2f2', color: '#b91c1c' } : seen ? { background: '#dcfce7', color: '#15803d' } : { background: '#fef3e2', color: '#92400e' }) }}>
