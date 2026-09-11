@@ -4,6 +4,16 @@
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
+interface Stats {
+  sent: number; tracked: number;
+  email_opened: number; email_opened_pct: number;
+  bounced: number; bounced_pct: number;
+  viewed: number; viewed_pct: number;
+  signed: number; signed_pct: number;
+  declined: number; declined_pct: number;
+  median_hours_to_sign: number | null;
+}
+
 interface ActEvent { id: string; event: string; actor: string | null; ip: string | null; user_agent: string | null; meta: Record<string, unknown> | null; created_at: string; signer_name: string | null }
 
 interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null }
@@ -40,6 +50,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [dragging, setDragging] = useState(false);
   const [actFor, setActFor] = useState<string | null>(null);        // envelope whose activity is open
   const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
+  const [stats, setStats] = useState<Stats | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = useCallback(async () => {
@@ -74,6 +85,12 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       setEnvs(list);
     } catch { setEnvs([]); }
     finally { setLoading(false); }
+    // Rates are computed over every request, not the filtered page, so they are
+    // fetched separately rather than derived from `list`.
+    try {
+      const sj = await fetch('/api/crm/envelopes?stats=1', { headers: auth(authToken) }).then(r => r.json());
+      setStats(sj.stats ?? null);
+    } catch { /* the list is the point; rates are extra */ }
   }, [authToken, showAll]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
@@ -177,7 +194,45 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         </label>
         <button onClick={load} style={{ ...mini, color: '#9ca3af', flexShrink: 0 }}>⟳ Refresh</button>
       </div>
-      <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 18 }}>Import a document to be signed, or track the ones already out. Nudge the current signer or jump to the deal to manage.</p>
+      <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 14 }}>Import a document to be signed, or track the ones already out. Nudge the current signer or jump to the deal to manage.</p>
+
+      {stats && stats.sent > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
+          {(() => {
+            // Email opened and document opened are deliberately separate: a signer
+            // can read the email and never click through, and that is the most
+            // common way a signature stalls.
+            const median = stats.median_hours_to_sign;
+            const turn = median == null ? '—' : median < 1 ? `${Math.round(median * 60)}m` : median < 48 ? `${Math.round(median)}h` : `${Math.round(median / 24)}d`;
+            const cards: Array<{ label: string; value: string; sub: string; tone?: 'good' | 'warn' | 'bad' }> = [
+              { label: 'Sent', value: String(stats.sent), sub: stats.sent === 1 ? 'invite' : 'invites' },
+              { label: 'Email opened', value: stats.tracked ? `${stats.email_opened_pct}%` : '—',
+                sub: stats.tracked ? `${stats.email_opened} of ${stats.sent}` : 'not tracked yet',
+                tone: !stats.tracked ? undefined : stats.email_opened_pct >= 60 ? 'good' : stats.email_opened_pct >= 30 ? 'warn' : 'bad' },
+              { label: 'Doc opened', value: `${stats.viewed_pct}%`, sub: `${stats.viewed} of ${stats.sent}`,
+                tone: stats.viewed_pct >= 60 ? 'good' : stats.viewed_pct >= 30 ? 'warn' : 'bad' },
+              { label: 'Signed', value: `${stats.signed_pct}%`, sub: `${stats.signed} of ${stats.sent}`,
+                tone: stats.signed_pct >= 60 ? 'good' : stats.signed_pct >= 30 ? 'warn' : 'bad' },
+              { label: 'Typical turnaround', value: turn, sub: stats.signed ? 'median, sent to signed' : 'none signed yet' },
+            ];
+            if (stats.bounced) cards.push({ label: 'Bounced', value: String(stats.bounced), sub: 'bad address', tone: 'bad' });
+            if (stats.declined) cards.push({ label: 'Declined', value: String(stats.declined), sub: `${stats.declined_pct}% of sent`, tone: 'bad' });
+            const toneColor = { good: '#15803d', warn: '#92400e', bad: '#b91c1c' } as const;
+            return cards.map(c => (
+              <div key={c.label} style={{ flex: '1 1 120px', minWidth: 112, background: '#fff', border: '1px solid #eef0f3', borderRadius: 10, padding: '10px 13px' }}>
+                <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', fontWeight: 700 }}>{c.label}</div>
+                <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone ? toneColor[c.tone] : '#111827', fontFamily: "'DM Sans',sans-serif" }}>{c.value}</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.sub}</div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
+      {stats && stats.sent > 0 && stats.tracked < stats.sent && (
+        <p style={{ fontSize: 11.5, color: '#9ca3af', marginTop: -8, marginBottom: 18 }}>
+          Email opens are tracked for {stats.tracked} of {stats.sent} invites — only mail sent since delivery tracking was switched on reports back. Document opens and signatures cover all of them.
+        </p>
+      )}
 
       {/* ── Import ── */}
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
@@ -324,6 +379,16 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                             const look: Record<string, { icon: string; label: string; color: string }> = {
                               created:   { icon: '📄', label: 'Request created', color: '#6b7280' },
                               sent:      { icon: '📤', label: 'Email sent', color: '#6b7280' },
+                              email_delivered: { icon: '📬', label: 'Email delivered', color: '#6b7280' },
+                              email_opened:    { icon: '📖', label: 'Email opened', color: '#1e40af' },
+                              email_clicked:   { icon: '🔗', label: 'Clicked the link', color: '#1e40af' },
+                              email_bounced:   { icon: '⚠️', label: 'Email bounced', color: '#b91c1c' },
+                              email_complained:{ icon: '⚠️', label: 'Marked as spam', color: '#b91c1c' },
+                              email_delayed:   { icon: '⏱', label: 'Delivery delayed', color: '#92400e' },
+                              in_person_started: { icon: '🖊', label: 'Signed in person', color: '#5b3d91' },
+                              signer_added:   { icon: '➕', label: 'Signer added', color: '#6b7280' },
+                              signer_updated: { icon: '✏️', label: 'Signer updated', color: '#6b7280' },
+                              archived:  { icon: '🗄', label: 'Archived', color: '#6b7280' },
                               opened:    { icon: '👀', label: 'Opened the document', color: '#1e40af' },
                               signed:    { icon: '✍️', label: 'Signed', color: '#15803d' },
                               declined:  { icon: '🚫', label: 'Declined to sign', color: '#b91c1c' },

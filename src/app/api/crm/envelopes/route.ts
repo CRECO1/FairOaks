@@ -33,8 +33,48 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ events: (evs ?? []).map(e => ({ ...e, signer_name: e.signer_id ? nameById.get(e.signer_id) ?? null : null })) });
   }
 
+  // Open / view rates across every request, not just the page being shown. Two
+  // different "opens" matter and are easy to confuse: the EMAIL being opened
+  // (Resend, via the webhook) and the DOCUMENT being opened (our own sign page).
+  // A high email-open rate with a low document-open rate means the wording is
+  // landing but the link is not, which is a different fix.
+  if (req.nextUrl.searchParams.get('stats')) {
+    let sq = supabase.from('crm_envelope_signers')
+      .select('sent_at, viewed_at, signed_at, declined_at, email_status, email_opened_at, in_person, crm_envelopes!inner(business_unit, archived_at)');
+    if (!isAdminRole(ctx.role)) sq = sq.eq('crm_envelopes.business_unit', ctx.businessUnit);
+    const { data: rows } = await sq;
+    // In-person signers never get an invite, so counting them would drag every
+    // rate down for something that was never emailed.
+    const mailed = (rows ?? []).filter(r => r.sent_at && !r.in_person);
+    const n = mailed.length;
+    const pct = (k: number) => (n ? Math.round((k / n) * 100) : 0);
+    const emailOpened = mailed.filter(r => r.email_opened_at || r.email_status === 'opened' || r.email_status === 'clicked').length;
+    const bounced = mailed.filter(r => r.email_status === 'bounced' || r.email_status === 'complained').length;
+    const viewed = mailed.filter(r => r.viewed_at).length;
+    const signed = mailed.filter(r => r.signed_at).length;
+    const declined = mailed.filter(r => r.declined_at).length;
+    // Median, not mean — one document that sat unsigned over a holiday weekend
+    // should not make the typical turnaround look like days.
+    const hours = mailed.filter(r => r.signed_at && r.sent_at)
+      .map(r => (new Date(r.signed_at!).getTime() - new Date(r.sent_at!).getTime()) / 3.6e6).sort((a, b) => a - b);
+    const median = hours.length ? hours[Math.floor(hours.length / 2)] : null;
+    // Delivery state only exists for mail sent since the webhook was wired, so
+    // say what the email rates are actually measured over rather than implying
+    // the whole history is covered.
+    const tracked = mailed.filter(r => r.email_status).length;
+    return NextResponse.json({ stats: {
+      sent: n, tracked,
+      email_opened: emailOpened, email_opened_pct: pct(emailOpened),
+      bounced, bounced_pct: pct(bounced),
+      viewed, viewed_pct: pct(viewed),
+      signed, signed_pct: pct(signed),
+      declined, declined_pct: pct(declined),
+      median_hours_to_sign: median,
+    } });
+  }
+
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person, last_email_id)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person, last_email_id, email_status, email_opened_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (dealId) q = q.eq('deal_id', dealId);
@@ -56,15 +96,16 @@ export async function GET(req: NextRequest) {
     const { data: profs } = await supabase.from('crm_profiles').select('id, first_name, last_name').in('id', senderIds);
     for (const p of profs ?? []) senderById.set(p.id, `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || 'Agent');
   }
-  // Whether the invite actually landed. Resend knows delivered / opened / bounced;
-  // without it the dashboard can only say "sent an hour ago", which cannot tell a
-  // bounce from a junk folder from a signer who is simply ignoring you. One list
-  // call covers every row on the page — never one request per signer.
+  // Whether the invite actually landed. The webhook records delivered/opened/
+  // bounced onto the signer as it happens, so that is the source of truth. The
+  // live Resend lookup below is only a fallback for messages sent before the
+  // webhook existed — it reads the account's last 100 emails, which a single
+  // campaign blast is enough to scroll a signature request out of.
   const deliveryById = new Map<string, string>();
   const wanted = new Set<string>();
   for (const e of data ?? []) {
-    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null }>) {
-      if (sg.last_email_id) wanted.add(sg.last_email_id);
+    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null; email_status?: string | null }>) {
+      if (sg.last_email_id && !sg.email_status) wanted.add(sg.last_email_id);
     }
   }
   if (wanted.size) {
@@ -91,8 +132,8 @@ export async function GET(req: NextRequest) {
       const { data: sg } = await supabase.storage.from('transaction-forms').createSignedUrl(e.executed_path, 3600);
       executed_url = sg?.signedUrl ?? null;
     }
-    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null; delivery?: string | null }>) {
-      sg.delivery = sg.last_email_id ? deliveryById.get(sg.last_email_id) ?? null : null;
+    for (const sg of (e.crm_envelope_signers ?? []) as Array<{ last_email_id?: string | null; email_status?: string | null; delivery?: string | null }>) {
+      sg.delivery = sg.email_status ?? (sg.last_email_id ? deliveryById.get(sg.last_email_id) ?? null : null);
     }
     return { ...e, executed_url, executed_clean_url, sent_by: e.created_by ? senderById.get(e.created_by) ?? 'Agent' : null };
   }));
