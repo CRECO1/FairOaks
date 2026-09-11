@@ -113,6 +113,12 @@ export function completedEmail(unit: string, opts: { recipientName: string; docT
   return { subject: `Completed: ${opts.docTitle}`, html: shell(brandName(unit), body) };
 }
 
+// Every executed document is copied here as well as to the signers and the agent
+// who sent it. Overridable without a deploy, but it falls back to the broker's
+// address rather than silently copying no one if the variable goes missing.
+export const ARCHIVE_RECIPIENTS: string[] = (process.env.ESIGN_ARCHIVE_EMAILS || 'zack@crecotx.com')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
 // ── Audit log ────────────────────────────────────────────────────────────────
 export async function logEvent(
   admin: SupabaseClient, envelopeId: string, signerId: string | null, event: string,
@@ -385,6 +391,10 @@ export async function finalizeEnvelope(
       const { data: prof } = await admin.from('crm_profiles').select('email, first_name, last_name').eq('id', env.created_by).maybeSingle();
       if (prof?.email) recipients.set(String(prof.email).toLowerCase(), `${prof.first_name ?? ''} ${prof.last_name ?? ''}`.trim() || 'Broker');
     }
+    // The broker keeps a copy of everything that executes, whoever sent it —
+    // without this an agent's completed lease only reaches that agent. Deduped
+    // by the map, so sending your own document does not arrive twice.
+    for (const addr of ARCHIVE_RECIPIENTS) recipients.set(addr.toLowerCase(), 'Zachary');
     for (const [email, name] of recipients) {
       const { subject, html } = completedEmail(env.business_unit, { recipientName: name, docTitle: env.title });
       await sendEsignEmail(env.business_unit, email, subject, html, attach);
