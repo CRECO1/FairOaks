@@ -32,11 +32,12 @@ const EVENT_MAP: Record<string, { status: string; log: string }> = {
   'email.bounced':         { status: 'bounced',   log: 'email_bounced' },
   'email.complained':      { status: 'complained', log: 'email_complained' },
   'email.delivery_delayed': { status: 'delayed',  log: 'email_delayed' },
+  'email.failed':          { status: 'failed',    log: 'email_failed' },
 };
 
 // Once an address has hard-failed, a later "delivered" for the same message must
 // not quietly overwrite it, so states only ever move forward.
-const RANK: Record<string, number> = { delayed: 1, delivered: 2, opened: 3, clicked: 4, complained: 5, bounced: 6 };
+const RANK: Record<string, number> = { delayed: 1, delivered: 2, opened: 3, clicked: 4, complained: 5, bounced: 6, failed: 7 };
 
 export async function POST(req: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET;

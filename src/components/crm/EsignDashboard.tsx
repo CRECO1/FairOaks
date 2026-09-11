@@ -385,6 +385,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                               email_bounced:   { icon: '⚠️', label: 'Email bounced', color: '#b91c1c' },
                               email_complained:{ icon: '⚠️', label: 'Marked as spam', color: '#b91c1c' },
                               email_delayed:   { icon: '⏱', label: 'Delivery delayed', color: '#92400e' },
+                              email_failed:    { icon: '⚠️', label: 'Email failed to send', color: '#b91c1c' },
                               in_person_started: { icon: '🖊', label: 'Signed in person', color: '#5b3d91' },
                               signer_added:   { icon: '➕', label: 'Signer added', color: '#6b7280' },
                               signer_updated: { icon: '✏️', label: 'Signer updated', color: '#6b7280' },
