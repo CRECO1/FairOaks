@@ -27,7 +27,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
   busy?: boolean;
 }) {
   const [pages, setPages] = useState<{ w: number; h: number; src: string }[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'nofile'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'nofile' | 'encrypted'>('loading');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -66,7 +66,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
         }
         if (cancelled) return;
         setPages(out); setStatus('ready');
-      } catch (e) { if (!cancelled) { console.error('[SignPreviewModal]', e); setStatus('error'); } }
+      } catch (e) { if (!cancelled) { console.error('[SignPreviewModal]', e); setStatus((e as { name?: string })?.name === 'PasswordException' ? 'encrypted' : 'error'); } }
     })();
     return () => { cancelled = true; };
   }, [url]);
@@ -94,17 +94,19 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
         <span style={{ flex: 1 }} />
         <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}>{onConfirm ? '‹ Back' : '✕ Close'}</button>
         {onConfirm && (
-          <button onClick={onConfirm} disabled={busy || status === 'nofile'}
-            title={status === 'nofile' ? 'This document has no file to sign — import or fill it first' : undefined}
-            style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: status === 'nofile' ? '#9ca3af' : '#c9922c', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: (busy || status === 'nofile') ? 'default' : 'pointer', opacity: (busy || status === 'nofile') ? 0.6 : 1 }}>
+          {(() => { const blocked = status === 'nofile' || status === 'encrypted'; return (
+          <button onClick={onConfirm} disabled={busy || blocked}
+            title={blocked ? 'This document can’t be signed as-is — fix it before sending' : undefined}
+            style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: blocked ? '#9ca3af' : '#c9922c', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: (busy || blocked) ? 'default' : 'pointer', opacity: (busy || blocked) ? 0.6 : 1 }}>
             {busy ? 'Sending…' : confirmLabel}
-          </button>
+          </button> ); })()}
         )}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#4b4f52', borderRadius: 8, padding: 18 }}>
         {status === 'loading' && <div style={{ color: '#cbd5e1', textAlign: 'center', padding: 60 }}>Rendering document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60 }}>Couldn’t render this document. You can still send, but review the source first.</div>}
         {status === 'nofile' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60, lineHeight: 1.7 }}>This document has no file yet.<br /><span style={{ fontSize: 13, color: '#e5e7eb' }}>Import the PDF — or open the form, fill it and Save — before sending. There’s nothing here to sign.</span></div>}
+        {status === 'encrypted' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60, lineHeight: 1.7 }}>This PDF is password-protected / encrypted.<br /><span style={{ fontSize: 13, color: '#e5e7eb' }}>It can’t be prepared for signing (the signer would see a blank page). Open it in Preview → File → <strong>Export as PDF</strong> with encryption off (or “Print → Save as PDF”), then import that copy.</span></div>}
         {status === 'ready' && fields.length === 0 && <div style={{ color: '#fde68a', textAlign: 'center', padding: '4px 0 16px', fontSize: 13 }}>No signature fields are placed — signers will sign on an added Signatures page.</div>}
         {pages.map((pg, i) => {
           const pageFields = fields.filter(f => (f.page || 1) === i + 1);
