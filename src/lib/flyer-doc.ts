@@ -288,14 +288,17 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   let p2: PDFPage | null = null;
   const p2blocks: Array<{ title: string; weight: number; border: boolean; natural?: (w: number) => number; draw: (x: number, y: number, w: number, h: number) => Rect }> = [];
   if (gallery.length) p2blocks.push({
-    title: 'PROPERTY GALLERY', weight: 1.4, border: false,
+    title: 'PROPERTY GALLERY', weight: 1.9, border: false,
     // The grid holds the photos' 4:3, so it can't use a taller box — say so up front
     // and the leftover goes to the map instead of becoming a hole in the page.
     natural: (w) => photoGridHeight(gallery.length, w),
     draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, LINE),
   });
-  if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 1.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
-  if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.5, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => drawContain(p2!, aerial!, x, y, w, h) });
+  // Floor plan is the key page-2 visual — weight it to fill most of the width so the
+  // site plan is actually legible rather than a small centred letterbox. The area map
+  // is secondary (page 1 already carries a location map), so it takes the smaller share.
+  if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
+  if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => drawContain(p2!, aerial!, x, y, w, h) });
 
   if (p2blocks.length) {
     p2 = pdf.addPage([W, H]);

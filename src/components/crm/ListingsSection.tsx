@@ -2060,7 +2060,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   const ready = sendSigners.filter(x => x.email.includes('@') && x.name.trim());
                   if (!ready.length) { onToast('Add at least one signer with a valid email'); return; }
                   // Nothing leaves from here — this opens the review, which carries the send.
-                  if (sendModal?.url) setSendPreview(true); else sendForSignature();
+                  if (sendModal?.url) setSendPreview(true); else onToast('This document has no file yet — import the PDF, or open the form and Save, before sending');
                 }}
                 disabled={sendBusy}
                 style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#c9922c', color: '#fff', fontSize: 13, fontWeight: 700, cursor: sendBusy ? 'default' : 'pointer', opacity: sendBusy ? 0.6 : 1, fontFamily: "'DM Sans',sans-serif" }}>

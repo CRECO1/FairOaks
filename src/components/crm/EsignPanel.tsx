@@ -188,7 +188,9 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
             const ready = signers.filter(x => x.name.trim() && x.email.includes('@'));
             if (!ready.length) { showToast?.('Add at least one signer with a valid email'); return; }
             // Opens the review — the send itself lives there, so nothing goes out unseen.
-            if (doc.url) setPreview(true); else send();
+            // A doc with no file can't be previewed OR signed — stop here with a
+            // clear reason instead of firing a blank envelope at the signer.
+            if (doc.url) setPreview(true); else showToast?.('This document has no file yet — import the PDF, or open the form and Save, before sending');
           }}
           disabled={busy}
           style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>
