@@ -94,12 +94,11 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
         <span style={{ flex: 1 }} />
         <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}>{onConfirm ? '‹ Back' : '✕ Close'}</button>
         {onConfirm && (
-          {(() => { const blocked = status === 'nofile' || status === 'encrypted'; return (
-          <button onClick={onConfirm} disabled={busy || blocked}
-            title={blocked ? 'This document can’t be signed as-is — fix it before sending' : undefined}
-            style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: blocked ? '#9ca3af' : '#c9922c', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: (busy || blocked) ? 'default' : 'pointer', opacity: (busy || blocked) ? 0.6 : 1 }}>
+          <button onClick={onConfirm} disabled={busy || status === 'nofile' || status === 'encrypted'}
+            title={(status === 'nofile' || status === 'encrypted') ? 'This document can’t be signed as-is — fix it before sending' : undefined}
+            style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: (status === 'nofile' || status === 'encrypted') ? '#9ca3af' : '#c9922c', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: (busy || status === 'nofile' || status === 'encrypted') ? 'default' : 'pointer', opacity: (busy || status === 'nofile' || status === 'encrypted') ? 0.6 : 1 }}>
             {busy ? 'Sending…' : confirmLabel}
-          </button> ); })()}
+          </button>
         )}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#4b4f52', borderRadius: 8, padding: 18 }}>
