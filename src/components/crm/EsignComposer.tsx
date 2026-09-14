@@ -95,7 +95,7 @@ export default function EsignComposer({
       if (!pre.ok) { showToast?.(pj.error || 'Could not start the upload'); return; }
       const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file });
       if (!put.ok) { showToast?.('The upload failed — try again'); return; }
-      const conf = await fetch('/api/crm/esign-import', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ storage_path: pj.storagePath, title: file.name }) });
+      const conf = await fetch('/api/crm/esign-import', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ storage_path: pj.storagePath, title: file.name, business_unit: businessUnit }) });
       const cj = await conf.json().catch(() => ({}));
       if (!conf.ok) { showToast?.(cj.error || 'Could not import that document'); return; }
       // Read back the signed URL the editor and the review both render from.
@@ -160,7 +160,7 @@ export default function EsignComposer({
       const r = await fetch('/api/crm/envelopes', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) },
         body: JSON.stringify({
-          submission_id: doc.id, title: doc.title, message: message || null,
+          submission_id: doc.id, title: doc.title, message: message || null, business_unit: businessUnit,
           signers: valid.map((x, i) => ({ signer_role: x.role, name: x.name.trim(), email: x.email.trim(), signing_order: ordered ? i + 1 : 1, in_person: !!x.inPerson })),
         }),
       });

@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const b = await req.json().catch(() => ({}));
-  const { submission_id, deal_id, listing_id, title, message, signers } = b;
+  const { submission_id, deal_id, listing_id, title, message, signers, business_unit } = b;
   if (!submission_id) return NextResponse.json({ error: 'submission_id required' }, { status: 400 });
   if (!Array.isArray(signers) || signers.length === 0) return NextResponse.json({ error: 'Add at least one signer' }, { status: 400 });
   const clean = signers.filter((s: { email?: string; name?: string }) => s && s.email && String(s.email).includes('@') && s.name);
@@ -156,7 +156,9 @@ export async function POST(req: NextRequest) {
   if (!sub) return notFound('Document not found');
   if (!sub.filled_path) return NextResponse.json({ error: 'This document has no saved PDF yet — open it, fill it, and Save to the deal first.' }, { status: 400 });
 
-  const unit = isAdminRole(ctx.role) ? (sub.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
+  // An admin's active workspace wins the brand — 'sending from CRECO must send as CRECO',
+  // even for a doc whose own tag or the sender's profile says otherwise.
+  const unit = isAdminRole(ctx.role) ? (business_unit || sub.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
   const docTitle = title || sub.title || 'Document';
 
   const { data: env, error: envErr } = await supabase.from('crm_envelopes').insert([{
