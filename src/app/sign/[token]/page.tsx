@@ -86,7 +86,7 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
           const page = await pdf.getPage(i);
           if (cancelled) return;
           const base = page.getViewport({ scale: 1 });
-          const vp = page.getViewport({ scale: Math.min(1400, 900) / base.width });
+          const vp = page.getViewport({ scale: Math.min(1600, 1150) / base.width });
           const canvas = document.createElement('canvas');
           canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
           const ctx = canvas.getContext('2d'); if (!ctx) continue;
@@ -112,7 +112,7 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
     );
   }
   return (
-    <div id="doc-scroll" style={{ maxHeight: '60vh', overflowY: 'auto', background: '#4b4f52', padding: 12 }}>
+    <div id="doc-scroll" style={{ maxHeight: '78vh', overflowY: 'auto', background: '#4b4f52', padding: 12 }}>
       {pages.map((src, i) => {
         const pageFields = fields.filter(f => (f.page || 1) === i + 1);
         return (
@@ -129,10 +129,10 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
                   style={{
                     position: 'absolute', left: `${f.fx * 100}%`, width: `${Math.max(f.fw * 100, 10)}%`,
                     top: `${f.fy * 100}%`, transform: 'translateY(-100%)',
-                    height: f.type === 'date' ? 26 : 34, boxSizing: 'border-box', borderRadius: 4,
+                    height: f.type === 'date' ? 34 : 46, boxSizing: 'border-box', borderRadius: 5,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                     cursor: done ? 'default' : 'pointer',
-                    background: done ? 'rgba(255,255,255,.96)' : isNext ? '#c9922c' : 'rgba(201,146,44,.22)',
+                    background: done ? 'rgba(255,255,255,.96)' : isNext ? '#c9922c' : 'rgba(201,146,44,.38)',
                     border: done ? '1px solid #d6d9de' : `2px solid ${GOLD}`,
                     boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.35)' : 'none',
                     transition: 'background .15s, box-shadow .15s',
@@ -140,8 +140,8 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
                   {done
                     ? (img
                         ? <img src={img} alt="" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                        : <span style={{ fontSize: 12, color: INK, fontWeight: 600 }}>{dateStr}</span>)
-                    : <span style={{ fontSize: 11.5, fontWeight: 800, color: isNext ? '#fff' : '#8a6d3b', whiteSpace: 'nowrap' }}>
+                        : <span style={{ fontSize: 14, color: INK, fontWeight: 600 }}>{dateStr}</span>)
+                    : <span style={{ fontSize: 13, fontWeight: 800, color: isNext ? '#fff' : '#7c5a12', whiteSpace: 'nowrap' }}>
                         {isNext ? `▶ ${typeLabel(f.type)} here` : typeLabel(f.type)}
                       </span>}
                 </div>
@@ -291,13 +291,13 @@ export default function SignPage() {
       setFinalStatus(j.status || 'signed');
       setView('signed');
     } finally { setSubmitting(false); }
-  }, [consent, typed, initials, mode, active, token]);
+  }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField]);
 
   const wrap: React.CSSProperties = { minHeight: '100vh', background: '#f4f5f7', fontFamily: "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif", color: '#1a1a1a', padding: '0 0 48px' };
-  const card: React.CSSProperties = { maxWidth: 720, margin: '0 auto', background: '#fff', borderRadius: 14, boxShadow: '0 6px 24px rgba(0,0,0,.06)', padding: 24 };
+  const card: React.CSSProperties = { maxWidth: 960, margin: '0 auto', background: '#fff', borderRadius: 14, boxShadow: '0 6px 24px rgba(0,0,0,.06)', padding: 24 };
   const header = (
     <div style={{ borderBottom: `3px solid ${GOLD}`, background: '#fff' }}>
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: .5, color: GOLD }}>CRECO</span>
         <span style={{ fontSize: 12, color: '#9ca3af' }}>Secure e-signature</span>
       </div>
@@ -335,7 +335,7 @@ export default function SignPage() {
     <div style={wrap}>
       {header}
       <div style={{ padding: '20px 16px' }}>
-        <div style={{ maxWidth: 720, margin: '0 auto 14px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ maxWidth: 960, margin: '0 auto 14px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
           <h1 style={{ fontSize: 22, margin: 0 }}>{data?.title ?? 'Document'}</h1>
           <span style={{ fontSize: 13, color: '#6b7280' }}>for {data?.signer?.name} · signing as <strong style={{ textTransform: 'capitalize' }}>{data?.signer?.role}</strong></span>
         </div>
@@ -349,6 +349,11 @@ export default function SignPage() {
           </div>
         )}
 
+        {fields.length > 0 && !allDone && (
+          <div style={{ maxWidth: 960, margin: '0 auto 12px', fontSize: 14, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 10, padding: '12px 16px', lineHeight: 1.5 }}>
+            <strong>One more step — place your signature.</strong> Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the <span style={{ color: GOLD, fontWeight: 700 }}>Place my signature</span> button under the document. Then check the box and Finish &amp; Sign.
+          </div>
+        )}
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
           {data?.doc_url
             ? <DocView url={data.doc_url} fields={fields} filled={filled} onFill={fillField}
@@ -362,9 +367,9 @@ export default function SignPage() {
               </span>
               <span style={{ flex: 1 }} />
               {!allDone && (
-                <button onClick={() => nextField && scrollToField(nextField.id)}
-                  style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer' }}>
-                  {Object.keys(filled).length ? `Next — ${typeLabel(nextField?.type ?? 'signature')} ▸` : 'Start signing ▸'}
+                <button onClick={() => { if (nextField) { scrollToField(nextField.id); fillField(nextField); } }}
+                  style={{ fontSize: 14, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer' }}>
+                  {remaining.length === fields.length ? 'Place my signature ▸' : `Place next — ${fields.length - remaining.length + 1} of ${fields.length} ▸`}
                 </button>
               )}
             </div>
