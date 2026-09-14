@@ -58,9 +58,11 @@ export async function PUT(req: NextRequest) {
   // Confirm it opens as a PDF before it can be sent to a client; a mislabelled file
   // would otherwise fail silently at signing time.
   let pageCount = 0;
+  let encrypted = false;
   try {
     const doc = await PDFDocument.load(new Uint8Array(await blob.arrayBuffer()), { ignoreEncryption: true });
     pageCount = doc.getPageCount();
+    encrypted = doc.isEncrypted;
   } catch {
     await supabase.storage.from(BUCKET).remove([storage_path]);
     return NextResponse.json({ error: 'That file could not be read as a PDF. Re-save it as a PDF and try again.' }, { status: 400 });
@@ -68,6 +70,14 @@ export async function PUT(req: NextRequest) {
   if (!pageCount) {
     await supabase.storage.from(BUCKET).remove([storage_path]);
     return NextResponse.json({ error: 'That PDF has no pages.' }, { status: 400 });
+  }
+  // Reject encrypted / password-protected PDFs at the door. pdf.js can't render many
+  // of them, so a signer would receive a blank page — and TREC/TAR forms are commonly
+  // owner-encrypted. Tell the agent the one-step fix rather than letting a blank
+  // document reach a client. (Existing encrypted docs were decrypted separately.)
+  if (encrypted) {
+    await supabase.storage.from(BUCKET).remove([storage_path]);
+    return NextResponse.json({ error: 'This PDF is password-protected / encrypted, so it can’t be prepared for signing (the signer would see a blank page). Open it in Preview → File → Export as PDF with encryption off (or Print → Save as PDF), then import that copy.' }, { status: 400 });
   }
 
   const unit = isAdminRole(ctx.role) ? (business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');

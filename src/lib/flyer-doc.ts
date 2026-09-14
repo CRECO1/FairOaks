@@ -36,6 +36,10 @@ export interface FlyerInput {
   mapBytes?: Uint8Array | null;        // page-1 location map (PNG)
   aerialBytes?: Uint8Array | null;     // page-2 aerial map (PNG)
   floorPlan?: { bytes: Uint8Array; png: boolean } | null;
+  // Optional page-2 trade-area panel — a dark stat strip (demographics). When present
+  // it takes the aerial map's slot, since the location is already mapped on page 1 and
+  // the numbers sell the site harder than a second map does.
+  tradeArea?: { tiles: Array<{ value: string; label: string }>; caption?: string } | null;
   fontBold: Uint8Array;          // Oswald-Bold TTF
   logoPng: Uint8Array;           // CRECO letterhead PNG
   iabsPdf?: Uint8Array | null;   // Information About Brokerage Services — appended last (required in TX)
@@ -121,6 +125,37 @@ function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w:
   });
   const usedH = rows * ch + (rows - 1) * g;
   return { x: x0, y: top - usedH, w: gridW, h: usedH };
+}
+
+// Dark demographics strip: up to 4 gold-value / white-label cells with dividers, plus
+// an optional source/value-prop caption underneath. Drawn top-aligned in its box.
+function drawTradeArea(
+  page: PDFPage, ta: { tiles: Array<{ value: string; label: string }>; caption?: string },
+  x: number, y: number, w: number, h: number, osw: PDFFont, body: PDFFont,
+): Rect {
+  const barH = 60;
+  const barY = y + h - barH;                       // top-align the bar within the block box
+  page.drawRectangle({ x, y: barY, width: w, height: barH, color: BLACK });
+  const tiles = ta.tiles.slice(0, 4);
+  const cw = w / Math.max(1, tiles.length);
+  tiles.forEach((t, i) => {
+    const cx = x + i * cw;
+    if (i > 0) page.drawRectangle({ x: cx, y: barY + 11, width: 1, height: barH - 22, color: rgb(0.3, 0.31, 0.34) });
+    const val = sanitize(t.value) || '—';
+    const vs = fitSize(val, osw, cw - 16, 20, 10);
+    page.drawText(val, { x: cx + (cw - osw.widthOfTextAtSize(val, vs)) / 2, y: barY + barH - 27, size: vs, font: osw, color: GOLD });
+    const lab = sanitize(t.label).toUpperCase();
+    const ls = fitSize(lab, body, cw - 8, 7.5, 5);
+    page.drawText(lab, { x: cx + (cw - body.widthOfTextAtSize(lab, ls)) / 2, y: barY + 11, size: ls, font: body, color: WHITE });
+  });
+  let usedH = barH;
+  if (ta.caption) {
+    const cs = 8, cap = sanitize(ta.caption);
+    const cw2 = fitSize(cap, body, w, cs, 6);
+    page.drawText(cap, { x: x + (w - body.widthOfTextAtSize(cap, cw2)) / 2, y: barY - 13, size: cw2, font: body, color: rgb(0.42, 0.44, 0.47) });
+    usedH += 17;
+  }
+  return { x, y: y + h - usedH, w, h: usedH };
 }
 
 export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
@@ -307,7 +342,16 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   // site plan is actually legible rather than a small centred letterbox. The area map
   // is secondary (page 1 already carries a location map), so it takes the smaller share.
   if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
-  if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => drawContain(p2!, aerial!, x, y, w, h) });
+  // Trade-area demographics take the aerial's slot when supplied (page 1 already maps the
+  // location, so the numbers earn the space better than a second map).
+  if (input.tradeArea?.tiles?.length) {
+    const ta = input.tradeArea;
+    p2blocks.push({
+      title: 'TRADE AREA', weight: 1.0, border: false,
+      natural: () => 60 + (ta.caption ? 17 : 0),
+      draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body),
+    });
+  } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => drawContain(p2!, aerial!, x, y, w, h) });
 
   if (p2blocks.length) {
     p2 = pdf.addPage([W, H]);
