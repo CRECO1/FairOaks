@@ -2005,7 +2005,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         );
                       })}
                       {(anyRemoved || sendFieldGroups.some(g => g.keep && g.role !== g.origRole)) && <div style={{ fontSize: 11, color: '#8a6d3b' }}>Field changes save to the document when you send. Removed fields won’t be signed.</div>}
-                      <button onClick={goPlaceFields} style={{ alignSelf: 'flex-start', marginTop: 2, fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 10px', cursor: 'pointer' }}>✒ Add / move fields on the document</button>
+                      <button onClick={goPlaceFields} title="Open the document to place initials, a date, or a text field for a signer to fill in" style={{ marginTop: 6, width: '100%', fontSize: 12.5, fontWeight: 800, color: '#a06a12', background: '#fffdf6', border: '1.5px solid #e6d3a2', borderRadius: 8, padding: '9px 10px', cursor: 'pointer' }}>✒ Add initials, dates &amp; other fields</button>
                     </div>
                   )}
                 </div>
@@ -2014,7 +2014,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <div style={{ fontSize: 12.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ flex: 1, minWidth: 180 }}>No signature fields placed — signers will sign on an added Signatures page. To sign on the document’s own lines, place fields first.</span>
                 <button onClick={goPlaceFields}
-                  style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Place fields</button>
+                  style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap' }}>✒ Add initials &amp; dates</button>
               </div>
             ))}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

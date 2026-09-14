@@ -135,6 +135,11 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
         );
       })()}
 
+      {onPlaceFields && (doc.form_id || doc.imported) && (
+        <button onClick={onPlaceFields} title="Open the document to place initials, a date, or a text field for a signer to fill in"
+          style={{ width: '100%', marginBottom: 14, padding: '11px 0', borderRadius: 9, border: '1.5px solid #e6d3a2', background: '#fffdf6', color: '#a06a12', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>✒ Add initials, dates &amp; other fields</button>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {signers.map((s, i) => {
           const sugg = pick === i ? suggestions(s.name) : [];
@@ -176,9 +181,6 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
       </div>
 
       <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', marginTop: 12 }} />
-      {onPlaceFields && (doc.form_id || doc.imported) && (
-        <button onClick={onPlaceFields} style={{ width: '100%', marginTop: 12, padding: '8px 0', borderRadius: 8, border: '1px solid #f0e2c4', background: '#fff', color: '#a06a12', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>✒ Add / move fields on the document</button>
-      )}
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
         <button
