@@ -7479,6 +7479,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <EsignDashboard
               authToken={session?.access_token}
               showToast={showToast}
+              forms={crmForms}
               refreshKey={esignFieldsVersion}
               isSuperAdmin={isSuperAdmin}
               onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })}

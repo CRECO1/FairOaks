@@ -21,7 +21,34 @@ const MAX_SIZE = 25 * 1024 * 1024;   // 25 MB — well past a normal contract sc
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const { filename, file_size } = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+
+  // Send an existing library form (a clean, unencrypted CRM template) straight to
+  // signing — no re-uploading it from the agent's computer. Copy its PDF into an
+  // import and hand back a ready-to-prepare submission the composer can open.
+  if (body.from_form_id) {
+    const supabase = adminClient();
+    const { data: form } = await supabase.from('crm_forms').select('id, name, storage_path, business_unit').eq('id', body.from_form_id).maybeSingle();
+    if (!form?.storage_path) return notFound('Form not found');
+    if (!isAdminRole(ctx.role) && form.business_unit !== ctx.businessUnit) return notFound('Form not found');
+    const { data: blob } = await supabase.storage.from(BUCKET).download(form.storage_path);
+    if (!blob) return NextResponse.json({ error: 'Could not read that form.' }, { status: 500 });
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    const safe = String(form.name || 'Form').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
+    const path = `imports/${ctx.userId}/${Date.now()}_${safe}.pdf`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: true });
+    if (upErr) { console.error('[esign-import] form copy', upErr); return NextResponse.json({ error: 'Could not prepare that form.' }, { status: 500 }); }
+    const unit = isAdminRole(ctx.role) ? (body.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
+    const { data: sub, error } = await supabase.from('crm_form_submissions').insert({
+      form_id: null, business_unit: unit, title: form.name, values: [], status: 'saved',
+      source_path: path, filled_path: path, created_by: ctx.userId,
+    }).select('id, title').single();
+    if (error) { console.error('[esign-import] form submission', error); return NextResponse.json({ error: 'Could not prepare that form.' }, { status: 500 }); }
+    const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+    return NextResponse.json({ submission: { id: sub.id, title: sub.title, url: signed?.signedUrl ?? null } });
+  }
+
+  const { filename, file_size } = body;
   if (!filename) return NextResponse.json({ error: 'filename required' }, { status: 400 });
   // Signing needs fixed page geometry to place fields against, which only a PDF has.
   if (!/\.pdf$/i.test(String(filename))) {
