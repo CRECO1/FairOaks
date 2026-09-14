@@ -21,7 +21,7 @@ export default function PdfViewer({ url, onReady }: { url: string; onReady?: () 
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
         if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data }).promise;
+        const pdf = await pdfjs.getDocument({ data, password: '' }).promise; // '' unlocks owner-encrypted PDFs
         if (cancelled) return;
         const container = containerRef.current;
         if (!container) return;

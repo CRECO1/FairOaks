@@ -56,11 +56,12 @@ async function renderHand(text: string, family: string, boxW: number, boxH: numb
 // `frame-src 'self'` — an <iframe>/<embed> of it is blocked and renders blank, which
 // is what signers were seeing. Rendering the pages with pdf.js keeps everything
 // same-origin (fetch is allowed by connect-src) and shows a real preview.
-function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, initialsPng, dateStr }: {
+function DocView({ url, fields = [], filled, onFill, onClear, activeId, signaturePng, initialsPng, dateStr }: {
   url: string;
   fields?: SignField[];
   filled?: Record<string, boolean>;
   onFill?: (f: SignField) => void;
+  onClear?: (f: SignField) => void;
   activeId?: string | null;
   signaturePng?: string;
   initialsPng?: string;
@@ -80,7 +81,7 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
         if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data }).promise;
+        const pdf = await pdfjs.getDocument({ data, password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
         const out: string[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
@@ -124,14 +125,14 @@ function DocView({ url, fields = [], filled, onFill, activeId, signaturePng, ini
               const img = f.type === 'signature' ? signaturePng : f.type === 'initial' ? initialsPng : undefined;
               return (
                 <div key={f.id} id={`fld-${f.id}`}
-                  onClick={() => !done && onFill?.(f)}
-                  title={done ? 'Done' : `Click to ${typeLabel(f.type).toLowerCase()} here`}
+                  onClick={() => (done ? onClear?.(f) : onFill?.(f))}
+                  title={done ? 'Tap to clear and redo this spot' : `Click to ${typeLabel(f.type).toLowerCase()} here`}
                   style={{
                     position: 'absolute', left: `${f.fx * 100}%`, width: `${Math.max(f.fw * 100, 10)}%`,
                     top: `${f.fy * 100}%`, transform: 'translateY(-100%)',
                     height: f.type === 'date' ? 34 : 46, boxSizing: 'border-box', borderRadius: 5,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-                    cursor: done ? 'default' : 'pointer',
+                    cursor: 'pointer',
                     background: done ? 'rgba(255,255,255,.96)' : isNext ? '#c9922c' : 'rgba(201,146,44,.38)',
                     border: done ? '1px solid #d6d9de' : `2px solid ${GOLD}`,
                     boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.35)' : 'none',
@@ -212,6 +213,12 @@ export default function SignPage() {
     const rest = fields.filter(x => x.id !== f.id && !filled[x.id]);
     if (rest[0]) setTimeout(() => scrollToField(rest[0].id), 180);
   }, [typed, mode, adopt, fields, filled, scrollToField]);
+
+  // Signers can undo: tap a placed spot to clear it, or Start over to redo everything.
+  const clearField = useCallback((f: SignField) => {
+    setFilled(prev => { const n = { ...prev }; delete n[f.id]; return n; });
+  }, []);
+  const startOver = useCallback(() => { setFilled({}); setAdopted(null); setErr(''); }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -357,7 +364,7 @@ export default function SignPage() {
         )}
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
           {data?.doc_url
-            ? <DocView url={data.doc_url} fields={fields} filled={filled} onFill={fillField}
+            ? <DocView url={data.doc_url} fields={fields} filled={filled} onFill={fillField} onClear={clearField}
                 activeId={nextField?.id ?? null}
                 signaturePng={adopted?.signature} initialsPng={adopted?.initials} dateStr={dateStr} />
             : <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>}
@@ -367,6 +374,10 @@ export default function SignPage() {
                 {allDone ? `✓ All ${fields.length} spot${fields.length === 1 ? '' : 's'} confirmed` : `${fields.length - remaining.length} of ${fields.length} confirmed`}
               </span>
               <span style={{ flex: 1 }} />
+              {Object.keys(filled).length > 0 && (
+                <button onClick={startOver} title="Clear what you've placed and start again"
+                  style={{ fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer' }}>↺ Start over</button>
+              )}
               {!allDone && (
                 <button onClick={() => { if (nextField) { scrollToField(nextField.id); fillField(nextField); } }}
                   style={{ fontSize: 14, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer' }}>

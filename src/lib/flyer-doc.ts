@@ -287,7 +287,16 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   // ── PAGE 2 — adaptive: only added when there's a gallery / floor plan / aerial ─
   let p2: PDFPage | null = null;
   const p2blocks: Array<{ title: string; weight: number; border: boolean; natural?: (w: number) => number; draw: (x: number, y: number, w: number, h: number) => Rect }> = [];
-  if (gallery.length) p2blocks.push({
+  if (gallery.length === 1) {
+    // A single gallery photo reads far better as a full-width banner (contained at
+    // its own aspect) than as a small centred 4:3 cell — so the rendering is legible.
+    const g = gallery[0];
+    p2blocks.push({
+      title: 'PROPERTY GALLERY', weight: 2.2, border: true,
+      natural: (w) => w * (g.height / g.width),
+      draw: (x, y, w, h) => drawContain(p2!, g, x, y, w, h),
+    });
+  } else if (gallery.length) p2blocks.push({
     title: 'PROPERTY GALLERY', weight: 1.9, border: false,
     // The grid holds the photos' 4:3, so it can't use a taller box — say so up front
     // and the leftover goes to the map instead of becoming a hole in the page.

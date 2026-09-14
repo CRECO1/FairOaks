@@ -50,7 +50,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
         if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data }).promise;
+        const pdf = await pdfjs.getDocument({ data, password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
         const out: { w: number; h: number; src: string }[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);

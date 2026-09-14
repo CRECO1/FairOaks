@@ -152,7 +152,7 @@ export default function TransactionDocEditor({
         const ab = await resp.arrayBuffer();
         bytesRef.current = new Uint8Array(ab.slice(0)); // copy — pdf.js detaches the buffer
         if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data: ab }).promise;
+        const pdf = await pdfjs.getDocument({ data: ab, password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
         pdfRef.current = pdf as unknown as { getPage: (n: number) => Promise<PdfPage> };
         const dims: PageDim[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
