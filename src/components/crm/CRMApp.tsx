@@ -520,7 +520,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
   const [esignModal, setEsignModal] = useState<{ mode: 'send' | 'manage'; doc: EsignDoc } | null>(null);
   const [esignFieldsVersion, setEsignFieldsVersion] = useState(0); // bumped when placements change
-  const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string; showDeals?: boolean; baked?: boolean } | null>(null);
+  const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string; showDeals?: boolean } | null>(null);
   const [importSend, setImportSend] = useState<EsignDoc | null>(null);
   // The E-Sign envelope composer: set up -> place fields -> review -> send.
   const [composer, setComposer] = useState<{ file: File | null; doc: ComposerDoc | null } | null>(null);
@@ -1186,19 +1186,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       url = j.blankUrl ?? j.filledUrl ?? null;
     }
     if (!url && form.id) { const r = await authGet(`/api/crm/forms/${form.id}/url`); const j = await r.json(); url = j.url ?? null; }
-    // A generated document (e.g. a lease) has a field template but no stored blank —
-    // its finished PDF is the only artifact, and the body text is already printed on
-    // it. Edit that copy directly, flagging the text as baked so the editor adds new
-    // fields (initials, dates, notes) without re-stamping what is already there.
-    let baked = false;
-    if (!url && submissionId) {
-      const r = await authGet(`/api/crm/form-submissions/${submissionId}`);
-      const j = await r.json().catch(() => ({}));
-      url = j.filledUrl ?? j.blankUrl ?? null;
-      baked = true;
-    }
     if (!url) { showToast('Could not open the document'); return; }
-    setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId, baked });
+    setDealFormEditor({ form: { id: form.id, name: form.name }, url, submissionId });
   }, [authGet, crmForms]); // eslint-disable-line
   // Open the drag-and-drop editor on an imported document (no library form behind it).
   const openImportEditor = useCallback(async (d: { id: string; title?: string; url?: string | null }) => {
@@ -11081,7 +11070,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <TransactionDocEditor
           form={dealFormEditor.form}
           url={dealFormEditor.url}
-          bakedText={dealFormEditor.baked}
           submissionId={dealFormEditor.submissionId}
           authToken={session?.access_token}
           isAdmin={isAdmin}

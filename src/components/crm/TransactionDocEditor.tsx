@@ -31,7 +31,6 @@ interface Field {
   value: string;
   size: number;             // font size in PDF points
   type: 'text' | 'check' | 'signature' | 'initial' | 'date';
-  baked?: boolean;          // text already printed on a generated doc — shown on the page, never re-stamped
   signerRole?: string;      // signature/initial/date placeholders belong to a party
   signerKey?: string;       // …and, when the signers are known by name, to that PERSON
   fieldKey?: string;        // fields sharing a key fill together (type once, fill everywhere)
@@ -71,7 +70,7 @@ export interface EditorRecipient { key: string; name: string; email: string; rol
 export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string };
 
 export default function TransactionDocEditor({
-  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, bakedText, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved,
+  form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved,
 }: {
   form: { id: string; name: string };
   url: string;
@@ -82,10 +81,6 @@ export default function TransactionDocEditor({
   listingId?: string;  // when set, the doc saves into this property's folder (deal picker hidden)
   businessUnit?: string;
   submissionId?: string;
-  // The rendered PDF is a generated document whose body text is already printed
-  // (a lease from the generator). Existing text fields are shown but not re-stamped;
-  // the agent just adds initials / dates / notes on top.
-  bakedText?: boolean;
   fieldPrefill?: Record<string, string>;  // field_key → value, seeded into a blank form (e.g. the agent's own info)
   isMobile?: boolean;
   // The people signing, in order. Given these, the toolbar picks a PERSON instead of
@@ -190,7 +185,7 @@ export default function TransactionDocEditor({
           setEdits(Array.isArray(j.edits) ? j.edits : []);
           const vals = j.submission?.values;
           if (Array.isArray(vals) && vals.length) {
-            setFields(vals.map((f: Field) => ({ ...f, id: nextId(), baked: !!bakedText && (f.type === 'text' || f.type === 'check') })));
+            setFields(vals.map((f: Field) => ({ ...f, id: nextId() })));
             return;
           }
         }
@@ -312,7 +307,6 @@ export default function TransactionDocEditor({
     for (const f of fields) {
       const pg = pgs[f.page - 1]; if (!pg) continue;
       if (f.type === 'signature' || f.type === 'initial' || f.type === 'date') continue; // signer placeholders — stamped at signing time
-      if (f.baked) continue; // already printed on the generated document — re-stamping would double it
       const { width, height } = pg.getSize();
       const x = f.fx * width + 2;
       // Baseline sits just above the blank line (detected fy = the underline),
@@ -520,7 +514,7 @@ export default function TransactionDocEditor({
             ? { display: 'flex', gap: 8, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }
             : { marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {subIdRef.current && !isMobile && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ ...actionBtn, background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', flexShrink: 0 }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
-          {isAdmin && !isMobile && !imported && !onSend && !bakedText && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
+          {isAdmin && !isMobile && !imported && !onSend && <button onClick={saveTemplate} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>💾 Save field layout</button>}
           {!listingId && deals && deals.length > 0 && (
             <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
               style={{ padding: isMobile ? '11px 10px' : '8px 10px', minHeight: isMobile ? 44 : undefined, fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230, flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
@@ -624,7 +618,6 @@ export default function TransactionDocEditor({
             style={{ position: 'relative', width: '100%', aspectRatio: `${pd.pw}/${pd.ph}`, containerType: 'inline-size', background: '#fff', boxShadow: '0 2px 12px rgba(0,0,0,.25)', cursor: tool === 'select' ? 'default' : 'crosshair' }}>
             <PageCanvas pageNum={pd.num} pdfRef={pdfRef} />
             {fields.filter(f => f.page === pd.num).map(f => {
-              if (f.baked) return null; // its text is already on the page image — nothing to overlay
               const isSel = selected === f.id;
               const isCheck = f.type === 'check';
               const isSig = f.type === 'signature' || f.type === 'initial' || f.type === 'date';

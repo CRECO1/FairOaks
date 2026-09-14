@@ -209,7 +209,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // Per-deal "add a form" dropdown on the Deals tab (mirrors the deal Docs tab).
   const [dealFormPick, setDealFormPick] = useState<Record<string, string>>({});
   const [dealFormAdding, setDealFormAdding] = useState<string | null>(null);
-  const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string; baked?: boolean } | null>(null);
+  const [editorDoc, setEditorDoc] = useState<{ id: string; name: string; url: string; submissionId?: string } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
 
   // Team / sharing state for the open listing.
@@ -348,18 +348,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     try {
       const res = await fetch(`/api/crm/forms/${form.id}/url`, { headers: authHeaders });
       const json = await res.json();
-      let url: string | null = json.url ?? null;
-      // A generated document (e.g. a lease) has no stored blank — edit its finished
-      // PDF directly, flagging the already-printed text so it isn't re-stamped.
-      let baked = false;
-      if (!url && submissionId) {
-        const sr = await fetch(`/api/crm/form-submissions/${submissionId}`, { headers: authHeaders });
-        const sj = await sr.json().catch(() => ({}));
-        url = sj.filledUrl ?? sj.blankUrl ?? null;
-        baked = true;
-      }
-      if (!url) { onToast('Could not open form'); return; }
-      setEditorDoc({ id: form.id, name: form.name, url, submissionId, baked });
+      if (!json.url) { onToast('Could not open form'); return; }
+      setEditorDoc({ id: form.id, name: form.name, url: json.url, submissionId });
     } catch { onToast('Could not open form'); }
   }, [authToken, onToast, crmForms]); // eslint-disable-line
 
@@ -2106,7 +2096,6 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         <TransactionDocEditor
           form={{ id: editorDoc.id, name: editorDoc.name }}
           url={editorDoc.url}
-          bakedText={editorDoc.baked}
           authToken={authToken}
           isAdmin={isAdmin}
           listingId={active.id}
