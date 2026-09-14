@@ -297,9 +297,10 @@ export default function SignPage() {
   const card: React.CSSProperties = { maxWidth: 960, margin: '0 auto', background: '#fff', borderRadius: 14, boxShadow: '0 6px 24px rgba(0,0,0,.06)', padding: 24 };
   const header = (
     <div style={{ borderBottom: `3px solid ${GOLD}`, background: '#fff' }}>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '16px 24px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: .5, color: GOLD }}>CRECO</span>
-        <span style={{ fontSize: 12, color: '#9ca3af' }}>Secure e-signature</span>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '14px 24px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" style={{ height: 44, width: 'auto', display: 'block' }} />
+        <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, letterSpacing: .3, paddingLeft: 4, borderLeft: '1px solid #e5e7eb' }}>Secure e-signature</span>
       </div>
     </div>
   );
@@ -486,6 +487,22 @@ export default function SignPage() {
           )}
         </div>
       </div>
+
+      {/* Always-reachable jump control: from anywhere on the page, go straight to the
+          next spot this signer still has to sign (and place it). It floats above the
+          content so a signer never has to hunt through a long document for their
+          fields. It disappears once every spot is placed. */}
+      {view === 'ready' && fields.length > 0 && !allDone && nextField && (
+        <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center', padding: '0 12px calc(14px + env(safe-area-inset-bottom))', pointerEvents: 'none', zIndex: 60 }}>
+          <button
+            onClick={() => { scrollToField(nextField.id); fillField(nextField); }}
+            title="Jump to your next signing spot and sign it"
+            style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, background: GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: '13px 22px', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(201,146,44,.5)' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 800, background: 'rgba(255,255,255,.25)', borderRadius: 999, padding: '2px 9px' }}>{fields.length - remaining.length} / {fields.length}</span>
+            {remaining.length === fields.length ? 'Jump to my signature ▸' : `Jump to next — ${typeLabel(nextField.type)} ▸`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
