@@ -42,6 +42,7 @@ const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#3741
 
 export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, forms = [], refreshKey = 0 }: Props) {
   const [showForms, setShowForms] = useState(false);
+  const [formsList, setFormsList] = useState<{ id: string; name: string; form_code?: string; category?: string }[]>(forms);
   const [formQ, setFormQ] = useState('');
   const [envs, setEnvs] = useState<Envelope[]>([]);
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
@@ -61,6 +62,10 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       const j = await fetch('/api/crm/esign-import', { headers: auth(authToken) }).then(r => r.json());
       setDocs(Array.isArray(j.documents) ? j.documents : []);
     } catch { setDocs([]); }
+    try {
+      const fj = await fetch('/api/crm/forms', { headers: auth(authToken) }).then(r => r.json());
+      if (Array.isArray(fj.forms)) setFormsList(fj.forms);
+    } catch { /* keep what we have */ }
   }, [authToken]);
   useEffect(() => { loadDocs(); }, [loadDocs, refreshKey]);
 
@@ -268,7 +273,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         </div>
       </div>
 
-      {forms.length > 0 && (
+      {formsList.length > 0 && (
         <div style={{ marginTop: -12, marginBottom: 22 }}>
           <button onClick={() => setShowForms(v => !v)} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
             {showForms ? '▾' : '▸'} …or send a saved form from the CRM — IABS, TREC forms &amp; more (no import needed)
@@ -278,7 +283,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               <input value={formQ} onChange={e => setFormQ(e.target.value)} placeholder="Search your forms…"
                 style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, marginBottom: 8, fontFamily: "'DM Sans',sans-serif" }} />
               <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {forms.filter(f => { const q = formQ.trim().toLowerCase(); return !q || `${f.name} ${f.form_code ?? ''}`.toLowerCase().includes(q); }).map(f => (
+                {formsList.filter(f => { const q = formQ.trim().toLowerCase(); return !q || `${f.name} ${f.form_code ?? ''}`.toLowerCase().includes(q); }).map(f => (
                   <button key={f.id} disabled={uploading} onClick={() => chooseForm(f.id)}
                     style={{ display: 'flex', alignItems: 'center', gap: 9, textAlign: 'left', padding: '10px 11px', border: '1px solid #f1f2f4', borderRadius: 8, background: '#fff', cursor: uploading ? 'default' : 'pointer' }}>
                     <span style={{ fontSize: 16 }}>📄</span>
