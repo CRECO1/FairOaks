@@ -8,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { last10, prettyPhone, toE164 } from '@/lib/phone';
 import { esc, resendConfig } from '@/lib/esign';
 import { Resend } from 'resend';
-import { listingFactSheet } from '@/lib/listing-knowledge';
+import { describeHome, listingFactSheet, searchHomes } from '@/lib/listing-knowledge';
 
 export const VOICEBOT_MODEL = process.env.VOICEBOT_MODEL || 'claude-opus-5';
 
@@ -94,7 +94,7 @@ About the company: ${d.blurb}
 
 Your job on this call:
 1. Find out who is calling and what they need (a property they saw, a lease question, a showing, a tenant/maintenance issue at a building we manage, a general enquiry).
-2. If they ask about one of our listings, answer from the CURRENT LISTINGS fact sheet below: what it is, where it is, size, rate or price, key features, whether it is still active or pending. Read numbers naturally ("about sixteen thousand square feet", "ten dollars a foot"). If the caller is vague, ask which property or what they are looking for (type, area, size) and name the one or two that fit. Never mention a property that is not on the sheet, and never guess a detail the sheet doesn't give.
+2. If they ask about one of our listings, answer from the ${s.business_unit === 'residential' ? 'OUR OWN LISTINGS sheet below — and for any other home, call the lookup_listings tool first, then answer from what it returns (any licensed agent can show any MLS listing, so offer a showing and take details)' : 'CURRENT LISTINGS fact sheet below'}: what it is, where it is, size, rate or price, key features, whether it is still active or pending. Read numbers naturally ("about sixteen thousand square feet", "ten dollars a foot"). If the caller is vague, ask which property or what they are looking for (type, area, size) and name the one or two that fit. Never mention a property that is not on the sheet, and never guess a detail the sheet doesn't give.
 3. When a question goes beyond the sheet — or they want to see the space, make an offer, or talk terms — say an agent will get them that answer, and collect what the agent needs to call back: their name, the best number (confirm the caller ID number ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'is unknown, so ask for one'} if they don't offer another), and which property or matter it concerns.
 4. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three to five exchanges is typical. Always get a name and number before ending unless the caller refuses or is a wrong number.
 ${s.transfer_number ? `5. If the caller insists on speaking to a person right now, or describes an urgent building emergency (flooding, fire, no power, break-in), use action "transfer".` : `5. There is no live transfer available on this line; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details.`}
@@ -114,6 +114,39 @@ The current date and time is ${ctx.now} (Central Time).
 Respond with ONLY a JSON object, nothing else:
 {"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "needs_follow_up": true|false}
 "say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring).`;
+}
+
+// Residential only: the MLS feed is ~10k homes, so the bot looks them up instead of reading a sheet.
+const LOOKUP_TOOL: Anthropic.Tool = {
+  name: 'lookup_listings',
+  description: 'Search homes currently for sale on the San Antonio / Hill Country MLS. Use when the caller names an address, an MLS number, a neighborhood, or describes what they want (city, bedrooms, budget). Returns up to 5 matches with price, beds, baths, size, status and the listing brokerage.',
+  strict: true,
+  input_schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      mls_number: { type: ['string', 'null'], description: 'MLS number if the caller gave one' },
+      address: { type: ['string', 'null'], description: 'Street address fragment, e.g. "10403 White Hart"' },
+      city: { type: ['string', 'null'], description: 'City, e.g. "Boerne"' },
+      zip: { type: ['string', 'null'], description: '5-digit ZIP' },
+      subdivision: { type: ['string', 'null'], description: 'Neighborhood / subdivision name' },
+      min_beds: { type: ['number', 'null'], description: 'Minimum bedrooms' },
+      min_price: { type: ['number', 'null'], description: 'Minimum price in dollars' },
+      max_price: { type: ['number', 'null'], description: 'Maximum price in dollars' },
+      property_type: { type: ['string', 'null'], description: 'sfd | condo | townhome | land | multifamily' },
+    },
+    required: ['mls_number', 'address', 'city', 'zip', 'subdivision', 'min_beds', 'min_price', 'max_price', 'property_type'],
+  },
+};
+
+async function runLookup(input: Record<string, unknown>): Promise<string> {
+  const clean = <T,>(v: unknown): T | undefined => (v === null || v === undefined || v === '' ? undefined : (v as T));
+  const homes = await searchHomes({
+    mls_number: clean<string>(input.mls_number), address: clean<string>(input.address), city: clean<string>(input.city), zip: clean<string>(input.zip),
+    subdivision: clean<string>(input.subdivision), min_beds: clean<number>(input.min_beds), min_price: clean<number>(input.min_price), max_price: clean<number>(input.max_price), property_type: clean<string>(input.property_type),
+  });
+  if (!homes.length) return 'No active listings match. Tell the caller you could not find it in the current MLS data and that an agent will check.';
+  return homes.map(h => describeHome(h)).join('\n\n');
 }
 
 function parseReply(text: string): BotReply | null {
@@ -163,14 +196,29 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     ? [{ type: 'text', text: sheet.text, cache_control: { type: 'ephemeral' } }, { type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }) }]
     : [{ type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }), cache_control: { type: 'ephemeral' } }];
   try {
-    const res = await client.messages.create({
+    const tools = s.business_unit === 'residential' ? [LOOKUP_TOOL] : undefined;
+    let res = await client.messages.create({
       model: VOICEBOT_MODEL,
       max_tokens: 400,
       // Phone latency matters more than depth here; low effort keeps replies to a couple of seconds.
       output_config: { effort: 'low' },
       system,
       messages,
+      ...(tools ? { tools } : {}),
     });
+    // Manual tool loop, capped: at most two lookups per turn keeps the caller from waiting.
+    for (let round = 0; round < 2 && res.stop_reason === 'tool_use'; round++) {
+      const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const u of uses) {
+        let out = 'lookup failed';
+        try { out = u.name === 'lookup_listings' ? await runLookup(u.input as Record<string, unknown>) : 'unknown tool'; } catch (e) { console.warn('[voicebot] tool', e); }
+        results.push({ type: 'tool_result', tool_use_id: u.id, content: out });
+      }
+      messages.push({ role: 'assistant', content: res.content });
+      messages.push({ role: 'user', content: results });
+      res = await client.messages.create({ model: VOICEBOT_MODEL, max_tokens: 400, output_config: { effort: 'low' }, system, messages, ...(tools ? { tools } : {}) });
+    }
     if (res.stop_reason === 'refusal') return { say: "I'm sorry, I didn't catch that. Could you tell me your name and the best number to reach you?", action: 'continue' };
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
     return parseReply(text) ?? { say: "Sorry, could you say that again?", action: 'continue' };

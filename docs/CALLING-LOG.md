@@ -44,8 +44,22 @@ offers, terms, details the sheet lacks — say an agent will confirm and take th
 caller's name, number and which property. The property asked about is saved on
 the call (`ai_meta.property`), shown on the row, and in the summary email.
 
-Residential has no listing source wired yet (the residential site's inventory is
-MLS-fed); the bot there takes messages only.
+Residential (Fair Oaks): the SABOR MLS feed lives in our own `listings` table (~10k
+active homes), so the bot gets a small sheet of OUR OWN listings (Fair Oaks Realty
+Group + Arrows Property Management offices) and a `lookup_listings` tool (strict
+schema; address / MLS# / city / ZIP / subdivision / beds / price / type → top 5) for
+everything else. Manual tool loop, max 2 rounds per turn.
+
+**Slow turns:** Twilio gives a webhook 15 s. `/api/voice/turn` races the reply
+against a 6.5 s budget; if it isn't ready it says "one moment", finishes the work
+with Next's `after()`, and Twilio polls `/api/voice/wait?after=<caller turn id>`
+every 2 s until the bot's row (with `meta.action`) exists — 40 s cap, then it
+takes a message.
+
+**Numbers → workspaces:** both Talkroute numbers are on one account:
++1 210-817-3443 = CRECO (commercial), +1 210-390-9997 = Fair Oaks Realty Group
+(residential). `crm_voicebot_settings.talkroute_numbers` maps them; `unitForNumber()`
+files every call/text under the right workspace.
 
 ## Setup (once)
 

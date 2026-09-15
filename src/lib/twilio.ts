@@ -58,6 +58,11 @@ export function gather(text: string, action: string, opts: { timeoutSec?: number
   return `<Gather input="speech" action="${xml(action)}" method="POST" language="en-US" speechTimeout="auto" speechModel="phone_call" enhanced="true" actionOnEmptyResult="true" timeout="${opts.timeoutSec ?? 6}">${say(text)}</Gather>`;
 }
 
+/** Say a short filler, pause, then have Twilio re-request `url` — used while a slow reply finishes in the background. */
+export function holdThenRedirect(text: string | null, url: string, pauseSec = 2): string {
+  return `${text ? say(text) : ''}<Pause length="${pauseSec}"/><Redirect method="POST">${xml(url)}</Redirect>`;
+}
+
 export function twiml(inner: string): Response {
   return new Response(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`, {
     status: 200, headers: { 'Content-Type': 'text/xml; charset=utf-8', 'Cache-Control': 'no-store' },
@@ -94,4 +99,14 @@ export function recordingMediaUrl(recordingSid: string): string {
 /** Fetch the recording bytes with our credentials (the CRM never sees the auth token). */
 export async function fetchRecording(recordingSid: string): Promise<Response> {
   return fetch(recordingMediaUrl(recordingSid), { headers: { Authorization: authHeader() } });
+}
+
+/** TwiML for a finished bot reply: keep listening, hang up, or transfer. Shared by /api/voice/turn and /api/voice/wait. */
+export function renderReply(reply: { say: string; action: 'continue' | 'end' | 'transfer' }, settings: { transfer_number: string | null }, callerNumber: string | null): string {
+  const turnUrl = `${voiceOrigin()}/api/voice/turn`;
+  if (reply.action === 'transfer' && settings.transfer_number) {
+    return `${say(reply.say)}<Dial timeout="25" callerId="${xml(callerNumber || '')}">${xml(settings.transfer_number)}</Dial>${say("I wasn't able to reach anyone. An agent will call you back as soon as possible. Goodbye.")}<Hangup/>`;
+  }
+  if (reply.action === 'end') return `${say(reply.say)}<Hangup/>`;
+  return gather(reply.say, turnUrl);
 }

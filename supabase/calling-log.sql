@@ -88,3 +88,8 @@ ALTER TABLE crm_voicebot_settings ENABLE ROW LEVEL SECURITY;
 INSERT INTO crm_voicebot_settings (business_unit, company_name, notify_emails)
 VALUES ('commercial', 'CRECO', '{zack@crecotx.com}'), ('residential', 'Fair Oaks Realty Group', '{info@fairoaksrealtygroup.com}')
 ON CONFLICT (business_unit) DO NOTHING;
+
+-- 2026-09-15: the bot's reply row carries what to do after saying it (continue / end /
+-- transfer) so a slow turn can be finished in the background and picked up by
+-- /api/voice/wait. Applied live.
+ALTER TABLE crm_call_turns ADD COLUMN IF NOT EXISTS meta jsonb;

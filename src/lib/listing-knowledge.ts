@@ -26,8 +26,84 @@ const SITE: Record<string, { origin: string; url?: string; key?: string }> = {
 };
 
 export function listingSourceConfigured(unit: string): boolean {
+  if (unit === 'residential') return true; // the MLS feed lives in our own database
   const s = SITE[unit];
   return !!(s?.url && s?.key);
+}
+
+// ── Residential: the SABOR MLS feed in our own `listings` table ───────────────
+// ~10k active homes — far too many for a prompt, so the bot gets a small sheet of
+// OUR OWN listings plus a lookup tool for everything else on the MLS.
+import { adminClient } from '@/lib/supabase-admin';
+
+export interface HomeListing {
+  title: string; slug: string; status: string; price: number | null; address: string; city: string; state: string | null; zip: string | null;
+  bedrooms: number | null; bathrooms: number | null; sqft: number | null; lot_size_acres: number | null; year_built: number | null;
+  property_type: string | null; subdivision_name: string | null; mls_number: string | null; hoa_fee: number | null; hoa_frequency: string | null;
+  list_agent_name: string | null; list_office_name: string | null; description: string | null; listing_date: string | null; standard_status: string | null;
+}
+const HOME_COLS = 'title, slug, status, price, address, city, state, zip, bedrooms, bathrooms, sqft, lot_size_acres, year_built, property_type, subdivision_name, mls_number, hoa_fee, hoa_frequency, list_agent_name, list_office_name, description, listing_date, standard_status';
+const OUR_OFFICES = ['%fair oaks realty%', '%arrows property%'];
+const RES_ORIGIN = 'https://www.fairoaksrealtygroup.com';
+
+const usd = (n: number | null | undefined) => n == null ? null : `$${Math.round(Number(n)).toLocaleString('en-US')}`;
+const homeType: Record<string, string> = { sfd: 'Single-family home', sfdet: 'Single-family home', sfr: 'Single-family home', res: 'Home', condo: 'Condo', townhome: 'Townhome', townhouse: 'Townhome', land: 'Lot / land', lot: 'Lot / land', multifamily: 'Multifamily', farm: 'Farm / ranch', ranch: 'Farm / ranch' };
+
+export function describeHome(h: HomeListing, opts: { ours?: boolean } = {}): string {
+  const bits: string[] = [];
+  if (h.price) bits.push(usd(h.price)!);
+  if (h.bedrooms) bits.push(`${h.bedrooms} bed`);
+  if (h.bathrooms) bits.push(`${h.bathrooms} bath`);
+  if (h.sqft) bits.push(`${Number(h.sqft).toLocaleString('en-US')} SF`);
+  if (h.lot_size_acres) bits.push(`${h.lot_size_acres} acre lot`);
+  if (h.year_built) bits.push(`built ${h.year_built}`);
+  if (h.hoa_fee) bits.push(`HOA ${usd(h.hoa_fee)}${h.hoa_frequency ? `/${h.hoa_frequency}` : ''}`);
+  const status = (h.standard_status || h.status || '').toUpperCase().replace(/_/g, ' ');
+  const type = homeType[(h.property_type || '').toLowerCase()] || h.property_type || 'Home';
+  const where = [h.address, h.city, h.state, h.zip].filter(Boolean).join(', ') + (h.subdivision_name ? ` (${h.subdivision_name})` : '');
+  const desc = (h.description || '').replace(/\s+/g, ' ').trim();
+  const lines = [
+    `• ${where}${h.mls_number ? ` — MLS# ${h.mls_number}` : ''}`,
+    `  ${type}: ${bits.join('; ')}${status ? ` — ${status}` : ''}${opts.ours ? ' — OUR LISTING' : h.list_office_name ? ` — listed by ${h.list_office_name}${h.list_agent_name ? ` (${h.list_agent_name})` : ''}` : ''}`,
+  ];
+  if (desc) lines.push(`  Notes: ${desc.length > 300 ? desc.slice(0, 300) + '…' : desc}`);
+  lines.push(`  Web page: ${RES_ORIGIN}/listings/${h.slug}`);
+  return lines.join('\n');
+}
+
+let resCache: { at: number; homes: HomeListing[] } | null = null;
+/** Our own residential listings (Fair Oaks Realty Group + Arrows Property Management) — the small sheet. */
+export async function fetchOurHomes(): Promise<HomeListing[]> {
+  if (resCache && Date.now() - resCache.at < TTL_MS) return resCache.homes;
+  try {
+    const db = adminClient();
+    const { data } = await db.from('listings').select(HOME_COLS).in('status', ['active', 'pending'])
+      .or(OUR_OFFICES.map(o => `list_office_name.ilike.${o}`).join(',')).order('listing_date', { ascending: false }).limit(40);
+    resCache = { at: Date.now(), homes: (data ?? []) as HomeListing[] };
+    return resCache.homes;
+  } catch (e) { console.warn('[listing-knowledge] our homes', e); return resCache?.homes ?? []; }
+}
+
+export interface HomeSearch { mls_number?: string; address?: string; city?: string; zip?: string; subdivision?: string; min_beds?: number; max_price?: number; min_price?: number; property_type?: string }
+/** Look up homes on the MLS feed for the bot's tool. Returns up to 5 matches. */
+export async function searchHomes(q: HomeSearch): Promise<HomeListing[]> {
+  const db = adminClient();
+  let query = db.from('listings').select(HOME_COLS).in('status', ['active', 'pending']);
+  const like = (v: string) => `%${v.replace(/[%,()*]/g, ' ').trim()}%`;
+  if (q.mls_number) query = query.eq('mls_number', q.mls_number.replace(/\D/g, ''));
+  else {
+    if (q.address) query = query.ilike('address', like(q.address));
+    if (q.city) query = query.ilike('city', like(q.city));
+    if (q.zip) query = query.eq('zip', q.zip.replace(/\D/g, '').slice(0, 5));
+    if (q.subdivision) query = query.ilike('subdivision_name', like(q.subdivision));
+    if (q.min_beds) query = query.gte('bedrooms', q.min_beds);
+    if (q.max_price) query = query.lte('price', q.max_price);
+    if (q.min_price) query = query.gte('price', q.min_price);
+    if (q.property_type) query = query.ilike('property_type', like(q.property_type));
+  }
+  const { data, error } = await query.order('listing_date', { ascending: false }).limit(5);
+  if (error) { console.warn('[listing-knowledge] search', error); return []; }
+  return (data ?? []) as HomeListing[];
 }
 
 export async function fetchListings(unit: string): Promise<WebListing[]> {
@@ -77,6 +153,14 @@ function describe(l: WebListing, origin: string): string {
 
 /** The fact sheet that goes into the bot's system prompt. Empty string when nothing is configured. */
 export async function listingFactSheet(unit: string): Promise<{ text: string; count: number }> {
+  if (unit === 'residential') {
+    const homes = await fetchOurHomes();
+    if (!homes.length) return { text: 'OUR OWN LISTINGS: none active right now. Use the lookup_listings tool to answer questions about any home on the MLS.', count: 0 };
+    return {
+      text: `OUR OWN LISTINGS (${homes.length}) — homes Fair Oaks Realty Group is marketing. For ANY other home a caller asks about (an address they drove past, an MLS number, "3 beds under 400 in Boerne"), use the lookup_listings tool; we can show any home on the MLS.\n\n${homes.map(h => describeHome(h, { ours: true })).join('\n\n')}`,
+      count: homes.length,
+    };
+  }
   const listings = await fetchListings(unit);
   if (!listings.length) return { text: '', count: 0 };
   const origin = SITE[unit]?.origin ?? '';

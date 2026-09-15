@@ -5,7 +5,7 @@ import { createSubscription, deleteSubscription, getAccount, getPlanInfo, listSu
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
-import { fetchListings, listingSourceConfigured } from '@/lib/listing-knowledge';
+import { fetchListings, fetchOurHomes, listingSourceConfigured } from '@/lib/listing-knowledge';
 
 export const maxDuration = 30;
 
@@ -24,10 +24,12 @@ export async function GET(req: NextRequest) {
   const origin = voiceOrigin();
   const webhookSecret = process.env.TALKROUTE_WEBHOOK_SECRET;
   // What the bot can talk about: the live website listings for this unit.
-  const listings = listingSourceConfigured(unit) ? await fetchListings(unit) : [];
+  const titles: string[] = unit === 'residential'
+    ? (await fetchOurHomes()).map(h => `${h.address}, ${h.city}`)
+    : listingSourceConfigured(unit) ? (await fetchListings(unit)).map(l => l.title) : [];
   return NextResponse.json({
     settings,
-    listings: { configured: listingSourceConfigured(unit), count: listings.length, titles: listings.map(l => l.title).slice(0, 12) },
+    listings: { configured: listingSourceConfigured(unit), count: titles.length, titles: titles.slice(0, 12), mls_lookup: unit === 'residential' },
     connection: {
       talkroute: talkrouteConfigured(),
       talkroute_webhook_secret: !!webhookSecret,
