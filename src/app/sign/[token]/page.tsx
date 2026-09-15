@@ -197,7 +197,9 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
                           style={{ width: Math.min(ih, 22), height: Math.min(ih, 22), accentColor: GOLD, cursor: 'pointer', boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.35)' : 'none', borderRadius: 3 }} />
                       : <input id={`in-${f.id}`} value={v} onChange={e => onInput?.(f, e.target.value)}
                           placeholder={f.label || 'Type here'} aria-label={f.label || 'Fill in this field'}
-                          style={{ width: '100%', height: '100%', boxSizing: 'border-box', fontSize: Math.min(15, Math.max(11, ih * 0.42)),
+                          // 16px floor: a smaller font makes iOS zoom the whole page when the
+                          // signer taps in — the same rule the name/initials inputs follow.
+                          style={{ width: '100%', height: '100%', boxSizing: 'border-box', fontSize: Math.max(16, Math.min(20, ih * 0.5)),
                             padding: '0 6px', borderRadius: 4, border: `2px solid ${GOLD}`, color: INK, fontFamily: 'inherit', fontWeight: 600,
                             background: v.trim() ? 'rgba(255,255,255,.97)' : isNext ? 'rgba(201,146,44,.16)' : 'rgba(201,146,44,.10)',
                             boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.3)' : 'none' }} />}
