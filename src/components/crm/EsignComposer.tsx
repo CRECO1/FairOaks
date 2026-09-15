@@ -50,13 +50,18 @@ let _rk = 0;
 const newKey = () => `r${++_rk}`;
 
 export default function EsignComposer({
-  initialDoc, initialFile, clients = [], deals, agentName, agentEmail, authToken, businessUnit, isAdmin, isMobile,
+  initialDoc, initialFile, clients = [], deals, dealId, listingId, agentName, agentEmail, authToken, businessUnit, isAdmin, isMobile,
   onClose, onSent, showToast,
 }: {
   initialDoc?: ComposerDoc | null;
   initialFile?: File | null;
   clients?: PickContact[];
   deals?: DealLite[];
+  // When opened from a deal (or a property workspace), the imported document and its
+  // envelope are linked to that deal / listing at creation, so it shows up on that
+  // record's E-Sign list instead of only in the global dashboard.
+  dealId?: string;
+  listingId?: string;
   agentName?: string; agentEmail?: string;
   authToken?: string; businessUnit?: string; isAdmin?: boolean; isMobile?: boolean;
   onClose: () => void;
@@ -95,7 +100,7 @@ export default function EsignComposer({
       if (!pre.ok) { showToast?.(pj.error || 'Could not start the upload'); return; }
       const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file });
       if (!put.ok) { showToast?.('The upload failed — try again'); return; }
-      const conf = await fetch('/api/crm/esign-import', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ storage_path: pj.storagePath, title: file.name, business_unit: businessUnit }) });
+      const conf = await fetch('/api/crm/esign-import', { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ storage_path: pj.storagePath, title: file.name, business_unit: businessUnit, deal_id: dealId, listing_id: listingId }) });
       const cj = await conf.json().catch(() => ({}));
       if (!conf.ok) { showToast?.(cj.error || 'Could not import that document'); return; }
       // Read back the signed URL the editor and the review both render from.
@@ -104,7 +109,7 @@ export default function EsignComposer({
       setOpen('people');
     } catch { showToast?.('Could not import that document'); }
     finally { setUploading(false); }
-  }, [authToken, showToast]);
+  }, [authToken, showToast, businessUnit, dealId, listingId]);
 
   const consumed = useRef(false);
   useEffect(() => { if (initialFile && !consumed.current) { consumed.current = true; importFile(initialFile); } }, [initialFile, importFile]);
@@ -161,6 +166,7 @@ export default function EsignComposer({
         method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) },
         body: JSON.stringify({
           submission_id: doc.id, title: doc.title, message: message || null, business_unit: businessUnit,
+          deal_id: dealId ?? null, listing_id: listingId ?? null,
           signers: valid.map((x, i) => ({ signer_role: x.role, name: x.name.trim(), email: x.email.trim(), signing_order: ordered ? i + 1 : 1, in_person: !!x.inPerson })),
         }),
       });
@@ -176,7 +182,7 @@ export default function EsignComposer({
       }
       onSent();
     } finally { setSending(false); }
-  }, [doc, valid, placed, signerIndex, message, ordered, authToken, showToast, onSent]);
+  }, [doc, valid, placed, signerIndex, message, ordered, authToken, showToast, onSent, businessUnit, dealId, listingId]);
 
   // ── Step 2: place the fields ──────────────────────────────────────────────
   // The editor stays MOUNTED once it has been opened, with the setup screen drawn
@@ -191,6 +197,8 @@ export default function EsignComposer({
           authToken={authToken}
           isAdmin={isAdmin}
           deals={deals}
+          dealId={dealId}
+          listingId={listingId}
           businessUnit={businessUnit}
           isMobile={isMobile}
           recipients={editorRecipients}

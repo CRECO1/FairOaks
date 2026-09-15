@@ -388,6 +388,12 @@ interface Props {
   dealId: string;
   // Lets the E-Sign tab hand off to the document editor to place fields mid-send.
   onPlaceFields?: (doc: Doc) => void;
+  // Opens the full envelope composer to import a PDF (or place fields) for THIS deal.
+  // Without it the panel can only send forms already filled on the deal.
+  onAddDocument?: () => void;
+  // Bumped by the parent after the composer sends/closes, so a newly-imported
+  // document appears in the list without the user leaving the tab.
+  reloadSignal?: number;
   isSuperAdmin?: boolean;
   clients?: PickContact[];
   dealClient?: { name?: string; email?: string };
@@ -397,7 +403,7 @@ interface Props {
   showToast?: (m: string) => void;
 }
 
-export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealClient, agentName, agentEmail, authToken, isSuperAdmin, showToast }: Props) {
+export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloadSignal, clients = [], dealClient, agentName, agentEmail, authToken, isSuperAdmin, showToast }: Props) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [envByDoc, setEnvByDoc] = useState<Record<string, Envelope>>({});
   const [loading, setLoading] = useState(true);
@@ -418,7 +424,7 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
     finally { setLoading(false); }
   }, [dealId, authToken]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, reloadSignal]);
 
   const statusOf = useCallback((doc: Doc): 'draft' | 'sent' | 'completed' | 'declined' => {
     const e = envByDoc[doc.id];
@@ -439,8 +445,14 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
   return (
     <div className="es-touch" style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a', marginBottom: 10 }}>✍️ E-Sign</div>
+      {onAddDocument && (
+        <button onClick={onAddDocument} title="Upload a PDF — a signed addendum, an outside contract, anything — and send it for signature on this deal"
+          style={{ width: '100%', marginBottom: 12, padding: '11px 0', borderRadius: 9, border: `1.5px dashed ${GOLD}`, background: '#fffdf6', color: '#a06a12', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+          ＋ Add a document to sign — upload a PDF
+        </button>
+      )}
       {loading ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Loading…</div>
-        : ordered.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No documents on this deal yet. Fill a form on the deal and it shows here, ready to send for signature.</div>
+        : ordered.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No documents on this deal yet.{onAddDocument ? ' Upload a PDF above, or fill' : ' Fill'} a form on the deal and it shows here, ready to send for signature.</div>
         : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {ordered.map(doc => {
@@ -471,7 +483,7 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
                           </a>
                         </span>
                       ) : <span style={{ ...mini, color: '#9ca3af', cursor: 'default' }}>Signed</span>)
-                    : <button onClick={() => setView({ t: 'send', doc })} disabled={!doc.form_id} style={{ ...mini, background: GOLD, color: '#fff', border: 'none', cursor: doc.form_id ? 'pointer' : 'default' }}>📤 Send</button>}
+                    : <button onClick={() => setView({ t: 'send', doc })} disabled={!doc.url} title={doc.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...mini, background: GOLD, color: '#fff', border: 'none', cursor: doc.url ? 'pointer' : 'default', opacity: doc.url ? 1 : 0.5 }}>📤 Send</button>}
                 </div>
               );
             })}

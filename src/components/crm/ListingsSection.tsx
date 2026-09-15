@@ -89,6 +89,13 @@ interface Props {
   profiles: Profile[];
   clients: Contact[];
   onToast: (msg: string) => void;
+  // Opens the envelope composer to import an outside PDF and send it for signature
+  // on THIS property (the created document is linked to the listing). Without it the
+  // property can only send documents that started as filled CRM forms / leases.
+  onAddDocument?: (listingId: string) => void;
+  // Bumped by the parent after the composer sends, so a newly-imported document
+  // appears in the property's Transaction Docs list without reopening the panel.
+  reloadSignal?: number;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -170,7 +177,7 @@ const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'i
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast }: Props) {
+export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onAddDocument, reloadSignal }: Props) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -294,6 +301,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (activeListingIdRef.current !== listingId) return;
     setListingForms(json.submissions ?? []);
   }, [authToken]); // eslint-disable-line
+
+  // After the composer imports + sends a document for this property (parent bumps
+  // reloadSignal), refresh the open listing's Transaction Docs + envelope status so
+  // the new document appears without reopening the panel.
+  useEffect(() => {
+    if (reloadSignal && active) { loadListingForms(active.id); loadEnvelopes(active.id); }
+  }, [reloadSignal]); // eslint-disable-line
 
   const loadCrmForms = useCallback(async () => {
     const res = await fetch(`/api/crm/forms?business_unit=${businessUnit}`, { headers: authHeaders });
@@ -1284,6 +1298,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         {canSeeRentRoll && (
                           <button onClick={() => setDraftingLease(true)} title="Describe a lease in a sentence and review what it fills in"
                             style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fffdf6', color: '#a06a12', border: '1px dashed #e6d3a2', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✨ Draft a lease</button>
+                        )}
+                        {onAddDocument && active && (
+                          <button onClick={() => onAddDocument(active.id)} title="Upload an outside PDF — an addendum, a vendor contract, anything — and send it for signature on this property"
+                            style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#fffdf6', color: '#a06a12', border: '1px dashed #e6d3a2', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Import a PDF</button>
                         )}
                         <button onClick={() => { setFormDealId(null); loadCrmForms(); setFormSearch(''); setFormPicker(true); }} style={{ padding: '6px 12px', fontSize: 12.5, fontWeight: 700, background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>✍️ Fill a form</button>
                       </div>

@@ -525,7 +525,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string; showDeals?: boolean } | null>(null);
   const [importSend, setImportSend] = useState<EsignDoc | null>(null);
   // The E-Sign envelope composer: set up -> place fields -> review -> send.
-  const [composer, setComposer] = useState<{ file: File | null; doc: ComposerDoc | null } | null>(null);
+  // dealId / listingId link the imported document to a deal or property when the
+  // composer is opened from that record (so it lands on that record's E-Sign list).
+  const [composer, setComposer] = useState<{ file: File | null; doc: ComposerDoc | null; dealId?: string; listingId?: string } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
@@ -7431,6 +7433,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   profiles={profiles}
                   clients={clients}
                   onToast={showToast}
+                  onAddDocument={lid => setComposer({ file: null, doc: null, listingId: lid })}
+                  reloadSignal={esignFieldsVersion}
                 />
               )}
               {propertiesTab === 'matchmaker' && (
@@ -8221,7 +8225,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 return <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} title="View the fully-executed copy" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>;
                               return <button onClick={() => setEsignModal({ mode: 'manage', doc: f })} title="Manage the signature request" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</button>;
                             }
-                            return <button onClick={() => setEsignModal({ mode: 'send', doc: f })} disabled={!f.form_id} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
+                            return <button onClick={() => setEsignModal({ mode: 'send', doc: f })} disabled={!f.url} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                           })()}
                           <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
                         </div>
@@ -8286,6 +8290,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     dealId={activeDeal.id}
                     isSuperAdmin={isSuperAdmin}
                     onPlaceFields={d => openFormEditor({ id: d.form_id || "", name: d.crm_forms?.name || d.title || "Form" }, d.id, d.crm_forms?.form_code)}
+                    onAddDocument={() => setComposer({ file: null, doc: null, dealId: activeDeal.id })}
+                    reloadSignal={esignFieldsVersion}
                     clients={clients}
                     dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
                     agentName={profile ? `${profile.first_name} ${profile.last_name}`.trim() : ''}
@@ -11037,6 +11043,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <EsignComposer
           initialFile={composer.file}
           initialDoc={composer.doc}
+          dealId={composer.dealId}
+          listingId={composer.listingId}
           clients={clients}
           deals={deals}
           agentName={`${profile.first_name} ${profile.last_name}`.trim()}
