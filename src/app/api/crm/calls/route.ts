@@ -57,7 +57,15 @@ export async function GET(req: NextRequest) {
   const contactId = sp.get('contact_id');
 
   let query = supabase.from('crm_call_log').select(COLS).eq('business_unit', unit).order('started_at', { ascending: false }).limit(limit);
-  if (contactId) query = query.eq('contact_id', contactId);
+  if (contactId) {
+    // Linked rows plus any whose number is one of the contact's — covers calls that
+    // came in before the card existed.
+    const { data: c } = await supabase.from('crm_clients').select('phone, cell_phone').eq('id', contactId).eq('business_unit', unit).maybeSingle();
+    if (!c) return notFound('Contact not found');
+    const tails = [c.phone, c.cell_phone].map(n => String(n ?? '').replace(/\D/g, '').slice(-10)).filter(t => t.length === 10);
+    const parts = [`contact_id.eq.${contactId}`, ...tails.flatMap(t => [`from_number.like.%${t}`, `to_number.like.%${t}`, `callback_number.like.%${t}`])];
+    query = query.or(parts.join(','));
+  }
   else query = query.gte('started_at', new Date(Date.now() - days * 86_400_000).toISOString());
   if (filter === 'follow_up') query = query.eq('needs_follow_up', true).is('handled_at', null);
   else if (filter === 'voicemail') query = query.eq('kind', 'voicemail');

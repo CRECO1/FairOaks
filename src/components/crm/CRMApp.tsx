@@ -15,6 +15,7 @@ const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionD
 import ListingsSection from '@/components/crm/ListingsSection';
 import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
+import ContactComms from '@/components/crm/ContactComms';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
 import EsignComposer, { type ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
@@ -9592,6 +9593,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 2 }}>📝 Tagged in these deals</div>
                     <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 8 }}>Internal notes from deals where this contact was tagged.</div>
                     <DealMeetings clientId={c.id} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} />
+                    <ContactComms clientId={c.id} authToken={session?.access_token} businessUnit={businessUnit} showToast={showToast} onOpenLog={() => { setActiveClient(null); setPage('calls'); }} />
                   </div>
 
                   {/* Activity feed — manual activities + campaign sends merged chronologically */}

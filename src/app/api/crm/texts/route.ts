@@ -36,7 +36,12 @@ export async function GET(req: NextRequest) {
   const q = (sp.get('q') ?? '').trim();
   const contactId = sp.get('contact_id');
   let query = supabase.from('crm_text_messages').select(COLS).eq('business_unit', unit).order('sent_at', { ascending: false }).limit(2000);
-  if (contactId) query = query.eq('contact_id', contactId);
+  if (contactId) {
+    const { data: c } = await supabase.from('crm_clients').select('phone, cell_phone').eq('id', contactId).eq('business_unit', unit).maybeSingle();
+    if (!c) return notFound('Contact not found');
+    const tails = [c.phone, c.cell_phone].map(n => String(n ?? '').replace(/\D/g, '').slice(-10)).filter(t => t.length === 10);
+    query = query.or([`contact_id.eq.${contactId}`, ...tails.flatMap(t => [`from_number.like.%${t}`, `to_number.like.%${t}`])].join(','));
+  }
   else query = query.gte('sent_at', new Date(Date.now() - days * 86_400_000).toISOString());
   if (q) {
     const like = `%${q.replace(/[%,()*]/g, ' ')}%`;
@@ -90,7 +95,7 @@ export async function POST(req: NextRequest) {
     const { data: row, error } = await supabase.from('crm_text_messages').insert({
       business_unit: existing.business_unit, source: 'talkroute', external_id: sent?.id ? `msg:${sent.id}` : `sent:${cid}:${Date.now()}`,
       conversation_id: cid, direction: 'outbound', from_number: toE164(ours), to_number: toE164(theirs), body,
-      contact_id: existing.contact_id, sent_by: null, sent_at: sent?.createdAt || new Date().toISOString(), read: true,
+      contact_id: existing.contact_id, sent_by: null, sent_at: sent?.created_at || sent?.createdAt || new Date().toISOString(), read: true,
       handled_at: new Date().toISOString(), handled_by: ctx.userId, raw: sent ?? null,
     }).select(COLS).single();
     if (error) return dbError('api/crm/texts POST insert', error);
