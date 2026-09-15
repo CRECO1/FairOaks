@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, getAccount, listSubscriptions, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, getAccount, getPlanInfo, listSubscriptions, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -74,6 +74,10 @@ export async function POST(req: NextRequest) {
     if (b.action === 'test_talkroute') {
       const acct = await getAccount();
       return NextResponse.json({ ok: true, account: { name: acct.name ?? acct.companyName ?? acct.company ?? null, id: acct.id ?? null } });
+    }
+    if (b.action === 'diagnose') {
+      // Which Talkroute endpoints the plan actually permits — 402 means "not on your plan".
+      return NextResponse.json({ ok: true, ...(await getPlanInfo()) });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;

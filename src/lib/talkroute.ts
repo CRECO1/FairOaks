@@ -51,6 +51,17 @@ export interface TrVoiceMessage {
 interface Paged<T> { data: T[]; pagination?: { totalPages?: number; currentPage?: number; nextPageUrl?: string | null } }
 export interface TrSubscription { id?: string; hookUrl: string; type: 'new_text_message' | 'new_call_record' | 'new_voicemail' | 'call_completed' }
 
+/** Plan + feature gates — some endpoints answer 402 when the plan doesn't include them. */
+export async function getPlanInfo(): Promise<{ plan: unknown; features: unknown; probes: Record<string, number> }> {
+  const safe = async (path: string) => { try { return await tr<unknown>(path); } catch (e) { return { error: e instanceof TalkrouteError ? e.status : String(e) }; } };
+  const [plan, features] = await Promise.all([safe('/accounts/plan'), safe('/accounts/permitted-features')]);
+  const probes: Record<string, number> = {};
+  for (const path of ['/call-history?pageSize=1', '/voice-messages?pageSize=1', '/virtual-numbers', '/subscriptions']) {
+    try { await tr(path); probes[path] = 200; } catch (e) { probes[path] = e instanceof TalkrouteError ? e.status : -1; }
+  }
+  return { plan, features, probes };
+}
+
 export async function getAccount(): Promise<Record<string, unknown>> {
   const j = await tr<{ data?: Record<string, unknown> }>('/account');
   return j.data ?? j;
@@ -179,15 +190,23 @@ export async function upsertCalls(db: SupabaseClient, rows: CallRow[]): Promise<
 }
 
 /** Pull recent call records + voicemails from Talkroute into crm_call_log. */
-export async function syncTalkroute(db: SupabaseClient, opts: { sinceHours?: number; maxPages?: number } = {}): Promise<{ calls: number; voicemails: number; inserted: number; updated: number }> {
+export async function syncTalkroute(db: SupabaseClient, opts: { sinceHours?: number; maxPages?: number } = {}): Promise<{ calls: number; voicemails: number; inserted: number; updated: number; callHistoryBlocked: boolean }> {
   const sinceHours = opts.sinceHours ?? 48;
   const maxPages = opts.maxPages ?? 5;
   const after = new Date(Date.now() - sinceHours * 3_600_000).toISOString();
 
   const rows: CallRow[] = [];
   let calls = 0, voicemails = 0;
+  let callHistoryBlocked = false;
   for (let page = 1; page <= maxPages; page++) {
-    const j = await listCallHistory({ after, page, pageSize: 100 });
+    let j: Paged<TrCallRecord>;
+    try { j = await listCallHistory({ after, page, pageSize: 100 }); }
+    catch (e) {
+      // 402/403 = the Talkroute plan doesn't include call-history reporting. Voicemails
+      // (and the webhooks) still work, so carry on rather than failing the whole sync.
+      if (e instanceof TalkrouteError && (e.status === 402 || e.status === 403)) { callHistoryBlocked = true; break; }
+      throw e;
+    }
     for (const rec of j.data ?? []) { rows.push(await callRecordToRow(rec, db)); calls++; }
     const totalPages = j.pagination?.totalPages ?? 1;
     if (page >= totalPages || !(j.data ?? []).length) break;
@@ -204,5 +223,5 @@ export async function syncTalkroute(db: SupabaseClient, opts: { sinceHours?: num
     if (older || page >= totalPages || !(j.data ?? []).length) break;
   }
   const { inserted, updated } = await upsertCalls(db, rows);
-  return { calls, voicemails, inserted, updated };
+  return { calls, voicemails, inserted, updated, callHistoryBlocked };
 }
