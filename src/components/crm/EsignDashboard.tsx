@@ -101,7 +101,10 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const j = await fetch(`/api/crm/envelopes?${showAll ? 'scope=all' : 'pending=1'}`, { headers: auth(authToken) }).then(r => r.json());
+      // Always pull everything — completed docs stay on the page (archived UNDER the
+      // active ones), so the fetch can't be scoped to just what's pending. The
+      // `showAll` toggle only decides whether the cancelled/archived group renders.
+      const j = await fetch('/api/crm/envelopes?scope=all', { headers: auth(authToken) }).then(r => r.json());
       const list = (Array.isArray(j.envelopes) ? j.envelopes : []) as Envelope[];
       list.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')); // oldest (most overdue) first
       setEnvs(list);
@@ -113,7 +116,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       const sj = await fetch('/api/crm/envelopes?stats=1', { headers: auth(authToken) }).then(r => r.json());
       setStats(sj.stats ?? null);
     } catch { /* the list is the point; rates are extra */ }
-  }, [authToken, showAll]);
+  }, [authToken]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
@@ -130,7 +133,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   // …file one away without losing it. The record, the signers and every signature
   // are kept — a deal's signing history is a business record, not queue clutter.
   async function archiveEnv(env: Envelope) {
-    if (!window.confirm(`Archive "${env.title || 'this request'}"?\n\nIt moves out of the active list. Everything is kept — tick “Show cancelled & completed” to find it again.`)) return;
+    if (!window.confirm(`Archive "${env.title || 'this request'}"?\n\nIt moves out of the active list. Everything is kept — tick “Show cancelled & archived” to find it again.`)) return;
     setBusy(env.id);
     try {
       const r = await fetch(`/api/crm/envelopes?id=${env.id}`, { method: 'DELETE', headers: auth(authToken) });
@@ -192,11 +195,26 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     } finally { setBusy(null); load(); }
   }
 
+  // Everything lives on one page, grouped top-to-bottom: what's still out for
+  // signature, then the completed docs archived directly beneath them (so a signed
+  // doc never disappears), then — only when the toggle is on — the cancelled/archived
+  // ones. A completed doc drops into its own group automatically; no manual archiving.
+  const shown = envs.filter(env => !byAgent || env.sent_by === byAgent);
+  const isClosed = (e: Envelope) => !!e.archived_at || e.status === 'voided' || e.status === 'declined';
+  const activeEnvs = shown.filter(e => !isClosed(e) && e.status !== 'completed');
+  const completedEnvs = shown.filter(e => !isClosed(e) && e.status === 'completed');
+  const closedEnvs = shown.filter(isClosed);
+  const groups: Array<{ key: string; label: string; rows: Envelope[] }> = [
+    { key: 'active', label: 'Out for signature', rows: activeEnvs },
+    { key: 'done', label: '✓ Signed & completed', rows: completedEnvs },
+    ...(showAll ? [{ key: 'closed', label: 'Cancelled & archived', rows: closedEnvs }] : []),
+  ].filter(g => g.rows.length > 0);
+
   return (
     <div className="es-touch" style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>✍️ Signature requests</h2>
-        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.filter(e => !byAgent || e.sent_by === byAgent).length} ${showAll ? 'requests' : 'out for signature'}${byAgent ? ` · ${byAgent}` : ''}`}</span>
+        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${activeEnvs.length} out for signature${completedEnvs.length ? ` · ${completedEnvs.length} signed` : ''}${byAgent ? ` · ${byAgent}` : ''}`}</span>
         {/* Pushes the controls right without forcing them onto their own line;
             `flex-grow` on a zero-basis spacer was wrapping Refresh on desktop. */}
         <span style={{ flex: '1 1 auto', minWidth: 0 }} />
@@ -212,7 +230,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           );
         })()}
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; completed
+          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; archived
         </label>
         <button onClick={load} style={{ ...mini, color: '#9ca3af', flexShrink: 0 }}>⟳ Refresh</button>
       </div>
@@ -318,16 +336,18 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       )}
 
       {loading ? <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div>
-        : envs.length === 0 ? (
+        : groups.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is waiting to be signed.</div>
             <div style={{ fontSize: 13 }}>Import a document above, or send one from a deal's E-Sign tab.</div>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af' }}>{showAll ? 'All signature requests' : 'Out for signature'}</div>
-            {envs.filter(env => !byAgent || env.sent_by === byAgent).map(env => {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+            {groups.map(group => (
+              <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: group.key === 'done' ? '#15803d' : '#9ca3af' }}>{group.label}{group.rows.length > 1 ? ` · ${group.rows.length}` : ''}</div>
+                {group.rows.map(env => {
               const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
               const done = signers.filter(s => s.status === 'signed' || s.signed_at).length;
               const declinedBy = signers.find(s => s.status === 'declined' || s.declined_at);
@@ -343,7 +363,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
                       {env.sent_by && <><span style={{ fontWeight: 700, color: '#6b7280' }}>{env.sent_by}</span> · </>}
                       {dealName} · {done}/{signers.length} signed
-                      {showAll && env.status !== 'sent' && env.status !== 'in_progress' && (
+                      {env.status !== 'sent' && env.status !== 'in_progress' && (
                         <span style={{ marginLeft: 6, fontWeight: 700, color: env.status === 'completed' ? '#15803d' : '#b91c1c' }}>
                           · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status === 'declined' ? 'Declined' : env.status}
                         </span>
@@ -478,7 +498,9 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   )}
                 </div>
               );
-            })}
+                })}
+              </div>
+            ))}
           </div>
         )}
     </div>
