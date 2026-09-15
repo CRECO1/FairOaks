@@ -235,10 +235,12 @@ export interface ExecutedSigner {
   initialsPng?: Uint8Array | null;
 }
 
-// A signature/initial/date field the agent placed on the doc (from the submission).
+// A field the agent placed on the doc (from the submission). Signature/initial/date
+// are stamped from the signer's adopted marks; text/check carry a `value` the signer
+// entered (persisted back into the submission when they sign) and are drawn as-is.
 // A field addresses a specific signer by their place in the signing order. Role alone
 // can't: two clients on the same document would both resolve to the first one.
-export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null; signerIndex?: number | null }
+export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null; signerIndex?: number | null; value?: string | null }
 
 // Assemble the fully-executed PDF: stamp each signer's signature/initials/date onto
 // the fields the agent PLACED (inline, on the doc's own lines); any signer without
@@ -274,8 +276,10 @@ export async function buildExecutedParts(
     if (s.initialsPng) { try { inits.set(s.email, await doc.embedPng(s.initialsPng)); } catch { inits.set(s.email, null); } }
   }
 
-  // Inline stamping onto agent-placed fields.
-  const placed = (info.sigFields || []).filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(f.type));
+  // Inline stamping onto agent-placed fields. Signature/initial/date come from the
+  // signer's adopted marks; text/check carry the value the signer typed (persisted
+  // back into the submission when they signed).
+  const placed = (info.sigFields || []).filter(f => ['signature', 'initial', 'date', 'date_signed', 'text', 'check'].includes(f.type));
   const inline = new Set<string>();
   for (const f of placed) {
     // Prefer the exact signer the agent assigned; fall back to first-of-role for
@@ -290,14 +294,22 @@ export async function buildExecutedParts(
       const img = png.get(s.email);
       if (img) { const w = Math.max(40, f.fw * width); const h = Math.min(w / (img.width / img.height), 38); pg.drawImage(img, { x, y: baseline, width: h * (img.width / img.height), height: h }); }
       else pg.drawText(winAnsi(s.typedName || s.name), { x, y: baseline + 2, size: 15, font: cursive, color: rgb(0.05, 0.05, 0.35) });
+      inline.add(s.email);
     } else if (f.type === 'initial') {
       const ini = inits.get(s.email);
       if (ini) { const w = Math.max(20, f.fw * width); const h = Math.min(w / (ini.width / ini.height), 26); pg.drawImage(ini, { x, y: baseline, width: h * (ini.width / ini.height), height: h }); }
       else pg.drawText(winAnsi(initialsOf(s.typedName || s.name)), { x, y: baseline + 2, size: 12, font: cursive, color: rgb(0.05, 0.05, 0.35) });
+      inline.add(s.email);
+    } else if (f.type === 'text') {
+      // The signer's typed answer, wrapped to the box width.
+      const val = winAnsi(String(f.value ?? '').trim());
+      if (val) pg.drawText(val, { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1), maxWidth: Math.max(24, f.fw * width), lineHeight: 12 });
+    } else if (f.type === 'check') {
+      if (String(f.value ?? '').trim()) pg.drawText('X', { x, y: baseline + 2, size: 12, font: bold, color: rgb(0.06, 0.06, 0.1) });
     } else {
       pg.drawText(winAnsi(s.signedAt ? new Date(s.signedAt).toLocaleDateString('en-US') : ''), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
+      inline.add(s.email);
     }
-    inline.add(s.email);
   }
 
   // Fallback Signatures page for any signer with no placed field.
@@ -361,10 +373,10 @@ export async function finalizeEnvelope(
     let sigFields: PlacedField[] = [];
     if (env.submission_id) {
       const { data: sub } = await admin.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
-      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number }> = Array.isArray(sub?.values) ? sub!.values : [];
+      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number; value?: string }> = Array.isArray(sub?.values) ? sub!.values : [];
       sigFields = vals
-        .filter(f => ['signature', 'initial', 'date', 'date_signed'].includes(String(f.type)))
-        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null }));
+        .filter(f => ['signature', 'initial', 'date', 'date_signed', 'text', 'check'].includes(String(f.type)))
+        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null, value: f.value ?? null }));
     }
 
     const { clean, full: executed } = await buildExecutedParts(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });

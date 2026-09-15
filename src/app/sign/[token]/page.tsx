@@ -23,9 +23,10 @@ const STYLES = [
 type Party = { role: string; name: string; order: number; status: string };
 // A spot this signer has to confirm. Positions are page fractions, y measured from
 // the top to the field's baseline — the same frame the editor placed them in.
-type SignField = { id: string; page: number; fx: number; fy: number; fw: number; type: string };
+type SignField = { id: string; page: number; fx: number; fy: number; fw: number; type: string; label?: string; value?: string; required?: boolean };
 type SignData = { status: string; doc_url: string | null; title: string; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
-const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : 'Date';
+const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : t === 'text' ? 'Fill in' : t === 'check' ? 'Check' : 'Date';
+const isInput = (t: string) => t === 'text' || t === 'check';
 
 const GOLD = '#c9922c';
 const INK = '#0d1b4b';
@@ -94,12 +95,14 @@ async function renderHand(text: string, family: string, boxW: number, boxH: numb
 // `frame-src 'self'` — an <iframe>/<embed> of it is blocked and renders blank, which
 // is what signers were seeing. Rendering the pages with pdf.js keeps everything
 // same-origin (fetch is allowed by connect-src) and shows a real preview.
-function DocView({ url, fields = [], filled, onFill, onClear, activeId, signaturePng, initialsPng, dateStr, narrow }: {
+function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, activeId, signaturePng, initialsPng, dateStr, narrow }: {
   url: string;
   fields?: SignField[];
   filled?: Record<string, boolean>;
+  values?: Record<string, string>;
   onFill?: (f: SignField) => void;
   onClear?: (f: SignField) => void;
+  onInput?: (f: SignField, v: string) => void;
   activeId?: string | null;
   signaturePng?: string;
   initialsPng?: string;
@@ -179,8 +182,29 @@ function DocView({ url, fields = [], filled, onFill, onClear, activeId, signatur
           <div key={i} style={{ position: 'relative', marginBottom: i === pages.length - 1 ? 0 : gutter, boxShadow: '0 2px 10px rgba(0,0,0,.4)' }}>
             <img src={src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
             {pageFields.map(f => {
-              const done = !!filled?.[f.id];
               const isNext = activeId === f.id;
+              // Text / checkbox spots are real inputs the signer fills in place.
+              if (f.type === 'text' || f.type === 'check') {
+                const v = values?.[f.id] ?? '';
+                const ih = Math.max(f.type === 'check' ? 20 : 24, Math.round(sigH * 0.82));
+                return (
+                  <div key={f.id} id={`fld-${f.id}`} style={{ position: 'absolute', left: `${f.fx * 100}%`,
+                    width: f.type === 'check' ? undefined : `${Math.max(f.fw * 100, 8)}%`,
+                    top: `${f.fy * 100}%`, transform: 'translateY(-100%)', height: ih, display: 'flex', alignItems: 'center' }}>
+                    {f.type === 'check'
+                      ? <input id={`in-${f.id}`} type="checkbox" checked={!!v.trim()} aria-label={f.label || 'Check this box'}
+                          onChange={e => onInput?.(f, e.target.checked ? '✔' : '')}
+                          style={{ width: Math.min(ih, 22), height: Math.min(ih, 22), accentColor: GOLD, cursor: 'pointer', boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.35)' : 'none', borderRadius: 3 }} />
+                      : <input id={`in-${f.id}`} value={v} onChange={e => onInput?.(f, e.target.value)}
+                          placeholder={f.label || 'Type here'} aria-label={f.label || 'Fill in this field'}
+                          style={{ width: '100%', height: '100%', boxSizing: 'border-box', fontSize: Math.min(15, Math.max(11, ih * 0.42)),
+                            padding: '0 6px', borderRadius: 4, border: `2px solid ${GOLD}`, color: INK, fontFamily: 'inherit', fontWeight: 600,
+                            background: v.trim() ? 'rgba(255,255,255,.97)' : isNext ? 'rgba(201,146,44,.16)' : 'rgba(201,146,44,.10)',
+                            boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.3)' : 'none' }} />}
+                  </div>
+                );
+              }
+              const done = !!filled?.[f.id];
               const img = f.type === 'signature' ? signaturePng : f.type === 'initial' ? initialsPng : undefined;
               const h = f.type === 'date' ? Math.round(sigH * 0.74) : sigH;
               const boxW = Math.max(f.fw, 0.1) * pw;
@@ -262,11 +286,16 @@ export default function SignPage() {
   // Every spot the agent placed for this signer has to be clicked. Nothing is
   // applied wholesale: the signature only lands where the signer put it.
   const [filled, setFilled] = useState<Record<string, boolean>>({});
+  // Text / checkbox answers the signer fills in, keyed by field id. Signature-family
+  // spots are booleans in `filled`; an input spot is "done" once it holds a value.
+  const [values, setValues] = useState<Record<string, string>>({});
   const [adopted, setAdopted] = useState<{ signature?: string; initials?: string } | null>(null);
   const fields = useMemo(() => data?.fields ?? [], [data]);
-  const remaining = useMemo(() => fields.filter(f => !filled[f.id]), [fields, filled]);
+  const isDone = useCallback((f: SignField) => isInput(f.type) ? !!(values[f.id] ?? '').trim() : !!filled[f.id], [values, filled]);
+  const remaining = useMemo(() => fields.filter(f => !isDone(f)), [fields, isDone]);
   const nextField = remaining[0] ?? null;
   const allDone = fields.length > 0 && remaining.length === 0;
+  const setFieldValue = useCallback((f: SignField, v: string) => setValues(prev => ({ ...prev, [f.id]: v })), []);
   const dateStr = useMemo(() => new Date().toLocaleDateString('en-US'), []);
 
   const scrollToField = useCallback((id: string) => {
@@ -292,6 +321,14 @@ export default function SignPage() {
   }, [adopted, mode, typed, initials]); // eslint-disable-line
 
   const fillField = useCallback(async (f: SignField) => {
+    // A text / checkbox spot is filled by typing into it, not by adopting a signature —
+    // jump to it and focus the input.
+    if (isInput(f.type)) {
+      setErr('');
+      scrollToField(f.id);
+      setTimeout(() => (document.getElementById(`in-${f.id}`) as HTMLElement | null)?.focus(), 200);
+      return;
+    }
     if (!typed.trim()) { setErr('Enter your full legal name first.'); scrollToAdopt(); return; }
     if (mode === 'draw' && !hasInk()) { setErr('Draw your signature first, or choose a style.'); scrollToAdopt(); return; }
     setErr('');
@@ -315,6 +352,10 @@ export default function SignPage() {
       .then(({ ok, j }) => {
         if (!ok) { setView('notfound'); return; }
         setData(j);
+        // Pre-load any values already on the input fields (usually empty for the signer).
+        const seed: Record<string, string> = {};
+        for (const f of (j.fields ?? []) as SignField[]) if (isInput(f.type)) seed[f.id] = f.value || '';
+        setValues(seed);
         setTyped(j.signer?.name || '');
         setView(['ready', 'waiting', 'done', 'completed', 'voided', 'declined'].includes(j.status) ? j.status : 'error');
       })
@@ -446,14 +487,14 @@ export default function SignPage() {
       const initials_png = a.initials;
       const res = await fetch(`/api/sign/${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signature_png, initials_png, typed_name: typed, signature_style: mode === 'draw' ? 'drawn' : active.key, consent }),
+        body: JSON.stringify({ signature_png, initials_png, typed_name: typed, signature_style: mode === 'draw' ? 'drawn' : active.key, consent, field_values: values }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(j.error || 'Could not submit your signature. Please try again.'); return; }
       setFinalStatus(j.status || 'signed');
       setView('signed');
     } finally { setSubmitting(false); }
-  }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField]);
+  }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField, values]);
 
   // What the floating control does: walk the signer to their next spot, or — once the
   // spots are done (or the document has none) — down to Finish & Sign.
@@ -527,7 +568,7 @@ export default function SignPage() {
         )}
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
           {data?.doc_url
-            ? <DocView url={data.doc_url} fields={fields} filled={filled} onFill={fillField} onClear={clearField}
+            ? <DocView url={data.doc_url} fields={fields} filled={filled} values={values} onFill={fillField} onClear={clearField} onInput={setFieldValue}
                 activeId={nextField?.id ?? null} narrow={narrow}
                 signaturePng={adopted?.signature} initialsPng={adopted?.initials} dateStr={dateStr} />
             : <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>}

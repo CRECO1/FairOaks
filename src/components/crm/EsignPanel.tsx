@@ -198,8 +198,9 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
         </button>
       </div>
       {preview && doc.url && (() => {
-        // Show the fields as they WILL be sent (removed dropped, reassigned remapped).
-        const SIG = ['signature', 'initial', 'date'];
+        // Show the fields as they WILL be sent (removed dropped, reassigned remapped) —
+        // including the text / checkbox inputs the signer will have to fill in.
+        const SIG = ['signature', 'initial', 'date', 'text', 'check'];
         const effective = docValues.filter(v => SIG.includes(String(v.type))).flatMap(v => {
           const g = fieldGroups.find(x => x.origRole === String(v.signerRole || 'client'));
           if (g && !g.keep) return [];
@@ -237,7 +238,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
       .then(j => {
         if (!alive) return;
         const vals: Array<Record<string, unknown>> = Array.isArray(j.submission?.values) ? j.submission.values : [];
-        setPreviewFields(vals.filter(v => ['signature', 'initial', 'date'].includes(String(v.type))).map(v => ({ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: String(v.signerRole || 'client') })));
+        setPreviewFields(vals.filter(v => ['signature', 'initial', 'date', 'text', 'check'].includes(String(v.type))).map(v => ({ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: String(v.signerRole || 'client') })));
       })
       .catch(() => {});
     return () => { alive = false; };

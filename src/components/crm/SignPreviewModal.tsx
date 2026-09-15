@@ -12,7 +12,7 @@ export interface PreviewField { page?: number; fx: number; fy: number; fw: numbe
 export interface PreviewSigner { name: string; role?: string; color?: string }
 
 const ROLE_COLORS: Record<string, string> = { client: '#c9922c', landlord: '#2563eb', agent: '#16a34a', seller: '#c9922c', buyer: '#7c3aed', witness: '#db2777', other: '#6b7280' };
-const typeLabel = (t?: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : (t === 'date' || t === 'date_signed') ? 'Date' : (t || 'Field');
+const typeLabel = (t?: string) => t === 'signature' ? 'Signature' : t === 'initial' ? 'Initials' : (t === 'date' || t === 'date_signed') ? 'Date' : t === 'text' ? 'Fill-in' : t === 'check' ? 'Checkbox' : (t || 'Field');
 
 export default function SignPreviewModal({ url, fields, signerLabel, signers, onClose, onConfirm, confirmLabel = 'Send', busy }: {
   url: string;

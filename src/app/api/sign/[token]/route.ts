@@ -67,22 +67,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   // a time, so it needs their positions — matched the same way buildExecutedPdf
   // matches them: by the signer's place in the signing order, falling back to role
   // for documents placed before per-signer assignment existed.
+  // Signature-family spots the signer confirms with their adopted mark, plus the
+  // text / checkbox inputs the agent placed for the signer to fill in. Everything the
+  // agent put on the page is the signer's to complete — and all of it is required.
   const SIG = ['signature', 'initial', 'date', 'date_signed'];
-  let fields: Array<{ id: string; page: number; fx: number; fy: number; fw: number; type: string }> = [];
+  const INPUT = ['text', 'check'];
+  let fields: Array<{ id: string; page: number; fx: number; fy: number; fw: number; type: string; label?: string; value?: string; required?: boolean }> = [];
   if (env.submission_id) {
     const { data: sub } = await db.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
     const vals: Array<Record<string, unknown>> = Array.isArray(sub?.values) ? sub!.values : [];
     fields = vals
       .map((f, i) => ({ f, i }))
-      .filter(({ f }) => SIG.includes(String(f.type)) && (
+      .filter(({ f }) => (SIG.includes(String(f.type)) || INPUT.includes(String(f.type))) && (
         f.signerIndex
           ? Number(f.signerIndex) === signer.signing_order
           : String(f.signerRole ?? 'client') === String(signer.signer_role ?? 'client')))
-      .map(({ f, i }) => ({
-        id: `f${i}`, page: Number(f.page) || 1,
-        fx: Number(f.fx), fy: Number(f.fy), fw: Number(f.fw),
-        type: String(f.type) === 'date_signed' ? 'date' : String(f.type),
-      }))
+      .map(({ f, i }) => {
+        const t = String(f.type);
+        const base = { id: `f${i}`, page: Number(f.page) || 1, fx: Number(f.fx), fy: Number(f.fy), fw: Number(f.fw), type: t === 'date_signed' ? 'date' : t };
+        return INPUT.includes(t)
+          ? { ...base, label: (String(f.label ?? '').trim() || undefined), value: String(f.value ?? ''), required: true }
+          : base;
+      })
       // top-to-bottom, page by page — the order a person would read them
       .sort((a, b) => a.page - b.page || a.fy - b.fy || a.fx - b.fx);
   }
@@ -139,6 +145,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const typedName = String(b.typed_name || signer.name).slice(0, 120);
   const ip = clientIp(req); const ua = req.headers.get('user-agent'); const nowIso = new Date().toISOString();
 
+  // Every text / checkbox the agent placed for this signer must be filled before they
+  // can sign — the same rule the page enforces, re-checked here so a doctored request
+  // can't skip it. Their answers are written back onto the document (below) so the
+  // executed PDF is stamped with them.
+  const fieldValues: Record<string, unknown> = (b.field_values && typeof b.field_values === 'object') ? b.field_values : {};
+  let subVals: Array<Record<string, unknown>> | null = null;
+  let myInputs: number[] = [];
+  if (env.submission_id) {
+    const { data: sub } = await db.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
+    subVals = Array.isArray(sub?.values) ? (sub!.values as Array<Record<string, unknown>>) : [];
+    myInputs = subVals.map((f, i) => ({ f, i }))
+      .filter(({ f }) => ['text', 'check'].includes(String(f.type)) && (
+        f.signerIndex ? Number(f.signerIndex) === signer.signing_order : String(f.signerRole ?? 'client') === String(signer.signer_role ?? 'client')))
+      .map(({ i }) => i);
+    const missing = myInputs.filter(i => !String(fieldValues[`f${i}`] ?? '').trim()).length;
+    if (missing) return NextResponse.json({ error: `Please fill in ${missing === 1 ? 'the required field' : `all ${missing} required fields`} on the document before signing.` }, { status: 400 });
+  }
+
   // The signature and the matching initials are both stored as PNGs, so a doc that
   // asks for initials gets the signer's own hand rather than generic block letters.
   const storePng = async (dataUrl: unknown, name: string): Promise<string | null> => {
@@ -161,6 +185,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     .eq('id', signer.id).neq('status', 'signed').select('id');
   if (!claimed || claimed.length === 0) return NextResponse.json({ status: 'signed', already: true });
   await logEvent(db, env.id, signer.id, 'signed', { actor: signer.email, ip, ua, meta: signer.in_person ? { in_person: true } : undefined });
+
+  // Write this signer's field entries back onto the document (only their own fields),
+  // so finalize stamps the executed PDF with what they filled in.
+  if (subVals && myInputs.length && env.submission_id) {
+    const updated = subVals.slice();
+    for (const i of myInputs) updated[i] = { ...updated[i], value: String(fieldValues[`f${i}`] ?? '').slice(0, 2000) };
+    await db.from('crm_form_submissions').update({ values: updated }).eq('id', env.submission_id);
+  }
 
   const { data: freshData } = await db.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');
   const all = (freshData ?? []) as Signer[];

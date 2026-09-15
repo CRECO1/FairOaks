@@ -143,7 +143,7 @@ export default function EsignComposer({
     () => placed.filter(f => ['signature', 'initial', 'date'].includes(f.type) && f.signerKey && !signerIndex.has(f.signerKey)).length,
     [placed, signerIndex]);
   const effective = useMemo(() => placed
-    .filter(f => ['signature', 'initial', 'date'].includes(f.type) && (!f.signerKey || signerIndex.has(f.signerKey)))
+    .filter(f => ['signature', 'initial', 'date', 'text', 'check'].includes(f.type) && (!f.signerKey || signerIndex.has(f.signerKey)))
     .map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole ?? 'client', signerIndex: f.signerKey ? signerIndex.get(f.signerKey)! : null })),
     [placed, signerIndex]);
 

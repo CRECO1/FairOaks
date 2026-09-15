@@ -222,9 +222,13 @@ export default function TransactionDocEditor({
     const id = nextId();
     const isSig = tool === 'signature' || tool === 'initial' || tool === 'date';
     const fw = tool === 'check' ? 0.03 : tool === 'initial' ? 0.07 : tool === 'date' ? 0.12 : tool === 'signature' ? 0.22 : 0.28;
+    // Assign to the active recipient when composing an envelope (recipients present):
+    // that's how a text / checkbox input reaches a specific signer, exactly like a
+    // signature does. In the type-once library editor (no recipients) it stays a blank
+    // the agent fills before generating the PDF.
     setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' ? '✔' : '', size: 11, type: tool,
-      signerRole: isSig ? (activeRec?.role ?? sigRole) : undefined,
-      signerKey: isSig && activeRec ? activeRec.key : undefined }]);
+      signerRole: activeRec?.role ?? (isSig ? sigRole : undefined),
+      signerKey: activeRec ? activeRec.key : undefined }]);
     setSelected(id);
     setTool('select');
   }, [tool]);
