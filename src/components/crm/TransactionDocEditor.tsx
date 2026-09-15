@@ -67,7 +67,7 @@ interface DealLite { id: string; client?: string; property?: string; type?: stri
 // recipients (the E-Sign composer does), fields are placed against a person rather
 // than an abstract role — so two clients on one document can't collide.
 export interface EditorRecipient { key: string; name: string; email: string; role: string; color: string }
-export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string };
+export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; size?: number };
 
 export default function TransactionDocEditor({
   form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved,
@@ -131,6 +131,9 @@ export default function TransactionDocEditor({
   const bytesRef = useRef<Uint8Array | null>(null);
   const pdfRef = useRef<{ getPage: (n: number) => Promise<PdfPage> } | null>(null);
   const drag = useRef<{ id: string; sx: number; sy: number; ofx: number; ofy: number; pw: number; ph: number } | null>(null);
+  // Resize state for text / checkbox fields: horizontal drag grows the box width (fw),
+  // vertical drag grows the text (font size), so a box can be scaled to fit the space.
+  const resize = useRef<{ id: string; sx: number; sy: number; ofw: number; osize: number; pw: number; ph: number } | null>(null);
 
   // The LOIs are delegated to the builder (see the early return below) — skip all
   // overlay PDF/field loading for them.
@@ -256,8 +259,26 @@ export default function TransactionDocEditor({
     e.stopPropagation();
     beginDrag(f.id, t.clientX, t.clientY, f, e.currentTarget);
   };
+  const beginResize = (id: string, clientX: number, clientY: number, f: Field, handle: HTMLElement) => {
+    const page = handle.closest('[data-pdf-page]');
+    if (!page) return;
+    const r = page.getBoundingClientRect();
+    setSelected(id);
+    resize.current = { id, sx: clientX, sy: clientY, ofw: f.fw, osize: f.size, pw: r.width, ph: r.height };
+  };
+  const onResizeStart = (e: React.MouseEvent<HTMLDivElement>, f: Field) => { e.stopPropagation(); beginResize(f.id, e.clientX, e.clientY, f, e.currentTarget); };
+  const onTouchResizeStart = (e: React.TouchEvent<HTMLDivElement>, f: Field) => { const t = e.touches[0]; if (!t) return; e.stopPropagation(); beginResize(f.id, t.clientX, t.clientY, f, e.currentTarget); };
   useEffect(() => {
     const apply = (clientX: number, clientY: number) => {
+      const rz = resize.current;
+      if (rz) {
+        // Right drag widens the box; down drag grows the text (a full-page vertical
+        // drag spans ~60pt of font size). Both clamped to sane bounds.
+        const dfw = (clientX - rz.sx) / rz.pw;
+        const dsize = (clientY - rz.sy) / rz.ph * 60;
+        setFields(fs => fs.map(f => f.id === rz.id ? { ...f, fw: Math.max(0.03, Math.min(0.97, rz.ofw + dfw)), size: Math.round(Math.max(6, Math.min(48, rz.osize + dsize))) } : f));
+        return;
+      }
       const d = drag.current; if (!d) return;
       const dfx = (clientX - d.sx) / d.pw;
       const dfy = (clientY - d.sy) / d.ph;
@@ -265,12 +286,12 @@ export default function TransactionDocEditor({
     };
     const move = (e: MouseEvent) => { apply(e.clientX, e.clientY); };
     const touchMove = (e: TouchEvent) => {
-      const t = e.touches[0]; if (!t || !drag.current) return;
+      const t = e.touches[0]; if (!t || (!drag.current && !resize.current)) return;
       // Non-passive so the page doesn't scroll out from under the field being moved.
       e.preventDefault();
       apply(t.clientX, t.clientY);
     };
-    const up = () => { drag.current = null; };
+    const up = () => { drag.current = null; resize.current = null; };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     window.addEventListener('touchmove', touchMove, { passive: false });
@@ -408,14 +429,14 @@ export default function TransactionDocEditor({
   const reportRef = useRef(onFieldsChange);
   reportRef.current = onFieldsChange;
   useEffect(() => {
-    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey })));
+    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size })));
   }, [fields]);
 
   const sendNow = useCallback(async () => {
     const sig = fields.filter(f => ['signature', 'initial', 'date'].includes(f.type));
     if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
     await saveToDeal();
-    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey })));
+    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size })));
   }, [fields, saveToDeal, onSend]);
 
   // Jump the document pane to a page, and keep the navigator's highlight in step
@@ -706,6 +727,19 @@ export default function TransactionDocEditor({
                     onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
                     aria-label="Delete field"
                     style={{ position: 'absolute', top: isMobile ? -13 : -9, right: isMobile ? -13 : -9, width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
+                )}
+                {/* Resize: drag right to widen the box, down to grow the text. */}
+                {(showGrip || isMobile) && (
+                  <div
+                    onMouseDown={e => onResizeStart(e, f)}
+                    onTouchStart={e => onTouchResizeStart(e, f)}
+                    title="Drag to resize — right to widen, down for bigger text"
+                    aria-label="Resize field"
+                    style={{ position: 'absolute', bottom: isMobile ? -13 : -9, right: isMobile ? -13 : -9,
+                      width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%',
+                      background: '#2563eb', color: '#fff', cursor: 'nwse-resize', touchAction: 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: isMobile ? 13 : 10, lineHeight: 1, userSelect: 'none', zIndex: 2 }}>⤡</div>
                 )}
               </div>
             );

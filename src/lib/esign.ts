@@ -240,7 +240,7 @@ export interface ExecutedSigner {
 // entered (persisted back into the submission when they sign) and are drawn as-is.
 // A field addresses a specific signer by their place in the signing order. Role alone
 // can't: two clients on the same document would both resolve to the first one.
-export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null; signerIndex?: number | null; value?: string | null }
+export interface PlacedField { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string | null; signerIndex?: number | null; value?: string | null; size?: number | null }
 
 // Assemble the fully-executed PDF: stamp each signer's signature/initials/date onto
 // the fields the agent PLACED (inline, on the doc's own lines); any signer without
@@ -301,9 +301,11 @@ export async function buildExecutedParts(
       else pg.drawText(winAnsi(initialsOf(s.typedName || s.name)), { x, y: baseline + 2, size: 12, font: cursive, color: rgb(0.05, 0.05, 0.35) });
       inline.add(s.email);
     } else if (f.type === 'text') {
-      // The signer's typed answer, wrapped to the box width.
+      // The signer's typed answer, at the size the agent scaled the box to, wrapped to
+      // the box width.
       const val = winAnsi(String(f.value ?? '').trim());
-      if (val) pg.drawText(val, { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1), maxWidth: Math.max(24, f.fw * width), lineHeight: 12 });
+      const sz = Math.max(7, Math.min(Number(f.size) || 10, 20));
+      if (val) pg.drawText(val, { x, y: baseline + 2, size: sz, font, color: rgb(0.06, 0.06, 0.1), maxWidth: Math.max(24, f.fw * width), lineHeight: sz + 2 });
     } else if (f.type === 'check') {
       if (String(f.value ?? '').trim()) pg.drawText('X', { x, y: baseline + 2, size: 12, font: bold, color: rgb(0.06, 0.06, 0.1) });
     } else {
@@ -373,10 +375,10 @@ export async function finalizeEnvelope(
     let sigFields: PlacedField[] = [];
     if (env.submission_id) {
       const { data: sub } = await admin.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
-      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number; value?: string }> = Array.isArray(sub?.values) ? sub!.values : [];
+      const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number; value?: string; size?: number }> = Array.isArray(sub?.values) ? sub!.values : [];
       sigFields = vals
         .filter(f => ['signature', 'initial', 'date', 'date_signed', 'text', 'check'].includes(String(f.type)))
-        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null, value: f.value ?? null }));
+        .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null, value: f.value ?? null, size: f.size ?? null }));
     }
 
     const { clean, full: executed } = await buildExecutedParts(srcBytes, { docTitle: env.title, envelopeId: env.id, signers: execSigners, sigFields });
