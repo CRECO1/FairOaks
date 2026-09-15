@@ -56,7 +56,8 @@ export async function getPlanInfo(): Promise<{ plan: unknown; features: unknown;
   const safe = async (path: string) => { try { return await tr<unknown>(path); } catch (e) { return { error: e instanceof TalkrouteError ? e.status : String(e) }; } };
   const [plan, features] = await Promise.all([safe('/accounts/plan'), safe('/accounts/permitted-features')]);
   const probes: Record<string, number> = {};
-  for (const path of ['/call-history?pageSize=1', '/voice-messages?pageSize=1', '/virtual-numbers', '/subscriptions']) {
+  const after = encodeURIComponent(new Date(Date.now() - 48 * 3_600_000).toISOString());
+  for (const path of ['/call-history?pageSize=1', '/call-history?pageSize=100', '/call-history?pageSize=25', '/call-history?page=1', '/call-history?page=2', `/call-history?after=${after}`, `/call-history?after=${after}&page=1&pageSize=100`, '/voice-messages?pageSize=1', '/voice-messages?pageSize=100', '/virtual-numbers', '/subscriptions']) {
     try { await tr(path); probes[path] = 200; } catch (e) { probes[path] = e instanceof TalkrouteError ? e.status : -1; }
   }
   return { plan, features, probes };
