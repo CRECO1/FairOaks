@@ -1047,15 +1047,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadCampaignProjects();
       setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
-      // First login for admin — auto-create profile
-      const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
-        session.user.user_metadata?.role === 'admin';
+      // First login with no profile yet — auto-create an AGENT profile. The role is
+      // deliberately NOT read from user_metadata: a signing-up user controls their own
+      // metadata, so trusting it would let anyone mint themselves an admin. Elevation to
+      // admin/super_admin is a super-admin action, and the database enforces agent-only
+      // self-insert regardless (see supabase/rbac-fix-insert-escalation.sql).
       const newProfile: Profile = {
         id: session.user.id,
         email: session.user.email!,
         first_name: session.user.user_metadata?.firstName ?? session.user.email!.split('@')[0],
         last_name: session.user.user_metadata?.lastName ?? '',
-        role: isAdmin ? 'admin' : 'agent',
+        role: 'agent',
         last_sign_in_at: authLastSignIn,
         business_unit: businessUnit,
       };
