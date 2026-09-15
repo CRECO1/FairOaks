@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { adminClient } from '@/lib/supabase-admin';
-import { shortHangup, syncTalkroute, talkrouteConfigured, upsertCalls, type CallRow } from '@/lib/talkroute';
+import { shortHangup, syncTalkroute, syncTexts, talkrouteConfigured, upsertCalls, upsertTexts, type CallRow, type TextRow } from '@/lib/talkroute';
 import { matchContact, unitForNumber } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
 
@@ -19,6 +19,7 @@ export const maxDuration = 60;
  * the next API sync (which does carry ids) reconciles it.
  */
 interface CallPayload { datetime?: string; call_result?: string; direction?: string; duration?: number; caller_number?: string; called_number?: string; caller_cname?: string }
+interface TextPayload { datetime?: string; direction?: string; from_number?: string; to_number?: string; body?: string }
 interface VmPayload { datetime?: string; call_result?: string; duration?: number; called_number?: string; caller_number?: string; transcription?: string; mailbox_name?: string }
 
 function keyed(secret: string, req: NextRequest): boolean {
@@ -74,6 +75,26 @@ export async function POST(req: NextRequest) {
     };
     await upsertCalls(db, [row]);
     if (talkrouteConfigured()) { try { await syncTalkroute(db, { sinceHours: 2, maxPages: 1 }); } catch (e) { console.warn('[webhooks/talkroute] sync', e); } }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (type === 'new_text_message') {
+    const p = data as TextPayload;
+    const incoming = (p.direction || 'incoming').toLowerCase() === 'incoming';
+    const from = toE164(p.from_number), to = toE164(p.to_number);
+    const ours = incoming ? to : from, theirs = incoming ? from : to;
+    const unit = await unitForNumber(db, ours);
+    const contact = await matchContact(db, theirs, unit);
+    const at = p.datetime ? new Date(p.datetime).toISOString() : new Date().toISOString();
+    const cid = `${(ours || '').replace(/\D/g, '')}-${(theirs || '').replace(/\D/g, '')}`;
+    const row: TextRow = {
+      business_unit: unit, source: 'talkroute', external_id: `push:${cid}:${at}:${(p.body || '').slice(0, 40)}`, conversation_id: cid,
+      direction: incoming ? 'inbound' : 'outbound', from_number: from, to_number: to, body: p.body || null, attachments: null,
+      contact_id: contact?.id ?? null, sent_by: null, sent_at: at, read: false, raw: { type, ...data },
+    };
+    await upsertTexts(db, [row]);
+    // Pull the real message id (and any attachment) so the pushed row is reconciled.
+    if (talkrouteConfigured()) { try { await syncTexts(db, { sinceHours: 2, maxConversations: 5 }); } catch (e) { console.warn('[webhooks/talkroute] texts', e); } }
     return NextResponse.json({ ok: true });
   }
 

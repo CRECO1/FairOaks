@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
-import { syncTalkroute, talkrouteConfigured } from '@/lib/talkroute';
+import { syncTalkroute, syncTexts, talkrouteConfigured } from '@/lib/talkroute';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -20,8 +20,11 @@ export async function GET(req: NextRequest) {
   }
   if (!talkrouteConfigured()) return NextResponse.json({ skipped: 'TALKROUTE_API_KEY not set' });
   try {
-    const r = await syncTalkroute(adminClient(), { sinceHours: 48, maxPages: 5 });
-    return NextResponse.json({ ok: true, ...r });
+    const db = adminClient();
+    const r = await syncTalkroute(db, { sinceHours: 48, maxPages: 5 });
+    let texts: Record<string, unknown> = {};
+    try { texts = await syncTexts(db, { sinceHours: 48 }); } catch (e) { texts = { error: e instanceof Error ? e.message : String(e) }; }
+    return NextResponse.json({ ok: true, ...r, texts });
   } catch (e) {
     console.error('[cron/talkroute-sync]', e);
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

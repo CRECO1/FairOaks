@@ -48,6 +48,14 @@ export interface TrVoiceMessage {
   id: string; read: boolean; phoneNumber?: string; callResult?: string; callerName?: string; callerNumber?: string;
   duration?: number; transcript?: string; transcriptionInProgress?: boolean; audioLink?: string; createdAt?: string;
 }
+export interface TrTextMessage {
+  id: string; body?: string; read?: boolean; userEmail?: string; direction?: string; createdAt?: string;
+  attachments?: Array<{ id: string; fileType?: string; link?: string }>;
+}
+export interface TrTextConversation {
+  conversation_id: string; talkroute_number?: string; contact_number?: string; last_message_at?: string;
+  last_message?: TrTextMessage; messages_count?: number;
+}
 interface Paged<T> { data: T[]; pagination?: { totalPages?: number; currentPage?: number; nextPageUrl?: string | null } }
 export interface TrSubscription { id?: string; hookUrl: string; type: 'new_text_message' | 'new_call_record' | 'new_voicemail' | 'call_completed' }
 
@@ -87,6 +95,26 @@ export async function listVoiceMessages(opts: { page?: number; pageSize?: number
 export async function voicemailAudioUrl(id: string): Promise<string | null> {
   const j = await tr<{ url?: string; data?: { url?: string } }>(`/voice-messages/${encodeURIComponent(id)}/audio-url`);
   return j.url ?? j.data?.url ?? null;
+}
+
+export async function listTextConversations(opts: { page?: number; pageSize?: number; since?: string } = {}): Promise<Paged<TrTextConversation>> {
+  const q = new URLSearchParams({ page: String(opts.page ?? 1), pageSize: String(opts.pageSize ?? 50) });
+  if (opts.since) q.set('since', opts.since);
+  try { return await tr<Paged<TrTextConversation>>(`/text-conversations?${q}`); }
+  catch (e) {
+    // Date filters are plan-gated on call history; assume the same can happen here and page instead.
+    if (opts.since && e instanceof TalkrouteError && (e.status === 402 || e.status === 403)) { q.delete('since'); return tr<Paged<TrTextConversation>>(`/text-conversations?${q}`); }
+    throw e;
+  }
+}
+export async function listTextMessages(conversationId: string, opts: { page?: number; pageSize?: number } = {}): Promise<Paged<TrTextMessage>> {
+  const q = new URLSearchParams({ page: String(opts.page ?? 1), pageSize: String(opts.pageSize ?? 100) });
+  return tr<Paged<TrTextMessage>>(`/text-conversations/${encodeURIComponent(conversationId)}/messages?${q}`);
+}
+/** Send a text from the Talkroute number in the conversation id. Needs texting enabled on the plan. */
+export async function sendText(conversationId: string, body: string): Promise<TrTextMessage> {
+  const j = await tr<TrTextMessage | { data: TrTextMessage }>(`/text-conversations/${encodeURIComponent(conversationId)}`, { method: 'POST', body: JSON.stringify({ body }) });
+  return ('data' in j ? j.data : j) as TrTextMessage;
 }
 
 export async function listSubscriptions(): Promise<TrSubscription[]> {
@@ -243,4 +271,81 @@ export async function syncTalkroute(db: SupabaseClient, opts: { sinceHours?: num
   }
   const { inserted, updated } = await upsertCalls(db, rows);
   return { calls, voicemails, inserted, updated, callHistoryBlocked };
+}
+
+// ── Texts ─────────────────────────────────────────────────────────────────────
+export interface TextRow {
+  business_unit: string; source: string; external_id: string; conversation_id: string; direction: string;
+  from_number: string | null; to_number: string | null; body: string | null; attachments: unknown; contact_id: string | null;
+  sent_by: string | null; sent_at: string; read: boolean; raw: unknown;
+}
+
+export async function textToRow(conv: TrTextConversation, m: TrTextMessage, db: SupabaseClient, unitCache: Map<string, string>, contactCache: Map<string, string | null>): Promise<TextRow> {
+  const ours = toE164(conv.talkroute_number), theirs = toE164(conv.contact_number);
+  const inbound = (m.direction || '').toLowerCase() !== 'outgoing' && (m.direction || '').toLowerCase() !== 'outbound';
+  let unit = unitCache.get(ours ?? '');
+  if (!unit) { unit = await unitForNumber(db, ours); unitCache.set(ours ?? '', unit); }
+  const ck = `${unit}:${theirs}`;
+  if (!contactCache.has(ck)) contactCache.set(ck, (await matchContact(db, theirs, unit))?.id ?? null);
+  return {
+    business_unit: unit, source: 'talkroute', external_id: `msg:${m.id}`, conversation_id: conv.conversation_id,
+    direction: inbound ? 'inbound' : 'outbound', from_number: inbound ? theirs : ours, to_number: inbound ? ours : theirs,
+    body: m.body ?? null, attachments: m.attachments?.length ? m.attachments : null, contact_id: contactCache.get(ck) ?? null,
+    sent_by: m.userEmail || null, sent_at: m.createdAt || new Date().toISOString(), read: !!m.read, raw: m,
+  };
+}
+
+/** Insert new messages (never overwrite), then recompute "needs a reply" per conversation. */
+export async function upsertTexts(db: SupabaseClient, rows: TextRow[]): Promise<{ inserted: number }> {
+  if (!rows.length) return { inserted: 0 };
+  const { data: existing } = await db.from('crm_text_messages').select('external_id').eq('source', 'talkroute').in('external_id', rows.map(r => r.external_id));
+  const have = new Set((existing ?? []).map(e => e.external_id as string));
+  const fresh = rows.filter(r => !have.has(r.external_id));
+  if (fresh.length) {
+    const { error } = await db.from('crm_text_messages').insert(fresh);
+    if (error) throw new Error(`crm_text_messages insert: ${error.message}`);
+  }
+  await refreshTextFollowUps(db, Array.from(new Set(rows.map(r => r.conversation_id))));
+  return { inserted: fresh.length };
+}
+
+/** The latest message in a thread decides: inbound & unhandled → flag it; anything outbound after it clears the thread. */
+export async function refreshTextFollowUps(db: SupabaseClient, conversationIds: string[]): Promise<void> {
+  for (const cid of conversationIds) {
+    const { data } = await db.from('crm_text_messages').select('id, direction, handled_at, needs_follow_up').eq('conversation_id', cid).order('sent_at', { ascending: false }).limit(1);
+    const last = data?.[0];
+    if (!last) continue;
+    const flag = last.direction === 'inbound' && !last.handled_at;
+    // Only the newest message carries the flag, so the queue shows each thread once.
+    await db.from('crm_text_messages').update({ needs_follow_up: false }).eq('conversation_id', cid).neq('id', last.id).eq('needs_follow_up', true);
+    if (last.needs_follow_up !== flag) await db.from('crm_text_messages').update({ needs_follow_up: flag }).eq('id', last.id);
+  }
+}
+
+export async function syncTexts(db: SupabaseClient, opts: { sinceHours?: number; maxConversations?: number } = {}): Promise<{ conversations: number; messages: number; inserted: number }> {
+  const sinceHours = opts.sinceHours ?? 48;
+  const cutoff = Date.now() - sinceHours * 3_600_000;
+  const maxConversations = opts.maxConversations ?? 60;
+  const unitCache = new Map<string, string>(), contactCache = new Map<string, string | null>();
+  const rows: TextRow[] = [];
+  let conversations = 0, messages = 0;
+  for (let page = 1; page <= 5 && conversations < maxConversations; page++) {
+    const j = await listTextConversations({ page, pageSize: 50, since: new Date(cutoff).toISOString() });
+    const data = j.data ?? [];
+    let anyRecent = false;
+    for (const conv of data) {
+      if (conv.last_message_at && Date.parse(conv.last_message_at) < cutoff) continue;
+      anyRecent = true; conversations++;
+      if (conversations > maxConversations) break;
+      const mj = await listTextMessages(conv.conversation_id, { page: 1, pageSize: 100 });
+      for (const m of mj.data ?? []) {
+        if (m.createdAt && Date.parse(m.createdAt) < cutoff - 7 * 86_400_000) continue; // a week of context behind the window
+        rows.push(await textToRow(conv, m, db, unitCache, contactCache)); messages++;
+      }
+    }
+    const totalPages = j.pagination?.totalPages ?? 1;
+    if (!anyRecent || page >= totalPages || !data.length) break;
+  }
+  const { inserted } = await upsertTexts(db, rows);
+  return { conversations, messages, inserted };
 }

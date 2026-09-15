@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;
       if (!secret) return NextResponse.json({ error: 'Set TALKROUTE_WEBHOOK_SECRET in Vercel first (any long random string).' }, { status: 503 });
       const hookUrl = `${voiceOrigin()}/api/webhooks/talkroute?key=${secret}`;
-      const wanted: Array<'new_call_record' | 'new_voicemail' | 'call_completed'> = ['new_call_record', 'new_voicemail', 'call_completed'];
+      const wanted: Array<'new_call_record' | 'new_voicemail' | 'call_completed' | 'new_text_message'> = ['new_call_record', 'new_voicemail', 'call_completed', 'new_text_message'];
       const existing = await listSubscriptions();
       // Replace stale hooks pointing at us with the current URL; leave anyone else's alone.
       for (const s of existing) if (s.id && s.hookUrl.includes('/api/webhooks/talkroute') && s.hookUrl !== hookUrl) await deleteSubscription(s.id);

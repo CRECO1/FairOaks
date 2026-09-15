@@ -21,6 +21,8 @@ interface Settings {
 }
 interface Connection { talkroute: boolean; talkroute_webhook_secret: boolean; twilio: boolean; anthropic: boolean; twilio_voice_url: string; twilio_status_url: string; talkroute_webhook_url: string }
 interface Turn { id: string; role: 'bot' | 'caller'; text: string; created_at: string }
+interface TextMsg { id: string; conversation_id: string; direction: 'inbound' | 'outbound'; from_number: string | null; to_number: string | null; body: string | null; attachments: Array<{ id: string; fileType?: string; link?: string }> | null; sent_at: string; sent_by: string | null; needs_follow_up: boolean; handled_at: string | null }
+interface Thread { conversation_id: string; number: string | null; our_number: string | null; contact_id: string | null; contact?: { id: string; name: string; type?: string | null } | null; last: TextMsg; count: number; unanswered: boolean; inbound_count: number }
 
 interface Props {
   authToken?: string; showToast?: (m: string) => void; isAdmin?: boolean; isSuperAdmin?: boolean; businessUnit: string;
@@ -67,7 +69,12 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed'>('all');
+  const [filter, setFilter] = useState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts'>('all');
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [textsNeedReply, setTextsNeedReply] = useState(false);   // within the Texts view: only unanswered
+  const [openThread, setOpenThread] = useState<string | null>(null);
+  const [thread, setThread] = useState<Record<string, TextMsg[]>>({});
+  const [reply, setReply] = useState<Record<string, string>>({});
   const [q, setQ] = useState('');
   const [days, setDays] = useState(30);
   const [busy, setBusy] = useState<string | null>(null);
@@ -85,10 +92,20 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [qLive, setQLive] = useState('');
 
+  const loadThreads = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ days: String(days), business_unit: businessUnit });
+      if (q) params.set('q', q);
+      const j = await fetch(`/api/crm/texts?${params}`, { headers: auth(authToken) }).then(r => r.json());
+      setThreads(Array.isArray(j.threads) ? j.threads : []);
+    } catch { setThreads([]); }
+  }, [authToken, days, q, businessUnit]);
+  useEffect(() => { loadThreads(); }, [loadThreads]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ filter, days: String(days), business_unit: businessUnit });
+      const params = new URLSearchParams({ filter: filter === 'texts' ? 'all' : filter, days: String(days), business_unit: businessUnit });
       if (q) params.set('q', q);
       const j = await fetch(`/api/crm/calls?${params}`, { headers: auth(authToken) }).then(r => r.json());
       setCalls(Array.isArray(j.calls) ? j.calls : []);
@@ -189,7 +206,40 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       const r = await fetch('/api/crm/calls/sync?days=14', { method: 'POST', headers: auth(authToken) });
       const j = await r.json().catch(() => ({}));
       showToast?.(r.ok ? `Synced with Talkroute — ${j.inserted ?? 0} new, ${j.updated ?? 0} updated${j.callHistoryBlocked ? ' · call history is not included in your Talkroute plan (voicemails + webhooks only)' : ''}` : (j.error || 'Sync failed'));
-    } finally { setBusy(null); load(); }
+    } finally { setBusy(null); load(); loadThreads(); }
+  }
+
+  async function openTextThread(t: Thread) {
+    if (openThread === t.conversation_id) { setOpenThread(null); return; }
+    setOpenThread(t.conversation_id);
+    try {
+      const j = await fetch(`/api/crm/texts?conversation=${encodeURIComponent(t.conversation_id)}&business_unit=${businessUnit}`, { headers: auth(authToken) }).then(r => r.json());
+      setThread(th => ({ ...th, [t.conversation_id]: j.messages ?? [] }));
+    } catch { /* the preview still shows */ }
+  }
+
+  async function sendReply(t: Thread) {
+    const body = (reply[t.conversation_id] || '').trim();
+    if (!body) return;
+    setBusy(t.conversation_id);
+    try {
+      const r = await fetch('/api/crm/texts', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ conversation_id: t.conversation_id, body }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast?.(j.error || 'Could not send'); return; }
+      setReply(rp => ({ ...rp, [t.conversation_id]: '' }));
+      setThread(th => ({ ...th, [t.conversation_id]: [...(th[t.conversation_id] ?? []), j.message] }));
+      showToast?.('Text sent ✓');
+      loadThreads();
+    } finally { setBusy(null); }
+  }
+
+  async function handleThread(t: Thread, handled: boolean) {
+    setBusy(t.conversation_id);
+    try {
+      const r = await fetch(`/api/crm/texts?conversation=${encodeURIComponent(t.conversation_id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ handled }) });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); showToast?.(j.error || 'Could not update'); return; }
+      loadThreads();
+    } finally { setBusy(null); }
   }
 
   async function saveSettings() {
@@ -252,8 +302,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             { label: 'Bot answered', value: stats.bot, sub: 'last 7 days', tone: '#6d28d9', pick: 'bot' as const },
             { label: 'Missed', value: stats.missed, sub: 'last 7 days', tone: stats.missed ? '#92400e' : undefined, pick: 'missed' as const },
             { label: 'Voicemails', value: stats.voicemail, sub: 'last 7 days', pick: 'voicemail' as const },
+            { label: 'Texts to answer', value: threads.filter(t => t.unanswered).length, sub: `${threads.length} thread${threads.length === 1 ? '' : 's'}`, tone: threads.some(t => t.unanswered) ? '#b91c1c' : undefined, pick: 'texts' as const },
           ].map(c => (
-            <button key={c.label} onClick={() => setFilter(c.pick)} style={{ flex: '1 1 120px', minWidth: 112, background: '#fff', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : '#eef0f3'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+            <button key={c.label} onClick={() => { setFilter(c.pick); if (c.pick === 'texts') setTextsNeedReply(c.label === 'Texts to answer' && threads.some(t => t.unanswered)); }} style={{ flex: '1 1 120px', minWidth: 112, background: '#fff', border: `1px solid ${filter === c.pick && c.pick !== 'all' ? '#c9922c' : '#eef0f3'}`, borderRadius: 10, padding: '10px 13px', textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
               <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', fontWeight: 700 }}>{c.label}</div>
               <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone || '#111827' }}>{c.value}</div>
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.sub}</div>
@@ -327,7 +378,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
 
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed']] as const).map(([k, t]) => (
+        {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['texts', '💬 Texts']] as const).map(([k, t]) => (
           <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : '#fff', color: filter === k ? '#fff' : '#374151', borderColor: filter === k ? '#111' : '#e5e7eb' }}>{t}</button>
         ))}
         <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
@@ -336,7 +387,75 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         </select>
       </div>
 
-      {nothingConnected && !loading && list.length === 0 ? (
+      {filter === 'texts' ? (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer' }}>
+              <input type="checkbox" checked={textsNeedReply} onChange={e => setTextsNeedReply(e.target.checked)} /> Only threads waiting on a reply
+            </label>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>· replies go out from your Talkroute number</span>
+          </div>
+          {threads.filter(t => !textsNeedReply || t.unanswered).length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>💬</div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{textsNeedReply ? 'Every text has been answered.' : 'No text threads in this window.'}</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {threads.filter(t => !textsNeedReply || t.unanswered).map(t => {
+                const openNow = openThread === t.conversation_id;
+                const who = t.contact?.name || pretty(t.number);
+                const msgs = thread[t.conversation_id];
+                return (
+                  <div key={t.conversation_id} style={{ background: '#fff', border: `1px solid ${t.unanswered ? '#f3e4c4' : '#eef0f2'}`, borderLeft: `4px solid ${t.unanswered ? '#c9922c' : '#e5e7eb'}`, borderRadius: 12, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
+                      <span style={{ fontSize: 20, flexShrink: 0 }}>💬</span>
+                      <div style={{ flex: '1 1 220px', minWidth: 0, cursor: 'pointer' }} onClick={() => openTextThread(t)}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 14.5, fontWeight: 700, color: '#111' }}>{who}</span>
+                          {t.contact && onOpenContact && <button onClick={e => { e.stopPropagation(); onOpenContact(t.contact!.id); }} style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{t.contact.type ? ` · ${t.contact.type}` : ''}</button>}
+                          {t.unanswered && <span style={{ fontSize: 11, fontWeight: 700, color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>Needs reply</span>}
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>{t.count} message{t.count === 1 ? '' : 's'}</span>
+                        </div>
+                        <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>{when(t.last.sent_at)}{t.contact ? ` · ${pretty(t.number)}` : ''}{t.our_number ? ` · to ${pretty(t.our_number)}` : ''}</div>
+                        {!openNow && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.last.direction === 'outbound' ? '↩ You: ' : ''}{t.last.body || (t.last.attachments?.length ? '📎 Attachment' : '')}</div>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
+                        {t.number && <a href={`tel:${t.number}`} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call them">📞</a>}
+                        <button onClick={() => openTextThread(t)} style={mini}>{openNow ? '▾ Close' : '▸ Open thread'}</button>
+                        {t.unanswered
+                          ? <button onClick={() => handleThread(t, true)} disabled={busy === t.conversation_id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="No reply needed">✓ Handled</button>
+                          : <button onClick={() => handleThread(t, false)} disabled={busy === t.conversation_id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a reply">🔔</button>}
+                      </div>
+                    </div>
+                    {openNow && (
+                      <div style={{ marginTop: 10, borderTop: '1px solid #f1f2f4', paddingTop: 10 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 13, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+                          {!msgs && <div style={{ color: '#9ca3af' }}>Loading…</div>}
+                          {(msgs ?? []).map(m => (
+                            <div key={m.id} style={{ display: 'flex', justifyContent: m.direction === 'outbound' ? 'flex-end' : 'flex-start' }}>
+                              <div style={{ maxWidth: '78%', background: m.direction === 'outbound' ? '#fdf6e9' : '#f3f4f6', color: '#111', borderRadius: 10, padding: '6px 10px' }}>
+                                {m.body && <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>}
+                                {(m.attachments ?? []).map(a => a.link ? <a key={a.id} href={a.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12, color: '#1d4ed8' }}>📎 {a.fileType || 'attachment'}</a> : null)}
+                                <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 2 }}>{when(m.sent_at)}{m.direction === 'outbound' && m.sent_by ? ` · ${m.sent_by}` : ''}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'flex-end' }}>
+                          <textarea value={reply[t.conversation_id] ?? ''} onChange={e => setReply(rp => ({ ...rp, [t.conversation_id]: e.target.value }))} placeholder={`Reply to ${who}…`} style={{ ...input, minHeight: 44, flex: 1 }}
+                            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendReply(t); }} />
+                          <button onClick={() => sendReply(t)} disabled={busy === t.conversation_id || !(reply[t.conversation_id] || '').trim()} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>{busy === t.conversation_id ? 'Sending…' : 'Send'}</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : nothingConnected && !loading && list.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '40px 16px', color: '#9ca3af', background: '#fffdf6', border: '2px dashed #e6d3a2', borderRadius: 12 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📞</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is plugged in yet.</div>

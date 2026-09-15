@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { syncTalkroute, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
+import { syncTalkroute, syncTexts, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 
 export const maxDuration = 60;
 
@@ -12,8 +12,11 @@ export async function POST(req: NextRequest) {
   if (!talkrouteConfigured()) return NextResponse.json({ error: 'Talkroute is not connected yet — add TALKROUTE_API_KEY in Vercel.' }, { status: 503 });
   const days = Math.min(90, Math.max(1, Number(req.nextUrl.searchParams.get('days') ?? 2) || 2));
   try {
-    const r = await syncTalkroute(adminClient(), { sinceHours: days * 24, maxPages: 10 });
-    return NextResponse.json({ ok: true, ...r });
+    const db = adminClient();
+    const r = await syncTalkroute(db, { sinceHours: days * 24, maxPages: 10 });
+    let texts: Record<string, unknown> = {};
+    try { texts = await syncTexts(db, { sinceHours: days * 24 }); } catch (e) { console.warn('[calls/sync] texts', e); texts = { error: 'texts failed' }; }
+    return NextResponse.json({ ok: true, ...r, texts });
   } catch (e) {
     console.error('[api/crm/calls/sync]', e);
     const msg = e instanceof TalkrouteError ? (e.status === 401 || e.status === 403 ? 'Talkroute rejected the API key.' : e.message) : 'Sync failed';

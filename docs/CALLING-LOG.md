@@ -11,8 +11,9 @@ who still needs a call back:
 | Talkroute voicemails | same cron (`/v2/voice-messages`) + webhook `new_voicemail` | transcript, audio (fresh signed link fetched on play) |
 | AI voice bot | Twilio voice webhooks while the call is live | full conversation, AI summary, caller's intent, callback number, urgency; summary emailed to the team |
 | Manual | "＋ Log a call" in the section | whatever the agent typed |
+| Talkroute texts | same cron (`/v2/text-conversations` → messages) + webhook `new_text_message` | threads under the **💬 Texts** filter; reply from the CRM (sent via Talkroute from the same number); unanswered inbound threads flagged "Needs reply" (`crm_text_messages`, `supabase/calling-log-texts.sql`) |
 
-Missed calls, voicemails and bot calls land in the **Needs call back** queue until
+Missed calls, voicemails, inbound hang-ups under a minute ("Gave up waiting") and bot calls land in the **Needs call back** queue until
 someone hits **✓ Handled** (which also writes a `call` activity on the linked contact).
 Caller IDs are matched to `crm_clients` by phone; unknown callers get a **＋ Contact** button.
 
@@ -78,6 +79,13 @@ Paste the number into Calling Log → **Setup & voice bot** → *Bot line*.
   details with our assistant"). Any of these can also be flipped from the
   Talkroute API (`PATCH /v2/hours/settings`, `PUT /v2/hours-override`).
 
+### Talkroute Basic-plan gate
+
+`/v2/call-history` answers **402** when `after`/`before` date filters are sent (date-filtered
+reporting is a paid feature); paging works, so the sync pages newest-first and cuts off by
+date itself. Setup → the `diagnose` action (`POST /api/crm/calls/settings {action:'diagnose'}`)
+reports the plan and per-endpoint status.
+
 ### 4. Webhooks + first sync
 
 Calling Log → Setup & voice bot → **Test Talkroute connection**, then
@@ -96,6 +104,7 @@ The cron keeps it current from then on.
 - `src/app/api/webhooks/talkroute` — Talkroute push (secret-keyed)
 - `src/app/api/cron/talkroute-sync` — 15-minute pull
 - `src/app/api/crm/calls` (+ `/sync`, `/settings`, `/audio`) — the CRM's API
+- `src/app/api/crm/texts` — text threads, reply (POST → Talkroute), handled flag
 - `src/components/crm/CallingLog.tsx` — the section
 
 ## Safety rails in the bot
