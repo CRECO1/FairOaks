@@ -129,7 +129,8 @@ export async function callRecordToRow(rec: TrCallRecord, db: SupabaseClient): Pr
     business_unit: unit, source: 'talkroute', kind: 'call', external_id: `call:${rec.id}`,
     direction: inbound ? 'inbound' : 'outbound', result,
     from_number: inbound ? theirs : ours, to_number: inbound ? ours : theirs,
-    caller_name: rec.externalName || null, contact_id: contact?.id ?? null,
+    // Talkroute repeats the number as the name when there is no CNAM — that is not a name.
+    caller_name: rec.externalName && !/^[\d\s()+.-]+$/.test(rec.externalName) ? rec.externalName : null, contact_id: contact?.id ?? null,
     started_at: rec.callDate, duration_sec: rec.duration ?? null,
     recording_url: rec.recorded && rec.recording ? rec.recording : null,
     transcript: null,
@@ -148,7 +149,7 @@ export async function voicemailToRow(vm: TrVoiceMessage, db: SupabaseClient): Pr
     business_unit: unit, source: 'talkroute', kind: 'voicemail', external_id: `vm:${vm.id}`,
     direction: 'inbound', result: 'voicemail',
     from_number: theirs, to_number: ours,
-    caller_name: vm.callerName || null, contact_id: contact?.id ?? null,
+    caller_name: vm.callerName && !/^[\d\s()+.-]+$/.test(vm.callerName) ? vm.callerName : null, contact_id: contact?.id ?? null,
     started_at: vm.createdAt || new Date().toISOString(), duration_sec: vm.duration ?? null,
     recording_url: vm.audioLink || null,
     transcript: vm.transcriptionInProgress ? null : (vm.transcript || null),
