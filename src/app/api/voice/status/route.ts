@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     intent: s?.intent ?? meta.intent ?? null,
     callback_number: s?.callback_number ?? meta.callback_number ?? null,
     needs_follow_up: s ? s.needs_follow_up : turns.some(t => t.role === 'caller' && t.text !== '(silence)'),
-    ai_meta: { ...meta, urgency: s?.urgency ?? 'normal', call_status: status },
+    ai_meta: { ...meta, property: s?.property ?? meta.property ?? null, urgency: s?.urgency ?? 'normal', call_status: status },
     updated_at: new Date().toISOString(),
   };
   if (s?.caller_name && (!call.caller_name || call.caller_name === contact?.name)) patch.caller_name = s.caller_name;
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     await notifyCallSummary(settings, {
       id: call.id, from_number: call.from_number, caller_name: (patch.caller_name as string) || call.caller_name, contact,
       started_at: call.started_at, duration_sec: duration, summary: patch.summary as string, intent: patch.intent as string | null,
-      callback_number: patch.callback_number as string | null, urgency: s?.urgency ?? 'normal', transcript,
+      callback_number: patch.callback_number as string | null, property: (s?.property ?? (meta.property as string | undefined)) ?? null, urgency: s?.urgency ?? 'normal', transcript,
     });
   }
   return NextResponse.json({ ok: true });

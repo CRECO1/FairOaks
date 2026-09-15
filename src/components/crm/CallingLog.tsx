@@ -79,6 +79,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [showLog, setShowLog] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [conn, setConn] = useState<Connection | null>(null);
+  const [knowledge, setKnowledge] = useState<{ configured: boolean; count: number; titles: string[] } | null>(null);
   const [draft, setDraft] = useState<Partial<Settings> & { notify_emails_text?: string; talkroute_numbers_text?: string }>({});
   const [manual, setManual] = useState({ number: '', caller_name: '', direction: 'inbound', summary: '', needs_follow_up: false });
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,6 +106,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       const j = await fetch(`/api/crm/calls/settings?business_unit=${businessUnit}`, { headers: auth(authToken) }).then(r => r.json());
       if (j.settings) { setSettings(j.settings); setDraft({ ...j.settings, notify_emails_text: (j.settings.notify_emails || []).join(', '), talkroute_numbers_text: (j.settings.talkroute_numbers || []).join(', ') }); }
       if (j.connection) setConn(j.connection);
+      if (j.listings) setKnowledge(j.listings);
     } catch { /* setup panel just shows unknown */ }
   }, [authToken, businessUnit]);
   useEffect(() => { loadSettings(); }, [loadSettings]);
@@ -269,6 +271,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             <div>{light(!!conn?.talkroute_webhook_secret)} Talkroute webhook secret {conn?.talkroute_webhook_secret ? '' : <span style={{ color: '#9ca3af' }}>— add TALKROUTE_WEBHOOK_SECRET</span>}</div>
             <div>{light(!!conn?.twilio)} Twilio (bot line) {conn?.twilio ? '' : <span style={{ color: '#9ca3af' }}>— add TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN</span>}</div>
             <div>{light(!!conn?.anthropic)} Claude (the bot&apos;s brain)</div>
+            <div title={knowledge?.titles?.join('\n')}>{light(!!knowledge?.configured && (knowledge?.count ?? 0) > 0)} Website listings {knowledge?.configured ? <span style={{ color: '#6b7280' }}>— the bot knows {knowledge.count} live listing{knowledge.count === 1 ? '' : 's'} from {businessUnit === 'residential' ? 'the website' : 'crecotx.com'}, refreshed every 5 min</span> : <span style={{ color: '#9ca3af' }}>— not connected for this workspace</span>}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
             <button onClick={() => settingsAction('test_talkroute')} disabled={!conn?.talkroute || busy === 'test_talkroute'} style={{ ...mini, opacity: conn?.talkroute ? 1 : .5 }}>Test Talkroute connection</button>
@@ -370,6 +373,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       </div>
                       <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>
                         {when(c.started_at)}{c.duration_sec ? ` · ${dur(c.duration_sec)}` : ''}{num && (c.contact || c.caller_name) ? ` · ${pretty(num)}` : ''}{c.callback_number && c.callback_number !== num ? ` · call back ${pretty(c.callback_number)}` : ''}
+                        {c.ai_meta?.property ? <span style={{ color: '#374151', fontWeight: 600 }}> · 🏢 {String(c.ai_meta.property)}</span> : ''}
                         {c.intent ? <span style={{ color: '#a06a12', fontWeight: 600 }}> · {c.intent}</span> : ''}
                       </div>
                       {(c.summary || c.transcript) && !openNow && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary || c.transcript}</div>}

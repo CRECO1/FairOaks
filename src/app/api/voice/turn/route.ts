@@ -49,6 +49,7 @@ export async function POST(req: Request) {
   if ('caller_name' in reply && reply.caller_name) { meta.caller_name = reply.caller_name; if (!call.caller_name || call.caller_name === contact?.name) patch.caller_name = reply.caller_name; }
   if ('callback_number' in reply && reply.callback_number) { meta.callback_number = reply.callback_number; patch.callback_number = toE164(reply.callback_number); }
   if ('intent' in reply && reply.intent) { meta.intent = reply.intent; patch.intent = reply.intent; }
+  if ('property' in reply && reply.property) meta.property = reply.property;
   if ('needs_follow_up' in reply && reply.needs_follow_up === false) meta.bot_said_no_follow_up = true;
   patch.ai_meta = meta;
   await db.from('crm_call_log').update(patch).eq('id', call.id);

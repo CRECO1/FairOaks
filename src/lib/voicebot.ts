@@ -8,6 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { last10, prettyPhone, toE164 } from '@/lib/phone';
 import { esc, resendConfig } from '@/lib/esign';
 import { Resend } from 'resend';
+import { listingFactSheet } from '@/lib/listing-knowledge';
 
 export const VOICEBOT_MODEL = process.env.VOICEBOT_MODEL || 'claude-opus-5';
 
@@ -80,6 +81,7 @@ export interface BotReply {
   caller_name?: string | null;
   callback_number?: string | null;
   intent?: string | null;
+  property?: string | null;
   needs_follow_up?: boolean;
 }
 
@@ -92,13 +94,14 @@ About the company: ${d.blurb}
 
 Your job on this call:
 1. Find out who is calling and what they need (a property they saw, a lease question, a showing, a tenant/maintenance issue at a building we manage, a general enquiry).
-2. Collect what an agent needs to call them back: their name, the best number to reach them (confirm the caller ID number ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'is unknown, so ask for one'} if they don't offer another), and which property or matter it concerns.
-3. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three or four exchanges is typical.
-${s.transfer_number ? `4. If the caller insists on speaking to a person right now, or describes an urgent building emergency (flooding, fire, no power, break-in), use action "transfer".` : `4. There is no live transfer available on this line; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details.`}
+2. If they ask about one of our listings, answer from the CURRENT LISTINGS fact sheet below: what it is, where it is, size, rate or price, key features, whether it is still active or pending. Read numbers naturally ("about sixteen thousand square feet", "ten dollars a foot"). If the caller is vague, ask which property or what they are looking for (type, area, size) and name the one or two that fit. Never mention a property that is not on the sheet, and never guess a detail the sheet doesn't give.
+3. When a question goes beyond the sheet — or they want to see the space, make an offer, or talk terms — say an agent will get them that answer, and collect what the agent needs to call back: their name, the best number (confirm the caller ID number ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'is unknown, so ask for one'} if they don't offer another), and which property or matter it concerns.
+4. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three to five exchanges is typical. Always get a name and number before ending unless the caller refuses or is a wrong number.
+${s.transfer_number ? `5. If the caller insists on speaking to a person right now, or describes an urgent building emergency (flooding, fire, no power, break-in), use action "transfer".` : `5. There is no live transfer available on this line; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details.`}
 
 Rules:
 - Speak like a warm, competent front-desk person: short sentences, plain words, no lists, no markdown, no emojis. One question at a time.
-- Never invent prices, availability, square footage, lease terms, or appointment times. Say an agent will confirm.
+- Never invent prices, availability, square footage, lease terms, or appointment times beyond what the listing sheet says. Say an agent will confirm.
 - Never promise a specific callback time beyond "as soon as possible" or "during business hours".
 - Do not ask for or repeat sensitive data (card numbers, SSN).
 - If the caller is a vendor or sales call, take a brief message and end.
@@ -109,7 +112,7 @@ ${s.instructions ? `\nExtra instructions from the brokerage:\n${s.instructions}`
 The current date and time is ${ctx.now} (Central Time).
 
 Respond with ONLY a JSON object, nothing else:
-{"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "needs_follow_up": true|false}
+{"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "needs_follow_up": true|false}
 "say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring).`;
 }
 
@@ -125,6 +128,7 @@ function parseReply(text: string): BotReply | null {
       caller_name: typeof j.caller_name === 'string' && j.caller_name.trim() ? j.caller_name.trim() : null,
       callback_number: typeof j.callback_number === 'string' && j.callback_number.replace(/\D/g, '').length >= 7 ? toE164(j.callback_number) : null,
       intent: typeof j.intent === 'string' && j.intent.trim() ? j.intent.trim().slice(0, 80) : null,
+      property: typeof j.property === 'string' && j.property.trim() ? j.property.trim().slice(0, 120) : null,
       needs_follow_up: j.needs_follow_up !== false,
     };
   } catch { return null; }
@@ -152,13 +156,19 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
   if (!messages.length) messages.push({ role: 'user', content: 'Caller said: (nothing audible yet)' });
   if (messages[messages.length - 1].role !== 'user') messages.push({ role: 'user', content: 'Caller said: (silence)' });
 
+  // The listing sheet is its own block, cached separately: it changes every few
+  // minutes at most, while the prompt's timestamp changes every turn.
+  const sheet = await listingFactSheet(s.business_unit);
+  const system: Anthropic.TextBlockParam[] = sheet.text
+    ? [{ type: 'text', text: sheet.text, cache_control: { type: 'ephemeral' } }, { type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }) }]
+    : [{ type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }), cache_control: { type: 'ephemeral' } }];
   try {
     const res = await client.messages.create({
       model: VOICEBOT_MODEL,
       max_tokens: 400,
       // Phone latency matters more than depth here; low effort keeps replies to a couple of seconds.
       output_config: { effort: 'low' },
-      system: [{ type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }), cache_control: { type: 'ephemeral' } }],
+      system,
       messages,
     });
     if (res.stop_reason === 'refusal') return { say: "I'm sorry, I didn't catch that. Could you tell me your name and the best number to reach you?", action: 'continue' };
@@ -180,7 +190,7 @@ export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | n
 }
 
 // ── After the call ────────────────────────────────────────────────────────────
-export interface CallSummary { summary: string; intent: string | null; caller_name: string | null; callback_number: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high' }
+export interface CallSummary { summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high' }
 
 export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }): Promise<CallSummary | null> {
   if (!turns.some(t => t.role === 'caller' && t.text.trim())) return null;
@@ -196,7 +206,7 @@ export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string |
 ${transcript}
 
 Write the note an agent needs before calling back. Respond with ONLY JSON:
-{"summary": "<2-4 plain sentences: who called, what they want, what they were told>", "intent": "<3-8 word label>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high"}
+{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high"}
 needs_follow_up is false only for wrong numbers, spam/sales calls, or callers who explicitly said no callback is needed. urgency is high for building emergencies or a caller ready to transact now.` }],
     });
     if (res.stop_reason === 'refusal') return null;
@@ -207,6 +217,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, or callers wh
     return {
       summary: String(j.summary || '').trim() || 'Call answered by the voice bot.',
       intent: j.intent ? String(j.intent).slice(0, 80) : null,
+      property: j.property ? String(j.property).slice(0, 120) : null,
       caller_name: j.caller_name ? String(j.caller_name).slice(0, 80) : null,
       callback_number: j.callback_number ? toE164(String(j.callback_number)) : null,
       needs_follow_up: j.needs_follow_up !== false,
@@ -218,7 +229,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, or callers wh
 /** Email the agents what just happened so a callback isn't waiting on someone opening the CRM. */
 export async function notifyCallSummary(s: VoicebotSettings, call: {
   id: string; from_number: string | null; caller_name: string | null; contact: MatchedContact | null; started_at: string; duration_sec: number | null;
-  summary: string; intent: string | null; callback_number: string | null; urgency: string; transcript: string;
+  summary: string; intent: string | null; property?: string | null; callback_number: string | null; urgency: string; transcript: string;
 }): Promise<void> {
   const to = (s.notify_emails ?? []).filter(Boolean);
   if (!to.length) return;
@@ -227,7 +238,7 @@ export async function notifyCallSummary(s: VoicebotSettings, call: {
   const who = call.caller_name || call.contact?.name || 'Unknown caller';
   const num = call.callback_number || call.from_number;
   const when = new Date(call.started_at).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' });
-  const subject = `${call.urgency === 'high' ? '🚨 ' : ''}📞 ${who}${call.intent ? ` — ${call.intent}` : ''}`;
+  const subject = `${call.urgency === 'high' ? '🚨 ' : ''}📞 ${who}${call.property ? ` · ${call.property}` : ''}${call.intent ? ` — ${call.intent}` : ''}`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
     <div style="border-bottom:3px solid #c9922c;padding:14px 0 10px"><span style="font-size:18px;font-weight:800;color:#c9922c">${esc(s.company_name || 'CRM')} · Voice bot answered a call</span></div>
     <div style="padding:16px 2px;font-size:15px;line-height:1.55">

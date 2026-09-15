@@ -28,6 +28,24 @@ It only exposes account data, call history, voicemails, texts and webhooks. So:
   websocket server. Claude (`claude-opus-5`, low effort for phone latency) decides
   what to say and when to end or transfer.
 
+## What the bot knows about listings
+
+`src/lib/listing-knowledge.ts` reads the live `listings` table behind crecotx.com
+(the website's public URL + publishable key: `CRECO_SUPABASE_URL`,
+`CRECO_SUPABASE_ANON_KEY` in Vercel) and turns active/pending rows into a fact
+sheet: address, type, lease/sale, SF, rate or price, zoning, clear height, doors,
+headline, features, a description excerpt and the web page. It is cached 5 min
+and prompt-cached by Claude as its own system block.
+
+Rules the bot follows: answer ONLY from the sheet (read numbers naturally), never
+name a property that isn't on it, and for anything beyond the sheet — tours,
+offers, terms, details the sheet lacks — say an agent will confirm and take the
+caller's name, number and which property. The property asked about is saved on
+the call (`ai_meta.property`), shown on the row, and in the summary email.
+
+Residential has no listing source wired yet (the residential site's inventory is
+MLS-fed); the bot there takes messages only.
+
 ## Setup (once)
 
 ### 1. Vercel environment variables (project `fair-oaks-realty-group`)
@@ -41,6 +59,7 @@ It only exposes account data, call history, voicemails, texts and webhooks. So:
 | `VOICE_PUBLIC_ORIGIN` | optional; defaults to `https://www.fairoaksrealtygroup.com`. Must match the URL Twilio calls or signature checks fail |
 | `TWILIO_VOICE` | optional TTS voice, default `Polly.Joanna-Neural` |
 | `VOICEBOT_MODEL` | optional, default `claude-opus-5` |
+| `CRECO_SUPABASE_URL`, `CRECO_SUPABASE_ANON_KEY` | the crecotx.com Supabase project's public URL + publishable key (same values as the website's NEXT_PUBLIC_*), so the bot can read live listings |
 
 ### 2. Twilio number
 
@@ -71,6 +90,7 @@ The cron keeps it current from then on.
 - `src/lib/talkroute.ts` — API client, normalisers, `syncTalkroute()`
 - `src/lib/twilio.ts` — signature check, TwiML helpers, recording REST
 - `src/lib/voicebot.ts` — settings, contact matching, `nextReply()`, `summarizeCall()`, summary email
+- `src/lib/listing-knowledge.ts` — live crecotx.com listings → fact sheet for the bot
 - `src/lib/phone.ts` — number normalisation
 - `src/app/api/voice/{inbound,turn,status,recording}` — Twilio webhooks (signature-verified)
 - `src/app/api/webhooks/talkroute` — Talkroute push (secret-keyed)

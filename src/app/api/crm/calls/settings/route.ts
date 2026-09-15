@@ -5,6 +5,7 @@ import { createSubscription, deleteSubscription, getAccount, listSubscriptions, 
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
+import { fetchListings, listingSourceConfigured } from '@/lib/listing-knowledge';
 
 export const maxDuration = 30;
 
@@ -22,8 +23,11 @@ export async function GET(req: NextRequest) {
   const settings = await loadSettings(adminClient(), unit);
   const origin = voiceOrigin();
   const webhookSecret = process.env.TALKROUTE_WEBHOOK_SECRET;
+  // What the bot can talk about: the live website listings for this unit.
+  const listings = listingSourceConfigured(unit) ? await fetchListings(unit) : [];
   return NextResponse.json({
     settings,
+    listings: { configured: listingSourceConfigured(unit), count: listings.length, titles: listings.map(l => l.title).slice(0, 12) },
     connection: {
       talkroute: talkrouteConfigured(),
       talkroute_webhook_secret: !!webhookSecret,
