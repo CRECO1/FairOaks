@@ -4,14 +4,27 @@ import { adminClient } from '@/lib/supabase-admin';
 
 const BUCKET = 'deal-docs';
 
-// Files that could be executed or rendered as HTML/scripts are blocked
-const BLOCKED_MIME_PREFIXES = ['text/html', 'application/x-', 'application/javascript'];
-const ALLOWED_EXTENSIONS = new Set([
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
-  'txt', 'csv', 'jpg', 'jpeg', 'png', 'gif', 'webp',
-  'zip', 'eml', 'msg',
-]);
-const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
+// What a deal can hold — exactly the `deal-docs` bucket's allowed_mime_types, keyed by
+// extension. The content type is derived here rather than trusted from the browser:
+// phones often report an empty type, which storage would record as
+// application/octet-stream and refuse. Deriving it also means nothing uploaded here
+// can be served back as HTML or script.
+const CONTENT_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
+const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB — the bucket's own limit
+
+const extOf = (name: string) => (name.split('.').pop() ?? '').toLowerCase();
+function typeError(name: string) {
+  const ext = extOf(name);
+  const hint = ext === 'heic' || ext === 'heif' ? ' Share the photo as a JPG, or set Camera → Formats to Most Compatible.' : '';
+  return NextResponse.json({ error: `.${ext || '?'} files can't be attached to a deal — use PDF, Word, JPG, PNG or WebP.${hint}` }, { status: 400 });
+}
 
 // ── GET: list docs for a deal (with signed download URLs) ─────────────────────
 export async function GET(req: NextRequest) {
@@ -48,9 +61,23 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST: upload a doc ────────────────────────────────────────────────────────
+// JSON body → the direct-to-storage flow the CRM uses:
+//   { action: 'presign', dealId, filename, file_size } → a signed upload URL
+//   (the browser PUTs the file straight to storage)
+//   { action: 'confirm', dealId, storagePath, filename } → the crm_deal_docs row
+// A file posted through this function is capped by Vercel at 4.5 MB — the platform
+// rejects it with a 413 before this code runs — so the file itself must never come
+// through here. Multipart is still accepted for small files from older clients.
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+
+  if ((req.headers.get('content-type') ?? '').includes('application/json')) {
+    const body = await req.json().catch(() => ({}));
+    if (body.action === 'presign') return presign(body, ctx);
+    if (body.action === 'confirm') return confirm(body, ctx);
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+  }
 
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
@@ -64,60 +91,98 @@ export async function POST(req: NextRequest) {
 
   if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
 
-  // File size check
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json({ error: 'File must be 25 MB or smaller' }, { status: 400 });
   }
-
-  // Extension allowlist
-  const ext = (file.name.split('.').pop() ?? '').toLowerCase();
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    return NextResponse.json({ error: `File type .${ext} is not allowed` }, { status: 400 });
-  }
-
-  // MIME type block — reject executable/HTML types even if extension looks fine
-  const mimeType = file.type || 'application/octet-stream';
-  if (BLOCKED_MIME_PREFIXES.some(p => mimeType.startsWith(p))) {
-    return NextResponse.json({ error: 'File MIME type is not permitted' }, { status: 400 });
-  }
+  const contentType = CONTENT_TYPES[extOf(file.name)];
+  if (!contentType) return typeError(file.name);
 
   const supabase = adminClient();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `${dealId}/${Date.now()}_${safeName}`;
 
-  // Upload to Supabase Storage
-  const arrayBuffer = await file.arrayBuffer();
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(storagePath, arrayBuffer, {
-      contentType: file.type || 'application/octet-stream',
-      upsert: false,
-    });
+    .upload(storagePath, await file.arrayBuffer(), { contentType, upsert: false });
 
   if (uploadError) {
+    console.error('[api/crm/docs] storage upload:', uploadError);
     return NextResponse.json({ error: uploadError.message }, { status: 500 });
   }
 
-  // Save metadata to DB
+  return record(ctx.userId, dealId, file.name, storagePath, file.size, contentType);
+}
+
+type Ctx = NonNullable<Awaited<ReturnType<typeof getCrmContext>>>;
+
+async function presign(body: Record<string, unknown>, ctx: Ctx) {
+  const dealId = typeof body.dealId === 'string' ? body.dealId : '';
+  const filename = typeof body.filename === 'string' ? body.filename : '';
+  if (!dealId || !filename) return NextResponse.json({ error: 'dealId and filename required' }, { status: 400 });
+  // Never hand out an upload URL into a deal outside the caller's workspace.
+  if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
+  if (Number(body.file_size) > MAX_FILE_SIZE) {
+    return NextResponse.json({ error: 'File must be 25 MB or smaller' }, { status: 400 });
+  }
+  const contentType = CONTENT_TYPES[extOf(filename)];
+  if (!contentType) return typeError(filename);
+
+  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+  const storagePath = `${dealId}/${Date.now()}_${safeName}`;
+  const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
+  if (error || !data) {
+    console.error('[api/crm/docs] presign:', error);
+    return NextResponse.json({ error: 'Could not start the upload — try again' }, { status: 500 });
+  }
+  return NextResponse.json({ uploadUrl: data.signedUrl, storagePath, contentType });
+}
+
+async function confirm(body: Record<string, unknown>, ctx: Ctx) {
+  const dealId = typeof body.dealId === 'string' ? body.dealId : '';
+  const storagePath = typeof body.storagePath === 'string' ? body.storagePath : '';
+  const filename = typeof body.filename === 'string' ? body.filename.slice(0, 255) : '';
+  if (!dealId || !storagePath || !filename) {
+    return NextResponse.json({ error: 'dealId, storagePath and filename required' }, { status: 400 });
+  }
+  if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
+
+  // The path comes back from the browser, so it has to be a file directly inside this
+  // deal's folder — otherwise a caller could attach (and get signed URLs for) another
+  // deal's objects.
+  const objectName = storagePath.startsWith(`${dealId}/`) ? storagePath.slice(dealId.length + 1) : '';
+  if (!objectName || objectName.includes('/') || objectName.includes('..')) {
+    return NextResponse.json({ error: 'storagePath does not belong to this deal' }, { status: 400 });
+  }
+
+  const supabase = adminClient();
+  const { data: existing } = await supabase.from('crm_deal_docs').select('*').eq('storage_path', storagePath).maybeSingle();
+  if (existing) return NextResponse.json({ doc: existing });   // a retried confirm
+
+  // Size and type come from what actually landed in storage, not from the request.
+  const { data: listed, error: listError } = await supabase.storage.from(BUCKET).list(dealId, { search: objectName, limit: 5 });
+  const obj = listed?.find(o => o.name === objectName);
+  if (listError || !obj) {
+    return NextResponse.json({ error: 'The file didn’t reach storage — try the upload again' }, { status: 400 });
+  }
+  const meta = (obj.metadata ?? {}) as { size?: number; mimetype?: string };
+  return record(ctx.userId, dealId, filename, storagePath, meta.size ?? null,
+    meta.mimetype || CONTENT_TYPES[extOf(filename)] || 'application/octet-stream');
+}
+
+async function record(userId: string, dealId: string, name: string, storagePath: string, size: number | null, fileType: string) {
+  const supabase = adminClient();
   const { data: doc, error: dbError } = await supabase
     .from('crm_deal_docs')
-    .insert([{
-      deal_id: dealId,
-      name: file.name,
-      storage_path: storagePath,
-      file_size: file.size,
-      file_type: file.type || ext,
-      uploaded_by: ctx.userId,
-    }])
+    .insert([{ deal_id: dealId, name, storage_path: storagePath, file_size: size, file_type: fileType, uploaded_by: userId }])
     .select()
     .single();
 
   if (dbError) {
-    // Clean up uploaded file if DB insert fails
+    console.error('[api/crm/docs] insert:', dbError);
+    // Don't leave an orphaned object behind
     await supabase.storage.from(BUCKET).remove([storagePath]);
-    return NextResponse.json({ error: dbError.message }, { status: 500 });
+    return NextResponse.json({ error: 'Could not save the document to the deal' }, { status: 500 });
   }
-
   return NextResponse.json({ doc });
 }
 

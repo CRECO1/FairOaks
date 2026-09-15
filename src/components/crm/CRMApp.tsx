@@ -18,6 +18,7 @@ import DealMeetings from '@/components/crm/DealMeetings';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
 import EsignComposer, { type ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
+import DealDocUpload from '@/components/crm/DealDocUpload';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import CallingLog from '@/components/crm/CallingLog';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
@@ -526,7 +527,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // The E-Sign envelope composer: set up -> place fields -> review -> send.
   const [composer, setComposer] = useState<{ file: File | null; doc: ComposerDoc | null } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
-  const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
   const [commissionLoading, setCommissionLoading] = useState(false);
@@ -541,7 +541,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [propIntel, setPropIntel] = useState<{ detail: any; comps: any[]; error?: string } | null>(null);
   const [propIntelLoading, setPropIntelLoading] = useState(false);
   const emailEditorRef = useRef<HTMLDivElement>(null);
-  const docFileRef = useRef<HTMLInputElement>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
@@ -1120,10 +1119,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, []);
 
   const loadDealDocs = useCallback(async (dealId: string) => {
-    const res = await fetch(`/api/crm/docs?dealId=${dealId}`);
-    const json = await res.json();
+    const res = await fetch(`/api/crm/docs?dealId=${dealId}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+    const json = await res.json().catch(() => ({}));
     setDealDocs((json.docs ?? []) as DealDoc[]);
-  }, []);
+  }, [session?.access_token]);
 
   const authGet = useCallback(
     (path: string) => fetch(path, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} }),
@@ -1313,19 +1312,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     } finally { setCommissionSaving(false); }
   }
 
-  async function uploadDoc(deal: Deal, file: File) {
-    setDocUploading(true);
-    const form = new FormData();
-    form.append('file', file);
-    form.append('dealId', deal.id);
-    // uploaded_by is stamped server-side from the authenticated session — not sent here
-    const res = await fetch('/api/crm/docs', { method: 'POST', body: form });
-    const json = await res.json();
-    if (!res.ok) { showToast('Upload failed: ' + json.error); }
-    else { showToast(`${file.name} uploaded`); loadDealDocs(deal.id); }
-    setDocUploading(false);
-  }
-
   // Promote this deal's property into a Property Workspace folder + jump to it.
   async function promoteDealToWorkspace(deal: Deal) {
     try {
@@ -1344,7 +1330,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function deleteDoc(doc: DealDoc, dealId: string) {
     if (!confirm(`Remove "${doc.name}"? This cannot be undone.`)) return;
-    const res = await fetch('/api/crm/docs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ docId: doc.id }) });
+    const res = await fetch('/api/crm/docs', { method: 'DELETE', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ docId: doc.id }) });
     if (res.ok) { showToast(`${doc.name} removed`); loadDealDocs(dealId); }
     else showToast('Delete failed');
   }
@@ -8251,28 +8237,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     })()}
                   </div>
                   <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
-                  {/* Upload area */}
-                  <div
-                    onClick={() => docFileRef.current?.click()}
-                    onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#c9922c'; e.currentTarget.style.background = '#fef9f0'; }}
-                    onDragLeave={e => { e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.background = '#f9fafb'; }}
-                    onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#d1d5db'; e.currentTarget.style.background = '#f9fafb'; const file = e.dataTransfer.files[0]; if (file) uploadDoc(activeDeal, file); }}
-                    style={{ border: '2px dashed #d1d5db', borderRadius: 10, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: '#f9fafb', marginBottom: 16, transition: 'all .15s' }}>
-                    {docUploading ? (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: '#c9922c' }}>
-                        <div style={{ width: 20, height: 20, border: '3px solid #c9922c', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                        <span style={{ fontSize: 14, fontWeight: 500 }}>Uploading…</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ fontSize: 28, marginBottom: 8 }}>📎</div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Drop a file here or click to browse</div>
-                        <div style={{ fontSize: 12, color: '#9ca3af' }}>PDF, Word, JPG, PNG · Max 25 MB</div>
-                      </>
-                    )}
-                  </div>
-                  <input ref={docFileRef} type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }}
-                    onChange={e => { const file = e.target.files?.[0]; if (file) uploadDoc(activeDeal, file); e.target.value = ''; }} />
+                  {/* Straight to storage — see DealDocUpload for why the file never goes through the API */}
+                  <DealDocUpload dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
 
                   {/* Doc list */}
                   {dealDocs.length === 0 ? (
