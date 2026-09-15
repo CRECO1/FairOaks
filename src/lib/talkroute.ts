@@ -64,7 +64,7 @@ interface Paged<T> { data: T[]; pagination?: { totalPages?: number; currentPage?
 export interface TrSubscription { id?: string; hookUrl: string; type: 'new_text_message' | 'new_call_record' | 'new_voicemail' | 'call_completed' }
 
 /** Plan + feature gates — some endpoints answer 402 when the plan doesn't include them. */
-export async function getPlanInfo(): Promise<{ plan: unknown; features: unknown; probes: Record<string, number> }> {
+export async function getPlanInfo(): Promise<{ plan: unknown; features: unknown; probes: Record<string, number>; numbers?: unknown }> {
   const safe = async (path: string) => { try { return await tr<unknown>(path); } catch (e) { return { error: e instanceof TalkrouteError ? e.status : String(e) }; } };
   const [plan, features] = await Promise.all([safe('/accounts/plan'), safe('/accounts/permitted-features')]);
   const probes: Record<string, number> = {};
@@ -72,7 +72,8 @@ export async function getPlanInfo(): Promise<{ plan: unknown; features: unknown;
   for (const path of ['/call-history?pageSize=1', '/call-history?pageSize=100', '/call-history?pageSize=25', '/call-history?page=1', '/call-history?page=2', `/call-history?after=${after}`, `/call-history?after=${after}&page=1&pageSize=100`, '/voice-messages?pageSize=1', '/voice-messages?pageSize=100', '/virtual-numbers', '/subscriptions']) {
     try { await tr(path); probes[path] = 200; } catch (e) { probes[path] = e instanceof TalkrouteError ? e.status : -1; }
   }
-  return { plan, features, probes };
+  const numbers = await safe('/virtual-numbers');
+  return { plan, features, probes, numbers };
 }
 
 export async function getAccount(): Promise<Record<string, unknown>> {
