@@ -1126,6 +1126,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setDealDocs((json.docs ?? []) as DealDoc[]);
   }, [session?.access_token]);
 
+  // Bridge an already-uploaded attachment (a deal "Uploaded File" or a property file)
+  // into E-Sign: pull its bytes and hand them to the composer as the initial file,
+  // pre-linked to the deal / property. Reuses the composer's import path — which
+  // rejects encrypted PDFs — so an uploaded file can't reach a signer as a blank page.
+  const signUploadedFile = useCallback(async (url: string, name: string, link: { dealId?: string; listingId?: string }) => {
+    try {
+      showToast('Preparing document…');
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+      const blob = await resp.blob();
+      const fname = /\.pdf$/i.test(name) ? name : `${name}.pdf`;
+      const file = new File([blob], fname, { type: 'application/pdf' });
+      setComposer({ file, doc: null, dealId: link.dealId, listingId: link.listingId });
+    } catch { showToast('Could not open that file for signing — try again.'); }
+  }, [showToast]);
+
   const authGet = useCallback(
     (path: string) => fetch(path, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} }),
     [session?.access_token],
@@ -7434,6 +7450,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   clients={clients}
                   onToast={showToast}
                   onAddDocument={lid => setComposer({ file: null, doc: null, listingId: lid })}
+                  onSignFile={(url, name, lid) => signUploadedFile(url, name, { listingId: lid })}
                   reloadSignal={esignFieldsVersion}
                 />
               )}
@@ -8265,6 +8282,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {size}{size ? ' · ' : ''}{doc.created_at?.slice(0, 10)}{uploaderName ? ` · ${uploaderName}` : ''}
                               </div>
                             </div>
+                            {isPdf && doc.url && (
+                              <button onClick={() => signUploadedFile(doc.url!, doc.name, { dealId: activeDeal.id })}
+                                title="Import this PDF into E-Sign and send it for signature"
+                                style={{ padding: '5px 12px', background: '#c9922c', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✍️ Sign</button>
+                            )}
                             {doc.url && (
                               <a href={doc.url} target="_blank" rel="noreferrer"
                                 style={{ padding: '5px 12px', background: '#111', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>

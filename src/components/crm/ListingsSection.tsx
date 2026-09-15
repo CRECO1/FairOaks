@@ -93,6 +93,9 @@ interface Props {
   // on THIS property (the created document is linked to the listing). Without it the
   // property can only send documents that started as filled CRM forms / leases.
   onAddDocument?: (listingId: string) => void;
+  // "Send for signature" on an already-uploaded property file (a PDF): the parent
+  // pulls its bytes into the composer, pre-linked to this listing.
+  onSignFile?: (url: string, name: string, listingId: string) => void;
   // Bumped by the parent after the composer sends, so a newly-imported document
   // appears in the property's Transaction Docs list without reopening the panel.
   reloadSignal?: number;
@@ -177,7 +180,7 @@ const fieldTypeLabel = (t: string) => t === 'signature' ? 'Signature' : t === 'i
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onAddDocument, reloadSignal }: Props) {
+export default function ListingsSection({ businessUnit, isAdmin, authToken, profiles, clients, onToast, onAddDocument, onSignFile, reloadSignal }: Props) {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
@@ -1413,6 +1416,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                     <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtBytes(f.file_size)} · {new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                                    {onSignFile && active && f.url && f.file_type === 'application/pdf' && (
+                                      <button onClick={() => onSignFile(f.url!, f.name, active.id)}
+                                        title="Import this PDF into E-Sign and send it for signature"
+                                        style={{ padding: '5px 10px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>✍️ Sign</button>
+                                    )}
                                     {f.url && (
                                       <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })}
                                         style={{ padding: '5px 10px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: '#374151', fontWeight: 600, cursor: 'pointer' }}>
@@ -1445,6 +1453,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                   <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
                                   <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtBytes(f.file_size)}</div>
                                 </div>
+                                {onSignFile && active && f.url && f.file_type === 'application/pdf' && (
+                                  <button onClick={() => onSignFile(f.url!, f.name, active.id)} title="Import this PDF into E-Sign and send it for signature" style={{ padding: '5px 10px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>✍️ Sign</button>
+                                )}
                                 {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', fontWeight: 600, cursor: 'pointer' }}>👁 View</button>}
                                 {isAdmin && <button onClick={() => deleteFile(f.id, f.name)} style={{ padding: '5px 8px', background: 'none', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>✕</button>}
                               </div>
