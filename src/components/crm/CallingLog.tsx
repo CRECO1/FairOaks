@@ -59,7 +59,7 @@ function resultBadge(c: CallRow): { text: string; bg: string; fg: string } {
   if (c.kind === 'voicemail') return { text: 'Voicemail', bg: '#fef3c7', fg: '#92400e' };
   if (r === 'missed') return { text: 'Missed', bg: '#fee2e2', fg: '#b91c1c' };
   if (r === 'answered') return { text: c.direction === 'outbound' ? 'Outbound' : 'Answered', bg: '#dcfce7', fg: '#15803d' };
-  if (r === 'hangup') return { text: 'Hung up', bg: '#f3f4f6', fg: '#6b7280' };
+  if (r === 'hangup') return c.direction !== 'outbound' && c.duration_sec != null && c.duration_sec < 60 ? { text: 'Gave up waiting', bg: '#ffedd5', fg: '#9a3412' } : { text: 'Hung up', bg: '#f3f4f6', fg: '#6b7280' };
   return { text: r || (c.direction === 'outbound' ? 'Outbound' : 'Call'), bg: '#f3f4f6', fg: '#6b7280' };
 }
 

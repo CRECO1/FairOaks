@@ -115,6 +115,12 @@ function callResult(r?: string): string | null {
   return ['answered', 'missed', 'hangup'].includes(v) ? v : v;
 }
 
+/** Inbound "hangup" under a minute = the caller gave up before anyone answered. */
+export const SHORT_HANGUP_SEC = 60;
+export function shortHangup(result: string | null | undefined, durationSec: number | null | undefined): boolean {
+  return result === 'hangup' && durationSec != null && durationSec < SHORT_HANGUP_SEC;
+}
+
 export async function callRecordToRow(rec: TrCallRecord, db: SupabaseClient): Promise<CallRow> {
   const inbound = rec.direction !== 'outbound';
   const ours = toE164(rec.phoneNumber);
@@ -134,8 +140,9 @@ export async function callRecordToRow(rec: TrCallRecord, db: SupabaseClient): Pr
     started_at: rec.callDate, duration_sec: rec.duration ?? null,
     recording_url: rec.recorded && rec.recording ? rec.recording : null,
     transcript: null,
-    // A missed inbound call that nobody has returned is the whole point of the log.
-    needs_follow_up: inbound && (result === 'missed' || reachedVoicemail),
+    // A missed inbound call that nobody has returned is the whole point of the log —
+    // and so is a caller who gave up on the menu or the ringing within a minute.
+    needs_follow_up: inbound && (result === 'missed' || reachedVoicemail || shortHangup(result, rec.duration)),
     raw: rec,
   };
 }

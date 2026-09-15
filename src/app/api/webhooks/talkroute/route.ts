@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { adminClient } from '@/lib/supabase-admin';
-import { syncTalkroute, talkrouteConfigured, upsertCalls, type CallRow } from '@/lib/talkroute';
+import { shortHangup, syncTalkroute, talkrouteConfigured, upsertCalls, type CallRow } from '@/lib/talkroute';
 import { matchContact, unitForNumber } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       from_number: inbound ? theirs : ours, to_number: inbound ? ours : theirs,
       caller_name: p.caller_cname || null, contact_id: contact?.id ?? null,
       started_at: at, duration_sec: p.duration ?? null, recording_url: null, transcript: null,
-      needs_follow_up: inbound && p.call_result === 'missed', raw: { type, ...data },
+      needs_follow_up: inbound && (p.call_result === 'missed' || shortHangup(p.call_result, p.duration)), raw: { type, ...data },
     };
     await upsertCalls(db, [row]);
     // Pull the authoritative record (with id + recording) straight away rather than waiting for the cron.
