@@ -186,7 +186,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   async function syncNow() {
     setBusy('sync');
     try {
-      const r = await fetch('/api/crm/calls/sync?days=2', { method: 'POST', headers: auth(authToken) });
+      const r = await fetch('/api/crm/calls/sync?days=14', { method: 'POST', headers: auth(authToken) });
       const j = await r.json().catch(() => ({}));
       showToast?.(r.ok ? `Synced with Talkroute — ${j.inserted ?? 0} new, ${j.updated ?? 0} updated${j.callHistoryBlocked ? ' · call history is not included in your Talkroute plan (voicemails + webhooks only)' : ''}` : (j.error || 'Sync failed'));
     } finally { setBusy(null); load(); }

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   if (!talkrouteConfigured()) return NextResponse.json({ error: 'Talkroute is not connected yet — add TALKROUTE_API_KEY in Vercel.' }, { status: 503 });
-  const days = Math.min(30, Math.max(1, Number(req.nextUrl.searchParams.get('days') ?? 2) || 2));
+  const days = Math.min(90, Math.max(1, Number(req.nextUrl.searchParams.get('days') ?? 2) || 2));
   try {
     const r = await syncTalkroute(adminClient(), { sinceHours: days * 24, maxPages: 10 });
     return NextResponse.json({ ok: true, ...r });

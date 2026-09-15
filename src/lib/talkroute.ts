@@ -70,6 +70,7 @@ export async function getAccount(): Promise<Record<string, unknown>> {
 
 export async function listCallHistory(opts: { after?: string; before?: string; page?: number; pageSize?: number } = {}): Promise<Paged<TrCallRecord>> {
   const q = new URLSearchParams();
+  // NOTE: `after`/`before` return 402 on plans without date-filtered reporting — callers page instead.
   if (opts.after) q.set('after', opts.after);
   if (opts.before) q.set('before', opts.before);
   q.set('page', String(opts.page ?? 1));
@@ -199,29 +200,38 @@ export async function syncTalkroute(db: SupabaseClient, opts: { sinceHours?: num
   const rows: CallRow[] = [];
   let calls = 0, voicemails = 0;
   let callHistoryBlocked = false;
+  const cutoff = Date.parse(after);
+  // Talkroute's Basic plan answers 402 to the `after` date filter (date-filtered
+  // reporting is a paid feature) but pages fine, so page newest-first and stop
+  // once a whole page is older than the window.
   for (let page = 1; page <= maxPages; page++) {
     let j: Paged<TrCallRecord>;
-    try { j = await listCallHistory({ after, page, pageSize: 100 }); }
+    try { j = await listCallHistory({ page, pageSize: 100 }); }
     catch (e) {
-      // 402/403 = the Talkroute plan doesn't include call-history reporting. Voicemails
-      // (and the webhooks) still work, so carry on rather than failing the whole sync.
       if (e instanceof TalkrouteError && (e.status === 402 || e.status === 403)) { callHistoryBlocked = true; break; }
       throw e;
     }
-    for (const rec of j.data ?? []) { rows.push(await callRecordToRow(rec, db)); calls++; }
+    const data = j.data ?? [];
+    let anyRecent = false;
+    for (const rec of data) {
+      if (rec.callDate && Date.parse(rec.callDate) < cutoff) continue;
+      anyRecent = true;
+      rows.push(await callRecordToRow(rec, db)); calls++;
+    }
     const totalPages = j.pagination?.totalPages ?? 1;
-    if (page >= totalPages || !(j.data ?? []).length) break;
+    if (!anyRecent || page >= totalPages || !data.length) break;
   }
-  const cutoff = Date.parse(after);
   for (let page = 1; page <= maxPages; page++) {
     const j = await listVoiceMessages({ page, pageSize: 100 });
-    let older = false;
-    for (const vm of j.data ?? []) {
-      if (vm.createdAt && Date.parse(vm.createdAt) < cutoff) { older = true; continue; }
+    const data = j.data ?? [];
+    let anyRecent = false;
+    for (const vm of data) {
+      if (vm.createdAt && Date.parse(vm.createdAt) < cutoff) continue;
+      anyRecent = true;
       rows.push(await voicemailToRow(vm, db)); voicemails++;
     }
     const totalPages = j.pagination?.totalPages ?? 1;
-    if (older || page >= totalPages || !(j.data ?? []).length) break;
+    if (!anyRecent || page >= totalPages || !data.length) break;
   }
   const { inserted, updated } = await upsertCalls(db, rows);
   return { calls, voicemails, inserted, updated, callHistoryBlocked };
