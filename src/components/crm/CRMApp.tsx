@@ -3085,7 +3085,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => setPage('properties')}>🏢 &nbsp;Properties</button>
           <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}>✍️ &nbsp;E-Sign</button>
-          <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => setPage('calls')}>📞 &nbsp;Calling Log</button>
+          <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}>📞 &nbsp;Calling Log</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -3254,7 +3254,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'properties' ? ' active' : ''}`} onClick={() => { setPage('properties'); setMobileMenuOpen(false); }}>🏢 &nbsp;Properties</button>
                 <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
                 <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}>✍️ &nbsp;E-Sign</button>
-                <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
+                <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -7520,9 +7520,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               isAdmin={isAdmin}
               isSuperAdmin={isSuperAdmin}
               businessUnit={businessUnit}
-              onOpenContact={(contactId) => {
-                const c = clients.find(x => x.id === contactId);
-                if (c) { setPage('contacts'); setActiveClient(c); }
+              onOpenContact={async (contactId) => {
+                let c = clients.find(x => x.id === contactId);
+                if (!c) {
+                  // Landed on #calls directly, so the contact list hasn't loaded yet.
+                  try {
+                    const r = await fetch(`/api/crm/contacts?q=&limit=1&id=${contactId}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+                    const j = await r.json().catch(() => ({}));
+                    c = (j.contacts || []).find((x: Client) => x.id === contactId);
+                  } catch { /* fall through */ }
+                }
+                if (c) { setPage('contacts'); setActiveClient(c); if (!clients.length) loadClients(); }
                 else { setPage('contacts'); loadClients(); showToast('Find the contact in the list'); }
               }}
             />

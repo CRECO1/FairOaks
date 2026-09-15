@@ -22,6 +22,14 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get('q') ?? '').trim();
   const limit = Math.min(50, Number(req.nextUrl.searchParams.get('limit') ?? 20) || 20);
 
+  // One contact by id, full row — used to open a card from a place the list isn't loaded yet.
+  const id = req.nextUrl.searchParams.get('id');
+  if (id) {
+    const { data, error } = await adminClient().from('crm_clients').select('*').eq('id', id).eq('business_unit', scopedUnit(req, ctx)).maybeSingle();
+    if (error) return dbError('api/crm/contacts GET id', error);
+    return NextResponse.json({ contacts: data ? [data] : [] });
+  }
+
   let query = adminClient().from('crm_clients').select(CLIENT_COLS).eq('business_unit', scopedUnit(req, ctx));
   if (q) {
     // Strip PostgREST filter metacharacters so the search term can't break the or() grammar.
