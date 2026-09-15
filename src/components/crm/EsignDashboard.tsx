@@ -193,7 +193,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
+    <div className="es-touch" style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>✍️ Signature requests</h2>
         <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${envs.filter(e => !byAgent || e.sent_by === byAgent).length} ${showAll ? 'requests' : 'out for signature'}${byAgent ? ` · ${byAgent}` : ''}`}</span>
@@ -462,10 +462,10 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                             const ua = ev.user_agent || '';
                             const dev = /iPhone|Android|iPad|Mobile/i.test(ua) ? 'mobile' : ua ? 'desktop' : '';
                             return (
-                              <div key={ev.id} style={{ display: 'flex', alignItems: 'baseline', gap: 9, fontSize: 12.5 }}>
+                              <div key={ev.id} style={{ display: 'flex', alignItems: 'baseline', gap: 9, rowGap: 2, flexWrap: 'wrap', fontSize: 12.5 }}>
                                 <span style={{ width: 16, flexShrink: 0 }}>{l.icon}</span>
-                                <span style={{ color: l.color, fontWeight: 600, minWidth: 150 }}>{l.label}</span>
-                                <span style={{ color: '#374151', flex: 1 }}>{who || '—'}</span>
+                                <span style={{ color: l.color, fontWeight: 600, minWidth: 'min(150px, 40%)' }}>{l.label}</span>
+                                <span style={{ color: '#374151', flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{who || '—'}</span>
                                 {dev && <span style={{ color: '#9ca3af' }}>{dev}</span>}
                                 {ev.ip && <span style={{ color: '#c8ccd2', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{ev.ip}</span>}
                                 <span style={{ color: '#9ca3af', whiteSpace: 'nowrap' }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>

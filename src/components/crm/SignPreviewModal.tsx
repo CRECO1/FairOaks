@@ -28,6 +28,16 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
 }) {
   const [pages, setPages] = useState<{ w: number; h: number; src: string }[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'nofile' | 'encrypted'>('loading');
+  // On a phone the review is a full-screen sheet with the send button pinned to the
+  // bottom, instead of a toolbar that wraps into a pile above the document.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -80,42 +90,63 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
     ? signers[Number(key.slice(1)) - 1].name
     : (signerLabel ? signerLabel(key) : key);
   const roles = Array.from(new Set(fields.map(partyOf)));
+  const blocked = status === 'nofile' || status === 'encrypted';
+
+  const closeBtn = (
+    <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: narrow ? '0 16px' : '7px 14px', minHeight: narrow ? 44 : undefined, cursor: 'pointer', flexShrink: 0 }}>{onConfirm ? '‹ Back' : '✕ Close'}</button>
+  );
+  const sendBtn = onConfirm && (
+    <button onClick={onConfirm} disabled={busy || blocked}
+      title={blocked ? 'This document can’t be signed as-is — fix it before sending' : undefined}
+      style={{ fontSize: narrow ? 15 : 13, fontWeight: 800, color: '#fff', background: blocked ? '#9ca3af' : '#c9922c', border: 'none', borderRadius: narrow ? 10 : 8, padding: narrow ? '0 16px' : '7px 16px', minHeight: narrow ? 50 : undefined, width: narrow ? '100%' : undefined, cursor: (busy || blocked) ? 'default' : 'pointer', opacity: (busy || blocked) ? 0.6 : 1 }}>
+      {busy ? 'Sending…' : confirmLabel}
+    </button>
+  );
+  const legend = roles.length > 0 && (
+    <div style={{ display: 'flex', gap: 10, flexWrap: narrow ? 'nowrap' : 'wrap', overflowX: narrow ? 'auto' : undefined, padding: narrow ? '0 12px 10px' : undefined }}>{roles.map(r => (
+      <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#e5e7eb', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+        <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(r), flexShrink: 0 }} />{nameOf(r)}
+      </span>
+    ))}</div>
+  );
 
   return (
-    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.72)', zIndex: 1100, display: 'flex', flexDirection: 'column', padding: 'max(10px, min(18px, 3vw))', fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, flexWrap: 'wrap' }}>
-        <div style={{ color: '#fff', fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap' }}>Review — who signs where</div>
-        {roles.length > 0 && <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>{roles.map(r => (
-          <span key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#e5e7eb', fontSize: 12, fontWeight: 600 }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(r) }} />{nameOf(r)}
-          </span>
-        ))}</div>}
-        <span style={{ flex: 1 }} />
-        <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(255,255,255,.16)', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer' }}>{onConfirm ? '‹ Back' : '✕ Close'}</button>
-        {onConfirm && (
-          <button onClick={onConfirm} disabled={busy || status === 'nofile' || status === 'encrypted'}
-            title={(status === 'nofile' || status === 'encrypted') ? 'This document can’t be signed as-is — fix it before sending' : undefined}
-            style={{ fontSize: 13, fontWeight: 800, color: '#fff', background: (status === 'nofile' || status === 'encrypted') ? '#9ca3af' : '#c9922c', border: 'none', borderRadius: 8, padding: '7px 16px', cursor: (busy || status === 'nofile' || status === 'encrypted') ? 'default' : 'pointer', opacity: (busy || status === 'nofile' || status === 'encrypted') ? 0.6 : 1 }}>
-            {busy ? 'Sending…' : confirmLabel}
-          </button>
-        )}
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#4b4f52', borderRadius: 8, padding: 18 }}>
+    <div className="es-touch" onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: narrow ? '#2b2f33' : 'rgba(17,24,39,.72)', zIndex: 1100, display: 'flex', flexDirection: 'column',
+        padding: narrow ? 'env(safe-area-inset-top) 0 0' : 'max(10px, min(18px, 3vw))', fontFamily: "'DM Sans',sans-serif" }}>
+      {narrow ? (
+        <div style={{ flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px' }}>
+            <div style={{ flex: 1, minWidth: 0, color: '#fff', fontSize: 15, fontWeight: 800 }}>Review — who signs where</div>
+            {closeBtn}
+          </div>
+          {legend}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, flexShrink: 0, flexWrap: 'wrap' }}>
+          <div style={{ color: '#fff', fontSize: 15, fontWeight: 800, whiteSpace: 'nowrap' }}>Review — who signs where</div>
+          {legend}
+          <span style={{ flex: 1 }} />
+          {closeBtn}
+          {sendBtn}
+        </div>
+      )}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#4b4f52', borderRadius: narrow ? 0 : 8, padding: narrow ? 8 : 18, WebkitOverflowScrolling: 'touch' }}>
         {status === 'loading' && <div style={{ color: '#cbd5e1', textAlign: 'center', padding: 60 }}>Rendering document…</div>}
         {status === 'error' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60 }}>Couldn’t render this document. You can still send, but review the source first.</div>}
-        {status === 'nofile' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60, lineHeight: 1.7 }}>This document has no file yet.<br /><span style={{ fontSize: 13, color: '#e5e7eb' }}>Import the PDF — or open the form, fill it and Save — before sending. There’s nothing here to sign.</span></div>}
-        {status === 'encrypted' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: 60, lineHeight: 1.7 }}>This PDF is password-protected / encrypted.<br /><span style={{ fontSize: 13, color: '#e5e7eb' }}>It can’t be prepared for signing (the signer would see a blank page). Open it in Preview → File → <strong>Export as PDF</strong> with encryption off (or “Print → Save as PDF”), then import that copy.</span></div>}
+        {status === 'nofile' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: narrow ? '40px 12px' : 60, lineHeight: 1.7 }}>This document has no file yet.<br /><span style={{ fontSize: 13, color: '#e5e7eb' }}>Import the PDF — or open the form, fill it and Save — before sending. There’s nothing here to sign.</span></div>}
+        {status === 'encrypted' && <div style={{ color: '#fca5a5', textAlign: 'center', padding: narrow ? '40px 12px' : 60, lineHeight: 1.7 }}>This PDF is password-protected / encrypted.<br /><span style={{ fontSize: 13, color: '#e5e7eb' }}>It can’t be prepared for signing (the signer would see a blank page). Open it in Preview → File → <strong>Export as PDF</strong> with encryption off (or “Print → Save as PDF”), then import that copy.</span></div>}
         {status === 'ready' && fields.length === 0 && <div style={{ color: '#fde68a', textAlign: 'center', padding: '4px 0 16px', fontSize: 13 }}>No signature fields are placed — signers will sign on an added Signatures page.</div>}
         {pages.map((pg, i) => {
           const pageFields = fields.filter(f => (f.page || 1) === i + 1);
           return (
-            <div key={i} style={{ position: 'relative', width: 820, maxWidth: '100%', margin: '0 auto 18px', boxShadow: '0 2px 14px rgba(0,0,0,.45)' }}>
+            <div key={i} style={{ position: 'relative', width: 820, maxWidth: '100%', margin: `0 auto ${narrow ? 10 : 18}px`, boxShadow: '0 2px 14px rgba(0,0,0,.45)' }}>
               <img src={pg.src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
               {pageFields.map((f, k) => {
                 const party = partyOf(f);
                 const color = colorOf(party);
-                const boxH = (f.type === 'date' || f.type === 'date_signed') ? 20 : 28;
+                // On a phone-width page a desktop-height box buries the lines above it.
+                const boxH = (f.type === 'date' || f.type === 'date_signed') ? (narrow ? 14 : 20) : (narrow ? 18 : 28);
                 return (
                   <div key={k} style={{ position: 'absolute', left: `${f.fx * 100}%`, width: `${Math.max(f.fw * 100, 9)}%`, top: `calc(${f.fy * 100}% - ${boxH}px)`, height: boxH, border: `2px solid ${color}`, background: color + '26', borderRadius: 3, boxSizing: 'border-box', pointerEvents: 'none' }}>
                     <div style={{ position: 'absolute', top: -15, left: -2, fontSize: 9.5, fontWeight: 800, color: '#fff', background: color, padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>{nameOf(party)} · {typeLabel(f.type)}</div>
@@ -126,6 +157,11 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
           );
         })}
       </div>
+      {narrow && sendBtn && (
+        <div style={{ flexShrink: 0, padding: '10px 12px calc(10px + env(safe-area-inset-bottom))', background: '#2b2f33', borderTop: '1px solid rgba(255,255,255,.08)' }}>
+          {sendBtn}
+        </div>
+      )}
     </div>
   );
 }

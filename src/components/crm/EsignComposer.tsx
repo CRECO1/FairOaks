@@ -233,7 +233,7 @@ export default function EsignComposer({
         confirmLabel="📤 Send for signature" />
     )}
     {step === 'setup' && (
-    <div style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 1001, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
+    <div className="es-touch" style={{ position: 'fixed', inset: 0, background: '#fff', zIndex: 1001, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14, padding: isMobile ? '12px 12px calc(12px + env(safe-area-inset-top))' : '14px 20px', borderBottom: '1px solid #eef0f2', flexShrink: 0, paddingTop: isMobile ? 'calc(12px + env(safe-area-inset-top))' : undefined }}>
         <button onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 19, color: '#6b7280', cursor: 'pointer', padding: 0 }}>✕</button>
         {!isMobile && <span style={{ width: 1, height: 22, background: '#e5e7eb' }} />}

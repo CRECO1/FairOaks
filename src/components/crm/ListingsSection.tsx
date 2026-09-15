@@ -1590,7 +1590,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       })}
                     </div>
                   )}
-                  <div style={{ fontSize: 11.5, color: '#c0c4cc', marginTop: 14, textAlign: 'center' }}>Forms filled here attach to the deal and show on this property. “Send for signature” lights up once e-signing is enabled.</div>
+                  <div style={{ fontSize: 11.5, color: '#c0c4cc', marginTop: 14, textAlign: 'center' }}>Forms filled here attach to the deal and show on this property. Tap 📤 Send to route one for e-signature.</div>
                 </div>
               )}
 
@@ -1971,7 +1971,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {sendModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setSendModal(null); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="es-touch" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Send for signature</h3>
               <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>

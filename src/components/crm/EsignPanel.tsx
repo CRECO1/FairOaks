@@ -98,7 +98,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
   }
 
   return (
-    <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
+    <div className="es-touch" style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8 }}>‹ Back</button>
       <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a', marginBottom: 2 }}>Send for signature</div>
       <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 14 }}><strong>{doc.title || doc.crm_forms?.name}</strong> — signers are emailed in order; each signs, then the next is notified.</div>
@@ -155,7 +155,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
                 <button onClick={() => move(i, 1)} disabled={i === signers.length - 1} title="Down" style={{ ...ctrl, opacity: i === signers.length - 1 ? 0.3 : 1 }}>↓</button>
                 {signers.length > 1 && <button onClick={() => setSigners(list => list.filter((_, k) => k !== i))} title="Remove" style={{ ...ctrl, color: '#dc2626', borderColor: '#fecaca', background: '#fff' }}>✕</button>}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
                 <div style={{ position: 'relative' }}>
                   <input value={s.name} onChange={e => { set(i, { name: e.target.value }); setPick(i); }} onFocus={() => setPick(i)} onBlur={() => setTimeout(() => setPick(p => (p === i ? null : p)), 150)} placeholder="Name" style={{ ...INP, fontSize: 13.5 }} />
                   {sugg.length > 0 && (
@@ -295,7 +295,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
   }
 
   return (
-    <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
+    <div className="es-touch" style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8 }}>‹ Back</button>
       <div style={{ fontSize: 15, fontWeight: 800, color: '#1a1a1a', marginBottom: 2 }}>{doc.title || doc.crm_forms?.name}</div>
       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginBottom: 14 }}>📤 Out for signature · {signedCount(env)}/{signers.length} signed</div>
@@ -317,14 +317,14 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
                 <span style={{ fontSize: 12, fontWeight: 800, color: '#9ca3af' }}>{s.signing_order}.</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a' }}>{s.name} <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'capitalize' }}>· {s.signer_role}</span></div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>{s.email}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280', overflowWrap: 'anywhere' }}>{s.email}</div>
                 </div>
                 <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap', ...(done ? { background: '#dcfce7', color: '#15803d' } : isCurrent ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f3f4f6', color: '#6b7280' }) }}>
                   {done ? '✓ Signed' : isCurrent ? (s.in_person ? '🖊 In person' : s.viewed_at ? '👁 Viewed' : `⏳ Waiting ${ago(s.sent_at)}`) : 'Up next'}
                 </span>
               </div>
               {!done && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   {editId === s.id ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
@@ -354,10 +354,10 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
 
       {adding ? (
         <div style={{ border: '1px dashed #e6d3a2', borderRadius: 10, padding: 10, marginTop: 8, background: '#fffdf6' }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
             <select value={add.role} onChange={e => setAdd(a => ({ ...a, role: e.target.value }))} style={{ ...INP, width: 'auto', flex: '0 0 110px', padding: '5px 8px', fontSize: 12.5 }}>{ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <input value={add.name} onChange={e => setAdd(a => ({ ...a, name: e.target.value }))} placeholder="Name" style={{ ...INP, fontSize: 13 }} />
-            <input value={add.email} onChange={e => setAdd(a => ({ ...a, email: e.target.value }))} placeholder="Email" style={{ ...INP, fontSize: 13 }} />
+            <input value={add.name} onChange={e => setAdd(a => ({ ...a, name: e.target.value }))} placeholder="Name" style={{ ...INP, fontSize: 13, flex: '1 1 140px' }} />
+            <input value={add.email} onChange={e => setAdd(a => ({ ...a, email: e.target.value }))} placeholder="Email" style={{ ...INP, fontSize: 13, flex: '1 1 140px' }} />
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button disabled={busy} onClick={() => { if (!add.name.trim() || !add.email.includes('@')) { showToast?.('Name + valid email'); return; } act({ action: 'add_signer', name: add.name, email: add.email, role: add.role }, 'Signer added ✓'); setAdding(false); setAdd({ role: 'other', name: '', email: '' }); }} style={{ ...mini, background: GOLD, color: '#fff', border: 'none' }}>Add signer</button>
@@ -368,7 +368,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
         <button onClick={() => setAdding(true)} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', marginTop: 10 }}>＋ Add signer</button>
       )}
 
-      <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 14, paddingTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 14, paddingTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {doc.url && <button onClick={() => setPreview(true)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4', background: '#fdf6e9', fontWeight: 800 }}>👁 Review — who signs where</button>}
         <span style={{ flex: 1 }} />
         {env.status !== 'voided' && env.status !== 'completed' && (
@@ -437,7 +437,7 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
   if (view.t === 'manage') return <ManageView doc={view.doc} env={envByDoc[view.doc.id]} authToken={authToken} isSuperAdmin={isSuperAdmin} showToast={showToast} onBack={() => { setView({ t: 'list' }); load(); }} onReload={load} />;
 
   return (
-    <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
+    <div className="es-touch" style={{ fontFamily: "'DM Sans',sans-serif" }}>
       <div style={{ fontSize: 14, fontWeight: 800, color: '#1a1a1a', marginBottom: 10 }}>✍️ E-Sign</div>
       {loading ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Loading…</div>
         : ordered.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No documents on this deal yet. Fill a form on the deal and it shows here, ready to send for signature.</div>
@@ -456,7 +456,7 @@ export default function EsignPanel({ dealId, onPlaceFields, clients = [], dealCl
                         : <span style={{ color: '#9ca3af' }}>Draft</span>}
                     </div>
                   </div>
-                  {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280' }}>PDF ↗</a>}
+                  {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280', display: 'inline-flex', alignItems: 'center' }}>PDF ↗</a>}
                   {st === 'sent' ? <button onClick={() => setView({ t: 'manage', doc })} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>Manage</button>
                     : st === 'completed' ? (env?.executed_url ? (
                         <span style={{ display: 'inline-flex', gap: 6 }}>

@@ -613,3 +613,14 @@
   margin: 1.5rem 0;
 }
 .prose-article strong { color: #111; }
+
+/* E-Sign on phones and tablets: thumb-sized controls, and 16px form text so iOS
+   doesn't zoom the page when a field is focused. Scoped to touch screens, so the
+   desktop CRM keeps its density. */
+@media (pointer: coarse) {
+  .es-touch button { min-height: 44px !important; min-width: 44px; }
+  .es-touch input:not([type=checkbox]):not([type=radio]):not([type=file]),
+  .es-touch select,
+  .es-touch textarea { font-size: 16px !important; min-height: 44px; }
+  .es-touch input[type=checkbox] { width: 20px; height: 20px; }
+}
