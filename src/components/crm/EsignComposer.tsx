@@ -196,7 +196,11 @@ export default function EsignComposer({
           submissionId={doc.id}
           authToken={authToken}
           isAdmin={isAdmin}
-          deals={deals}
+          // When the composer is already bound to a deal, DON'T offer the deal picker —
+          // re-linking there would save the submission to a different deal than the one
+          // the envelope is sent under, splitting the record. The picker is only for an
+          // unbound (dashboard) import that still needs a home.
+          deals={dealId ? undefined : deals}
           dealId={dealId}
           listingId={listingId}
           businessUnit={businessUnit}

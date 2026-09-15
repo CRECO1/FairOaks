@@ -48,9 +48,13 @@ export interface TrVoiceMessage {
   id: string; read: boolean; phoneNumber?: string; callResult?: string; callerName?: string; callerNumber?: string;
   duration?: number; transcript?: string; transcriptionInProgress?: boolean; audioLink?: string; createdAt?: string;
 }
+// The published spec says camelCase; the live API answers snake_case. Accept both.
 export interface TrTextMessage {
-  id: string; body?: string; read?: boolean; userEmail?: string; direction?: string; createdAt?: string;
-  attachments?: Array<{ id: string; fileType?: string; link?: string }>;
+  id: string; body?: string; read?: boolean;
+  userEmail?: string; user_email?: string;
+  direction?: string; message_direction?: string;
+  createdAt?: string; created_at?: string;
+  attachments?: Array<{ id: string; fileType?: string; file_type?: string; link?: string }>;
 }
 export interface TrTextConversation {
   conversation_id: string; talkroute_number?: string; contact_number?: string; last_message_at?: string;
@@ -282,7 +286,10 @@ export interface TextRow {
 
 export async function textToRow(conv: TrTextConversation, m: TrTextMessage, db: SupabaseClient, unitCache: Map<string, string>, contactCache: Map<string, string | null>): Promise<TextRow> {
   const ours = toE164(conv.talkroute_number), theirs = toE164(conv.contact_number);
-  const inbound = (m.direction || '').toLowerCase() !== 'outgoing' && (m.direction || '').toLowerCase() !== 'outbound';
+  const dir = (m.message_direction ?? m.direction ?? '').toLowerCase();
+  const inbound = dir !== 'outgoing' && dir !== 'outbound';
+  const at = m.created_at ?? m.createdAt;
+  const by = m.user_email ?? m.userEmail;
   let unit = unitCache.get(ours ?? '');
   if (!unit) { unit = await unitForNumber(db, ours); unitCache.set(ours ?? '', unit); }
   const ck = `${unit}:${theirs}`;
@@ -291,7 +298,7 @@ export async function textToRow(conv: TrTextConversation, m: TrTextMessage, db: 
     business_unit: unit, source: 'talkroute', external_id: `msg:${m.id}`, conversation_id: conv.conversation_id,
     direction: inbound ? 'inbound' : 'outbound', from_number: inbound ? theirs : ours, to_number: inbound ? ours : theirs,
     body: m.body ?? null, attachments: m.attachments?.length ? m.attachments : null, contact_id: contactCache.get(ck) ?? null,
-    sent_by: m.userEmail || null, sent_at: m.createdAt || new Date().toISOString(), read: !!m.read, raw: m,
+    sent_by: by && by !== 'NULL' ? by : null, sent_at: at || new Date().toISOString(), read: !!m.read, raw: m,
   };
 }
 
@@ -339,7 +346,8 @@ export async function syncTexts(db: SupabaseClient, opts: { sinceHours?: number;
       if (conversations > maxConversations) break;
       const mj = await listTextMessages(conv.conversation_id, { page: 1, pageSize: 100 });
       for (const m of mj.data ?? []) {
-        if (m.createdAt && Date.parse(m.createdAt) < cutoff - 7 * 86_400_000) continue; // a week of context behind the window
+        const mAt = m.created_at ?? m.createdAt;
+        if (mAt && Date.parse(mAt) < cutoff - 7 * 86_400_000) continue; // a week of context behind the window
         rows.push(await textToRow(conv, m, db, unitCache, contactCache)); messages++;
       }
     }

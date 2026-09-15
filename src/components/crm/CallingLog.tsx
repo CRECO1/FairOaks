@@ -436,7 +436,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                             <div key={m.id} style={{ display: 'flex', justifyContent: m.direction === 'outbound' ? 'flex-end' : 'flex-start' }}>
                               <div style={{ maxWidth: '78%', background: m.direction === 'outbound' ? '#fdf6e9' : '#f3f4f6', color: '#111', borderRadius: 10, padding: '6px 10px' }}>
                                 {m.body && <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>}
-                                {(m.attachments ?? []).map(a => a.link ? <a key={a.id} href={a.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12, color: '#1d4ed8' }}>📎 {a.fileType || 'attachment'}</a> : null)}
+                                {(m.attachments ?? []).map(a => a.link ? <a key={a.id} href={a.link} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12, color: '#1d4ed8' }}>📎 {a.fileType || (a as { file_type?: string }).file_type || 'attachment'}</a> : null)}
                                 <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 2 }}>{when(m.sent_at)}{m.direction === 'outbound' && m.sent_by ? ` · ${m.sent_by}` : ''}</div>
                               </div>
                             </div>

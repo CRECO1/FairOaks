@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole } from '@/lib/crm-auth';
+import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, resendConfig, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
 
@@ -155,6 +156,12 @@ export async function POST(req: NextRequest) {
   const { data: sub } = await supabase.from('crm_form_submissions').select('id, form_id, filled_path, business_unit, title, deal_id, listing_id').eq('id', submission_id).single();
   if (!sub) return notFound('Document not found');
   if (!sub.filled_path) return NextResponse.json({ error: 'This document has no saved PDF yet — open it, fill it, and Save to the deal first.' }, { status: 400 });
+  // Defense-in-depth: a body-supplied deal/listing link must be one the caller can
+  // actually access — mirror the esign-import PUT so an envelope can't be mislinked to
+  // a deal/property the agent doesn't own. (The submission's own links were validated
+  // when it was created, so a body value that just echoes them needs no re-check.)
+  if (deal_id && deal_id !== sub.deal_id && !(await assertOwnsResource('crm_deals', deal_id, ctx))) return notFound('Deal not found');
+  if (listing_id && listing_id !== sub.listing_id && !(await assertCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
 
   // An admin's active workspace wins the brand — 'sending from CRECO must send as CRECO',
   // even for a doc whose own tag or the sender's profile says otherwise.

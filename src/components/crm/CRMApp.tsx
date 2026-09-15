@@ -521,7 +521,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
   const [esignModal, setEsignModal] = useState<{ mode: 'send' | 'manage'; doc: EsignDoc } | null>(null);
-  const [esignFieldsVersion, setEsignFieldsVersion] = useState(0); // bumped when placements change
+  // General "e-sign changed" tick — bumped when placements change AND whenever the
+  // composer sends/closes or an import is sent; consumed as reloadSignal/refreshKey by
+  // the E-Sign dashboard, the deal E-Sign tab/Docs tab, and the property panel.
+  const [esignFieldsVersion, setEsignFieldsVersion] = useState(0);
   const [dealFormEditor, setDealFormEditor] = useState<{ form: { id: string; name: string }; url: string; submissionId?: string; showDeals?: boolean } | null>(null);
   const [importSend, setImportSend] = useState<EsignDoc | null>(null);
   // The E-Sign envelope composer: set up -> place fields -> review -> send.
@@ -1139,7 +1142,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const fname = /\.pdf$/i.test(name) ? name : `${name}.pdf`;
       const file = new File([blob], fname, { type: 'application/pdf' });
       setComposer({ file, doc: null, dealId: link.dealId, listingId: link.listingId });
-    } catch { showToast('Could not open that file for signing — try again.'); }
+      // A file link is only valid for an hour; if the panel has sat open longer the
+      // fetch 403s, and re-clicking reuses the same stale link — tell them to reopen.
+    } catch { showToast('Couldn’t open that file — reopen the record and try the Sign button again.'); }
   }, [showToast]);
 
   const authGet = useCallback(
@@ -1215,6 +1220,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!url) { showToast('Could not open that document'); return; }
     setDealFormEditor({ form: { id: '', name: d.title || 'Document' }, url, submissionId: d.id, showDeals: true });
   }, [authGet]); // eslint-disable-line
+
+  // A composer opened from the deal E-Sign tab imports/sends without touching the
+  // Docs-tab's own `dealForms` list. The shared e-sign counter is bumped on every
+  // send/close, so refresh the open deal's forms + envelopes here — otherwise a
+  // freshly-imported doc shows on the E-Sign tab but is missing from the Docs tab
+  // until the deal is reopened.
+  useEffect(() => {
+    if (activeDeal) { loadDealForms(activeDeal.id); loadDealEnvelopes(activeDeal.id, activeDeal.listing_id); }
+  }, [esignFieldsVersion]); // eslint-disable-line
 
   // Attach a packet's forms (blank, pre-linked submissions) to any deal by id.
   // Skips any form name not in the library (e.g. before its PDF is uploaded).
