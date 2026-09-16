@@ -50,8 +50,11 @@ const securityHeaders = [
       `script-src 'self' 'unsafe-inline'${devScriptSrc} https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com`,
       // Styles: self + inline (Tailwind/CSS-in-JS) + Google Fonts
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      // Images: allow any https source + data URIs (listing photos, Supabase storage)
-      "img-src 'self' data: https: https://maps.googleapis.com https://maps.gstatic.com https://*.ggpht.com https://streetviewpixels-pa.googleapis.com",
+      // Images: allow any https source + data URIs (listing photos, Supabase storage) +
+      // blob: URLs (the off-main-thread PDF renderer paints pages to blob-backed <img> —
+      // e.g. the public /sign page, which falls through to this baseline CSP, not the
+      // middleware one). blob: refs point only to in-memory data the page itself created.
+      "img-src 'self' data: blob: https: https://maps.googleapis.com https://maps.gstatic.com https://*.ggpht.com https://streetviewpixels-pa.googleapis.com",
       // Fonts: self + Google Fonts
       "font-src 'self' https://fonts.gstatic.com",
       // Connect: self + Supabase + Google APIs + Resend + ATTOM + Analytics
