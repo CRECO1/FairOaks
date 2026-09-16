@@ -24,7 +24,9 @@ async function pickPhotos(email: FetchedEmail): Promise<GmailImage[]> {
   if (substantial.length) return substantial.sort(bySize).slice(0, 3);
   const hosted = await fetchHostedImages(email.html, 3);
   if (hosted.length) return hosted;
-  return [...email.images].sort(bySize).slice(0, 3);
+  // Last resort: only a non-tiny attached image (a real photo, not a ~5KB logo).
+  // Better to save no photo — and show the placeholder — than a wrong one.
+  return email.images.filter((im) => im.data.length > 20_000).sort(bySize).slice(0, 3);
 }
 
 /**
