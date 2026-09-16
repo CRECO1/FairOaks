@@ -24,6 +24,10 @@ export async function GET(req: NextRequest) {
     // Head-only count: touches the DB + warms the pooled connection without
     // transferring any rows.
     await adminClient().from('crm_forms').select('id', { head: true, count: 'estimated' });
+    // The voice bot's webhooks are their own functions; a caller shouldn't pay their cold
+    // start mid-sentence. Unsigned POSTs bounce with 401 instantly, which is all we need.
+    const origin = (process.env.VOICE_PUBLIC_ORIGIN || 'https://www.fairoaksrealtygroup.com').replace(/\/$/, '');
+    await Promise.all(['/api/voice/inbound', '/api/voice/turn', '/api/voice/wait', '/api/voice/status'].map(p => fetch(`${origin}${p}`, { method: 'POST', cache: 'no-store' }).catch(() => null)));
   } catch (e) {
     // A warmup failure is never fatal — report it 200 so the cron isn't marked failed.
     return NextResponse.json({ ok: false, error: (e as Error).message, ms: Date.now() - t0 });

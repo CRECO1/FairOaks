@@ -23,19 +23,19 @@ export async function POST(req: Request) {
   const { data: call } = await db.from('crm_call_log').select('id, business_unit, from_number, contact_id, caller_name, ai_meta').eq('source', 'voicebot').eq('external_id', p.CallSid).maybeSingle();
   if (!call) return twiml(`${say("Sorry, something went wrong on our end. Please call back in a moment.")}<Hangup/>`);
 
-  const settings = await loadSettings(db, call.business_unit);
   const heard = (p.SpeechResult || '').trim();
-  const { data: callerTurn } = await db.from('crm_call_turns').insert({ call_id: call.id, role: 'caller', text: heard || '(silence)' }).select('id').single();
-
-  const { data: turnRows } = await db.from('crm_call_turns').select('role, text').eq('call_id', call.id).order('created_at');
-  const history = (turnRows ?? []) as Turn[];
+  // Every round trip here is on the caller's clock — run them together, and build the
+  // history from what was already stored plus what was just said.
+  const [settings, { data: callerTurn }, { data: priorRows }, contactRow] = await Promise.all([
+    loadSettings(db, call.business_unit),
+    db.from('crm_call_turns').insert({ call_id: call.id, role: 'caller', text: heard || '(silence)' }).select('id').single(),
+    db.from('crm_call_turns').select('role, text').eq('call_id', call.id).order('created_at'),
+    call.contact_id ? db.from('crm_clients').select('id, first_name, last_name, business_name').eq('id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+  const history = [...((priorRows ?? []) as Turn[]), { role: 'caller' as const, text: heard || '(silence)' }];
   const callerTurns = history.filter(t => t.role === 'caller').length;
-
-  let contact = null as null | { id: string; name: string };
-  if (call.contact_id) {
-    const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name').eq('id', call.contact_id).maybeSingle();
-    if (c) contact = { id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact' };
-  }
+  const c = contactRow?.data;
+  const contact = c ? { id: c.id as string, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || (c.business_name as string) || 'Contact' } : null;
 
   // Work out the reply, store it with what to do next, and keep the call row current.
   const work = (async (): Promise<BotReply> => {

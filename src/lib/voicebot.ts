@@ -11,6 +11,9 @@ import { Resend } from 'resend';
 import { describeHome, listingFactSheet, searchHomes } from '@/lib/listing-knowledge';
 
 export const VOICEBOT_MODEL = process.env.VOICEBOT_MODEL || 'claude-opus-5';
+// Phone turns are latency-bound. VOICEBOT_THINKING=off skips reasoning on the live turns
+// (the post-call summary keeps adaptive thinking; nobody is waiting on it).
+const TURN_THINKING: { thinking?: { type: 'disabled' } } = process.env.VOICEBOT_THINKING === 'off' ? { thinking: { type: 'disabled' } } : {};
 
 export interface VoicebotSettings {
   business_unit: string; enabled: boolean; bot_name: string; company_name: string | null;
@@ -202,6 +205,7 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
       max_tokens: 400,
       // Phone latency matters more than depth here; low effort keeps replies to a couple of seconds.
       output_config: { effort: 'low' },
+      ...(tools ? {} : TURN_THINKING),
       system,
       messages,
       ...(tools ? { tools } : {}),
