@@ -3,6 +3,7 @@ import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { tenancies } from '@/lib/rent-roll-tenancy';
 
 // Rent roll = one editable row per suite on a property folder (crm_property_tenants).
 // It merges what used to live across three spreadsheet tabs — the rent roll, the suite
@@ -54,6 +55,19 @@ async function syncFloorPlan(db: SupabaseClient, unit: string, suite?: string | 
   } catch (e) { console.error('[rent-roll] floor-plan sync', e); }
 }
 
+// A row only drives the floor plan while it's the lease in effect. Entering a signed
+// lease that starts next month must not relabel the room today, and correcting the
+// outgoing tenant's row after the handover must not put their name back up.
+async function isInEffect(db: SupabaseClient, listingId: string, suite: string | null | undefined, rowId: string): Promise<boolean> {
+  const num = String(suite ?? '').trim();
+  if (!num) return true;
+  const { data } = await db.from('crm_property_tenants')
+    .select('id, suite, tenant_name, lease_start').eq('listing_id', listingId).eq('suite', num);
+  const rows = data ?? [];
+  const i = rows.findIndex(r => r.id === rowId);
+  return i < 0 || tenancies(rows)[i].status === 'current';
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -85,7 +99,7 @@ export async function POST(req: NextRequest) {
     .insert({ ...row, listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId })
     .select(SELECT).single();
   if (error) { console.error('[rent-roll] POST', error); return NextResponse.json({ error: 'Could not add the suite' }, { status: 500 }); }
-  await syncFloorPlan(supabase, data.business_unit, data.suite, row);
+  if (await isInEffect(supabase, listingId, data.suite, data.id)) await syncFloorPlan(supabase, data.business_unit, data.suite, row);
   return NextResponse.json({ row: data });
 }
 
@@ -105,7 +119,9 @@ export async function PATCH(req: NextRequest) {
     .update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select(SELECT).single();
   if (error) { console.error('[rent-roll] PATCH', error); return NextResponse.json({ error: 'Could not save the change' }, { status: 500 }); }
   // Sync against the suite as it now stands (a renamed suite moves the mirror with it).
-  await syncFloorPlan(supabase, data.business_unit, data.suite ?? cur.suite, { ...row, tenant_name: data.tenant_name, size_sf: data.size_sf, lease_expiration: data.lease_expiration });
+  if (await isInEffect(supabase, cur.listing_id, data.suite ?? cur.suite, id)) {
+    await syncFloorPlan(supabase, data.business_unit, data.suite ?? cur.suite, { ...row, tenant_name: data.tenant_name, size_sf: data.size_sf, lease_expiration: data.lease_expiration });
+  }
   return NextResponse.json({ row: data });
 }
 

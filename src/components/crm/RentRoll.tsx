@@ -1,5 +1,6 @@
 'use client';
 
+import { tenancies, shortDate } from '@/lib/rent-roll-tenancy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // The property's rent roll — one editable row per suite, replacing the Excel master
@@ -330,16 +331,26 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
     setVendors(vs => vs.filter(v => v.id !== id));
   };
 
+  // Who is in each suite today. A signed lease that hasn't started, and the tenant it
+  // is replacing once it has, stay listed but drop out of the totals below.
+  const tenancy = useMemo(() => {
+    const st = tenancies(rows);
+    return new Map(rows.map((r, i) => [r, st[i]]));
+  }, [rows]);
+
   const stats = useMemo(() => {
-    const occ = rows.filter(r => !isVacant(r));
-    const vac = rows.filter(isVacant);
-    const sf = rows.reduce((s, r) => s + (Number(r.size_sf) || 0), 0);
+    const live = rows.filter(r => tenancy.get(r)?.status === 'current');
+    const occ = live.filter(r => !isVacant(r));
+    const vac = live.filter(isVacant);
+    const sf = live.reduce((s, r) => s + (Number(r.size_sf) || 0), 0);
     const occSf = occ.reduce((s, r) => s + (Number(r.size_sf) || 0), 0);
     const mo = occ.reduce((s, r) => s + (Number(r.monthly_rent) || 0), 0);
     const yr = occ.reduce((s, r) => s + (Number(r.annual_rent) || Number(r.monthly_rent || 0) * 12), 0);
     const in12 = occ.filter(r => { if (!r.lease_expiration) return false; const d = (new Date(r.lease_expiration).getTime() - Date.now()) / 86400000; return d < 365; });
-    return { occ: occ.length, vac: vac.length, sf, occSf, mo, yr, in12: in12.length, in12Sf: in12.reduce((s, r) => s + (Number(r.size_sf) || 0), 0) };
-  }, [rows]);
+    const upcoming = rows.filter(r => tenancy.get(r)?.status === 'upcoming' && !isVacant(r));
+    const upMo = upcoming.reduce((s, r) => s + (Number(r.monthly_rent) || 0), 0);
+    return { occ: occ.length, vac: vac.length, sf, occSf, mo, yr, in12: in12.length, in12Sf: in12.reduce((s, r) => s + (Number(r.size_sf) || 0), 0), upcoming: upcoming.length, upMo };
+  }, [rows, tenancy]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -392,7 +403,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
         {tile('Occupied', String(stats.occ), `${stats.vac} vacant`)}
         {tile('Leased SF', stats.occSf.toLocaleString(), `${stats.sf.toLocaleString()} total`)}
-        {tile('Monthly', money(stats.mo))}
+        {tile('Monthly', money(stats.mo), stats.upcoming ? `+${money(stats.upMo)} signed, not started` : undefined)}
         {tile('Annual', money(stats.yr))}
         {tile('Exp. 12 mo', String(stats.in12), `${stats.in12Sf.toLocaleString()} SF at risk`)}
       </div>
@@ -435,10 +446,19 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
           </thead>
           <tbody>
             {visible.map(r => {
-              const st = leaseStatus(r.lease_expiration);
+              const t = tenancy.get(r);
               const vac = isVacant(r);
+              // A lease that hasn't started, or one a newer lease has taken over from, says
+              // so in place of the expiry countdown — its own dates are left as entered.
+              const st = t?.status === 'upcoming'
+                ? { label: `Starts ${shortDate(r.lease_start)}`, bg: '#eff6ff', color: '#1d4ed8' }
+                : t?.status === 'replaced'
+                  ? { label: `Replaced ${shortDate(t.successor?.lease_start)}`, bg: '#f3f4f6', color: '#6b7280' }
+                  : leaseStatus(r.lease_expiration);
+              const inactive = t?.status === 'replaced';
               return (
-                <tr key={r.id} style={{ background: vac ? '#fbfbfc' : '#fff' }}>
+                <tr key={r.id} title={t?.status === 'replaced' ? `Replaced by ${t.successor?.tenant_name ?? 'a new lease'} from ${shortDate(t.successor?.lease_start)} — not counted` : t?.status === 'upcoming' ? `Signed lease starting ${shortDate(r.lease_start)} — not counted until then` : undefined}
+                  style={{ background: vac ? '#fbfbfc' : t?.status === 'upcoming' ? '#f8fbff' : '#fff', opacity: inactive ? 0.55 : 1 }}>
                   <td style={TD}><Cell value={r.suite} bold onSave={v => saveCell(r.id, 'suite', v)} /></td>
                   <td style={TD}><Cell value={r.building} onSave={v => saveCell(r.id, 'building', v)} /></td>
                   <td style={TD}><Cell value={r.tenant_name} bold={!vac} placeholder="Vacant" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>

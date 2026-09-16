@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { tenancies } from '@/lib/rent-roll-tenancy';
 
 const VALID_UNITS = ['residential', 'commercial'] as const;
 type BusinessUnit = typeof VALID_UNITS[number];
@@ -31,7 +32,44 @@ export async function GET(req: NextRequest) {
     console.error('[api/crm/suites] db error:', error);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
-  return NextResponse.json({ suites: data ?? [] });
+  const suites = data ?? [];
+  await applyHandovers(supabase, unit, suites);
+  return NextResponse.json({ suites });
+}
+
+// Lease handovers on the floor plan. A signed lease entered on the rent roll ahead of
+// its start date deliberately doesn't relabel the room (see rent-roll isInEffect), so
+// on the start date something has to. Doing it here, when the plan is read, means the
+// room flips on the day with no cron and no one remembering.
+//
+// Deliberately narrow: only a suite that has a replaced tenancy AND still shows that
+// outgoing tenant's name. Floor-plan names otherwise differ from the roll on purpose
+// (working names, typo-tolerant reconciliation), and those must never be overwritten.
+async function applyHandovers(db: ReturnType<typeof adminClient>, unit: string, suites: Array<Record<string, unknown>>) {
+  const numbers = Array.from(new Set(suites.map(s => String(s.suite_number ?? '').trim()).filter(Boolean)));
+  if (!numbers.length) return;
+  try {
+    const { data: roll } = await db.from('crm_property_tenants')
+      .select('suite, tenant_name, lease_start, lease_expiration, size_sf').eq('business_unit', unit).in('suite', numbers);
+    const rows = roll ?? [];
+    const st = tenancies(rows);
+    for (let i = 0; i < rows.length; i++) {
+      const next = st[i].successor;
+      if (st[i].status !== 'replaced' || !next) continue;
+      const outgoing = String(rows[i].tenant_name ?? '').trim().toLowerCase();
+      for (const s of suites) {
+        if (String(s.suite_number ?? '').trim() !== String(rows[i].suite ?? '').trim()) continue;
+        if (String(s.tenant_name ?? '').trim().toLowerCase() !== outgoing) continue;
+        const patch = {
+          tenant_name: next.tenant_name, status: 'occupied',
+          lease_expiration: (next as { lease_expiration?: string | null }).lease_expiration ?? null,
+          updated_at: new Date().toISOString(),
+        };
+        await db.from('office_suites').update(patch).eq('id', s.id as string);
+        Object.assign(s, patch);
+      }
+    }
+  } catch (e) { console.error('[api/crm/suites] handover', e); }
 }
 
 // PUT /api/crm/suites
