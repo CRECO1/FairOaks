@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setBusinessHours, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, enableCallAnnounce, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setBusinessHours, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -107,6 +107,11 @@ export async function POST(req: NextRequest) {
       if (!blocks.length || !b.closed_ring_group_id) return NextResponse.json({ error: 'blocks and closed_ring_group_id required' }, { status: 400 });
       const r = await setBusinessHours({ timezone: String(b.timezone || 'America/Chicago'), blocks, closedTo: { type: 'ring_group', id: String(b.closed_ring_group_id) } });
       return NextResponse.json({ ok: true, ...r });
+    }
+    if (b.action === 'enable_call_announce') {
+      const settings = await loadSettings(adminClient(), unitFor(req, ctx));
+      if (!settings.twilio_number) return NextResponse.json({ error: 'Set the bot line first.' }, { status: 400 });
+      return NextResponse.json({ ok: true, ...(await enableCallAnnounce(settings.twilio_number)) });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;

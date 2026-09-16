@@ -217,6 +217,26 @@ export async function setBusinessHours(opts: { timezone: string; blocks: TrHourB
   return { removed, added };
 }
 
+/**
+ * Turn on "call announce" for every HUMAN forwarding number so a cell phone's carrier
+ * voicemail can't count as an answer (the person has to press a key to accept). The
+ * bot line is left alone — it must auto-answer.
+ */
+export async function enableCallAnnounce(exceptNumber: string): Promise<{ updated: string[]; skipped: string[] }> {
+  const skip = exceptNumber.replace(/\D/g, '').slice(-10);
+  const updated: string[] = [], skipped: string[] = [];
+  for (const f of await listForwardingNumbers()) {
+    const digits = String(f.number ?? '').replace(/\D/g, '').slice(-10);
+    if (!f.id || !digits || digits === skip) { skipped.push(f.description || digits); continue; }
+    if (f.announceAndVoicemailEnabled) { skipped.push(`${f.description} (already on)`); continue; }
+    await tr(`/forwarding-numbers/${f.id}`, { method: 'PATCH', body: JSON.stringify({ announceAndVoicemailEnabled: true }) });
+    const after = (await tr<{ data: TrForwardingNumber }>(`/forwarding-numbers/${f.id}`)).data;
+    if (!after?.announceAndVoicemailEnabled) await tr(`/forwarding-numbers/${f.id}`, { method: 'PATCH', body: JSON.stringify({ data: { announceAndVoicemailEnabled: true } }) });
+    updated.push(f.description || digits);
+  }
+  return { updated, skipped };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
