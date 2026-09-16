@@ -5,19 +5,43 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-export interface AgentCtx { userId: string; role: string | null; businessUnit: string | null; }
+// token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
+// form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
+// and generation logic the manual UI does.
+export interface AgentCtx { userId: string; role: string | null; businessUnit: string | null; token?: string; origin?: string; }
 
 function admin(): SupabaseClient {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 }
 const DEAL_STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
 
+// Call a CRM API route as the agent (same auth + RBAC as the UI).
+async function crmFetch(ctx: AgentCtx, path: string, method: string, body: unknown): Promise<{ ok: boolean; status: number; data: any }> {
+  const res = await fetch(`${ctx.origin ?? 'https://www.fairoaksrealtygroup.com'}${path}`, {
+    method, headers: { 'Content-Type': 'application/json', ...(ctx.token ? { Authorization: `Bearer ${ctx.token}` } : {}) }, body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, data };
+}
+
+// Timestamped, agent-attributed audit trail for every action the copilot takes — the
+// same crm_activity log the rest of the CRM writes to, so copilot moves are tracked
+// exactly like every other agent movement.
+async function logCopilot(db: SupabaseClient, ctx: AgentCtx, action: string, clientId?: string | null) {
+  try {
+    await db.from('crm_activity').insert({
+      agent_id: ctx.userId, type: 'copilot', notes: `[Copilot] ${action}`,
+      business_unit: ctx.businessUnit ?? 'commercial', ...(clientId ? { client_id: clientId } : {}),
+    });
+  } catch { /* audit is best-effort, never blocks the action */ }
+}
+
 // Scope a query to the agent's business unit (a super_admin with no unit sees all).
 function scoped<T>(q: T, ctx: AgentCtx): T {
   return ctx.businessUnit ? (q as any).eq('business_unit', ctx.businessUnit) : q;
 }
 
-export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage']);
+export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature']);
 
 export const TOOLS: Anthropic.Tool[] = [
   { name: 'search_contacts', description: 'Search the CRM for contacts (people/companies) by name, email, or business name. Returns up to 10 matches with their id, name, type, and email.',
@@ -38,6 +62,20 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, note: { type: 'string' } }, required: ['contact_id', 'note'] } },
   { name: 'update_deal_stage', description: `Move a deal to a new stage (${DEAL_STAGES.join(', ')}). WRITE — confirm with the agent first.`,
     input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, stage: { type: 'string', enum: DEAL_STAGES } }, required: ['deal_id', 'stage'] } },
+
+  // ── Leases, forms & e-sign (Layer 2) ──────────────────────────────────────
+  { name: 'find_property', description: 'Find a property/listing by name or address. Returns id, name, address. Needed before drafting a lease (use the id as listing_id).',
+    input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'list_forms', description: 'List the available transaction-doc form templates (leases, contracts, addenda, etc.) — name, form_code, category.',
+    input_schema: { type: 'object', properties: {} } },
+  { name: 'draft_lease', description: "Draft lease values from a plain-English description of the deal, using the property's rent roll (e.g. '24 months for Acme in suite 3101, $808/mo, no deposit'). Returns proposed values + notes to review. This DRAFTS only — it creates nothing.",
+    input_schema: { type: 'object', properties: { listing_id: { type: 'string', description: 'The property id from find_property' }, prompt: { type: 'string', description: 'The deal described in plain English' } }, required: ['listing_id', 'prompt'] } },
+  { name: 'generate_lease', description: 'Generate and file the lease document from approved draft values (from draft_lease). WRITE — creates the lease PDF on the property/contact. Confirm the key terms with the agent first.',
+    input_schema: { type: 'object', properties: { listing_id: { type: 'string' }, values: { type: 'object', description: 'The values object returned by draft_lease (tenant_name, suite, rent, dates, etc.)' } }, required: ['listing_id', 'values'] } },
+  { name: 'start_form', description: 'Start a new blank form document from a template (form id from list_forms), optionally linked to a deal. WRITE — creates a document the agent then fills in the editor.',
+    input_schema: { type: 'object', properties: { form_id: { type: 'string' }, deal_id: { type: 'string' } }, required: ['form_id'] } },
+  { name: 'send_for_signature', description: 'Send an existing saved document (a lease/form submission with a saved PDF) out for e-signature to one or more signers. WRITE + OUTWARD — this emails real people. Confirm the document and every recipient with the agent first.',
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, signers: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' }, role: { type: 'string' } }, required: ['name', 'email'] } }, message: { type: 'string' } }, required: ['submission_id', 'signers'] } },
 ];
 
 const j = (o: unknown) => JSON.stringify(o);
@@ -95,23 +133,74 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (input.priority) row.priority = input.priority;
         const { data, error } = await db.from('crm_tasks').insert(row).select('id, title, due_date').single();
         if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Created task “${input.title}”${input.due_date ? ` (due ${input.due_date})` : ''}`, input.contact_id);
         return j({ ok: true, created: data });
       }
       case 'complete_task': {
         const { error } = await db.from('crm_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', input.task_id);
-        return error ? j({ error: error.message }) : j({ ok: true });
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, 'Completed a task');
+        return j({ ok: true });
       }
       case 'add_note': {
         const { data: c } = await db.from('crm_clients').select('notes').eq('id', input.contact_id).single();
         const stamp = new Date().toLocaleDateString('en-US');
         const merged = `${c?.notes ? c.notes + '\n\n' : ''}[${stamp}] ${input.note}`;
         const { error } = await db.from('crm_clients').update({ notes: merged }).eq('id', input.contact_id);
-        return error ? j({ error: error.message }) : j({ ok: true });
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Added a note`, input.contact_id);
+        return j({ ok: true });
       }
       case 'update_deal_stage': {
         if (!DEAL_STAGES.includes(input.stage)) return j({ error: `stage must be one of: ${DEAL_STAGES.join(', ')}` });
+        const { data: deal } = await db.from('crm_deals').select('client_id').eq('id', input.deal_id).maybeSingle();
         const { error } = await db.from('crm_deals').update({ stage: input.stage, last_touch: new Date().toISOString().slice(0, 10) }).eq('id', input.deal_id);
-        return error ? j({ error: error.message }) : j({ ok: true, stage: input.stage });
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Moved a deal to “${input.stage}”`, deal?.client_id);
+        return j({ ok: true, stage: input.stage });
+      }
+
+      // ── Layer 2: leases, forms & e-sign ────────────────────────────────────
+      case 'find_property': {
+        const term = `%${(input.query || '').replace(/[%_]/g, '')}%`;
+        let q = db.from('crm_listings').select('id, name, address, city, state, type, status').or(`name.ilike.${term},address.ilike.${term}`).limit(10);
+        q = scoped(q, ctx);
+        const { data, error } = await q;
+        return error ? j({ error: error.message }) : j(data ?? []);
+      }
+      case 'list_forms': {
+        let q = db.from('crm_forms').select('id, name, form_code, category').order('category', { ascending: true }).limit(60);
+        q = scoped(q, ctx);
+        const { data, error } = await q;
+        return error ? j({ error: error.message }) : j(data ?? []);
+      }
+      case 'draft_lease': {
+        const r = await crmFetch(ctx, '/api/crm/lease-draft', 'POST', { listing_id: input.listing_id, prompt: input.prompt });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not draft the lease' });
+        return j({ values: r.data.values, matched_suite: r.data.matched_suite, notes: r.data.notes });
+      }
+      case 'generate_lease': {
+        const r = await crmFetch(ctx, '/api/crm/lease-draft', 'PUT', { listing_id: input.listing_id, values: input.values });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not generate the lease' });
+        await logCopilot(db, ctx, `Generated lease document “${r.data.submission?.title ?? ''}”`, r.data.submission?.client_id);
+        return j({ ok: true, submission: r.data.submission });
+      }
+      case 'start_form': {
+        const { data: form } = await db.from('crm_forms').select('name').eq('id', input.form_id).single();
+        const r = await crmFetch(ctx, '/api/crm/form-submissions', 'POST', { form_id: input.form_id, deal_id: input.deal_id ?? null, business_unit: ctx.businessUnit ?? 'commercial', title: form?.name ?? 'Form', values: [] });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not start the form' });
+        await logCopilot(db, ctx, `Started form document “${form?.name ?? 'Form'}”`);
+        return j({ ok: true, submission: r.data.submission ?? r.data });
+      }
+      case 'send_for_signature': {
+        const signers = Array.isArray(input.signers) ? input.signers : [];
+        const r = await crmFetch(ctx, '/api/crm/envelopes', 'POST', {
+          submission_id: input.submission_id, message: input.message,
+          signers: signers.map((s: any, i: number) => ({ signer_role: s.role || 'client', name: s.name, email: s.email, signing_order: i + 1 })),
+        });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not send for signature' });
+        await logCopilot(db, ctx, `Sent a document for e-signature to ${signers.map((s: any) => s.email).join(', ')}`);
+        return j({ ok: true, sent: true, envelope: r.data });
       }
       default:
         return j({ error: `Unknown tool: ${name}` });
@@ -128,6 +217,9 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'complete_task': return `Mark task complete`;
     case 'add_note': return `Add a note to the contact: “${input.note}”`;
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
+    case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
+    case 'start_form': return `Start a new form document`;
+    case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => s.name || s.email).join(', ')} — this emails them the document`;
     default: return name;
   }
 }

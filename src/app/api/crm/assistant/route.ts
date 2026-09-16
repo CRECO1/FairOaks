@@ -22,7 +22,13 @@ Rules:
 - Take ONE tool action per turn so the agent can follow along. Gather any ids you need with read tools first (e.g. search_contacts before creating a task for someone).
 - For any WRITE (creating a task, adding a note, moving a deal stage): just CALL the tool when you're ready — the app automatically pauses it and asks the agent to confirm before it runs, showing them exactly what will happen. So don't ask "should I?" in text; call the tool, then, in one short line, tell the agent what you've queued up for them to confirm.
 - When a tool result says NOT_EXECUTED, that's the confirmation pause working normally — briefly restate what will happen and let the agent confirm; don't retry or apologize.
-- If something is out of scope or you can't find it, say so plainly.`;
+- If something is out of scope or you can't find it, say so plainly.
+
+Leases & documents:
+- To draft a lease: find the property with find_property (use its id as listing_id), then draft_lease with the deal described in plain English. draft_lease only proposes values + notes — read the notes back to the agent (they flag guesses/conflicts), and once the terms look right, use generate_lease to actually file the document.
+- To start other transaction forms, use list_forms then start_form.
+
+Sending for signature (send_for_signature) emails real signers — it is outward-facing. The document must already be generated/saved. Always confirm with the agent the exact document AND every recipient's name and email before sending; look up a contact's email with get_contact/search_contacts rather than guessing it.`;
 }
 
 interface ReqBody { messages?: Anthropic.MessageParam[]; allowWrites?: boolean }
@@ -37,6 +43,9 @@ export async function POST(req: NextRequest) {
   // Agent's first name for a personal system prompt.
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
   const { data: prof } = await db.from('crm_profiles').select('first_name').eq('id', ctx.userId).single();
+
+  // Enrich the context so tools can call the CRM's own HTTP endpoints as this agent.
+  const toolCtx: AgentCtx = { ...ctx, token: req.headers.get('authorization')?.replace(/^Bearer\s+/i, ''), origin: req.nextUrl.origin };
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages = [...incoming];
@@ -70,7 +79,7 @@ export async function POST(req: NextRequest) {
           pendingWrites.push({ name: block.name, summary: describeWrite(block.name, input) });
           content = JSON.stringify({ status: 'NOT_EXECUTED', reason: 'Queued for the agent\'s one-click confirmation in the app. In one short line, restate what will happen. Do not ask a yes/no question and do not retry.' });
         } else {
-          content = await runTool(block.name, input, ctx);
+          content = await runTool(block.name, input, toolCtx);
         }
         toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
       }

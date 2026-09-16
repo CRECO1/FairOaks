@@ -29,6 +29,8 @@ const TOOL_LABEL: Record<string, string> = {
   search_contacts: 'searched contacts', get_contact: 'looked up a contact', list_tasks: 'checked tasks',
   list_deals: 'checked deals', get_deal: 'looked up a deal', create_task: 'created a task',
   complete_task: 'completed a task', add_note: 'added a note', update_deal_stage: 'moved a deal',
+  find_property: 'found a property', list_forms: 'listed forms', draft_lease: 'drafted a lease',
+  generate_lease: 'generated the lease', start_form: 'started a form', send_for_signature: 'sent for e-signature',
 };
 
 export default function AssistantPanel({ token, onClose }: { token?: string; onClose: () => void }) {
