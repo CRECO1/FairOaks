@@ -34,6 +34,7 @@ async function tr<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const text = await r.text();
   if (!r.ok) throw new TalkrouteError(r.status, `Talkroute ${r.status} on ${path}: ${text.slice(0, 200)}`);
+  if (!text.trim()) return {} as T; // 204 No Content (DELETE etc.)
   try { return JSON.parse(text) as T; } catch { throw new TalkrouteError(r.status, `Talkroute returned non-JSON on ${path}`); }
 }
 

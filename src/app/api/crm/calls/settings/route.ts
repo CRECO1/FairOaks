@@ -127,6 +127,14 @@ export async function POST(req: NextRequest) {
       if (open) await clearHoursOverride(); else await setHoursOverride('closed', { type: 'ring_group', id: String(b.closed_ring_group_id) });
       return NextResponse.json({ ok: true, open, override: await getHoursOverride() });
     }
+    if (b.action === 'probe_hours_override') {
+      // Proves the plan allows the override: close → read → restore. A caller in that window reaches the bot, which is fine.
+      const dest = { type: 'ring_group' as const, id: String(b.closed_ring_group_id) };
+      await setHoursOverride('closed', dest);
+      const closed = await getHoursOverride();
+      if (isBusinessOpen()) await clearHoursOverride(); // restore the correct state for right now
+      return NextResponse.json({ ok: true, closed, after: await getHoursOverride() });
+    }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;
       if (!secret) return NextResponse.json({ error: 'Set TALKROUTE_WEBHOOK_SECRET in Vercel first (any long random string).' }, { status: 503 });
