@@ -1086,10 +1086,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (savedDealId) {
       const saved = loaded.find(d => d.id === savedDealId);
       if (saved) {
-        setActiveDeal(saved);
+        // openDeal loads everything the modal shows (forms, envelopes, commission) —
+        // loading only emails + uploads left the Docs tab without its forms after a refresh.
+        openDeal(saved);
         setDealTab('emails');
-        loadDealEmails(saved.id);
-        loadDealDocs(saved.id);
         sessionStorage.removeItem('activeDealId');
       }
     }
@@ -4955,7 +4955,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <span>{current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due {fmtDay(current.due_date)}</span>
                           <span>🕐 {c?.last_touched_at ? `Last touch ${fmtDay(c.last_touched_at)}` : 'No prior contact'}</span>
                           {deal && (
-                            <button onClick={() => { setPage('deals'); setActiveDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>
+                            <button onClick={() => { setPage('deals'); openDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>
                               📄 {deal.property || deal.type}{deal.stage ? ` · ${deal.stage}` : ''}{deal.value > 0 ? ` · $${Number(deal.value).toLocaleString()}` : ''}
                             </button>
                           )}
