@@ -100,6 +100,17 @@ reporting is a paid feature); paging works, so the sync pages newest-first and c
 date itself. Setup → the `diagnose` action (`POST /api/crm/calls/settings {action:'diagnose'}`)
 reports the plan and per-endpoint status.
 
+### Routing as configured (2026-09-16)
+
+Bot line **+1 830-251-4660** (Twilio) is Talkroute forwarding number "AI receptionist"
+(transfer code 0205) and the only member of ring group `74980a59…`. Both team ring
+groups (CRECO, Fair Oaks) ring in sequence for 24 s (4 rings) then send the caller to
+that group; the bot group falls back to the shared voicemail box if the line fails.
+Setup panel actions: `inspect_routing`, `route_no_answer_to_bot {ring_group_id, seconds}`,
+`add_forwarding_number`. Plan gates hit on Basic: ring-all strategy (402), date filters
+(402). After-hours (Hours of Operation → closed) still goes to voicemail. Voice:
+`TWILIO_VOICE=Google.en-US-Chirp3-HD-Aoede` (generative).
+
 ### 4. Webhooks + first sync
 
 Calling Log → Setup & voice bot → **Test Talkroute connection**, then
