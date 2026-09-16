@@ -23,6 +23,7 @@ import DealDocUpload from '@/components/crm/DealDocUpload';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import CallingLog from '@/components/crm/CallingLog';
 import AssistantPanel from '@/components/crm/AssistantPanel';
+import CopilotActivity from '@/components/crm/CopilotActivity';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -489,6 +490,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [copilotActivityOpen, setCopilotActivityOpen] = useState(false);
   // Which document row is being renamed, and the draft name in the box.
   // Editing a contact's notes without leaving their card — this is where you are
   // when you want to record who was in the room, so it is where @-tagging has to work.
@@ -3091,6 +3093,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}>✍️ &nbsp;E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}>📞 &nbsp;Calling Log</button>
+          {isSuperAdmin && <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}>👁 &nbsp;Copilot Activity</button>}
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -3260,6 +3263,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
                 <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}>✍️ &nbsp;E-Sign</button>
                 <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
+                {isSuperAdmin && <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}>👁 &nbsp;Copilot Activity</button>}
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -11074,6 +11078,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
       )}
       {assistantOpen && <AssistantPanel token={session?.access_token} onClose={() => setAssistantOpen(false)} />}
+      {copilotActivityOpen && <CopilotActivity token={session?.access_token} onClose={() => setCopilotActivityOpen(false)} />}
 
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
       {esignModal && activeDeal && (
