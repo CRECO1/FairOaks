@@ -8,6 +8,7 @@
 // token generation, the audit log, and all pdf-lib signature stamping.
 // ─────────────────────────────────────────────────────────────────────────────
 import { randomBytes } from 'crypto';
+import { isBrokerFilled } from '@/lib/esign-fields';
 import { PDFDocument, StandardFonts, rgb, PDFImage } from 'pdf-lib';
 import { Resend } from 'resend';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -307,7 +308,11 @@ export async function buildExecutedParts(
       const sz = Math.max(7, Math.min(Number(f.size) || 10, 20));
       if (val) pg.drawText(val, { x, y: baseline + 2, size: sz, font, color: rgb(0.06, 0.06, 0.1), maxWidth: Math.max(24, f.fw * width), lineHeight: sz + 2 });
     } else if (f.type === 'check') {
-      if (String(f.value ?? '').trim()) pg.drawText('X', { x, y: baseline + 2, size: 12, font: bold, color: rgb(0.06, 0.06, 0.1) });
+      // Centred in the box, matching how the document editor stamps a ticked box.
+      if (String(f.value ?? '').trim()) {
+        const box = f.fw * width; const sz = 12; const xw = bold.widthOfTextAtSize('X', sz);
+        pg.drawText('X', { x: x + Math.max(0, (box - xw) / 2), y: baseline + Math.max(1, (box - sz * 0.72) / 2), size: sz, font: bold, color: rgb(0.06, 0.06, 0.1) });
+      }
     } else {
       pg.drawText(winAnsi(s.signedAt ? new Date(s.signedAt).toLocaleDateString('en-US') : ''), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
       inline.add(s.email);
@@ -377,7 +382,8 @@ export async function finalizeEnvelope(
       const { data: sub } = await admin.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
       const vals: Array<{ page?: number; fx: number; fy: number; fw: number; type?: string; signerRole?: string; signerIndex?: number; value?: string; size?: number }> = Array.isArray(sub?.values) ? sub!.values : [];
       sigFields = vals
-        .filter(f => ['signature', 'initial', 'date', 'date_signed', 'text', 'check'].includes(String(f.type)))
+        // Broker-filled blanks are already in the source PDF; stamping them again doubled them.
+        .filter(f => ['signature', 'initial', 'date', 'date_signed', 'text', 'check'].includes(String(f.type)) && !isBrokerFilled(f))
         .map(f => ({ page: f.page ?? 1, fx: f.fx, fy: f.fy, fw: f.fw, type: String(f.type), signerRole: f.signerRole ?? 'client', signerIndex: f.signerIndex ?? null, value: f.value ?? null, size: f.size ?? null }));
     }
 

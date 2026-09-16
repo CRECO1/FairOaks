@@ -12,6 +12,7 @@
 // on the page instead of "client".
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isBrokerFilled } from '@/lib/esign-fields';
 import TransactionDocEditor, { type EditorRecipient, type EditorField } from '@/components/crm/TransactionDocEditor';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import type { PickContact } from '@/components/crm/EsignPanel';
@@ -148,7 +149,7 @@ export default function EsignComposer({
     () => placed.filter(f => ['signature', 'initial', 'date'].includes(f.type) && f.signerKey && !signerIndex.has(f.signerKey)).length,
     [placed, signerIndex]);
   const effective = useMemo(() => placed
-    .filter(f => ['signature', 'initial', 'date', 'text', 'check'].includes(f.type) && (!f.signerKey || signerIndex.has(f.signerKey)))
+    .filter(f => ['signature', 'initial', 'date', 'text', 'check'].includes(f.type) && !isBrokerFilled(f) && (!f.signerKey || signerIndex.has(f.signerKey)))
     .map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole ?? 'client', signerIndex: f.signerKey ? signerIndex.get(f.signerKey)! : null })),
     [placed, signerIndex]);
 

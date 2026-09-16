@@ -5,12 +5,15 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { parseRich, drawRichText, hasMarkup, type RichFonts } from '@/lib/rich-text';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
+import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
 import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-doc';
 
 // The Letters of Intent are dynamic term-list docs, not fixed overlay forms —
 // whichever surface opens one (deals page, property, Transaction Docs library),
 // hand it to the builder so it never gets filled as flat fields. Matching by id is
 // the backstop for callers that don't pass a form_code.
+// The 8000 Fair Oaks Building Lease — generated from values by lib/lease-doc.ts.
+const LEASE_FORM_ID = 'de642507-388e-4ab4-b19e-b2b385841ddc';
 const LOI_PURCHASE_FORM_ID = 'b58b11d1-c5fb-4861-97c5-97b0ab1026fb';
 const LOI_LEASE_FORM_IDS = [
   '185d29b9-6fbe-4611-b6c4-9e5e2d54ecf2',   // Letter of Intent to Lease
@@ -45,6 +48,19 @@ const RENDER_W = 850;
 const THUMB_W = 150;          // page-navigator thumbnails render at their own small scale
 let _idc = 0;
 const nextId = () => `f${++_idc}`;
+// Keep a saved document's field ids across reopen → save. The server's edit history
+// matches fields by id, so re-numbering them on every load made it log phantom
+// "Filled …/Cleared …" changes (or credit an edit to the wrong field). New fields get
+// ids above the highest one in use so they can't collide with a kept id.
+function adoptIds<T extends { id?: string }>(vals: T[]): (T & { id: string })[] {
+  for (const v of vals) { const m = /^f(\d+)$/.exec(String(v.id ?? '')); if (m) _idc = Math.max(_idc, Number(m[1])); }
+  const seen = new Set<string>();
+  return vals.map(v => {
+    const id = v.id && !seen.has(String(v.id)) ? String(v.id) : nextId();
+    seen.add(id);
+    return { ...v, id };
+  });
+}
 
 // pdf-lib's StandardFonts.Helvetica can only draw WinAnsi (Latin-1) glyphs;
 // any smart quote / dash / check mark / emoji throws mid-render. Map the common
@@ -120,6 +136,9 @@ export default function TransactionDocEditor({
   const [edits, setEdits] = useState<{ id: string; summary: string; editor: string; created_at: string }[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
+  // A lease generated from values (the 8000 Fair Oaks lease) is edited as values and
+  // regenerated — never as overlay fields on the blank master (see load below).
+  const [leaseValues, setLeaseValues] = useState<LeaseDraftValues | null>(null);
   const subIdRef = useRef<string | undefined>(submissionId);
   // Pages used to render at a hard 850px, which overflows any phone. They now fill
   // the available width, capped at RENDER_W — so desktop still lands on exactly 850
@@ -137,7 +156,10 @@ export default function TransactionDocEditor({
 
   // The LOIs are delegated to the builder (see the early return below) — skip all
   // overlay PDF/field loading for them.
-  const isLoiLease = LOI_LEASE_FORM_IDS.includes(form.id);
+  // By id for the known templates, and by name so a lease LOI added to the library
+  // later (e.g. the Short-Term to Long-Term letter) still opens in the builder when it
+  // is launched from Transaction Docs, which doesn't pass a form_code.
+  const isLoiLease = LOI_LEASE_FORM_IDS.includes(form.id) || /letter of intent to lease/i.test(form.name || '');
   const isLoi = form.id === LOI_PURCHASE_FORM_ID || isLoiLease;
   const imported = !form.id;
 
@@ -174,21 +196,32 @@ export default function TransactionDocEditor({
   }, [url, isLoi]);
 
   // ── Load fields: a saved submission's values (re-edit) or the blank template ─
+  // The auth token is read through a ref, not listed as a dependency: the session
+  // refreshes about hourly, and re-running this load then replaced every field the
+  // agent had typed (a new doc even fell back to the blank template before re-save).
+  const authTokenRef = useRef(authToken);
+  authTokenRef.current = authToken;
   useEffect(() => {
     if (isLoi) return;
     let cancelled = false;
     (async () => {
       try {
         const h: Record<string, string> = {};
-        if (authToken) h.Authorization = `Bearer ${authToken}`;
+        if (authTokenRef.current) h.Authorization = `Bearer ${authTokenRef.current}`;
         if (submissionId) {
           const r = await fetch(`/api/crm/form-submissions/${submissionId}`, { headers: h });
           const j = await r.json();
           if (cancelled) return;
           setEdits(Array.isArray(j.edits) ? j.edits : []);
+          const bd = j.submission?.builder_data;
+          if (form.id === LEASE_FORM_ID && bd && typeof bd === 'object' && !onSend) {
+            const keys: (keyof LeaseDraftValues)[] = ['tenant_name', 'building', 'suite', 'effective_date', 'term_months', 'end_date', 'monthly_rent', 'security_deposit', 'tenant_phone', 'tenant_email', 'monthly_rent_year2', 'year2_start', 'internet_fee'];
+            setLeaseValues(Object.fromEntries(keys.map(k => [k, String((bd as Record<string, unknown>)[k] ?? '')])) as unknown as LeaseDraftValues);
+            return;
+          }
           const vals = j.submission?.values;
           if (Array.isArray(vals) && vals.length) {
-            setFields(vals.map((f: Field) => ({ ...f, id: nextId() })));
+            setFields(adoptIds(vals as Field[]));
             return;
           }
         }
@@ -214,7 +247,7 @@ export default function TransactionDocEditor({
       } catch { /* no template yet */ }
     })();
     return () => { cancelled = true; };
-  }, [form.id, authToken, submissionId, imported]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.id, submissionId, imported]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Add a field on click ────────────────────────────────────────────────────
   const onPageClick = useCallback((e: React.MouseEvent, pd: PageDim) => {
@@ -229,12 +262,15 @@ export default function TransactionDocEditor({
     // that's how a text / checkbox input reaches a specific signer, exactly like a
     // signature does. In the type-once library editor (no recipients) it stays a blank
     // the agent fills before generating the PDF.
-    setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' ? '✔' : '', size: 11, type: tool,
+    // In the library editor a placed checkbox is the agent's own mark, so it starts
+    // ticked. When composing for signers it is a box for THEM to tick — pre-ticking it
+    // would bake an X into the PDF before sending that the signer could never remove.
+    setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' && !activeRec ? '✔' : '', size: 11, type: tool,
       signerRole: activeRec?.role ?? (isSig ? sigRole : undefined),
       signerKey: activeRec ? activeRec.key : undefined }]);
     setSelected(id);
     setTool('select');
-  }, [tool]);
+  }, [tool, sigRole, activeRec]);
 
   // ── Drag ────────────────────────────────────────────────────────────────────
   // The page's pixel size is read live off the DOM at drag time — it varies with the
@@ -406,7 +442,10 @@ export default function TransactionDocEditor({
       if (authToken) h.Authorization = `Bearer ${authToken}`;
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST', headers: h,
-        body: JSON.stringify({ form_id: form.id || null, deal_id: dealSel || null, listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
+        // relink_deal only when the agent actually changed the deal picker: a doc opened
+        // from a deal may be a property-level doc mirrored into it, and saving must not
+        // re-file it onto that deal.
+        body: JSON.stringify({ form_id: form.id || null, deal_id: dealSel || null, relink_deal: dealSel !== (dealId ?? ''), listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
       });
       if (res.ok) {
         const j = await res.json();
@@ -502,6 +541,29 @@ export default function TransactionDocEditor({
 
   // Delegate the Letter of Intent to Purchase to its dynamic builder, regardless of
   // which surface opened it — so it's never filled as flat overlay fields.
+  if (leaseValues && subIdRef.current) {
+    return (
+      <LeaseDraftModal
+        initialValues={leaseValues}
+        authToken={authToken}
+        onToast={m => onToast?.(m)}
+        onClose={onClose}
+        onCreate={async (v) => {
+          const r = await fetch('/api/crm/lease-draft', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+            body: JSON.stringify({ submission_id: subIdRef.current, values: v }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) { onToast?.(j.error || 'Could not regenerate the lease'); return; }
+          onToast?.('✓ Lease regenerated');
+          onSaved?.();
+          onClose();
+        }}
+      />
+    );
+  }
+
   if (isLoi) {
     return (
       <LoiBuilder
@@ -772,13 +834,19 @@ export default function TransactionDocEditor({
                       textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                 )}
-                {(showGrip || isMobile) && (
+                {/* A checkbox is about 11px on screen: corner handles would cover the whole box
+                    and turn a click into a drag. Checkboxes show handles only once selected,
+                    placed beside the box instead of on it (and never a resize handle). */}
+                {(isCheck ? isSel : (showGrip || isMobile)) && (
                   <div
                     onMouseDown={e => onDragStart(e, f)}
                     onTouchStart={e => onTouchDragStart(e, f, true)}
                     title="Drag to move this field"
                     aria-label="Move field"
-                    style={{ position: 'absolute', top: isMobile ? -13 : -9, left: isMobile ? -13 : -9,
+                    style={{ position: 'absolute',
+                      ...(isCheck
+                        ? { top: '50%', left: -((isMobile ? 26 : 17) + 4), transform: 'translateY(-50%)' }
+                        : { top: isMobile ? -13 : -9, left: isMobile ? -13 : -9 }),
                       width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%',
                       background: '#c9922c', color: '#fff', cursor: 'move', touchAction: 'none',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -788,10 +856,14 @@ export default function TransactionDocEditor({
                   <button onClick={e => { e.stopPropagation(); delField(f.id); }}
                     onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
                     aria-label="Delete field"
-                    style={{ position: 'absolute', top: isMobile ? -13 : -9, right: isMobile ? -13 : -9, width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
+                    style={{ position: 'absolute',
+                      ...(isCheck
+                        ? { top: '50%', right: -((isMobile ? 26 : 17) + 4), transform: 'translateY(-50%)' }
+                        : { top: isMobile ? -13 : -9, right: isMobile ? -13 : -9 }),
+                      width: isMobile ? 26 : 17, height: isMobile ? 26 : 17, borderRadius: '50%', border: 'none', background: '#ef4444', color: '#fff', fontSize: isMobile ? 13 : 10, cursor: 'pointer', lineHeight: isMobile ? '26px' : '17px', padding: 0 }}>✕</button>
                 )}
                 {/* Resize: drag right to widen the box, down to grow the text. */}
-                {(showGrip || isMobile) && (
+                {!isCheck && (showGrip || isMobile) && (
                   <div
                     onMouseDown={e => onResizeStart(e, f)}
                     onTouchStart={e => onTouchResizeStart(e, f)}

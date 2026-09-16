@@ -484,7 +484,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showContactCompose, setShowContactCompose] = useState(false);
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
-  const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
+  const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; deal_id?: string | null; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
   // Which document row is being renamed, and the draft name in the box.
@@ -2831,6 +2831,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Open deal modal ───────────────────────────────────────────────────────────
   function openDeal(deal: Deal) {
+    setDealFormPick('');   // a pick left on the previous deal must not act on this one
     setActiveDeal(deal);
     setDealNotesText(deal.notes ?? '');
     setDealTab('overview');
@@ -8183,7 +8184,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         any blanks already sitting on this deal waiting to be filled. */}
                     {(() => {
                       const waiting = dealForms.filter(f => !f.url);
-                      const onDeal = new Set(dealForms.map(f => f.form_id).filter(Boolean) as string[]);
+                      // Only this deal's OWN docs hide a form from "All forms". Property-level docs
+                      // mirrored into the deal belong to the property, and hiding them here made that
+                      // form un-addable on every deal at the property.
+                      const onDeal = new Set(dealForms.filter(f => f.deal_id === activeDeal.id).map(f => f.form_id).filter(Boolean) as string[]);
                       const library = crmForms.filter(f => !onDeal.has(f.id));
                       const isWaiting = dealFormPick.startsWith('sub:');
                       const act = () => {
@@ -8191,6 +8195,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         if (isWaiting) {
                           const f = waiting.find(w => w.id === dealFormPick.slice(4));
                           if (f) openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code);
+                          setDealFormPick('');
                         } else {
                           const f = crmForms.find(x => x.id === dealFormPick.slice(4));
                           if (f) addFormToDeal({ id: f.id, name: f.name });

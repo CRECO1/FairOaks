@@ -134,9 +134,12 @@ export async function GET(req: NextRequest) {
     if (!isAdminRole(ctx.role)) dq = dq.eq('business_unit', ctx.businessUnit);
     const { data: dealsAtListing } = await dq;
     const ids = (dealsAtListing ?? []).map(d => d.id as string);
+    // A doc with a deal_id belongs to that deal: it shows here only while the deal is
+    // at this property. (Filtering on listing_id alone kept showing a deal's docs after
+    // the deal was unlinked or moved, because they still carried this listing_id.)
     q = ids.length
-      ? q.or(`listing_id.eq.${listingId},deal_id.in.(${ids.join(',')})`)
-      : q.eq('listing_id', listingId);
+      ? q.or(`and(listing_id.eq.${listingId},deal_id.is.null),deal_id.in.(${ids.join(',')})`)
+      : q.eq('listing_id', listingId).is('deal_id', null);
   }
   const { data, error } = await q;
   if (error) { console.error('[api/form-submissions] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
@@ -173,7 +176,7 @@ export async function POST(req: NextRequest) {
       }
     }
     const { data: copy, error } = await supabase.from('crm_form_submissions').insert({
-      form_id: src.form_id, deal_id: src.deal_id, listing_id: src.listing_id, business_unit: src.business_unit,
+      form_id: src.form_id, deal_id: src.deal_id, listing_id: src.listing_id, client_id: src.client_id ?? null, business_unit: src.business_unit,
       title: `${src.title || 'Document'} (copy)`, values: src.values ?? [], status: 'saved', filled_path, created_by: ctx.userId,
       // Carry the editable source so a copied builder doc (e.g. an LOI) stays re-editable.
       builder_data: src.builder_data ?? null,
@@ -183,6 +186,10 @@ export async function POST(req: NextRequest) {
   }
 
   const { form_id, deal_id, listing_id, client_id, title, values, pdfBase64, business_unit, submission_id, builder_data } = body;
+  // Explicit intent flags for an UPDATE. Editors always send the deal they were opened
+  // from and the template's name; neither means "move this doc" or "rename it".
+  const relinkDeal = body.relink_deal === true;
+  const retitle = body.retitle === true;
   if (!form_id && !submission_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();
 
@@ -191,7 +198,7 @@ export async function POST(req: NextRequest) {
     return notFound('Submission not found');
   }
   // Agents can't file a submission against another workspace's deal, listing, or unit.
-  if (deal_id && !(await assertOwnsResource('crm_deals', deal_id, ctx))) {
+  if (deal_id && (!submission_id || relinkDeal) && !(await assertOwnsResource('crm_deals', deal_id, ctx))) {
     return notFound('Deal not found');
   }
   if (listing_id && !(await assertCanAccessListing(listing_id, ctx))) {
@@ -216,12 +223,13 @@ export async function POST(req: NextRequest) {
   let priorBuilder: LoiData | null = null;
   let priorValues: unknown = null;
   let priorLinks: { deal_id: string | null; listing_id: string | null; client_id: string | null } | null = null;
+  let priorTitle: string | null = null;
   if (submission_id) {
     const { data: prior } = await supabase.from('crm_form_submissions')
-      .select('builder_data, values, deal_id, listing_id, client_id').eq('id', submission_id).maybeSingle();
+      .select('builder_data, values, deal_id, listing_id, client_id, title').eq('id', submission_id).maybeSingle();
     priorBuilder = (prior?.builder_data as LoiData) ?? null;
     priorValues = prior?.values ?? null;
-    if (prior) priorLinks = { deal_id: prior.deal_id ?? null, listing_id: prior.listing_id ?? null, client_id: prior.client_id ?? null };
+    if (prior) { priorLinks = { deal_id: prior.deal_id ?? null, listing_id: prior.listing_id ?? null, client_id: prior.client_id ?? null }; priorTitle = prior.title ?? null; }
   }
 
   const base = {
@@ -230,11 +238,16 @@ export async function POST(req: NextRequest) {
     // from a deal (and vice versa) — and that caller only knows its OWN id. Writing
     // `deal_id || null` there would null the doc's listing_id and drop it out of the
     // property. Keep whichever link the caller didn't speak to.
-    deal_id: deal_id || priorLinks?.deal_id || null,
+    // A property-level doc is mirrored into every deal at the property, so the deal an
+    // editor was opened from says nothing about where the doc lives. On update the deal
+    // link only changes when the caller explicitly re-links (the deal picker) — which is
+    // also how a doc is unlinked (relink_deal with deal_id null).
+    deal_id: priorLinks ? (relinkDeal ? (deal_id || null) : priorLinks.deal_id) : (deal_id || null),
     listing_id: listing_id || priorLinks?.listing_id || null,
     client_id: client_id || priorLinks?.client_id || null,
     business_unit: unit,
-    title: title || null,
+    // Saving must not undo a rename: editors send the template's name every time.
+    title: priorLinks && !retitle ? (priorTitle ?? title ?? null) : (title || null),
     values: values ?? [],
     status: 'saved',
     updated_at: new Date().toISOString(),
@@ -257,7 +270,10 @@ export async function POST(req: NextRequest) {
     try {
       let summary = 'Created'; let changes: unknown = {};
       if (submission_id) {
-        if (builder_data !== undefined) { const d = diffBuilder(priorBuilder, builder_data as LoiData); summary = summarizeDiff(d); changes = d; }
+        if (builder_data !== undefined) {
+          if (priorBuilder) { const d = diffBuilder(priorBuilder, builder_data as LoiData); summary = summarizeDiff(d); changes = d; }
+          else { summary = 'Created in the builder'; }   // first builder save: nothing to diff against
+        }
         else { const d = diffOverlay(priorValues, values ?? []); summary = summarizeOverlay(d); changes = d; }
       }
       if (summary) await supabase.from('crm_form_submission_edits').insert({ submission_id: (res.data as { id: string }).id, editor_id: ctx.userId, business_unit: unit, summary, changes });

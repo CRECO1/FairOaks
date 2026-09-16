@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib/crm-auth';
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLease, normalizeLeaseValues, type LeaseValues } from '@/lib/lease-doc';
@@ -170,13 +170,35 @@ export async function POST(req: NextRequest) {
  * suite has one, the tenant's contact.
  */
 const LEASE_FORM_ID = 'de642507-388e-4ab4-b19e-b2b385841ddc';
+// Human names for the edit history when a generated lease is regenerated.
+const LEASE_LABELS: Record<string, string> = {
+  tenant_name: 'Tenant name', building: 'Building', suite: 'Suite', effective_date: 'Start date',
+  term_months: 'Term', end_date: 'End date', monthly_rent: 'Monthly rent', monthly_rent_year2: 'Year 2 rent',
+  year2_start: 'Year 2 start', internet_fee: 'Internet', security_deposit: 'Security deposit',
+  tenant_phone: 'Tenant phone', tenant_email: 'Tenant email',
+};
 
 export async function PUT(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const { listing_id, values } = await req.json().catch(() => ({}));
-  if (!listing_id || !values) return NextResponse.json({ error: 'listing_id and values required' }, { status: 400 });
-  if (!(await assertCanSeeRentRoll(listing_id, ctx))) return notFound('Property not found');
+  const { listing_id, values, submission_id } = await req.json().catch(() => ({}));
+  if (!values) return NextResponse.json({ error: 'values required' }, { status: 400 });
+  // Two uses: create a lease on a property (listing_id), or regenerate an existing
+  // generated lease after its values were edited (submission_id). A generated lease
+  // can't be re-edited as overlay fields — its clauses reflow with the values, so its
+  // saved field positions don't line up with the blank master template.
+  let listingRow: Record<string, unknown> | null = null;
+  let prior: { listing_id: string | null; builder_data: Record<string, unknown> | null } | null = null;
+  if (submission_id) {
+    if (!(await assertOwnsResource('crm_form_submissions', submission_id, ctx))) return notFound('Document not found');
+    const { data } = await adminClient().from('crm_form_submissions').select('listing_id, builder_data, form_id').eq('id', submission_id).maybeSingle();
+    if (!data || data.form_id !== LEASE_FORM_ID) return notFound('Document not found');
+    prior = { listing_id: data.listing_id ?? null, builder_data: (data.builder_data as Record<string, unknown>) ?? null };
+  } else {
+    if (!listing_id) return NextResponse.json({ error: 'listing_id and values required' }, { status: 400 });
+    listingRow = await assertCanSeeRentRoll(listing_id, ctx);
+    if (!listingRow) return notFound('Property not found');
+  }
 
   // Derived values (the rent + internet total) are filled here, so the stored field
   // values, builder_data and the printed PDF all carry the same figure.
@@ -188,8 +210,9 @@ export async function PUT(req: NextRequest) {
   const db = adminClient();
   // Link the document to the tenant's contact where the roll knows one, so it lands on
   // their card as well as the property.
-  const { data: row } = await db.from('crm_property_tenants')
-    .select('contact_id').eq('listing_id', listing_id).eq('suite', String(v.suite)).maybeSingle();
+  const { data: row } = listing_id
+    ? await db.from('crm_property_tenants').select('contact_id').eq('listing_id', listing_id).eq('suite', String(v.suite)).maybeSingle()
+    : { data: null };
 
   try {
     const { pdf, blanks } = await buildLease(v);
@@ -205,10 +228,31 @@ export async function PUT(req: NextRequest) {
       .upload(path, Buffer.from(pdf), { contentType: 'application/pdf', upsert: true });
     if (upErr) { console.error('[lease-draft] upload', upErr); return NextResponse.json({ error: 'Could not save the lease PDF' }, { status: 500 }); }
 
+    if (submission_id && prior) {
+      // Regenerate in place: new PDF + values, same document (links and title kept).
+      const { data, error } = await db.from('crm_form_submissions')
+        .update({ values: fields, builder_data: v, filled_path: path, status: 'saved', updated_at: new Date().toISOString() })
+        .eq('id', submission_id).select('id, title, client_id').single();
+      if (error) { console.error('[lease-draft] update', error); return NextResponse.json({ error: 'Could not save the lease' }, { status: 500 }); }
+      // Audit trail, in the same table the document editor's History panel reads.
+      const before = prior.builder_data ?? {};
+      const changed = Object.keys(LEASE_LABELS).filter(k => String((before as Record<string, unknown>)[k] ?? '') !== String((v as Record<string, unknown>)[k] ?? ''));
+      if (changed.length) {
+        const names = changed.map(k => LEASE_LABELS[k]);
+        const summary = `Edited ${names.length <= 4 ? names.join(', ') : `${names.slice(0, 4).join(', ')} +${names.length - 4} more`}`;
+        try {
+          await db.from('crm_form_submission_edits').insert({ submission_id, editor_id: ctx.userId, business_unit: ctx.businessUnit ?? 'commercial', summary, changes: { edited: names, fields: changed } });
+        } catch (e) { console.error('[lease-draft] edit-log', e); }
+      }
+      return NextResponse.json({ submission: data });
+    }
+
     const term = String(v.term_months || '').trim();
     const { data, error } = await db.from('crm_form_submissions').insert({
       form_id: LEASE_FORM_ID, listing_id, client_id: row?.contact_id ?? null,
-      business_unit: ctx.businessUnit ?? 'commercial',
+      // The property's workspace, not the caller's: an admin working from another
+      // workspace must not file this lease where the property's agents can't see it.
+      business_unit: (listingRow?.business_unit as string | undefined) ?? ctx.businessUnit ?? 'commercial',
       title: `${v.tenant_name} — Lease Agreement (Suite ${v.suite}${term ? `, ${term} mo` : ''})`,
       values: fields, status: 'saved', filled_path: path, builder_data: v, created_by: ctx.userId,
     }).select('id, title, client_id').single();

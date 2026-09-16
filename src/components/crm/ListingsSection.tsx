@@ -1520,7 +1520,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       {deals.map(d => {
                         const agent = profiles.find(p => p.id === d.agent_id);
                         const chip = STAGE_CHIP[d.stage || 'Prospect'] || STAGE_CHIP.Prospect;
-                        const allDocs = dealForms[d.id] ?? [];
+                        // The deal endpoint mirrors the property's own docs into every deal; on the
+                        // property page those already show under Documents, so a deal card lists only
+                        // the docs that belong to that deal (otherwise each card repeated them, and its
+                        // Edit/✕ acted on a doc that isn't the deal's).
+                        const allDocs = (dealForms[d.id] ?? []).filter(f => f.deal_id === d.id);
                         // Filled docs get a row; blanks live in the dropdown below.
                         const docs = allDocs.filter(f => f.url);
                         const waiting = allDocs.filter(f => !f.url);
@@ -1533,6 +1537,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                           if (pickIsWaiting) {
                             const f = waiting.find(w => w.id === pick.slice(4));
                             if (f) editDealForm(d.id, { id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code);
+                            setDealFormPick(prev => ({ ...prev, [d.id]: '' }));
                           } else {
                             const fm = crmForms.find(x => x.id === pick.slice(4));
                             if (fm) addFormToDeal(d.id, fm);

@@ -4,6 +4,7 @@
 // manages an out-for-signature request (nudge the current signer, fix a pending signer's
 // email, add another signer, or cancel). Backed by /api/crm/envelopes.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { isBrokerFilled } from '@/lib/esign-fields';
 import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';
 
@@ -203,7 +204,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
         // Show the fields as they WILL be sent (removed dropped, reassigned remapped) —
         // including the text / checkbox inputs the signer will have to fill in.
         const SIG = ['signature', 'initial', 'date', 'text', 'check'];
-        const effective = docValues.filter(v => SIG.includes(String(v.type))).flatMap(v => {
+        const effective = docValues.filter(v => SIG.includes(String(v.type)) && !isBrokerFilled(v)).flatMap(v => {
           const g = fieldGroups.find(x => x.origRole === String(v.signerRole || 'client'));
           if (g && !g.keep) return [];
           const role = g && g.role !== g.origRole ? g.role : String(v.signerRole || 'client');

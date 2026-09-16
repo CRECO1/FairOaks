@@ -26,15 +26,18 @@ const EXAMPLES = [
   '12 month renewal for KJF Insurance at the current rent',
 ];
 
-export default function LeaseDraftModal({ listingId, authToken, onToast, onCreate, onClose }: {
-  listingId: string;
+export default function LeaseDraftModal({ listingId, authToken, onToast, onCreate, onClose, initialValues }: {
+  listingId?: string;
+  /** Edit an existing generated lease: skip drafting, start from its saved values. */
+  initialValues?: LeaseDraftValues;
   authToken?: string;
   onToast: (m: string) => void;
   onCreate: (v: LeaseDraftValues) => Promise<void> | void;
   onClose: () => void;
 }) {
   const [prompt, setPrompt] = useState('');
-  const [values, setValues] = useState<LeaseDraftValues | null>(null);
+  const editing = !!initialValues;
+  const [values, setValues] = useState<LeaseDraftValues | null>(initialValues ?? null);
   const [notes, setNotes] = useState<string[]>([]);
   const [matchedSuite, setMatchedSuite] = useState<string>('');
   const [busy, setBusy] = useState(false);
@@ -63,15 +66,17 @@ export default function LeaseDraftModal({ listingId, authToken, onToast, onCreat
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 760, padding: 22, fontFamily: "'DM Sans',sans-serif" }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>✨ Draft a lease</div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>{editing ? '✏️ Edit lease' : '✨ Draft a lease'}</div>
           <span style={{ flex: 1 }} />
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, color: '#9ca3af', cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 14 }}>
-          Describe the lease in a sentence. It fills the form from the rent roll — you check it before anything is created.
+          {editing
+            ? 'Change any value and save — the lease is regenerated with the clauses reflowed, and the change is logged in its history.'
+            : 'Describe the lease in a sentence. It fills the form from the rent roll — you check it before anything is created.'}
         </div>
 
-        <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={3}
+        {!editing && <><textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={3}
           onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') draft(); }}
           placeholder={EXAMPLES[0]}
           style={{ ...inp, resize: 'vertical', marginBottom: 8 }} />
@@ -83,7 +88,7 @@ export default function LeaseDraftModal({ listingId, authToken, onToast, onCreat
           {!values && EXAMPLES.map(x => (
             <button key={x} onClick={() => setPrompt(x)} style={{ background: 'none', border: 'none', color: '#a06a12', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>{x}</button>
           ))}
-        </div>
+        </div></>}
 
         {values && (
           <>
@@ -113,7 +118,7 @@ export default function LeaseDraftModal({ listingId, authToken, onToast, onCreat
               <button disabled={creating}
                 onClick={async () => { setCreating(true); try { await onCreate(values); } finally { setCreating(false); } }}
                 style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#111', color: '#fff', fontSize: 13.5, fontWeight: 700, cursor: creating ? 'default' : 'pointer', opacity: creating ? .6 : 1 }}>
-                {creating ? 'Creating…' : 'Create lease'}
+                {creating ? (editing ? 'Saving…' : 'Creating…') : (editing ? 'Save & regenerate' : 'Create lease')}
               </button>
             </div>
           </>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isBrokerFilled } from '@/lib/esign-fields';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, declinedEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
 
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     const vals: Array<Record<string, unknown>> = Array.isArray(sub?.values) ? sub!.values : [];
     fields = vals
       .map((f, i) => ({ f, i }))
-      .filter(({ f }) => (SIG.includes(String(f.type)) || INPUT.includes(String(f.type))) && (
+      .filter(({ f }) => (SIG.includes(String(f.type)) || INPUT.includes(String(f.type))) && !isBrokerFilled(f) && (
         f.signerIndex
           ? Number(f.signerIndex) === signer.signing_order
           : String(f.signerRole ?? 'client') === String(signer.signer_role ?? 'client')))
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     const { data: sub } = await db.from('crm_form_submissions').select('values').eq('id', env.submission_id).maybeSingle();
     subVals = Array.isArray(sub?.values) ? (sub!.values as Array<Record<string, unknown>>) : [];
     myInputs = subVals.map((f, i) => ({ f, i }))
-      .filter(({ f }) => ['text', 'check'].includes(String(f.type)) && (
+      .filter(({ f }) => ['text', 'check'].includes(String(f.type)) && !isBrokerFilled(f) && (
         f.signerIndex ? Number(f.signerIndex) === signer.signing_order : String(f.signerRole ?? 'client') === String(signer.signer_role ?? 'client')))
       .map(({ i }) => i);
     const missing = myInputs.filter(i => !String(fieldValues[`f${i}`] ?? '').trim()).length;
