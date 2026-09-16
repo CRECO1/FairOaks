@@ -129,7 +129,8 @@ export async function listForwardingNumbers(): Promise<TrForwardingNumber[]> {
 }
 /** Register the bot line as a Talkroute forwarding destination (idempotent). Routing to it is chosen in Talkroute. */
 export async function ensureForwardingNumber(number: string, description: string): Promise<{ created: boolean; number: TrForwardingNumber }> {
-  const existing = (await listForwardingNumbers()).find(f => f.number.replace(/\D/g, '').slice(-10) === number.replace(/\D/g, '').slice(-10));
+  const want = number.replace(/\D/g, '').slice(-10);
+  const existing = (await listForwardingNumbers()).find(f => String((f as { number?: string; phoneNumber?: string }).number ?? (f as { phoneNumber?: string }).phoneNumber ?? '').replace(/\D/g, '').slice(-10) === want);
   if (existing) return { created: false, number: existing };
   const j = await tr<{ data: TrForwardingNumber }>('/forwarding-numbers', { method: 'POST', body: JSON.stringify({ number, description, announceAndVoicemailEnabled: false }) });
   return { created: true, number: j.data };
