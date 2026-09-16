@@ -203,6 +203,59 @@ export async function extractImages(
   return images;
 }
 
+/**
+ * URL fragments that mark an <img> as email chrome (logo, headshot, social icon,
+ * tracking pixel, store badge) rather than a property flyer/photo.
+ */
+const IMG_URL_JUNK =
+  /pixel|tracking|track\.|\/track|beacon|open\.aspx|spacer|1x1|transparent|\blogo\b|icon|favicon|headshot|avatar|signature|social|facebook|twitter|linkedin|instagram|youtube|tiktok|\.svg|emoji|sprite|badge|app-?store|google-?play|placeholder|\bfooter\b|\bheader\b/i;
+
+/** Pull candidate hosted image URLs out of raw HTML (https only, junk + SSRF filtered). */
+function hostedImageUrls(html: string): string[] {
+  const urls = new Set<string>();
+  for (const m of html.matchAll(/<img[^>]+src\s*=\s*["']([^"']+)["']/gi)) {
+    const u = m[1].trim();
+    if (!/^https:\/\//i.test(u) || IMG_URL_JUNK.test(u)) continue;
+    let host = '';
+    try { host = new URL(u).hostname; } catch { continue; }
+    // Block private/loopback/link-local hosts (basic SSRF guard).
+    if (/^(localhost$|127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) continue;
+    urls.add(u);
+    if (urls.size >= 16) break;
+  }
+  return [...urls];
+}
+
+/**
+ * Broker emails almost always link their flyer/hero photo remotely (`<img src=…>`)
+ * instead of attaching it, so the attachment scan finds nothing. Download the
+ * candidate hosted images (parallel, guarded by type/size/timeout) and return the
+ * LARGEST one — the property photo is reliably the biggest content image.
+ */
+export async function fetchHostedFlyer(html: string | undefined): Promise<GmailImage | undefined> {
+  if (!html) return undefined;
+  const urls = hostedImageUrls(html);
+  if (!urls.length) return undefined;
+  const one = async (u: string): Promise<{ img: GmailImage; size: number } | null> => {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6_000);
+      const r = await fetch(u, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+      if (!r.ok) return null;
+      const ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (!SUPPORTED_IMAGE.has(ct)) return null;
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.length < MIN_IMAGE_BYTES || buf.length > MAX_IMAGE_BYTES) return null;
+      return { img: { mimeType: ct as GmailImage['mimeType'], data: buf.toString('base64') }, size: buf.length };
+    } catch { return null; }
+  };
+  const got = await Promise.all(urls.slice(0, 8).map(one));
+  const best = got
+    .filter((x): x is { img: GmailImage; size: number } => !!x)
+    .sort((a, b) => b.size - a.size)[0];
+  return best?.img;
+}
+
 /** Fetch a full message and reduce it to a FetchedEmail (headers + body + images). */
 export async function fetchEmail(
   accessToken: string,
@@ -221,6 +274,7 @@ export async function fetchEmail(
 
   const body = extractBody(msg.payload);
   const images = await extractImages(accessToken, id, msg.payload, maxImages);
+  const rawHtml = findPartData(msg.payload, 'text/html');
 
   return {
     id,
@@ -230,5 +284,6 @@ export async function fetchEmail(
     date: get('Date'),
     body,
     images,
+    html: rawHtml ? decodeBase64(rawHtml) : undefined,
   };
 }

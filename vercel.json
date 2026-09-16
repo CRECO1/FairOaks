@@ -41,6 +41,10 @@
       "schedule": "0 13 * * *"
     },
     {
+      "path": "/api/cron/digest-dedupe",
+      "schedule": "0 15 * * 1"
+    },
+    {
       "path": "/api/cron/lease-expirations",
       "schedule": "0 12 * * *"
     },

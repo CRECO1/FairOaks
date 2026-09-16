@@ -39,6 +39,8 @@ export interface FetchedEmail {
   body: string;
   /** Inline/attached flyer images, base64. */
   images: GmailImage[];
+  /** Raw HTML body, kept so a hosted (remotely-linked) flyer image can be pulled lazily. */
+  html?: string;
 }
 
 /**

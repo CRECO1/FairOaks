@@ -5,15 +5,21 @@
  * Used by both the weekly cron route and scripts/broker-backfill.mjs.
  */
 
-import { getBrokerAccessToken, listMessageIds, fetchEmail } from './gmail';
+import { getBrokerAccessToken, listMessageIds, fetchEmail, fetchHostedFlyer } from './gmail';
 import { extractListing, extractDigestListings, MODEL } from './extract';
 import { upsertProperties, fetchExistingRows } from './upsert';
-import type { Extraction, GmailImage, PropertyRecord } from './types';
+import type { Extraction, FetchedEmail, GmailImage, PropertyRecord } from './types';
 
-/** The flyer is almost always the largest image (logos/signatures/pixels are tiny). */
-function pickFlyer(images: GmailImage[]): GmailImage | undefined {
-  if (!images.length) return undefined;
-  return images.reduce((a, b) => (b.data.length > a.data.length ? b : a));
+/**
+ * The flyer: prefer the largest actually-attached image (logos/pixels are tiny), but
+ * most broker emails attach nothing and link the flyer remotely, so fall back to the
+ * largest hosted <img> in the HTML. Only called for single listings, never digests.
+ */
+async function pickFlyer(email: FetchedEmail): Promise<GmailImage | undefined> {
+  if (email.images.length) {
+    return email.images.reduce((a, b) => (b.data.length > a.data.length ? b : a));
+  }
+  return fetchHostedFlyer(email.html);
 }
 
 /**
@@ -149,7 +155,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
           }
           continue;
         }
-        items.push({ extraction: ex, flyer: pickFlyer(email.images) });
+        items.push({ extraction: ex, flyer: await pickFlyer(email) });
         listings++;
         log(
           `  [${i}/${ids.length}] LISTING — ${ex.name ?? ex.address ?? '(no name)'} ` +
