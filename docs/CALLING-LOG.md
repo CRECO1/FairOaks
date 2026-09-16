@@ -107,9 +107,14 @@ Bot line **+1 830-251-4660** (Twilio) is Talkroute forwarding number "AI recepti
 groups (CRECO, Fair Oaks) ring in sequence for 24 s (4 rings) then send the caller to
 that group; the bot group falls back to the shared voicemail box if the line fails.
 Setup panel actions: `inspect_routing`, `route_no_answer_to_bot {ring_group_id, seconds}`,
-`add_forwarding_number`. Plan gates hit on Basic: ring-all strategy (402), date filters
-(402). After-hours (Hours of Operation → closed) still goes to voicemail. Voice:
-`TWILIO_VOICE=Google.en-US-Chirp3-HD-Aoede` (generative).
+`add_forwarding_number`, `enable_call_announce`, probes. Plan gates hit on Basic (all 402):
+ring-all strategy, date filters, Hours of Operation (`/hours`), forwarding schedules,
+the open/closed override. What IS allowed: PATCH ring groups (flat body) and PATCH a
+number's `destination`. So **after-hours** = `/api/cron/talkroute-hours` (hourly at :05):
+outside Mon–Sat 8:00–18:00 Central it points each number (ids 105036 CRECO, 142802
+Fair Oaks) at the bot ring group; inside, back at its team group. Change the schedule in
+`isBusinessOpen()` (talkroute.ts). Human forwarding numbers have call announce on, so a
+cell's voicemail can't count as an answer. Voice: `TWILIO_VOICE=Google.en-US-Chirp3-HD-Aoede`.
 
 ### 4. Webhooks + first sync
 
