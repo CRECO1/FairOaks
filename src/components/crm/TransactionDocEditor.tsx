@@ -394,7 +394,7 @@ export default function TransactionDocEditor({
         drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
       } else if (drawnWidth(font, val, size) <= maxW) {
         pg.drawText(val, { x, y, size, font, color: ink });
-      } else if (drawnWidth(font, val, size) * 0.78 <= maxW) {
+      } else if (drawnWidth(font, val, size) * 0.72 <= maxW) {
         // Only a little too long for a short printed line (a company name on a signature
         // block): shrink it onto the line rather than wrapping a word below it.
         pg.drawText(val, { x, y, size: size * maxW / drawnWidth(font, val, size), font, color: ink });
