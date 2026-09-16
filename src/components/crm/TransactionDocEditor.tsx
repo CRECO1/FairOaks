@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { parseRich, drawRichText, hasMarkup, type RichFonts } from '@/lib/rich-text';
+import { parseRich, drawRichText, drawnWidth, hasMarkup, type RichFonts } from '@/lib/rich-text';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
@@ -392,8 +392,12 @@ export default function TransactionDocEditor({
       const maxW = Math.max(24, f.fw * width - 4);
       if (hasMarkup(val)) {
         drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
-      } else if (font.widthOfTextAtSize(val, size) <= maxW) {
+      } else if (drawnWidth(font, val, size) <= maxW) {
         pg.drawText(val, { x, y, size, font, color: ink });
+      } else if (drawnWidth(font, val, size) * 0.78 <= maxW) {
+        // Only a little too long for a short printed line (a company name on a signature
+        // block): shrink it onto the line rather than wrapping a word below it.
+        pg.drawText(val, { x, y, size: size * maxW / drawnWidth(font, val, size), font, color: ink });
       } else {
         drawRichText({ page: pg, runs: parseRich(val), x, y, size, lineHeight: size * 1.08, maxW, fonts: rich, color: ink });
       }
