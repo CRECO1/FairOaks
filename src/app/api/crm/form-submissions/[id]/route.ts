@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Load one submission for re-editing: its saved values + a signed URL to the
@@ -84,33 +84,4 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     } catch (e) { console.error('[api/form-submissions/[id]] PATCH edit-log', e); }
   }
   return NextResponse.json({ ok: true, title: title ?? cur?.title ?? null });
-}
-
-// Delete a filled document. Same rule as uploaded files: its creator or an admin.
-// A document that went out for signature is refused (void the request first) and a
-// signed one is never deleted here — crm_envelopes.submission_id is ON DELETE SET NULL,
-// so deleting would silently orphan the executed copy.
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await getCrmContext(req);
-  if (!ctx) return unauthorized();
-  const { id } = await params;
-  if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound();
-  const supabase = adminClient();
-  const { data: doc } = await supabase.from('crm_form_submissions').select('created_by, filled_path').eq('id', id).maybeSingle();
-  if (!doc) return notFound();
-  if (doc.created_by !== ctx.userId && !isAdminRole(ctx.role)) {
-    return NextResponse.json({ error: 'Only the person who created this document or an admin can delete it.' }, { status: 403 });
-  }
-  const { data: envs } = await supabase.from('crm_envelopes').select('status').eq('submission_id', id).neq('status', 'voided');
-  if ((envs ?? []).some(e => e.status === 'completed')) {
-    return NextResponse.json({ error: 'This document has been signed and can’t be deleted.' }, { status: 409 });
-  }
-  if ((envs ?? []).length) {
-    return NextResponse.json({ error: 'This document is out for signature — void the request before deleting it.' }, { status: 409 });
-  }
-  await supabase.from('crm_form_submission_edits').delete().eq('submission_id', id);
-  const { error } = await supabase.from('crm_form_submissions').delete().eq('id', id);
-  if (error) { console.error('[api/form-submissions/[id]] DELETE', error); return NextResponse.json({ error: 'Delete failed' }, { status: 500 }); }
-  if (doc.filled_path) await supabase.storage.from('transaction-forms').remove([doc.filled_path]);
-  return NextResponse.json({ ok: true });
 }

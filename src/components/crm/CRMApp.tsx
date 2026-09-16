@@ -1171,15 +1171,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [authGet]);
   // Rename a document from the deal's Docs list. Forms arrive named after the template
   // they came from, which stops being useful the moment a deal has two of them.
-  const deleteDealForm = useCallback(async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? This removes the document and its edit history and cannot be undone.`)) return;
+  // Delete a filled document (deal Docs tab and a contact's Documents). Same endpoint
+  // and wording as the property Documents list: a signed document is refused, and one
+  // still out for signature has its pending request cancelled with it.
+  const deleteFormDoc = useCallback(async (id: string, name: string, pendingSignature: boolean) => {
+    const msg = pendingSignature
+      ? `"${name}" is out for signature. Deleting it will CANCEL the pending signature request (the signers can no longer sign) and remove the document. Continue?`
+      : `Delete "${name}"? This cannot be undone.`;
+    if (!confirm(msg)) return;
     try {
-      const r = await fetch(`/api/crm/form-submissions/${id}`, {
+      const r = await fetch(`/api/crm/form-submissions?id=${id}`, {
         method: 'DELETE',
         headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
       });
       if (!r.ok) { showToast((await r.json().catch(() => ({})))?.error || 'Could not delete the document'); return; }
       setDealForms(fs => fs.filter(f => f.id !== id));
+      setClientDocs(ds => ds.filter(d => d.id !== id));
       showToast(`${name} deleted`);
     } catch { showToast('Could not delete the document'); }
   }, [session?.access_token, showToast]);
@@ -8307,7 +8314,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             return <button onClick={() => setEsignModal({ mode: 'send', doc: f })} disabled={!f.url} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                           })()}
                           <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
-                          <button onClick={() => deleteDealForm(f.id, f.title || f.crm_forms?.name || 'Document')} title="Delete this document"
+                          <button onClick={() => { const env = dealEnvMap[f.id]; deleteFormDoc(f.id, f.title || f.crm_forms?.name || 'Document', !!env && env.status !== 'completed' && env.status !== 'voided'); }} title="Delete this document"
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px', flexShrink: 0 }}>🗑</button>
                         </div>
                       );
@@ -9343,6 +9350,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <button onClick={() => setPreviewFile({ url: d.url!, name: `${d.title || 'Document'}.pdf`, type: 'application/pdf' })}
                               style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>
                           )}
+                          <button onClick={() => deleteFormDoc(d.id, d.title || d.crm_forms?.name || 'Document', false)} title="Delete this document"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px', flexShrink: 0 }}>🗑</button>
                         </div>
                       ))}
                     </div>

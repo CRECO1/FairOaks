@@ -322,6 +322,8 @@ export async function DELETE(req: NextRequest) {
     if (blobs.length) await supabase.storage.from('transaction-forms').remove(blobs);
     await supabase.from('crm_envelopes').delete().eq('id', e.id);
   }
+  // The edit log references the document; clear it first so the delete isn't blocked.
+  await supabase.from('crm_form_submission_edits').delete().eq('submission_id', id);
   const { error } = await supabase.from('crm_form_submissions').delete().eq('id', id);
   if (error) { console.error('[api/form-submissions] DELETE', error); return NextResponse.json({ error: 'Delete failed' }, { status: 500 }); }
   return NextResponse.json({ ok: true });

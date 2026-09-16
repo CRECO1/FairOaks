@@ -77,6 +77,7 @@ const winAnsi = (s: string): string =>
     // eslint-disable-next-line no-control-regex
     .replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
 
+type TemplateRow = { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null; default_value?: string | null; signer_role?: string | null };
 interface DealLite { id: string; client?: string; property?: string; type?: string; }
 
 // A named person this document will be sent to. When the caller knows the actual
@@ -199,6 +200,22 @@ export default function TransactionDocEditor({
   // The auth token is read through a ref, not listed as a dependency: the session
   // refreshes about hourly, and re-running this load then replaced every field the
   // agent had typed (a new doc even fell back to the blank template before re-save).
+  // One template row (crm_form_fields) as an editor field.
+  const rowToField = (r: TemplateRow): Field => {
+    const t = String(r.type || 'text');
+    const type: Field['type'] = t === 'check' ? 'check' : t === 'signature' ? 'signature' : t === 'initial' ? 'initial' : (t === 'date' || t === 'date_signed') ? 'date' : 'text';
+    return {
+      id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
+      // A template may ship starting text (default_value) — e.g. the standard
+      // LOI terms, which the agent then edits. The logged-in agent's own info
+      // still wins, so agent_name/phone/email fill with the real sender.
+      value: (r.field_key && fieldPrefill?.[r.field_key]) || r.default_value || '',
+      size: 11, type,
+      signerRole: (r.signer_role as Field['signerRole']) ?? undefined,
+      fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
+      defaultValue: r.default_value ?? undefined,
+    };
+  };
   const authTokenRef = useRef(authToken);
   authTokenRef.current = authToken;
   useEffect(() => {
@@ -229,21 +246,7 @@ export default function TransactionDocEditor({
         const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
         const json = await res.json();
         if (cancelled || !Array.isArray(json.fields)) return;
-        setFields(json.fields.map((r: { page?: number; x: number; y: number; w: number; type?: string; field_key?: string | null; label?: string | null; default_value?: string | null; signer_role?: string | null }) => {
-          const t = String(r.type || 'text');
-          const type: Field['type'] = t === 'check' ? 'check' : t === 'signature' ? 'signature' : t === 'initial' ? 'initial' : (t === 'date' || t === 'date_signed') ? 'date' : 'text';
-          return {
-            id: nextId(), page: r.page ?? 1, fx: r.x, fy: r.y, fw: r.w,
-            // A template may ship starting text (default_value) — e.g. the standard
-            // LOI terms, which the agent then edits. The logged-in agent's own info
-            // still wins, so agent_name/phone/email fill with the real sender.
-            value: (r.field_key && fieldPrefill?.[r.field_key]) || r.default_value || '',
-            size: 11, type,
-            signerRole: (r.signer_role as Field['signerRole']) ?? undefined,
-            fieldKey: r.field_key ?? undefined, label: r.label ?? undefined,
-            defaultValue: r.default_value ?? undefined,
-          };
-        }));
+        setFields(json.fields.map((r: TemplateRow) => rowToField(r)));
       } catch { /* no template yet */ }
     })();
     return () => { cancelled = true; };
@@ -265,7 +268,10 @@ export default function TransactionDocEditor({
     // In the library editor a placed checkbox is the agent's own mark, so it starts
     // ticked. When composing for signers it is a box for THEM to tick — pre-ticking it
     // would bake an X into the PDF before sending that the signer could never remove.
+    // A new text field gets a hint: an empty, unlabeled field used to render as a
+    // sliver agents couldn't click into.
     setFields(f => [...f, { id, page: pd.num, fx, fy, fw, value: tool === 'check' && !activeRec ? '✔' : '', size: 11, type: tool,
+      label: tool === 'text' ? 'Text' : undefined,
       signerRole: activeRec?.role ?? (isSig ? sigRole : undefined),
       signerKey: activeRec ? activeRec.key : undefined }]);
     setSelected(id);
@@ -348,7 +354,55 @@ export default function TransactionDocEditor({
     const key = fs.find(f => f.id === id)?.fieldKey;
     return fs.map(f => (f.id === id || (key && f.fieldKey === key)) ? { ...f, value } : f);
   });
-  const delField = (id: string) => { setFields(fs => fs.filter(f => f.id !== id)); setSelected(null); };
+  // Deleted fields go on an undo stack (⌘Z or the Undo button in the rail).
+  const [deletedStack, setDeletedStack] = useState<Field[]>([]);
+  const delField = (id: string) => {
+    setFields(fs => { const gone = fs.find(f => f.id === id); if (gone) setDeletedStack(st => [...st.slice(-49), gone]); return fs.filter(f => f.id !== id); });
+    setSelected(null);
+  };
+  const undoDelete = useCallback(() => {
+    setDeletedStack(st => {
+      const last = st[st.length - 1]; if (!last) return st;
+      setFields(fs => fs.some(f => f.id === last.id) ? fs : [...fs, last]);
+      setSelected(last.id);
+      return st.slice(0, -1);
+    });
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return; // leave text undo alone
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && deletedStack.length) { e.preventDefault(); undoDelete(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deletedStack.length, undoDelete]);
+
+  // Put back any field from the form's standard layout that is missing from this
+  // document (e.g. deleted by accident and saved). Fields still present — matched by
+  // page + position — are left untouched, and a restored field that shares a
+  // fill-once key picks up the value already typed for that key.
+  const restoreTemplateFields = useCallback(async () => {
+    try {
+      const h: Record<string, string> = {};
+      if (authTokenRef.current) h.Authorization = `Bearer ${authTokenRef.current}`;
+      const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
+      const json = await res.json();
+      if (!Array.isArray(json.fields)) { onToast?.('Could not load the form layout'); return; }
+      let added = 0;
+      setFields(fs => {
+        const near = (r: TemplateRow) => fs.some(f => f.page === (r.page ?? 1) && Math.abs(f.fx - r.x) < 0.006 && Math.abs(f.fy - r.y) < 0.006);
+        const missing = (json.fields as TemplateRow[]).filter(r => !near(r));
+        added = missing.length;
+        return [...fs, ...missing.map(r => {
+          const f = rowToField(r);
+          const shared = f.fieldKey ? fs.find(x => x.fieldKey === f.fieldKey && x.value)?.value : undefined;
+          return shared ? { ...f, value: shared } : f;
+        })];
+      });
+      setTimeout(() => onToast?.(added ? `Restored ${added} field${added === 1 ? '' : 's'}` : 'No fields are missing'), 0);
+    } catch { onToast?.('Could not load the form layout'); }
+  }, [form.id, onToast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Generate filled PDF ─────────────────────────────────────────────────────
   const build = useCallback(async (): Promise<Uint8Array | null> => {
@@ -723,6 +777,16 @@ export default function TransactionDocEditor({
           ])}
           {railGroup('Edit', [
             tile('select', '↖︎', 'Select / move'),
+            ...(deletedStack.length ? [
+              <button key="undo" onClick={undoDelete} title="Put back the last field you deleted (⌘Z)"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", textAlign: 'left', border: '1px solid #e5e7eb', background: '#fff', color: '#374151' }}>
+                <span style={{ width: 17, textAlign: 'center' }}>↶</span>Undo delete ({deletedStack.length})
+              </button>] : []),
+            ...(!imported && form.id ? [
+              <button key="restore" onClick={restoreTemplateFields} title="Add back any field from the standard form layout that is missing from this document"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 10px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", textAlign: 'left', border: '1px solid #e5e7eb', background: '#fff', color: '#374151' }}>
+                <span style={{ width: 17, textAlign: 'center' }}>⟲</span>Restore deleted fields
+              </button>] : []),
           ])}
 
           <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f1f2f4' }}>
@@ -837,7 +901,7 @@ export default function TransactionDocEditor({
                     placeholder={f.label || ''}
                     onFocus={() => setSelected(f.id)}
                     stopDrag
-                    style={{ width: '100%', minHeight: 0, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
+                    style={{ width: '100%', minHeight: `max(9px, ${cqw(em * 1.05)})`, fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
                       textAlign: 'left', padding: '0 2px', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
                   />
                 )}
