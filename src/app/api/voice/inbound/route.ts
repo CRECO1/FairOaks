@@ -22,7 +22,10 @@ export async function POST(req: Request) {
   const callSid = p.CallSid;
   const from = toE164(p.From);
   const to = toE164(p.To);
-  const unit = await unitForNumber(db, to);
+  // One bot line can serve both brands: when Talkroute forwards a call, Twilio tells
+  // us which Talkroute number it came through, and that number picks the workspace.
+  const via = toE164(p.ForwardedFrom) || toE164(p.CalledVia) || null;
+  const unit = await unitForNumber(db, via || to);
   const settings = await loadSettings(db, unit);
   const contact = await matchContact(db, from, unit);
 
@@ -36,7 +39,7 @@ export async function POST(req: Request) {
     business_unit: unit, source: 'voicebot', kind: 'bot', external_id: callSid, direction: 'inbound', result: 'in_progress',
     from_number: from, to_number: to, caller_name: p.CallerName || contact?.name || null, contact_id: contact?.id ?? null,
     started_at: new Date().toISOString(), needs_follow_up: true,
-    raw: { From: p.From, To: p.To, CallerName: p.CallerName, FromCity: p.FromCity, FromState: p.FromState },
+    raw: { From: p.From, To: p.To, ForwardedFrom: p.ForwardedFrom || null, CallerName: p.CallerName, FromCity: p.FromCity, FromState: p.FromState },
   }).select('id').single();
   if (call?.id) await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: greeting });
 

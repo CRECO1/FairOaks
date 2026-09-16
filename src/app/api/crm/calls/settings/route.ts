@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, getAccount, getPlanInfo, listSubscriptions, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, listSubscriptions, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -80,6 +80,14 @@ export async function POST(req: NextRequest) {
     if (b.action === 'diagnose') {
       // Which Talkroute endpoints the plan actually permits — 402 means "not on your plan".
       return NextResponse.json({ ok: true, ...(await getPlanInfo()) });
+    }
+    if (b.action === 'add_forwarding_number') {
+      // Make the bot line a Talkroute forwarding destination so it can be picked in Hours / no-answer / menu routing.
+      const settings = await loadSettings(adminClient(), unitFor(req, ctx));
+      const number = toE164(b.number) || settings.twilio_number;
+      if (!number) return NextResponse.json({ error: 'Set the bot line (Twilio number) first.' }, { status: 400 });
+      const r = await ensureForwardingNumber(number, String(b.description || 'AI receptionist').slice(0, 40));
+      return NextResponse.json({ ok: true, ...r });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;

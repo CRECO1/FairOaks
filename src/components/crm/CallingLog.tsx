@@ -253,13 +253,14 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     } finally { setBusy(null); }
   }
 
-  async function settingsAction(action: 'test_talkroute' | 'register_webhooks') {
+  async function settingsAction(action: 'test_talkroute' | 'register_webhooks' | 'add_forwarding_number') {
     setBusy(action);
     try {
       const r = await fetch('/api/crm/calls/settings', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ action }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast?.(j.error || 'Talkroute request failed'); return; }
       if (action === 'test_talkroute') showToast?.(`Talkroute connected ✓${j.account?.name ? ` — ${j.account.name}` : ''}`);
+      else if (action === 'add_forwarding_number') showToast?.(j.created ? `Bot line added to Talkroute forwarding numbers ✓ (transfer code ${j.number?.transferCode ?? '—'})` : 'Bot line is already a Talkroute forwarding number ✓');
       else showToast?.(`Webhooks ready ✓ ${j.created?.length ? `(added ${j.created.join(', ')})` : '(already registered)'}`);
     } finally { setBusy(null); }
   }
@@ -326,6 +327,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
             <button onClick={() => settingsAction('test_talkroute')} disabled={!conn?.talkroute || busy === 'test_talkroute'} style={{ ...mini, opacity: conn?.talkroute ? 1 : .5 }}>Test Talkroute connection</button>
+            <button onClick={() => settingsAction('add_forwarding_number')} disabled={!conn?.talkroute || !settings?.twilio_number || busy === 'add_forwarding_number'} style={{ ...mini, opacity: conn?.talkroute && settings?.twilio_number ? 1 : .5 }} title="Adds the bot line to Talkroute's Forwarding Numbers so you can route calls to it">Add bot line to Talkroute</button>
             <button onClick={() => settingsAction('register_webhooks')} disabled={!conn?.talkroute || !conn?.talkroute_webhook_secret || busy === 'register_webhooks'} style={{ ...mini, opacity: conn?.talkroute && conn?.talkroute_webhook_secret ? 1 : .5 }} title="Tells Talkroute to push new calls and voicemails here the moment they happen">Register Talkroute webhooks</button>
           </div>
 

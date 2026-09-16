@@ -122,6 +122,19 @@ export async function sendText(conversationId: string, body: string): Promise<Tr
   return ('data' in j ? j.data : j) as TrTextMessage;
 }
 
+export interface TrForwardingNumber { id?: string; number: string; description: string; announceAndVoicemailEnabled?: boolean; transferCode?: string }
+export async function listForwardingNumbers(): Promise<TrForwardingNumber[]> {
+  const j = await tr<Paged<TrForwardingNumber>>('/forwarding-numbers?pageSize=100');
+  return j.data ?? [];
+}
+/** Register the bot line as a Talkroute forwarding destination (idempotent). Routing to it is chosen in Talkroute. */
+export async function ensureForwardingNumber(number: string, description: string): Promise<{ created: boolean; number: TrForwardingNumber }> {
+  const existing = (await listForwardingNumbers()).find(f => f.number.replace(/\D/g, '').slice(-10) === number.replace(/\D/g, '').slice(-10));
+  if (existing) return { created: false, number: existing };
+  const j = await tr<{ data: TrForwardingNumber }>('/forwarding-numbers', { method: 'POST', body: JSON.stringify({ number, description, announceAndVoicemailEnabled: false }) });
+  return { created: true, number: j.data };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
