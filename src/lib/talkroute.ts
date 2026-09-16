@@ -181,7 +181,18 @@ export async function routeNoAnswerToBot(ringGroupId: string, seconds: number, b
     created = true;
     await tr(`/ring-groups/${bot.id}/members`, { method: 'PUT', body: JSON.stringify([{ enabled: true, forwardingDeviceId: String(botForwardingId), forwardingSchedule: null, sequencePosition: 1, ringTimeout: 60 }]) });
   }
-  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}`, { method: 'PATCH', body: JSON.stringify({ data: { maxHoldTime: seconds, destination: { type: 'ring_group', id: bot.id } } }) });
+  // The spec wraps the PATCH body in `data`; the live API silently ignores that shape and
+  // wants it flat. Try flat first, verify, and fall back to the wrapped form.
+  const patch = { maxHoldTime: seconds, destination: { type: 'ring_group', id: bot.id } };
+  const applied = async () => {
+    const g = (await tr<{ data: TrRingGroup }>(`/ring-groups/${encodeURIComponent(ringGroupId)}`)).data;
+    return g?.maxHoldTime === seconds && g?.destination?.type === 'ring_group' && String(g.destination.id) === String(bot!.id);
+  };
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  if (!(await applied())) {
+    await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}`, { method: 'PATCH', body: JSON.stringify({ data: patch }) });
+    if (!(await applied())) throw new TalkrouteError(500, 'Talkroute accepted the ring group update but did not apply it');
+  }
   return { botGroupId: bot.id, created };
 }
 
