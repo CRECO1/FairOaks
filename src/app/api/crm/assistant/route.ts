@@ -28,7 +28,12 @@ Leases & documents:
 - To draft a lease: find the property with find_property (use its id as listing_id), then draft_lease with the deal described in plain English. draft_lease only proposes values + notes — read the notes back to the agent (they flag guesses/conflicts), and once the terms look right, use generate_lease to actually file the document.
 - To start other transaction forms, use list_forms then start_form.
 
-Sending for signature (send_for_signature) emails real signers — it is outward-facing. The document must already be generated/saved. Always confirm with the agent the exact document AND every recipient's name and email before sending; look up a contact's email with get_contact/search_contacts rather than guessing it.`;
+Sending for signature (send_for_signature) emails real signers — it is outward-facing. The document must already be generated/saved. Always confirm with the agent the exact document AND every recipient's name and email before sending; look up a contact's email with get_contact/search_contacts rather than guessing it.
+
+Email & scheduling:
+- To email a contact, WRITE THE FULL EMAIL yourself first and show it in the chat so the agent can read it, then call send_email. It goes out from the agent's own Gmail (must be connected), so confirm the recipient, subject and body before sending. Never send with placeholder text.
+- schedule_event puts an all-day event on the agent's Google Calendar for a date.
+These are outward/real actions — treat them with the same confirm-first care as sending for signature.`;
 }
 
 interface ReqBody { messages?: Anthropic.MessageParam[]; allowWrites?: boolean }

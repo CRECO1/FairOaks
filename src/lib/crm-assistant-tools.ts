@@ -41,7 +41,7 @@ function scoped<T>(q: T, ctx: AgentCtx): T {
   return ctx.businessUnit ? (q as any).eq('business_unit', ctx.businessUnit) : q;
 }
 
-export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature']);
+export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event']);
 
 export const TOOLS: Anthropic.Tool[] = [
   { name: 'search_contacts', description: 'Search the CRM for contacts (people/companies) by name, email, or business name. Returns up to 10 matches with their id, name, type, and email.',
@@ -76,6 +76,12 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { form_id: { type: 'string' }, deal_id: { type: 'string' } }, required: ['form_id'] } },
   { name: 'send_for_signature', description: 'Send an existing saved document (a lease/form submission with a saved PDF) out for e-signature to one or more signers. WRITE + OUTWARD — this emails real people. Confirm the document and every recipient with the agent first.',
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, signers: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' }, role: { type: 'string' } }, required: ['name', 'email'] } }, message: { type: 'string' } }, required: ['submission_id', 'signers'] } },
+
+  // ── Comms & scheduling (Layer 3) ──────────────────────────────────────────
+  { name: 'send_email', description: "Send an email to a contact from the agent's own Gmail. Write the full email yourself (draft it in the chat first so the agent can see it). WRITE + OUTWARD — this emails a real person. Confirm the recipient, subject and body with the agent before sending.",
+    input_schema: { type: 'object', properties: { contact_id: { type: 'string', description: 'The contact to email (their email is looked up)' }, subject: { type: 'string' }, body: { type: 'string', description: 'The complete email body — write it in full, no placeholders. Plain text or simple HTML.' } }, required: ['contact_id', 'subject', 'body'] } },
+  { name: 'schedule_event', description: "Add an event to the agent's Google Calendar on a given date (all-day). WRITE. Optionally tie it to a contact.",
+    input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
 ];
 
 const j = (o: unknown) => JSON.stringify(o);
@@ -202,6 +208,31 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Sent a document for e-signature to ${signers.map((s: any) => s.email).join(', ')}`);
         return j({ ok: true, sent: true, envelope: r.data });
       }
+
+      // ── Layer 3: comms & scheduling ────────────────────────────────────────
+      case 'send_email': {
+        const { data: c } = await db.from('crm_clients').select('first_name, last_name, business_name, email, business_unit').eq('id', input.contact_id).single();
+        if (!c) return j({ error: 'Contact not found' });
+        if (!c.email) return j({ error: 'That contact has no email address on file.' });
+        if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
+        const { data: agent } = await db.from('crm_profiles').select('first_name, last_name').eq('id', ctx.userId).single();
+        const agentName = `${agent?.first_name ?? ''} ${agent?.last_name ?? ''}`.trim();
+        const r = await crmFetch(ctx, '/api/gmail/send', 'POST', { userId: ctx.userId, clientId: input.contact_id, to: c.email, subject: input.subject, body: input.body, agentName });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not send the email — the agent may need to connect Gmail in Settings.' });
+        await logCopilot(db, ctx, `Emailed ${c.email} — “${input.subject}”`, input.contact_id);
+        return j({ ok: true, sent: true, to: c.email });
+      }
+      case 'schedule_event': {
+        let clientName: string | undefined;
+        if (input.contact_id) {
+          const { data: c } = await db.from('crm_clients').select('first_name, last_name, business_name').eq('id', input.contact_id).single();
+          if (c) clientName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || undefined;
+        }
+        const r = await crmFetch(ctx, '/api/calendar/create', 'POST', { title: input.title, due_date: input.date, notes: input.notes, client_name: clientName, userId: ctx.userId });
+        if (!r.ok) return j({ error: r.data?.error || 'Could not create the event — the agent may need to connect Google Calendar in Settings.' });
+        await logCopilot(db, ctx, `Scheduled “${input.title}” on ${input.date}`, input.contact_id);
+        return j({ ok: true, scheduled: true, event: r.data });
+      }
       default:
         return j({ error: `Unknown tool: ${name}` });
     }
@@ -220,6 +251,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'start_form': return `Start a new form document`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => s.name || s.email).join(', ')} — this emails them the document`;
+    case 'send_email': return `📧 Send the email “${input.subject}” from your Gmail — this emails the contact`;
+    case 'schedule_event': return `📅 Add “${input.title}” to your calendar on ${input.date}`;
     default: return name;
   }
 }

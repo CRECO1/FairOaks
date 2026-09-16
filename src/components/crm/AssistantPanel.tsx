@@ -31,6 +31,7 @@ const TOOL_LABEL: Record<string, string> = {
   complete_task: 'completed a task', add_note: 'added a note', update_deal_stage: 'moved a deal',
   find_property: 'found a property', list_forms: 'listed forms', draft_lease: 'drafted a lease',
   generate_lease: 'generated the lease', start_form: 'started a form', send_for_signature: 'sent for e-signature',
+  send_email: 'sent an email', schedule_event: 'scheduled an event',
 };
 
 export default function AssistantPanel({ token, onClose }: { token?: string; onClose: () => void }) {
