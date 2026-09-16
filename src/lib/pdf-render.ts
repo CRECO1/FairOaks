@@ -56,10 +56,16 @@ function killWorker() {
   workerBroken = true; // don't keep retrying a broken worker this session
 }
 
-// A pdf.js parse failure (e.g. PasswordException on a still-encrypted PDF) must be
-// surfaced to the caller, not swallowed into a main-thread retry that would fail the
-// same way. Only worker INFRASTRUCTURE failures fall back.
+// DocError: the document itself is the problem (encrypted / corrupt), or the worker
+// failed mid-stream after already emitting pages. The main thread would fail the same
+// way, or re-rendering would duplicate the pages already shown — so surface it, don't
+// fall back. FallbackError: the worker couldn't render THIS doc (pdf.js in a worker can
+// trip over features that need `document`, which a worker lacks) but nothing was emitted
+// yet — the main thread can do it, so fall back cleanly.
 class DocError extends Error {}
+class FallbackError extends Error {}
+// pdf.js exception names where the main thread fails identically — no point retrying.
+const DOC_FATAL = new Set(['PasswordException', 'InvalidPDFException', 'MissingPDFException', 'UnexpectedResponseException']);
 
 function renderViaWorker(w: Worker, bytes: ArrayBuffer, targetWidth: number, quality: number, opts: Opts): Promise<RenderedPage[]> {
   return new Promise((resolve, reject) => {
@@ -68,15 +74,24 @@ function renderViaWorker(w: Worker, bytes: ArrayBuffer, targetWidth: number, qua
     let settled = false;
     let timer = 0;
     // Idle timeout: give up only if the worker goes quiet for 45s. A big doc that keeps
-    // streaming pages keeps resetting it, so slow-but-progressing never trips it.
-    const arm = () => { clearTimeout(timer); timer = window.setTimeout(() => finish(() => reject(new Error('render timeout'))), 45_000); };
+    // streaming pages keeps resetting it, so slow-but-progressing never trips it. A stuck
+    // worker is broken infra → kill it and fall back.
+    const arm = () => { clearTimeout(timer); timer = window.setTimeout(() => finish(() => { killWorker(); reject(new FallbackError('render timeout')); }), 45_000); };
     const finish = (fn: () => void) => { if (settled) return; settled = true; w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); clearTimeout(timer); opts.signal?.removeEventListener('abort', onAbort); fn(); };
-    const onErr = () => finish(() => reject(new Error('worker crashed')));            // infra failure → caller falls back
+    const onErr = () => finish(() => { killWorker(); reject(new FallbackError('worker crashed')); }); // broken worker → fall back + don't reuse
     const onAbort = () => finish(() => reject(new DocError('aborted')));               // user navigated away → don't retry
     const onMsg = (ev: MessageEvent) => {
       const d = ev.data;
       if (!d || d.id !== id) return;
-      if (d.error) { const e = new DocError(d.error); e.name = d.name || 'Error'; return finish(() => reject(e)); }
+      if (d.error) {
+        // Propagate a genuine document error, or any failure that struck after pages were
+        // already emitted (falling back would re-emit them as duplicates). Otherwise the
+        // worker just can't do this doc — fall back to the main thread, keep the worker.
+        const propagate = DOC_FATAL.has(d.name) || pages.length > 0;
+        const e = propagate ? new DocError(d.error) : new FallbackError(d.error);
+        e.name = d.name || 'Error';
+        return finish(() => reject(e));
+      }
       if (d.done) return finish(() => resolve(pages));
       if (d.blob) {
         arm(); // progress — reset the idle clock
@@ -135,10 +150,10 @@ export async function renderPdfPages(bytes: ArrayBuffer, opts: Opts = {}): Promi
     try {
       return await renderViaWorker(w, bytes, targetWidth, quality, opts);
     } catch (e) {
-      // A document/user error (bad PDF, PasswordException, aborted) would fail the same
-      // way on the main thread — surface it. Only an infra failure falls back.
-      if (e instanceof DocError) throw e;
-      killWorker();
+      // Only a FallbackError falls through to the main thread (the worker couldn't do
+      // this doc, but nothing was emitted). A DocError — encrypted/corrupt PDF, an abort,
+      // or a mid-stream failure — would fail identically or duplicate pages, so surface it.
+      if (!(e instanceof FallbackError)) throw e;
     }
   }
   return renderOnMainThread(bytes, targetWidth, quality, opts);
