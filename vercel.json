@@ -59,6 +59,10 @@
     {
       "path": "/api/cron/warmup",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/talkroute-hours",
+      "schedule": "5 * * * *"
     }
   ]
-}
+}\n

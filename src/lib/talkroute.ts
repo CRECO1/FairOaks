@@ -262,6 +262,29 @@ export async function setAfterHoursViaSchedules(opts: { name: string; blocks: Tr
   return { scheduleId: schedule.id, members };
 }
 
+// ── Hours override (the open/closed switch) ───────────────────────────────────
+export async function getHoursOverride(): Promise<{ status?: string; destination?: TrDestination } | null> {
+  try { const j = await tr<{ data?: { status?: string; destination?: TrDestination } | Array<{ status?: string; destination?: TrDestination }> }>('/hours-override'); const d = j.data ?? j; return Array.isArray(d) ? (d[0] ?? null) : (d as { status?: string } | null); }
+  catch (e) { if (e instanceof TalkrouteError && e.status === 404) return null; throw e; }
+}
+export async function setHoursOverride(status: 'open' | 'closed', destination?: TrDestination): Promise<void> {
+  const body: Record<string, unknown> = { status };
+  if (status === 'closed') { body.destination = destination; body.audioFileId = null; }
+  await tr('/hours-override', { method: 'PUT', body: JSON.stringify(body) });
+}
+export async function clearHoursOverride(): Promise<void> {
+  try { await tr('/hours-override', { method: 'DELETE' }); } catch (e) { if (!(e instanceof TalkrouteError && e.status === 404)) throw e; }
+}
+
+/** Open Mon–Sat 8:00–18:00 Central, closed otherwise. */
+export function isBusinessOpen(now = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', hour12: false }).formatToParts(now);
+  const day = parts.find(p => p.type === 'weekday')?.value ?? '';
+  const hour = Number(parts.find(p => p.type === 'hour')?.value ?? '0') % 24;
+  if (day === 'Sun') return false;
+  return hour >= 8 && hour < 18;
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
