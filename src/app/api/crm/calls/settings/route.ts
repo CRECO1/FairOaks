@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, clearHoursOverride, enableCallAnnounce, getHoursOverride, getNumberDestination, setNumberDestination, inspectRouting, isBusinessOpen, listForwardingNumbers, listSubscriptions, botLast, removeRingGroupMember, ringThenBot, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, setHoursOverride, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, clearHoursOverride, enableCallAnnounce, getHoursOverride, getNumberDestination, setNumberDestination, inspectRouting, isBusinessOpen, listForwardingNumbers, listSubscriptions, botLast, deleteForwardingNumber, removeRingGroupMember, ringThenBot, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, setHoursOverride, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -141,6 +141,11 @@ export async function POST(req: NextRequest) {
       const changed = await setNumberDestination(String(b.number_id), { type: 'ring_group', id: String(b.ring_group_id) });
       const restored = before ? await setNumberDestination(String(b.number_id), before) : null;
       return NextResponse.json({ ok: true, before, changed, restored });
+    }
+    if (b.action === 'delete_forwarding_number') {
+      const settings = await loadSettings(adminClient(), unitFor(req, ctx));
+      if (!b.number) return NextResponse.json({ error: 'number required' }, { status: 400 });
+      return NextResponse.json({ ok: true, ...(await deleteForwardingNumber(String(b.number), settings.twilio_number || '')) });
     }
     if (b.action === 'remove_ring_member') {
       if (!b.ring_group_id || !b.number) return NextResponse.json({ error: 'ring_group_id and number required' }, { status: 400 });

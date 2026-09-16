@@ -351,6 +351,21 @@ export async function removeRingGroupMember(ringGroupId: string, number: string)
   return { removed: gone.forwardingDevice?.description ?? want, members: after.sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99)).map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s`) };
 }
 
+/** Delete a forwarding number by phone number. Refuses the bot line, and anyone still in a ring group. */
+export async function deleteForwardingNumber(number: string, botNumber: string): Promise<{ deleted: string }> {
+  const want = number.replace(/\D/g, '').slice(-10);
+  if (want === botNumber.replace(/\D/g, '').slice(-10)) throw new TalkrouteError(400, 'That is the bot line');
+  const f = (await listForwardingNumbers()).find(x => String(x.number ?? '').replace(/\D/g, '').slice(-10) === want);
+  if (!f?.id) throw new TalkrouteError(404, 'No forwarding number matches');
+  const groups = (await tr<{ data: TrRingGroup[] }>('/ring-groups?pageSize=100')).data ?? [];
+  for (const g of groups) {
+    const ms = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${g.id}/members`)).data ?? [];
+    if (ms.some(m => String(m.forwardingDevice?.id) === String(f.id))) throw new TalkrouteError(409, `Still a member of ring group ${String(g.id).slice(0, 8)} — remove them there first`);
+  }
+  await tr(`/forwarding-numbers/${f.id}`, { method: 'DELETE' });
+  return { deleted: `${f.description ?? ''} ${f.number}`.trim() };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
