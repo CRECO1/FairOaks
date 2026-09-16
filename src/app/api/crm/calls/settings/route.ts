@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, clearHoursOverride, enableCallAnnounce, getHoursOverride, getNumberDestination, setNumberDestination, inspectRouting, isBusinessOpen, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, setHoursOverride, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, clearHoursOverride, enableCallAnnounce, getHoursOverride, getNumberDestination, setNumberDestination, inspectRouting, isBusinessOpen, listForwardingNumbers, listSubscriptions, ringThenBot, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, setHoursOverride, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -141,6 +141,16 @@ export async function POST(req: NextRequest) {
       const changed = await setNumberDestination(String(b.number_id), { type: 'ring_group', id: String(b.ring_group_id) });
       const restored = before ? await setNumberDestination(String(b.number_id), before) : null;
       return NextResponse.json({ ok: true, before, changed, restored });
+    }
+    if (b.action === 'ring_then_bot') {
+      const ringGroupId = String(b.ring_group_id || '');
+      const seconds = Math.min(60, Math.max(5, Number(b.seconds) || 15));
+      if (!ringGroupId) return NextResponse.json({ error: 'ring_group_id required' }, { status: 400 });
+      const settings = await loadSettings(adminClient(), unitFor(req, ctx));
+      const want = (settings.twilio_number || '').replace(/\D/g, '').slice(-10);
+      const fwd = (await listForwardingNumbers()).find(f => String(f.number ?? '').replace(/\D/g, '').slice(-10) === want);
+      if (!fwd?.id) return NextResponse.json({ error: 'Add the bot line to Talkroute forwarding numbers first.' }, { status: 400 });
+      return NextResponse.json({ ok: true, ...(await ringThenBot(ringGroupId, seconds, String(fwd.id))) });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;

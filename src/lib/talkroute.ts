@@ -301,6 +301,29 @@ export async function setNumberDestination(numberId: string | number, destinatio
   return after;
 }
 
+/**
+ * "Ring the first person for N seconds, then the bot": rebuild the ring group's member
+ * list as [first human (N s), bot (60 s), everyone else after]. maxHoldTime turned out not
+ * to cut a 'sequence' short mid-member, so the bot has to be IN the sequence.
+ */
+export async function ringThenBot(ringGroupId: string, firstSeconds: number, botForwardingId: string): Promise<{ members: string[] }> {
+  const current = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`)).data ?? [];
+  const humans = current
+    .filter(m => String(m.forwardingDevice?.id) !== String(botForwardingId))
+    .sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99));
+  if (!humans.length) throw new TalkrouteError(422, 'Ring group has no human members');
+  const list = [
+    { enabled: true, forwardingDeviceId: String(humans[0].forwardingDevice?.id), forwardingSchedule: null, sequencePosition: 1, ringTimeout: firstSeconds },
+    { enabled: true, forwardingDeviceId: String(botForwardingId), forwardingSchedule: null, sequencePosition: 2, ringTimeout: 60 },
+    ...humans.slice(1).map((m, i) => ({ enabled: m.enabled !== false, forwardingDeviceId: String(m.forwardingDevice?.id), forwardingSchedule: null, sequencePosition: 3 + i, ringTimeout: m.ringTimeout ?? 30 })),
+  ];
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`, { method: 'PUT', body: JSON.stringify(list) });
+  // Give the sequence room: the hold time must not end the call before the bot leg is dialled.
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}`, { method: 'PATCH', body: JSON.stringify({ maxHoldTime: 120 }) });
+  const after = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`)).data ?? [];
+  return { members: after.sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99)).map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s${m.enabled === false ? ' (off)' : ''}`) };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
