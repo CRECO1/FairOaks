@@ -58,6 +58,32 @@ export async function GET(req: NextRequest) {
             }
           }
         }
+      } else if (type === 'action_plan') {
+        // Action-plan email tracking (welcome sequence, nurture, closed-deal congrats)
+        const { data: send } = await supabase
+          .from('crm_action_plan_sends')
+          .select('id, client_id, opened_at, open_count')
+          .eq('tracking_id', trackingId)
+          .maybeSingle();
+
+        if (send) {
+          await supabase.from('crm_action_plan_sends').update({
+            open_count: (send.open_count ?? 0) + 1,
+            ...(send.opened_at ? {} : { opened_at: now }),
+          }).eq('id', send.id);
+
+          // First open only: tag the contact
+          if (!send.opened_at && send.client_id) {
+            const { data: client } = await supabase
+              .from('crm_clients').select('id, tags').eq('id', send.client_id).maybeSingle();
+            if (client) {
+              const existingTags: string[] = client.tags ?? [];
+              if (!existingTags.includes('Opened Email')) {
+                await supabase.from('crm_clients').update({ tags: [...existingTags, 'Opened Email'] }).eq('id', send.client_id);
+              }
+            }
+          }
+        }
       } else {
         // Original deal email tracking
         const { data: rows } = await supabase

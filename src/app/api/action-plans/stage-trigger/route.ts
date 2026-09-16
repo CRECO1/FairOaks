@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { getCrmUser } from '@/lib/crm-auth';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
+import { newTrackingId, withOpenPixel } from '@/lib/email-tracking';
 
 const db = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
 
@@ -93,8 +94,10 @@ export async function POST(req: NextRequest) {
 
       if (step.type === 'email') {
         const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx);
-        const body = applyMergeFields(step.body || '', ctx);
+        const trackingId = newTrackingId();
+        const body = withOpenPixel(applyMergeFields(step.body || '', ctx), trackingId); // open-tracking pixel
         await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch(() => {});
+        await supabase.from('crm_action_plan_sends').insert([{ plan_id: plan.id, client_id: clientId, step_id: step.id, type: 'email', status: 'sent', subject, tracking_id: trackingId }]);
       }
 
       await supabase.from('crm_activity').insert([{ client_id: clientId, agent_id: agentId, type: 'email', notes: `[Action Plan: ${plan.name} — Stage trigger: ${stage}] Step 1 sent` }]);

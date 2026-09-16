@@ -31,6 +31,28 @@ export async function GET(req: NextRequest) {
     steps: undefined,
   }));
 
+  // Attach email open-tracking stats (sent + opened + open rate) per plan.
+  const planIds = plans.map((p: any) => p.id);
+  if (planIds.length) {
+    const { data: sends } = await supabase
+      .from('crm_action_plan_sends')
+      .select('plan_id, opened_at')
+      .in('plan_id', planIds)
+      .limit(10000);
+    const stat: Record<string, { sent: number; opened: number }> = {};
+    for (const s of (sends ?? []) as { plan_id: string; opened_at: string | null }[]) {
+      const st = (stat[s.plan_id] ??= { sent: 0, opened: 0 });
+      st.sent++;
+      if (s.opened_at) st.opened++;
+    }
+    for (const p of plans as any[]) {
+      const st = stat[p.id];
+      p.send_count = st?.sent ?? 0;
+      p.open_count = st?.opened ?? 0;
+      p.open_rate = st && st.sent > 0 ? Math.round((st.opened / st.sent) * 100) : null;
+    }
+  }
+
   return NextResponse.json({ plans });
 }
 

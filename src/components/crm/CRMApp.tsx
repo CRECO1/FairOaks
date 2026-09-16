@@ -40,7 +40,7 @@ interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; t
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
-interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; created_at: string; updated_at: string; }
+interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
@@ -6970,6 +6970,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ width: 66, textAlign: 'right', flexShrink: 0 }}>
                             <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{plan.enrollment_count ?? 0}</div>
                             <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
+                          </div>
+                          {/* Open-rate column */}
+                          <div style={{ width: 78, textAlign: 'right', flexShrink: 0 }} title={(plan.send_count ?? 0) > 0 ? `${plan.open_count ?? 0} of ${plan.send_count} emails opened` : 'No emails sent yet'}>
+                            {(plan.send_count ?? 0) > 0 ? (
+                              <>
+                                <div style={{ fontSize: 15, fontWeight: 700, color: (plan.open_rate ?? 0) >= 40 ? '#16a34a' : (plan.open_rate ?? 0) >= 20 ? '#c9922c' : '#ef4444' }}>{plan.open_rate}%</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af' }}>{plan.open_count}/{plan.send_count} opened</div>
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: 15, fontWeight: 600, color: '#d1d5db' }}>—</div>
+                                <div style={{ fontSize: 11, color: '#9ca3af' }}>open rate</div>
+                              </>
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setActionPlanTab('enrolled'); setSelectedPlanEnrollIds([]); setPlanEnrollTypeFilter(''); setPlanEnrollAssetFilter(''); setPlanEnrollTagFilter(''); setPlanEnrollSearch(''); setPreviewStepIdx(0); fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setDetailSteps(j.plan?.steps ?? [])); setActionPlanView('detail'); }}>Manage</button>

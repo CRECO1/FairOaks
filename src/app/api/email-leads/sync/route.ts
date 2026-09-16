@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
+import { newTrackingId, withOpenPixel } from '@/lib/email-tracking';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -135,14 +136,16 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
 
     if (!step) continue;
 
+    const trackingId = newTrackingId();
+    let emailSubject: string | null = null;
     try {
       if (step.type === 'email') {
-        const subject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx);
-        const body    = applyMergeFields(step.body    || '', ctx);
+        emailSubject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx);
+        const body   = withOpenPixel(applyMergeFields(step.body || '', ctx), trackingId); // open-tracking pixel
         await resendClient(business_unit).emails.send({
           from:    resolveActionPlanFrom(business_unit, plan.from_name, plan.from_email, fromAddress(business_unit)),
           to:      client.email,
-          subject,
+          subject: emailSubject,
           html:    body,
         });
       }
@@ -153,6 +156,12 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
         agent_id:  agentId,
         type:      'email',
         notes:     `[Action Plan: ${plan.name} — Step 1] Sent automatically on lead import`,
+      }]);
+
+      // Record the send + tracking id so the pixel can attribute opens.
+      await supabase.from('crm_action_plan_sends').insert([{
+        plan_id: plan.id, client_id: clientId, step_id: step.id, type: 'email',
+        status: 'sent', subject: emailSubject, tracking_id: trackingId,
       }]);
 
       await supabase.from('crm_clients')

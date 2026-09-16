@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
+import { newTrackingId, withOpenPixel } from '@/lib/email-tracking';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -150,6 +151,8 @@ export async function GET(req: NextRequest) {
 
     let stepStatus: 'sent' | 'failed' | 'skipped' = 'sent';
     let errorMessage: string | null = null;
+    let emailSubject: string | null = null;
+    const trackingId = newTrackingId();
 
     try {
       if (step.type === 'email') {
@@ -157,12 +160,12 @@ export async function GET(req: NextRequest) {
           stepStatus = 'skipped';
           errorMessage = 'No email address';
         } else {
-          const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
-          const body = applyMergeFields(step.body || '', ctx);
+          emailSubject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
+          const body = withOpenPixel(applyMergeFields(step.body || '', ctx), trackingId); // open-tracking pixel
           await resendClient(plan.business_unit).emails.send({
             from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),
             to: client.email,
-            subject,
+            subject: emailSubject,
             html: body,
           });
         }
@@ -192,6 +195,14 @@ export async function GET(req: NextRequest) {
       type: step.type === 'email' ? 'email' : step.type === 'sms' ? 'sms' : 'note',
       notes: `[Action Plan: ${plan.name} — Step ${stepOrder}] ${stepStatus === 'failed' ? 'FAILED: ' + errorMessage : stepStatus === 'skipped' ? 'Skipped: ' + errorMessage : 'Executed'}`,
     }]).then(() => {});
+
+    // Record the email send + its tracking id so the pixel can attribute opens.
+    if (step.type === 'email') {
+      await supabase.from('crm_action_plan_sends').insert([{
+        plan_id: plan.id, client_id: client.id, step_id: step.id, type: 'email',
+        status: stepStatus, subject: emailSubject, tracking_id: trackingId,
+      }]).then(() => {});
+    }
 
     // Stamp last_touched_at on the client for any successfully executed step
     if (stepStatus === 'sent') {
