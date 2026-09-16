@@ -2,6 +2,15 @@ import { randomUUID } from 'crypto';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
+// The unsubscribe link, kept on-brand per business unit: CRECO commercial emails point
+// at crecotx.com/unsubscribe (a CRECO-branded page on the CRECO site), residential at the
+// Fair Oaks handler. Both write to the same CRM database.
+export function unsubscribeUrlFor(businessUnit: string | undefined, token: string): string {
+  return businessUnit === 'commercial'
+    ? `https://www.crecotx.com/unsubscribe?token=${token || ''}`
+    : `https://www.fairoaksrealtygroup.com/api/campaigns/unsubscribe?token=${token || ''}`;
+}
+
 export function newTrackingId(): string {
   return randomUUID();
 }

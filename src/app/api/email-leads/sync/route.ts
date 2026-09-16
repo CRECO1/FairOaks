@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
-import { newTrackingId, withOpenPixel } from '@/lib/email-tracking';
+import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -25,9 +25,8 @@ function fromAddress(businessUnit: string) {
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent:  { first_name: string; last_name: string; email: string; phone?: string };
-}): string {
-  const BASE_URL      = 'https://www.fairoaksrealtygroup.com';
-  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+}, businessUnit?: string): string {
+  const unsubscribeUrl = unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token);
   return template
     .replaceAll('{{first_name}}',    ctx.client.first_name   || '')
     .replaceAll('{{last_name}}',     ctx.client.last_name    || '')
@@ -37,7 +36,7 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{agent_name}}',    `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
     .replaceAll('{{agent_email}}',   ctx.agent.email         || '')
     .replaceAll('{{agent_phone}}',   ctx.agent.phone         || '210-817-3443')
-    .replaceAll('{{brokerage}}',     'Fair Oaks Realty Group')
+    .replaceAll('{{brokerage}}',     businessUnit === 'commercial' ? 'CRECO Commercial Real Estate Company' : 'Fair Oaks Realty Group')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
@@ -140,8 +139,8 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
     let emailSubject: string | null = null;
     try {
       if (step.type === 'email') {
-        emailSubject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx);
-        const body   = withOpenPixel(applyMergeFields(step.body || '', ctx), trackingId); // open-tracking pixel
+        emailSubject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx, business_unit);
+        const body   = withOpenPixel(applyMergeFields(step.body || '', ctx, business_unit), trackingId); // open-tracking pixel
         await resendClient(business_unit).emails.send({
           from:    resolveActionPlanFrom(business_unit, plan.from_name, plan.from_email, fromAddress(business_unit)),
           to:      client.email,

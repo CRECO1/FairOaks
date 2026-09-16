@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { unsubscribeUrlFor } from '@/lib/email-tracking';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -12,9 +13,8 @@ function applyMergeFields(template: string, ctx: {
   agent: { first_name: string; last_name: string; email: string; phone?: string };
   brokerage: string;
   defaultPhone: string;
-}): string {
-  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
-  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+}, businessUnit?: string): string {
+  const unsubscribeUrl = unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token);
   // A commercial contact is often a company with no person's name on it, and
   // "{{first_name}}" then rendered empty — tenant notices have gone out addressed
   // to "Hi ,". Fall back to the business, then to a plain greeting.
@@ -148,8 +148,8 @@ export async function GET(req: NextRequest) {
           status = 'skipped';
           errorMessage = 'No email address';
         } else {
-          subjectRendered = applyMergeFields(campaign.email_subject || '', ctx);
-          let renderedBody = applyMergeFields(campaign.email_body || '', ctx);
+          subjectRendered = applyMergeFields(campaign.email_subject || '', ctx, campaign.business_unit);
+          let renderedBody = applyMergeFields(campaign.email_body || '', ctx, campaign.business_unit);
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
 
           // Inject 1×1 tracking pixel just before </body> (or at end if no body tag)

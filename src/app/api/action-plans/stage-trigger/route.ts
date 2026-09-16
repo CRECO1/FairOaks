@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { getCrmUser } from '@/lib/crm-auth';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
-import { newTrackingId, withOpenPixel } from '@/lib/email-tracking';
+import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 
 const db = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
 
@@ -13,8 +13,7 @@ function resendClient(bu: string) {
 function fromAddress(bu: string) {
   return bu === 'commercial' ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
-function applyMergeFields(t: string, ctx: any): string {
-  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
+function applyMergeFields(t: string, ctx: any, businessUnit?: string): string {
   return t
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -24,7 +23,7 @@ function applyMergeFields(t: string, ctx: any): string {
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
     .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
     .replaceAll('{{brokerage}}', ctx.agent.brokerage || 'CRECO Commercial Real Estate Company')
-    .replaceAll('{{unsubscribe_url}}', `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token || ''}`);
+    .replaceAll('{{unsubscribe_url}}', unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token || ''));
 }
 
 // POST /api/action-plans/stage-trigger
@@ -93,9 +92,9 @@ export async function POST(req: NextRequest) {
       if (!step) continue;
 
       if (step.type === 'email') {
-        const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx);
+        const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx, bu);
         const trackingId = newTrackingId();
-        const body = withOpenPixel(applyMergeFields(step.body || '', ctx), trackingId); // open-tracking pixel
+        const body = withOpenPixel(applyMergeFields(step.body || '', ctx, bu), trackingId); // open-tracking pixel
         await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch(() => {});
         await supabase.from('crm_action_plan_sends').insert([{ plan_id: plan.id, client_id: clientId, step_id: step.id, type: 'email', status: 'sent', subject, tracking_id: trackingId }]);
       }
