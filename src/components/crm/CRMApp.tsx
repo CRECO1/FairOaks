@@ -1171,6 +1171,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [authGet]);
   // Rename a document from the deal's Docs list. Forms arrive named after the template
   // they came from, which stops being useful the moment a deal has two of them.
+  const deleteDealForm = useCallback(async (id: string, name: string) => {
+    if (!confirm(`Delete "${name}"? This removes the document and its edit history and cannot be undone.`)) return;
+    try {
+      const r = await fetch(`/api/crm/form-submissions/${id}`, {
+        method: 'DELETE',
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      if (!r.ok) { showToast((await r.json().catch(() => ({})))?.error || 'Could not delete the document'); return; }
+      setDealForms(fs => fs.filter(f => f.id !== id));
+      showToast(`${name} deleted`);
+    } catch { showToast('Could not delete the document'); }
+  }, [session?.access_token, showToast]);
   const renameDealDoc = useCallback(async (id: string, title: string) => {
     const name = title.trim();
     if (!name) { showToast('Give the document a name'); return; }
@@ -8295,6 +8307,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             return <button onClick={() => setEsignModal({ mode: 'send', doc: f })} disabled={!f.url} title="Send for signature" style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
                           })()}
                           <button onClick={() => openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code)} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: w ? '#fff' : '#a06a12', background: w ? '#c9922c' : '#fff', border: w ? 'none' : '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>{w ? '✍️ Fill' : 'Edit'}</button>
+                          <button onClick={() => deleteDealForm(f.id, f.title || f.crm_forms?.name || 'Document')} title="Delete this document"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 15, padding: '4px 2px', flexShrink: 0 }}>🗑</button>
                         </div>
                       );
                       if (inUse.length === 0) {
