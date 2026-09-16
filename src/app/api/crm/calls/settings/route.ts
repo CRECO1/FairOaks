@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     if (b.action === 'inspect_routing') return NextResponse.json({ ok: true, ...(await inspectRouting()) });
     if (b.action === 'route_no_answer_to_bot') {
       // Ring the team for `seconds`, then hand the caller to the bot's ring group.
-      const ringGroupId = Number(b.ring_group_id);
+      const ringGroupId = String(b.ring_group_id || '');
       const seconds = Math.min(120, Math.max(10, Number(b.seconds) || 24));
       if (!ringGroupId) return NextResponse.json({ error: 'ring_group_id required' }, { status: 400 });
       const settings = await loadSettings(adminClient(), unitFor(req, ctx));

@@ -138,7 +138,7 @@ export async function ensureForwardingNumber(number: string, description: string
 
 // ── Routing (ring groups / numbers / menus / hours) ───────────────────────────
 export interface TrDestination { type: 'menu' | 'ring_group' | 'voicemail' | 'hangup'; id?: string | number }
-export interface TrRingGroup { id: number; name?: string; strategy?: string; retryAfter?: number; maxHoldTime?: number; maxAttempts?: number; callerId?: number; destination?: TrDestination }
+export interface TrRingGroup { id: number | string; name?: string; strategy?: string; retryAfter?: number; maxHoldTime?: number; maxAttempts?: number; callerId?: number; destination?: TrDestination }
 export interface TrRingGroupMember { id: string; forwardingDevice?: TrForwardingNumber; enabled?: boolean; sequencePosition?: number; ringTimeout?: number }
 
 /** Everything that decides where a call goes — for the Setup panel's routing view. */
@@ -161,11 +161,11 @@ export async function inspectRouting(): Promise<Record<string, unknown>> {
  * and make its no-answer destination a dedicated ring group that only contains
  * the bot's forwarding number. Idempotent — reuses the bot group if it exists.
  */
-export async function routeNoAnswerToBot(ringGroupId: number, seconds: number, botForwardingId: string): Promise<{ botGroupId: number; created: boolean }> {
+export async function routeNoAnswerToBot(ringGroupId: string, seconds: number, botForwardingId: string): Promise<{ botGroupId: number | string; created: boolean }> {
   const groups = (await tr<{ data: TrRingGroup[] }>('/ring-groups?pageSize=100')).data ?? [];
   let bot: TrRingGroup | undefined;
   for (const g of groups) {
-    if (g.id === ringGroupId) continue;
+    if (String(g.id) === String(ringGroupId)) continue;
     const members = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${g.id}/members`)).data ?? [];
     if (members.length === 1 && String(members[0].forwardingDevice?.id) === String(botForwardingId)) { bot = g; break; }
   }
@@ -176,7 +176,7 @@ export async function routeNoAnswerToBot(ringGroupId: number, seconds: number, b
     created = true;
     await tr(`/ring-groups/${bot.id}/members`, { method: 'PUT', body: JSON.stringify([{ enabled: true, forwardingDeviceId: String(botForwardingId), forwardingSchedule: null, sequencePosition: 1, ringTimeout: 60 }]) });
   }
-  await tr(`/ring-groups/${ringGroupId}`, { method: 'PATCH', body: JSON.stringify({ data: { maxHoldTime: seconds, destination: { type: 'ring_group', id: bot.id } } }) });
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}`, { method: 'PATCH', body: JSON.stringify({ data: { maxHoldTime: seconds, destination: { type: 'ring_group', id: bot.id } } }) });
   return { botGroupId: bot.id, created };
 }
 
