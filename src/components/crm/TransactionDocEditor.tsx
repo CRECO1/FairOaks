@@ -492,7 +492,9 @@ export default function TransactionDocEditor({
   // with wherever the reader actually is.
   const goToPage = useCallback((n: number) => {
     const el = pagesRef.current?.querySelector(`[data-pdf-page="${n}"]`);
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 'auto', not 'smooth': a smooth scrollIntoView inside this nested scroller was
+    // silently cancelled in Chrome, so the page thumbnails highlighted but never jumped.
+    el?.scrollIntoView({ behavior: 'auto', block: 'start' });
     setActivePage(n);
   }, []);
   const onPagesScroll = useCallback(() => {
