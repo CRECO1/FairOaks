@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error('[api/crm/calls/settings POST]', e);
     const msg = e instanceof TalkrouteError ? (e.status === 401 || e.status === 403 ? 'Talkroute rejected the API key.' : e.message) : 'Talkroute request failed';
-    return NextResponse.json({ error: msg }, { status: 502 });
+    // Admins are the only callers here; the underlying message helps them fix setup.
+    return NextResponse.json({ error: msg, detail: e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300) }, { status: 502 });
   }
 }
