@@ -324,6 +324,21 @@ export async function ringThenBot(ringGroupId: string, firstSeconds: number, bot
   return { members: after.sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99)).map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s${m.enabled === false ? ' (off)' : ''}`) };
 }
 
+/** Bot as last resort: every human in their current order (each `humanSeconds`), then the bot. */
+export async function botLast(ringGroupId: string, humanSeconds: number, botForwardingId: string): Promise<{ members: string[] }> {
+  const current = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`)).data ?? [];
+  const humans = current.filter(m => String(m.forwardingDevice?.id) !== String(botForwardingId)).sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99));
+  if (!humans.length) throw new TalkrouteError(422, 'Ring group has no human members');
+  const list = [
+    ...humans.map((m, i) => ({ enabled: m.enabled !== false, forwardingDeviceId: String(m.forwardingDevice?.id), forwardingSchedule: null, sequencePosition: i + 1, ringTimeout: humanSeconds })),
+    { enabled: true, forwardingDeviceId: String(botForwardingId), forwardingSchedule: null, sequencePosition: humans.length + 1, ringTimeout: 60 },
+  ];
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`, { method: 'PUT', body: JSON.stringify(list) });
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}`, { method: 'PATCH', body: JSON.stringify({ maxHoldTime: Math.max(180, humans.length * humanSeconds + 90) }) });
+  const after = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`)).data ?? [];
+  return { members: after.sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99)).map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s${m.enabled === false ? ' (off)' : ''}`) };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
