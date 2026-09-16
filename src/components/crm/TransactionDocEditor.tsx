@@ -474,6 +474,16 @@ export default function TransactionDocEditor({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{items}</div>
     </div>
   );
+  // The same tool as a compact, thumb-sized tile for the phone toolbar (icon over label).
+  const mobileTile = (t: typeof tool, glyph: string, label: string) => (
+    <button key={t} onClick={() => setTool(t)} title={label}
+      style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+        minWidth: 58, minHeight: 50, padding: '5px 8px', borderRadius: 10, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+        border: tool === t ? '2px solid #c9922c' : '1px solid #e5e7eb', background: tool === t ? '#fdf6e9' : '#fff', color: tool === t ? '#a06a12' : '#374151' }}>
+      <span style={{ fontSize: 17, lineHeight: 1 }}>{glyph}</span>
+      <span style={{ fontSize: 10.5, fontWeight: 700 }}>{label}</span>
+    </button>
+  );
 
   const actionBtn: React.CSSProperties = {
     padding: isMobile ? '11px 14px' : '8px 16px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap',
@@ -559,15 +569,48 @@ export default function TransactionDocEditor({
         <div style={{ background: '#fffdf6', borderBottom: '1px solid #f0e2c4', padding: '10px 12px', display: 'flex', gap: 10, alignItems: 'flex-start', flexShrink: 0 }}>
           <span style={{ fontSize: 15, lineHeight: 1.3 }}>💡</span>
           <div style={{ flex: 1, fontSize: 12.5, color: '#7c5a12', lineHeight: 1.45, fontFamily: "'DM Sans',sans-serif" }}>
-            You can fill, save and download this form here. Adding or repositioning fields is far easier on a desktop.
+            Pick a tool below and tap the document to drop a field. Tap <strong>🔍 100%</strong> up top for a bigger page and precise spots, then drag a field’s handle to fine-tune. (A desktop gives you more room, but it all works here.)
           </div>
           <button onClick={() => setNoticeOpen(false)} aria-label="Dismiss"
             style={{ background: 'none', border: 'none', color: '#a08a52', fontSize: 15, cursor: 'pointer', width: 32, height: 32, flexShrink: 0 }}>✕</button>
         </div>
       )}
 
-      {/* Fields rail · document · page navigator. On a phone the rails are dropped and
-          the tools stay in the header strip — there isn't width for three columns. */}
+      {/* Phone field toolbar — there isn't width for the desktop rail, so the same
+          controls sit in a horizontal strip: pick who the field is for, pick a tool,
+          then tap the document to drop it (drag ✥ to nudge, ⤡ to resize). */}
+      {isMobile && status === 'ready' && (
+        <div style={{ background: '#fff', borderBottom: '1px solid #eef0f2', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 7, flexShrink: 0 }}>
+          {recipients?.length ? (
+            <select value={sigKey} onChange={e => setSigKey(e.target.value)} aria-label="Place fields for which signer"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px', minHeight: 44, fontSize: 13.5, fontWeight: 700, borderRadius: 9, border: `2px solid ${activeRec?.color ?? '#e5e7eb'}`, background: `${activeRec?.color ?? '#000'}14`, color: activeRec?.color ?? '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+              {recipients.map((r, i) => <option key={r.key} value={r.key}>Placing for {i + 1}. {r.name || r.email || `Signer ${i + 1}`}</option>)}
+            </select>
+          ) : (
+            <select value={sigRole} onChange={e => setSigRole(e.target.value)} aria-label="Which party fills this field"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px', minHeight: 44, fontSize: 13.5, borderRadius: 9, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+              <option value="client">For: Client</option>
+              <option value="landlord">For: Landlord</option>
+              <option value="agent">For: Agent</option>
+            </select>
+          )}
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
+            {mobileTile('select', '↖︎', 'Move')}
+            {mobileTile('signature', '✒', 'Sign')}
+            {mobileTile('initial', '✎', 'Initials')}
+            {mobileTile('date', '📅', 'Date')}
+            {mobileTile('text', 'T', 'Text')}
+            {mobileTile('check', '☑', 'Check')}
+          </div>
+          <div style={{ fontSize: 11.5, lineHeight: 1.35, color: tool !== 'select' ? '#a06a12' : '#9ca3af', fontWeight: tool !== 'select' ? 700 : 400 }}>
+            {tool !== 'select'
+              ? `Tap the document to drop a ${tool === 'signature' ? 'signature' : tool === 'initial' ? 'initials' : tool === 'date' ? 'date' : tool === 'check' ? 'checkbox' : 'text'} field — tap 🔍 100% for a precise spot.`
+              : `${fields.length} field${fields.length === 1 ? '' : 's'} placed · pick a tool above, or tap a field to move / resize it.`}
+          </div>
+        </div>
+      )}
+
+      {/* Fields rail (desktop) · document · page navigator. */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
 
       {!isMobile && (

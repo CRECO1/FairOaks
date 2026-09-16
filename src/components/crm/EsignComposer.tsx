@@ -258,12 +258,15 @@ export default function EsignComposer({
         )}
         {blocker && !isMobile && <span style={{ fontSize: 12.5, color: '#9ca3af' }}>{blocker}</span>}
         {isMobile && (
-          <button onClick={goFields} disabled={!!blocker} title="Easier on a desktop"
-            style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 9, padding: '10px 12px', cursor: blocker ? 'default' : 'pointer', whiteSpace: 'nowrap', opacity: blocker ? 0.5 : 1 }}>
+          <button onClick={goFields} disabled={!!blocker} title="Place signature, date and text fields for each signer"
+            style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 9, padding: '10px 12px', cursor: blocker ? 'default' : 'pointer', whiteSpace: 'nowrap', opacity: blocker ? 0.5 : 1 }}>
             ✒ Fields
           </button>
         )}
-        <button onClick={() => { if (isMobile) { setPlaced([]); setReview(true); } else goFields(); }} disabled={!!blocker}
+        {/* On mobile, jump straight to the review with whatever fields are already
+            placed (none → each signer gets an appended signature page). Must NOT clear
+            `placed` — fields the agent just dropped via ✒ Fields would be lost. */}
+        <button onClick={() => { if (isMobile) { setReview(true); } else goFields(); }} disabled={!!blocker}
           style={{ fontSize: 13.5, fontWeight: 800, color: '#fff', background: blocker ? '#d8d5cf' : GOLD, border: 'none', borderRadius: 9, padding: isMobile ? '10px 13px' : '10px 18px', cursor: blocker ? 'default' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
           {isMobile ? 'Review & Send' : 'Next: Add Fields →'}
         </button>
