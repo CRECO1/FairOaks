@@ -16,10 +16,15 @@ import type { Extraction, FetchedEmail, GmailImage, PropertyRecord } from './typ
  * hero shot that drives the preview thumbnail. Only called for single listings.
  */
 async function pickPhotos(email: FetchedEmail): Promise<GmailImage[]> {
-  if (email.images.length) {
-    return [...email.images].sort((a, b) => b.data.length - a.data.length).slice(0, 3);
-  }
-  return fetchHostedImages(email.html, 3);
+  const bySize = (a: GmailImage, b: GmailImage) => b.data.length - a.data.length;
+  // A SUBSTANTIAL attached image is a real flyer/photo — use it. But a small attached
+  // image is almost always a logo/signature, so don't let it block the hosted property
+  // photos: fall through to those, and only use small attachments as a last resort.
+  const substantial = email.images.filter((im) => im.data.length > 40_000); // ~30KB+
+  if (substantial.length) return substantial.sort(bySize).slice(0, 3);
+  const hosted = await fetchHostedImages(email.html, 3);
+  if (hosted.length) return hosted;
+  return [...email.images].sort(bySize).slice(0, 3);
 }
 
 /**
