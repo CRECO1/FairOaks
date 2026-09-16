@@ -7629,7 +7629,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
                   <button key={t} onClick={() => setDealTab(t)}
                     style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
-                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'esign' ? '✍️ E-Sign' : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
+                    {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length + dealForms.length > 0 ? ` (${dealDocs.length + dealForms.length})` : ''}` : t === 'esign' ? '✍️ E-Sign' : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
                 ))}
               </div>
