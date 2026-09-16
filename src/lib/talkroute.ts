@@ -176,7 +176,7 @@ export async function routeNoAnswerToBot(ringGroupId: string, seconds: number, b
     const main = groups.find(g => String(g.id) === String(ringGroupId));
     const fallback = main?.destination && main.destination.type !== 'ring_group' ? main.destination : undefined;
     if (!fallback) throw new TalkrouteError(422, 'The team ring group has no voicemail/menu fallback to reuse for the bot group');
-    const j = await tr<{ data: TrRingGroup | TrRingGroup[] }>('/ring-groups', { method: 'POST', body: JSON.stringify({ strategy: 'ringall', retryAfter: 15, maxHoldTime: 120, maxAttempts: 1, destination: fallback }) });
+    const j = await tr<{ data: TrRingGroup | TrRingGroup[] }>('/ring-groups', { method: 'POST', body: JSON.stringify({ strategy: 'sequence', retryAfter: 15, maxHoldTime: 120, maxAttempts: 1, destination: fallback }) });
     bot = Array.isArray(j.data) ? j.data[0] : j.data;
     created = true;
     await tr(`/ring-groups/${bot.id}/members`, { method: 'PUT', body: JSON.stringify([{ enabled: true, forwardingDeviceId: String(botForwardingId), forwardingSchedule: null, sequencePosition: 1, ringTimeout: 60 }]) });
