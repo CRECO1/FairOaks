@@ -136,6 +136,50 @@ export async function ensureForwardingNumber(number: string, description: string
   return { created: true, number: j.data };
 }
 
+// ── Routing (ring groups / numbers / menus / hours) ───────────────────────────
+export interface TrDestination { type: 'menu' | 'ring_group' | 'voicemail' | 'hangup'; id?: string | number }
+export interface TrRingGroup { id: number; name?: string; strategy?: string; retryAfter?: number; maxHoldTime?: number; maxAttempts?: number; callerId?: number; destination?: TrDestination }
+export interface TrRingGroupMember { id: string; forwardingDevice?: TrForwardingNumber; enabled?: boolean; sequencePosition?: number; ringTimeout?: number }
+
+/** Everything that decides where a call goes — for the Setup panel's routing view. */
+export async function inspectRouting(): Promise<Record<string, unknown>> {
+  const safe = async (path: string) => { try { const j = await tr<{ data?: unknown }>(path); return j.data ?? j; } catch (e) { return { error: e instanceof TalkrouteError ? `${e.status}` : String(e) }; } };
+  const numbers = await safe('/virtual-numbers');
+  const full: unknown[] = [];
+  for (const n of (Array.isArray(numbers) ? numbers : []) as Array<{ id: string }>) full.push(await safe(`/virtual-numbers/${n.id}`));
+  const groups = await safe('/ring-groups');
+  const groupsWithMembers: unknown[] = [];
+  for (const g of (Array.isArray(groups) ? groups : []) as TrRingGroup[]) groupsWithMembers.push({ ...g, members: await safe(`/ring-groups/${g.id}/members`) });
+  const menus = await safe('/menus');
+  const menusWithOptions: unknown[] = [];
+  for (const m of (Array.isArray(menus) ? menus : []) as Array<{ id: number }>) menusWithOptions.push({ ...m, options: await safe(`/menus/${m.id}/options`) });
+  return { numbers: full, ringGroups: groupsWithMembers, menus: menusWithOptions, hours: await safe('/hours/settings'), forwardingNumbers: await safe('/forwarding-numbers') };
+}
+
+/**
+ * "Ring the team first, then the bot": give `ringGroupId` a hold time of `seconds`
+ * and make its no-answer destination a dedicated ring group that only contains
+ * the bot's forwarding number. Idempotent — reuses the bot group if it exists.
+ */
+export async function routeNoAnswerToBot(ringGroupId: number, seconds: number, botForwardingId: string): Promise<{ botGroupId: number; created: boolean }> {
+  const groups = (await tr<{ data: TrRingGroup[] }>('/ring-groups?pageSize=100')).data ?? [];
+  let bot: TrRingGroup | undefined;
+  for (const g of groups) {
+    if (g.id === ringGroupId) continue;
+    const members = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${g.id}/members`)).data ?? [];
+    if (members.length === 1 && String(members[0].forwardingDevice?.id) === String(botForwardingId)) { bot = g; break; }
+  }
+  let created = false;
+  if (!bot) {
+    const j = await tr<{ data: TrRingGroup | TrRingGroup[] }>('/ring-groups', { method: 'POST', body: JSON.stringify({ strategy: 'ringall', retryAfter: 15, maxHoldTime: 120, maxAttempts: 1, destination: { type: 'hangup' } }) });
+    bot = Array.isArray(j.data) ? j.data[0] : j.data;
+    created = true;
+    await tr(`/ring-groups/${bot.id}/members`, { method: 'PUT', body: JSON.stringify([{ enabled: true, forwardingDeviceId: String(botForwardingId), forwardingSchedule: null, sequencePosition: 1, ringTimeout: 60 }]) });
+  }
+  await tr(`/ring-groups/${ringGroupId}`, { method: 'PATCH', body: JSON.stringify({ data: { maxHoldTime: seconds, destination: { type: 'ring_group', id: bot.id } } }) });
+  return { botGroupId: bot.id, created };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];

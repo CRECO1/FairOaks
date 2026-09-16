@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, listSubscriptions, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -88,6 +88,18 @@ export async function POST(req: NextRequest) {
       if (!number) return NextResponse.json({ error: 'Set the bot line (Twilio number) first.' }, { status: 400 });
       const r = await ensureForwardingNumber(number, String(b.description || 'AI receptionist').slice(0, 40));
       return NextResponse.json({ ok: true, ...r });
+    }
+    if (b.action === 'inspect_routing') return NextResponse.json({ ok: true, ...(await inspectRouting()) });
+    if (b.action === 'route_no_answer_to_bot') {
+      // Ring the team for `seconds`, then hand the caller to the bot's ring group.
+      const ringGroupId = Number(b.ring_group_id);
+      const seconds = Math.min(120, Math.max(10, Number(b.seconds) || 24));
+      if (!ringGroupId) return NextResponse.json({ error: 'ring_group_id required' }, { status: 400 });
+      const settings = await loadSettings(adminClient(), unitFor(req, ctx));
+      const want = (settings.twilio_number || '').replace(/\D/g, '').slice(-10);
+      const fwd = (await listForwardingNumbers()).find(f => String(f.number ?? '').replace(/\D/g, '').slice(-10) === want);
+      if (!fwd?.id) return NextResponse.json({ error: 'Add the bot line to Talkroute forwarding numbers first.' }, { status: 400 });
+      return NextResponse.json({ ok: true, ...(await routeNoAnswerToBot(ringGroupId, seconds, String(fwd.id))) });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;
