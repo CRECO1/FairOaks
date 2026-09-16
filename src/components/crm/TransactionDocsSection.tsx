@@ -55,6 +55,18 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
     setLoading(false);
   }, [businessUnit, authHeaders, onToast]);
 
+  // Open a form: the list no longer signs every blank PDF up front (that was the bulk
+  // of its load time), so fetch this one's signed URL on demand when it's opened.
+  const openForm = useCallback(async (form: Form, dealId?: string) => {
+    setFormMenuOpen(false); setPickForDeal(null);
+    let url = form.url ?? null;
+    if (!url && form.id) {
+      try { const r = await fetch(`/api/crm/forms/${form.id}/url`, { headers: authHeaders }); url = (await r.json())?.url ?? null; } catch { /* handled below */ }
+    }
+    if (!url) { onToast('Could not open the form'); return; }
+    setEditing({ form: { ...form, url }, dealId });
+  }, [authHeaders, onToast]);
+
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
@@ -107,7 +119,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                           {items.map(f => {
                             const cc = catColor(f.category);
                             return (
-                              <div key={f.id} onClick={() => { setEditing({ form: f }); setFormMenuOpen(false); }}
+                              <div key={f.id} onClick={() => openForm(f)}
                                 style={{ display: 'flex', alignItems: 'center', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
                                 onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                                 <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
@@ -171,7 +183,7 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
             </div>
             <div style={{ padding: 10, maxHeight: isMobile ? undefined : '52vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', ...(isMobile ? { flex: 1, minHeight: 0 } : {}) }}>
               {forms.map(f => (
-                <button key={f.id} onClick={() => { setEditing({ form: f, dealId: pickForDeal }); setPickForDeal(null); }}
+                <button key={f.id} onClick={() => openForm(f, pickForDeal ?? undefined)}
                   style={{ display: 'flex', width: '100%', textAlign: 'left', gap: 10, alignItems: 'center', padding: isMobile ? '13px 12px' : '11px 12px', minHeight: isMobile ? 48 : undefined, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }}
                   onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                   <span style={{ fontSize: 20 }}>📄</span>

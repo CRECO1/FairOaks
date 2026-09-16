@@ -17,12 +17,11 @@ export async function GET(req: NextRequest) {
     console.error('[api/forms] db error:', error);
     return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
   }
-  // Attach a short-lived signed URL for each form's blank PDF so the client can
-  // open it directly (top-level, not framed — avoids the frame-src CSP).
-  const forms = await Promise.all((data ?? []).map(async f => {
-    const { data: signed } = await supabase.storage
-      .from('transaction-forms').createSignedUrl(f.storage_path, 3600);
-    return { ...f, url: signed?.signedUrl ?? null };
-  }));
+  // Metadata only — the picker/dropdown just needs names & categories. Signing a
+  // short-lived URL for EVERY form's blank PDF here cost a Supabase storage round-trip
+  // per form (~1s+ total, and a thundering herd on a cold start) for links the list
+  // rarely uses. The blank's signed URL is fetched on demand when a form is actually
+  // opened — GET /api/crm/forms/[id]/url — which every open path already does.
+  const forms = (data ?? []).map(f => ({ ...f, url: null as string | null }));
   return NextResponse.json({ forms });
 }
