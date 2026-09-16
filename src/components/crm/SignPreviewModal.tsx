@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { renderPdfPages, revokePages, targetWidthFor, type RenderedPage } from '@/lib/pdf-render';
 
 // Review-before-send preview: renders the document's pages and overlays a labeled
 // marker at each placed signature field — so the agent can SEE who signs where
@@ -26,7 +27,7 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
   confirmLabel?: string;
   busy?: boolean;
 }) {
-  const [pages, setPages] = useState<{ w: number; h: number; src: string }[]>([]);
+  const [pages, setPages] = useState<RenderedPage[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'nofile' | 'encrypted'>('loading');
   // On a phone the review is a full-screen sheet with the send button pinned to the
   // bottom, instead of a toolbar that wraps into a pile above the document.
@@ -46,39 +47,35 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
   }, [onClose]);
 
   useEffect(() => {
-    let cancelled = false;
     // No file behind this document — nothing to render, and nothing to sign. Say so
     // plainly instead of failing with a generic "couldn't render", and let the parent
     // disable the send button below.
-    if (!url) { setStatus('nofile'); return; }
+    if (!url) { setStatus('nofile'); setPages([]); return; }
+    const ac = new AbortController();
+    // Track every rendered page (even ones that arrive after an abort) so cleanup can
+    // free their object URLs.
+    const collected: RenderedPage[] = [];
     (async () => {
       try {
-        setStatus('loading');
-        const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-        const resp = await fetch(url);
+        setStatus('loading'); setPages([]);
+        const resp = await fetch(url, { signal: ac.signal });
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
-        if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data, password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
-        const out: { w: number; h: number; src: string }[] = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          if (cancelled) return;
-          const base = page.getViewport({ scale: 1 });
-          const vp = page.getViewport({ scale: 820 / base.width });
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
-          const ctx = canvas.getContext('2d'); if (!ctx) continue;
-          await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
-          if (cancelled) return;
-          out.push({ w: canvas.width, h: canvas.height, src: canvas.toDataURL('image/jpeg', 0.85) });
-        }
-        if (cancelled) return;
-        setPages(out); setStatus('ready');
-      } catch (e) { if (!cancelled) { console.error('[SignPreviewModal]', e); setStatus((e as { name?: string })?.name === 'PasswordException' ? 'encrypted' : 'error'); } }
+        if (ac.signal.aborted) return;
+        // Rasterize off the main thread (OffscreenCanvas in a worker) so a big/multi-page
+        // doc doesn't freeze the review sheet; pages stream in so page 1 shows at once.
+        await renderPdfPages(data, {
+          targetWidth: targetWidthFor(820), quality: 0.85, signal: ac.signal,
+          onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p]); },
+        });
+        if (!ac.signal.aborted) setStatus('ready');
+      } catch (e) {
+        if (ac.signal.aborted || (e as { name?: string })?.name === 'AbortError') return;
+        console.error('[SignPreviewModal]', e);
+        setStatus((e as { name?: string })?.name === 'PasswordException' ? 'encrypted' : 'error');
+      }
     })();
-    return () => { cancelled = true; };
+    return () => { ac.abort(); revokePages(collected); };
   }, [url]);
 
   // Identify a field by its signer when we know them, else fall back to the role.

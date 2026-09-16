@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { renderPdfPages, revokePages, type RenderedPage } from '@/lib/pdf-render';
 import { Dancing_Script, Great_Vibes, Sacramento, Homemade_Apple, Caveat } from 'next/font/google';
 
 // Five hands to adopt from, self-hosted by next/font (so no external font request has
@@ -118,36 +119,29 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
   const gutter = narrow ? 6 : 12;
 
   useEffect(() => {
-    let cancelled = false;
+    const ac = new AbortController();
+    // Keep the rendered pages so cleanup can free their object URLs.
+    const collected: RenderedPage[] = [];
     (async () => {
       try {
-        setState('loading');
-        const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-        const resp = await fetch(url);
+        setState('loading'); setPages([]);
+        const resp = await fetch(url, { signal: ac.signal });
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
-        if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data, password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
-        const out: string[] = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          if (cancelled) return;
-          const base = page.getViewport({ scale: 1 });
-          const vp = page.getViewport({ scale: Math.min(1600, 1150) / base.width });
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
-          const ctx = canvas.getContext('2d'); if (!ctx) continue;
-          await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise;
-          if (cancelled) return;
-          out.push(canvas.toDataURL('image/jpeg', 0.85));
-          // Paint progressively: page 1 shows while the rest are still rendering.
-          setPages([...out]);
-        }
-        if (!cancelled) setState('ready');
-      } catch (e) { if (!cancelled) { console.error('[sign] preview', e); setState('error'); } }
+        if (ac.signal.aborted) return;
+        // Rasterize off the main thread so a long lease doesn't freeze the signing page
+        // — signers are usually on a phone. Pages stream in: page 1 shows immediately.
+        await renderPdfPages(data, {
+          quality: 0.85, signal: ac.signal,
+          onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p.src]); },
+        });
+        if (!ac.signal.aborted) setState('ready');
+      } catch (e) {
+        if (ac.signal.aborted || (e as { name?: string })?.name === 'AbortError') return;
+        console.error('[sign] preview', e); setState('error');
+      }
     })();
-    return () => { cancelled = true; };
+    return () => { ac.abort(); revokePages(collected); };
   }, [url]);
 
   // Field boxes are sized against the rendered page width, so a box covers the same
