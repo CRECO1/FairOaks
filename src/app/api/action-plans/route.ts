@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   if (!ctx) return unauthorized();
 
   const body = await req.json();
-  const { name, description, trigger_type, trigger_value, status, completion_campaign_id, business_unit } = body;
+  const { name, description, trigger_type, trigger_value, status, completion_campaign_id, business_unit, from_name, from_email } = body;
 
   if (!name || !trigger_type) {
     return NextResponse.json({ error: 'name and trigger_type are required' }, { status: 400 });
@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
       status: status ?? 'active',
       created_by: ctx.userId,
       completion_campaign_id: completion_campaign_id || null,
+      // Optional per-plan sender override (e.g. send as a specific broker). Only honored
+      // at send time when the address is on the unit's verified domain — see resolveActionPlanFrom.
+      from_name: from_name || null,
+      from_email: from_email || null,
       business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),
     }])
     .select()

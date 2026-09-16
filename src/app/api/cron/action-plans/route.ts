@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -51,7 +52,7 @@ interface EnrollmentRecord {
   agent_id?: string;
   current_step: number | null;
   next_step_at: string | null;
-  plan: { id: string; name: string; status: string; business_unit?: string; completion_campaign_id?: string };
+  plan: { id: string; name: string; status: string; business_unit?: string; completion_campaign_id?: string; from_name?: string | null; from_email?: string | null };
   client: { id: string; first_name: string; last_name: string; email: string; phone?: string; cell_phone?: string; type: string; agent_id?: string; unsubscribe_token?: string; unsubscribed_at?: string | null };
 }
 
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
     .from('crm_action_plan_enrollments')
     .select(`
       id, plan_id, client_id, agent_id, current_step, next_step_at,
-      plan:crm_action_plans!inner(id, name, status, business_unit, completion_campaign_id),
+      plan:crm_action_plans!inner(id, name, status, business_unit, completion_campaign_id, from_name, from_email),
       client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -159,7 +160,7 @@ export async function GET(req: NextRequest) {
           const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
           const body = applyMergeFields(step.body || '', ctx);
           await resendClient(plan.business_unit).emails.send({
-            from: fromAddress(plan.business_unit),
+            from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),
             to: client.email,
             subject,
             html: body,

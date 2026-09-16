@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -52,7 +53,7 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
   // Fetch active plans with trigger_type = 'new_contact' for this business unit
   const { data: plans } = await supabase
     .from('crm_action_plans')
-    .select('id, name, trigger_value, business_unit')
+    .select('id, name, trigger_value, business_unit, from_name, from_email')
     .eq('trigger_type', 'new_contact')
     .eq('status', 'active')
     .eq('business_unit', business_unit);
@@ -139,7 +140,7 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
         const subject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx);
         const body    = applyMergeFields(step.body    || '', ctx);
         await resendClient(business_unit).emails.send({
-          from:    fromAddress(business_unit),
+          from:    resolveActionPlanFrom(business_unit, plan.from_name, plan.from_email, fromAddress(business_unit)),
           to:      client.email,
           subject,
           html:    body,
