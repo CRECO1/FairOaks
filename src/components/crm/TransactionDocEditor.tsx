@@ -389,20 +389,18 @@ export default function TransactionDocEditor({
       const res = await fetch(`/api/crm/forms/${form.id}/fields`, { headers: h });
       const json = await res.json();
       if (!Array.isArray(json.fields)) { onToast?.('Could not load the form layout'); return; }
-      let added = 0;
-      setFields(fs => {
-        const near = (r: TemplateRow) => fs.some(f => f.page === (r.page ?? 1) && Math.abs(f.fx - r.x) < 0.006 && Math.abs(f.fy - r.y) < 0.006);
-        const missing = (json.fields as TemplateRow[]).filter(r => !near(r));
-        added = missing.length;
-        return [...fs, ...missing.map(r => {
-          const f = rowToField(r);
-          const shared = f.fieldKey ? fs.find(x => x.fieldKey === f.fieldKey && x.value)?.value : undefined;
-          return shared ? { ...f, value: shared } : f;
-        })];
-      });
-      setTimeout(() => onToast?.(added ? `Restored ${added} field${added === 1 ? '' : 's'}` : 'No fields are missing'), 0);
+      const near = (r: TemplateRow) => fields.some(f => f.page === (r.page ?? 1) && Math.abs(f.fx - r.x) < 0.006 && Math.abs(f.fy - r.y) < 0.006);
+      const missing = (json.fields as TemplateRow[]).filter(r => !near(r));
+      if (!missing.length) { onToast?.('No fields are missing'); return; }
+      setFields(fs => [...fs, ...missing.map(r => {
+        const f = rowToField(r);
+        const shared = f.fieldKey ? fs.find(x => x.fieldKey === f.fieldKey && x.value)?.value : undefined;
+        return shared ? { ...f, value: shared } : f;
+      })]);
+      setDeletedStack([]);   // those deletions are back now — undo would duplicate them
+      onToast?.(`Restored ${missing.length} field${missing.length === 1 ? '' : 's'}`);
     } catch { onToast?.('Could not load the form layout'); }
-  }, [form.id, onToast]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.id, fields, onToast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Generate filled PDF ─────────────────────────────────────────────────────
   const build = useCallback(async (): Promise<Uint8Array | null> => {
