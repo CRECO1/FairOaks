@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import TransactionDocEditor, { type EditorRecipient, type EditorField } from '@/components/crm/TransactionDocEditor';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import type { PickContact } from '@/components/crm/EsignPanel';
+import { defaultEsignMessage } from '@/lib/esign-message';
 
 const GOLD = '#c9922c';
 // One colour per recipient, reused by the toolbar picker and the field chips so the
@@ -85,6 +86,10 @@ export default function EsignComposer({
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   useEffect(() => { if (doc && !subject) setSubject(`Please sign: ${doc.title || 'Document'}`); }, [doc, subject]);
+  // Pre-fill the note to signers once the document is in place. Seeded once (a ref)
+  // so an agent who clears or edits it doesn't have it reappear.
+  const msgSeeded = useRef(false);
+  useEffect(() => { if (doc && !msgSeeded.current) { msgSeeded.current = true; setMessage(defaultEsignMessage(doc.title, agentName)); } }, [doc, agentName]);
 
   const [placed, setPlaced] = useState<EditorField[]>([]);
   const [review, setReview] = useState(false);

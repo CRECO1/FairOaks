@@ -5,6 +5,7 @@
 // email, add another signer, or cancel). Backed by /api/crm/envelopes.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPreviewModal';
+import { defaultEsignMessage } from '@/lib/esign-message';
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
@@ -35,7 +36,8 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
   fieldsVersion?: number;
 }) {
   const [signers, setSigners] = useState<Draft[]>([{ role: 'client', name: dealClient?.name || '', email: dealClient?.email || '' }]);
-  const [message, setMessage] = useState('');
+  // Pre-filled note to signers (editable). The doc is known when this view opens.
+  const [message, setMessage] = useState(() => defaultEsignMessage(doc.title || doc.crm_forms?.name, agentName));
   const [pick, setPick] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(false);

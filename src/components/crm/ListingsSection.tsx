@@ -6,6 +6,7 @@ import LoiBuilder from '@/components/crm/LoiBuilder';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
+import { defaultEsignMessage } from '@/lib/esign-message';
 import RentRoll from '@/components/crm/RentRoll';
 import CamReconciliation from '@/components/crm/CamReconciliation';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
@@ -579,7 +580,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     }
     setSendSigners(seed);
     setSendPick(null);
-    setSendMsg(restore?.msg ?? '');
+    setSendMsg(restore ? restore.msg : defaultEsignMessage(f.title || f.crm_forms?.name));
     setSendPreview(false);
     setSendSigFields(null);
     setSendFieldGroups([]);
