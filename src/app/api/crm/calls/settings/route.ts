@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, enableCallAnnounce, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setBusinessHours, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, enableCallAnnounce, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -112,6 +112,14 @@ export async function POST(req: NextRequest) {
       const settings = await loadSettings(adminClient(), unitFor(req, ctx));
       if (!settings.twilio_number) return NextResponse.json({ error: 'Set the bot line first.' }, { status: 400 });
       return NextResponse.json({ ok: true, ...(await enableCallAnnounce(settings.twilio_number)) });
+    }
+    if (b.action === 'set_after_hours_schedule') {
+      // { name, blocks } — humans ring only inside the blocks; otherwise the group falls through to the bot.
+      const blocks = (Array.isArray(b.blocks) ? b.blocks : []) as TrHourBlock[];
+      if (!blocks.length) return NextResponse.json({ error: 'blocks required' }, { status: 400 });
+      const settings = await loadSettings(adminClient(), unitFor(req, ctx));
+      if (!settings.twilio_number) return NextResponse.json({ error: 'Set the bot line first.' }, { status: 400 });
+      return NextResponse.json({ ok: true, ...(await setAfterHoursViaSchedules({ name: String(b.name || 'Business hours'), blocks, botNumber: settings.twilio_number })) });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;

@@ -237,6 +237,31 @@ export async function enableCallAnnounce(exceptNumber: string): Promise<{ update
   return { updated, skipped };
 }
 
+/**
+ * After-hours without the (plan-gated) Hours of Operation feature: give every HUMAN ring
+ * group member a forwarding schedule, so outside those hours nobody is rung and the
+ * group falls straight through to its no-answer destination — the bot.
+ */
+export async function setAfterHoursViaSchedules(opts: { name: string; blocks: TrHourBlock[]; botNumber: string }): Promise<{ scheduleId: string; members: string[] }> {
+  const existing = (await tr<{ data?: Array<{ id: string; name?: string }> }>('/forwarding-schedules')).data ?? [];
+  let schedule = existing.find(f => f.name === opts.name);
+  if (schedule) { await tr(`/forwarding-schedules/${schedule.id}`, { method: 'PATCH', body: JSON.stringify({ name: opts.name, description: opts.name, hours: opts.blocks }) }); }
+  else { schedule = (await tr<{ data: { id: string } }>('/forwarding-schedules', { method: 'POST', body: JSON.stringify({ name: opts.name, description: opts.name, hours: opts.blocks }) })).data; }
+  const skip = opts.botNumber.replace(/\D/g, '').slice(-10);
+  const members: string[] = [];
+  const groups = (await tr<{ data: TrRingGroup[] }>('/ring-groups?pageSize=100')).data ?? [];
+  for (const g of groups) {
+    const ms = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${g.id}/members`)).data ?? [];
+    for (const m of ms) {
+      const digits = String(m.forwardingDevice?.number ?? '').replace(/\D/g, '').slice(-10);
+      if (!digits || digits === skip) continue;
+      await tr(`/ring-group-members/${m.id}`, { method: 'PATCH', body: JSON.stringify({ forwardingSchedule: schedule.id }) });
+      members.push(`${m.forwardingDevice?.description ?? digits} (${String(g.id).slice(0, 8)})`);
+    }
+  }
+  return { scheduleId: schedule.id, members };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
