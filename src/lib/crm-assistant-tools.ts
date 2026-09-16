@@ -41,6 +41,21 @@ function scoped<T>(q: T, ctx: AgentCtx): T {
   return ctx.businessUnit ? (q as any).eq('business_unit', ctx.businessUnit) : q;
 }
 
+// Guard a by-id WRITE: the service-role client bypasses RLS, so every direct mutation
+// must confirm the target row lives in the agent's workspace. Returns an error string to
+// return to the model, or null when the row is in-workspace (or the agent is unit-less).
+async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, id: string, label: string): Promise<string | null> {
+  if (!ctx.businessUnit || !id) return null;
+  const { data } = await db.from(table).select('business_unit').eq('id', id).maybeSingle();
+  if (!data) return JSON.stringify({ error: `${label} not found` });
+  if (data.business_unit !== ctx.businessUnit) return JSON.stringify({ error: `${label} is in a different workspace` });
+  return null;
+}
+
+// Strip PostgREST filter metacharacters (commas and parens split .or() conditions; %/_ are
+// LIKE wildcards) so a search term can't inject extra filter clauses.
+const safeTerm = (v: unknown) => `%${String(v ?? '').replace(/[%_,()*]/g, ' ').trim()}%`;
+
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event']);
 
 export const TOOLS: Anthropic.Tool[] = [
@@ -91,17 +106,19 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
   try {
     switch (name) {
       case 'search_contacts': {
-        const term = `%${(input.query || '').replace(/[%_]/g, '')}%`;
+        const term = safeTerm(input.query);
         let q = db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').or(`first_name.ilike.${term},last_name.ilike.${term},business_name.ilike.${term},email.ilike.${term}`).limit(10);
         q = scoped(q, ctx);
+        if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`); // agents: own contacts only
         const { data, error } = await q;
         if (error) return j({ error: error.message });
         return j((data ?? []).map(c => ({ id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name, business: c.business_name, email: c.email, type: c.type })));
       }
       case 'get_contact': {
-        const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, tags, notes, lead_source, business_unit, lease_expiration_date').eq('id', input.contact_id).single();
+        const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, tags, notes, lead_source, business_unit, lease_expiration_date, agent_id, assigned_agent_ids').eq('id', input.contact_id).single();
         if (!c) return j({ error: 'Contact not found' });
         if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
+        if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That contact isn't assigned to you" });
         const { data: deals } = await db.from('crm_deals').select('id, property, value, stage, type').eq('client_id', input.contact_id).limit(10);
         return j({ ...c, deals: deals ?? [] });
       }
@@ -110,7 +127,9 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         let q = db.from('crm_tasks').select('id, title, due_date, status, priority, client_id, deal_id, assigned_to').order('due_date', { ascending: true, nullsFirst: false }).limit(30);
         q = scoped(q, ctx);
         if (status !== 'all') q = q.eq('status', status === 'completed' ? 'completed' : 'open');
-        if ((input.scope ?? 'mine') === 'mine') q = q.eq('assigned_to', ctx.userId);
+        // Agents see only their own tasks; admins can widen with scope="all".
+        if (ctx.role === 'agent') q = q.or(`assigned_to.eq.${ctx.userId},agent_id.eq.${ctx.userId}`);
+        else if ((input.scope ?? 'mine') === 'mine') q = q.eq('assigned_to', ctx.userId);
         const { data, error } = await q;
         if (error) return j({ error: error.message });
         return j(data ?? []);
@@ -119,7 +138,9 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         let q = db.from('crm_deals').select('id, client, property, value, stage, type, last_touch').order('created_at', { ascending: false }).limit(30);
         q = scoped(q, ctx);
         if (input.stage) q = q.eq('stage', input.stage);
-        if ((input.scope ?? 'all') === 'mine') q = q.eq('agent_id', ctx.userId);
+        // Agents see only deals they own/are assigned to; admins see the workspace.
+        if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
+        else if (input.scope === 'mine') q = q.eq('agent_id', ctx.userId);
         const { data, error } = await q;
         if (error) return j({ error: error.message });
         return j(data ?? []);
@@ -128,9 +149,13 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data: d } = await db.from('crm_deals').select('*').eq('id', input.deal_id).single();
         if (!d) return j({ error: 'Deal not found' });
         if (ctx.businessUnit && d.business_unit !== ctx.businessUnit) return j({ error: 'Deal is in a different workspace' });
+        if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That deal isn't assigned to you" });
         return j(d);
       }
       case 'create_task': {
+        // Don't let a task link to a contact/deal in another workspace.
+        if (input.contact_id) { const bad = await outOfWorkspace(db, ctx, 'crm_clients', input.contact_id, 'Contact'); if (bad) return bad; }
+        if (input.deal_id) { const bad = await outOfWorkspace(db, ctx, 'crm_deals', input.deal_id, 'Deal'); if (bad) return bad; }
         const row: Record<string, any> = { title: input.title, status: 'open', created_by: ctx.userId, assigned_to: ctx.userId, agent_id: ctx.userId, business_unit: ctx.businessUnit ?? 'commercial' };
         if (input.due_date) row.due_date = input.due_date;
         if (input.notes) row.description = input.notes;
@@ -143,13 +168,16 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         return j({ ok: true, created: data });
       }
       case 'complete_task': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_tasks', input.task_id, 'Task'); if (bad) return bad;
         const { error } = await db.from('crm_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', input.task_id);
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, 'Completed a task');
         return j({ ok: true });
       }
       case 'add_note': {
-        const { data: c } = await db.from('crm_clients').select('notes').eq('id', input.contact_id).single();
+        const { data: c } = await db.from('crm_clients').select('notes, business_unit').eq('id', input.contact_id).single();
+        if (!c) return j({ error: 'Contact not found' });
+        if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
         const stamp = new Date().toLocaleDateString('en-US');
         const merged = `${c?.notes ? c.notes + '\n\n' : ''}[${stamp}] ${input.note}`;
         const { error } = await db.from('crm_clients').update({ notes: merged }).eq('id', input.contact_id);
@@ -159,7 +187,9 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       }
       case 'update_deal_stage': {
         if (!DEAL_STAGES.includes(input.stage)) return j({ error: `stage must be one of: ${DEAL_STAGES.join(', ')}` });
-        const { data: deal } = await db.from('crm_deals').select('client_id').eq('id', input.deal_id).maybeSingle();
+        const { data: deal } = await db.from('crm_deals').select('client_id, business_unit').eq('id', input.deal_id).maybeSingle();
+        if (!deal) return j({ error: 'Deal not found' });
+        if (ctx.businessUnit && deal.business_unit !== ctx.businessUnit) return j({ error: 'That deal is in a different workspace' });
         const { error } = await db.from('crm_deals').update({ stage: input.stage, last_touch: new Date().toISOString().slice(0, 10) }).eq('id', input.deal_id);
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Moved a deal to “${input.stage}”`, deal?.client_id);
@@ -168,7 +198,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
 
       // ── Layer 2: leases, forms & e-sign ────────────────────────────────────
       case 'find_property': {
-        const term = `%${(input.query || '').replace(/[%_]/g, '')}%`;
+        const term = safeTerm(input.query);
         let q = db.from('crm_listings').select('id, name, address, city, state, type, status').or(`name.ilike.${term},address.ilike.${term}`).limit(10);
         q = scoped(q, ctx);
         const { data, error } = await q;
