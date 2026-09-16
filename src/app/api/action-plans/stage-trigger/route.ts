@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { getCrmUser } from '@/lib/crm-auth';
+import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 
 const db = () => createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { autoRefreshToken: false, persistSession: false } });
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
     // Find active action plans with trigger_type=stage_change and trigger_value=stage
     const { data: plans } = await supabase
       .from('crm_action_plans')
-      .select('id, name, business_unit')
+      .select('id, name, business_unit, audience, from_name, from_email')
       .eq('trigger_type', 'stage_change')
       .eq('status', 'active')
       .eq('business_unit', businessUnit ?? 'commercial')
@@ -56,6 +57,13 @@ export async function POST(req: NextRequest) {
 
     if (!client || client.unsubscribed_at || !client.email) return NextResponse.json({ enrolled: 0 });
 
+    // A plan may target a client type (audience). Skip plans whose audience doesn't match
+    // this client's type, so Buyer / Seller / Tenant "Closed & Won" plans that all sit on
+    // the "Closed" stage don't cross-fire. Null audience = fires for any type.
+    const clientType = (client.type || '').toLowerCase();
+    const matchedPlans = (plans ?? []).filter(p => !p.audience || String(p.audience).toLowerCase() === clientType);
+    if (!matchedPlans.length) return NextResponse.json({ enrolled: 0 });
+
     const bu = businessUnit ?? 'commercial';
     const agentCtx = agent ?? { first_name: 'Your', last_name: 'Agent', email: 'info@crecotx.com', phone: '210-817-3443' };
     if (bu === 'commercial') { agentCtx.email = 'info@crecotx.com'; agentCtx.phone = '210-817-3443'; }
@@ -68,7 +76,7 @@ export async function POST(req: NextRequest) {
     let enrolled = 0;
     const now = new Date().toISOString();
 
-    for (const plan of plans) {
+    for (const plan of matchedPlans) {
       // Upsert enrollment (skip if already enrolled)
       const { data: enrollment, error: enrollErr } = await supabase
         .from('crm_action_plan_enrollments')
@@ -84,7 +92,7 @@ export async function POST(req: NextRequest) {
       if (step.type === 'email') {
         const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx);
         const body = applyMergeFields(step.body || '', ctx);
-        await resendClient(bu).emails.send({ from: fromAddress(bu), to: client.email, subject, html: body }).catch(() => {});
+        await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch(() => {});
       }
 
       await supabase.from('crm_activity').insert([{ client_id: clientId, agent_id: agentId, type: 'email', notes: `[Action Plan: ${plan.name} — Stage trigger: ${stage}] Step 1 sent` }]);
