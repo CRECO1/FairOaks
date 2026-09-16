@@ -194,10 +194,12 @@ export default function VideoEditorModal({ url, onSave, onClose }: Props) {
   return (
     <div
       onClick={onClose}
+      className="crm-sheet"
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', zIndex: 2100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
     >
       <div
         onClick={e => e.stopPropagation()}
+        className="crm-sheet-panel"
         style={{ background: '#fff', borderRadius: 18, padding: 24, width: 460, maxWidth: '96vw', maxHeight: '96vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,.55)' }}
       >
         {/* Header */}

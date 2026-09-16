@@ -1841,9 +1841,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* ── New Listing Modal ─────────────────────────────────────────────────── */}
       {showNew && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowNew(false); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, margin: 0, color: '#111' }}>New Listing</h3>
               <button onClick={() => setShowNew(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
@@ -1864,9 +1864,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {/* ── Form picker: choose a transaction-doc template for this property ── */}
       {/* New Deal at this property */}
       {showNewDeal && active && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowNewDeal(false); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>New Deal — {active.name}</h3>
               <button onClick={() => setShowNewDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
@@ -1909,9 +1909,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* Link an existing deal to this property */}
       {showLinkDeal && active && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setShowLinkDeal(false); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Link an existing deal</h3>
               <button onClick={() => setShowLinkDeal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
@@ -1967,9 +1967,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           </div>
         );
         return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 600, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setFormPicker(false); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Fill a form — {active.name}</h3>
               <button onClick={() => setFormPicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
@@ -2004,9 +2004,9 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
       {/* Send for signature */}
       {sendModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}
           onClick={e => { if (e.target === e.currentTarget) setSendModal(null); }}>
-          <div className="es-touch" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+          <div className="es-touch crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 540, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>Send for signature</h3>
               <button onClick={() => setSendModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>

@@ -998,9 +998,9 @@ export default function TasksSection({
 
       {/* New Task Modal */}
       {showNewModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={e => { if (e.target === e.currentTarget) setShowNewModal(false); }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 28, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
             <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20, color: '#111' }}>New Task</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>{LABEL('Title *')}<input autoFocus value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleNewTask()} placeholder="Task name…" style={INPUT_STYLE} /></div>

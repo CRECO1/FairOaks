@@ -63,8 +63,8 @@ export default function LeaseDraftModal({ listingId, authToken, onToast, onCreat
   const lbl: React.CSSProperties = { fontSize: 10.5, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 4 };
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 760, padding: 22, fontFamily: "'DM Sans',sans-serif" }}>
+    <div onClick={onClose} className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 9000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto' }}>
+      <div onClick={e => e.stopPropagation()} className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 760, padding: 22, fontFamily: "'DM Sans',sans-serif" }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 17, fontWeight: 800, color: '#111' }}>{editing ? '✏️ Edit lease' : '✨ Draft a lease'}</div>
           <span style={{ flex: 1 }} />

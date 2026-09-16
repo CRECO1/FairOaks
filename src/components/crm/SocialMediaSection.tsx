@@ -2317,8 +2317,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       <div>
         {/* Saved Replies Modal */}
         {savedRepliesOpen && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#fff', borderRadius: 14, padding: 24, width: 'min(480px, calc(100vw - 28px))', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+          <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, padding: 24, width: 'min(480px, calc(100vw - 28px))', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>Saved Replies</h3>
                 <button onClick={() => setSavedRepliesOpen(false)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#9ca3af' }}>✕</button>
@@ -2903,10 +2903,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           : 'Draft';
         return (
           <div
+            className="crm-sheet"
             onClick={() => setPreviewPostId(null)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
           >
             <div
+              className="crm-sheet-panel"
               onClick={e => e.stopPropagation()}
               style={{
                 width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto',
@@ -2994,10 +2996,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
 
         return (
           <div
+            className="crm-sheet"
             onClick={() => setImgEditorOpen(false)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
           >
             <div
+              className="crm-sheet-panel"
               onClick={e => e.stopPropagation()}
               style={{ background: '#fff', borderRadius: 18, padding: 24, width: 440, maxWidth: '95vw', boxShadow: '0 24px 80px rgba(0,0,0,.5)' }}
             >
@@ -3112,7 +3116,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
         <>
           <div onClick={() => setShowConnectModal(false)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 1000 }} />
-          <div style={{
+          <div className="crm-sheet-fixed" style={{
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
             width: 480, maxWidth: '95vw', background: '#fff', borderRadius: 16,
             zIndex: 1001, boxShadow: '0 24px 80px rgba(0,0,0,.25)', overflow: 'hidden',
@@ -3204,10 +3208,12 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
       {/* Manual Instagram connect modal */}
       {showIgModal && (
         <div
+          className="crm-sheet"
           onClick={() => setShowIgModal(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <div
+            className="crm-sheet-panel"
             onClick={e => e.stopPropagation()}
             style={{ background: '#fff', borderRadius: 16, padding: 32, width: 'min(420px, calc(100vw - 28px))', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}
           >

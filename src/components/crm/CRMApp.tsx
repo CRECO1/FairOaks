@@ -6013,8 +6013,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Detail view */}
               {/* Campaign quick preview modal */}
               {previewCampaign && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setPreviewCampaign(null)}>
-                  <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setPreviewCampaign(null)}>
+                  <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
                     {/* Modal header */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
                       <div>
@@ -6081,8 +6081,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     .replaceAll('{{unsubscribe_url}}', '#preview')
                   : null;
                 return (
-                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setViewCampaignSendModal(null)}>
-                    <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 700, boxShadow: '0 24px 80px rgba(0,0,0,.35)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                  <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setViewCampaignSendModal(null)}>
+                    <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 700, boxShadow: '0 24px 80px rgba(0,0,0,.35)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
                       {/* Header */}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#111' }}>
                         <div>
@@ -10624,9 +10624,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Email Preview Modal ── */}
       {showEmailPreview && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
           onClick={() => setShowEmailPreview(false)}>
-          <div style={{ background: '#f9fafb', borderRadius: 12, width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+          <div className="crm-sheet-panel" style={{ background: '#f9fafb', borderRadius: 12, width: '100%', maxWidth: 680, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
             onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div style={{ background: '#111', color: '#fff', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, borderRadius: '12px 12px 0 0' }}>
@@ -10827,9 +10827,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* ── Closed Deal Enrollment Prompt ── */}
       {closedDealPrompt && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
           onClick={() => setClosedDealPrompt(null)}>
-          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
             onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div style={{ background: '#16a34a', padding: '20px 24px', color: '#fff' }}>
@@ -10926,9 +10926,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           'Other',
         ];
         return (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
             onClick={() => setLostDealPrompt(null)}>
-            <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 400, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
+            <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 400, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
               onClick={e => e.stopPropagation()}>
               {/* Header — fixed */}
               <div style={{ background: '#dc2626', padding: '12px 18px', color: '#fff', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -11096,9 +11096,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
       {esignModal && activeDeal && (
-        <div onClick={e => { if (e.target === e.currentTarget) setEsignModal(null); }}
+        <div className="crm-sheet" onClick={e => { if (e.target === e.currentTarget) setEsignModal(null); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
             {esignModal.mode === 'send' ? (
               <SendView doc={esignModal.doc} dealId={activeDeal.id} clients={clients} dealClient={{ name: activeDeal.client, email: activeDeal.client_email }}
                 agentName={`${profile.first_name} ${profile.last_name}`.trim()} agentEmail={profile.email} authToken={session?.access_token} showToast={showToast}
@@ -11120,9 +11120,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* E-Sign → an imported document: same signers → review → send flow as a deal's,
           just not bound to one. Nothing goes out without the visual review. */}
       {importSend && (
-        <div onClick={e => { if (e.target === e.currentTarget) setImportSend(null); }}
+        <div className="crm-sheet" onClick={e => { if (e.target === e.currentTarget) setImportSend(null); }}
           style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
-          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560, padding: 20, boxShadow: '0 24px 64px rgba(0,0,0,.3)' }}>
             <SendView doc={importSend} clients={clients}
               agentName={`${profile.first_name} ${profile.last_name}`.trim()} agentEmail={profile.email}
               authToken={session?.access_token} showToast={showToast}

@@ -624,3 +624,48 @@
   .es-touch textarea { font-size: 16px !important; min-height: 44px; }
   .es-touch input[type=checkbox] { width: 20px; height: 20px; }
 }
+
+/* Mobile bottom sheets: on phones (<768px, matching the CRM's own isMobile),
+   any inline-styled modal whose backdrop is marked .crm-sheet and whose panel is
+   .crm-sheet-panel becomes a bottom sheet — anchored to the bottom edge,
+   full-width, rounded top corners, its own internal scroll. Thumb-reachable,
+   since agents work from their phones. This mirrors the shared .overlay/.modal
+   sheet rules in CRMApp for modals that don't use that class system. Desktop is
+   untouched; !important is required to beat the components' inline styles. */
+@media (max-width: 767px) {
+  .crm-sheet {
+    align-items: flex-end !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+  .crm-sheet-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    border-top-left-radius: 20px !important;
+    border-top-right-radius: 20px !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  /* Variant for a panel that centers itself with position:fixed + transform
+     (no flex-parent backdrop to anchor it): pin it to the bottom as a sheet. */
+  .crm-sheet-fixed {
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    border-top-left-radius: 20px !important;
+    border-top-right-radius: 20px !important;
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
