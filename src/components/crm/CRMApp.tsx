@@ -22,6 +22,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import CallingLog from '@/components/crm/CallingLog';
+import AssistantPanel from '@/components/crm/AssistantPanel';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
 import MatchmakerSection from '@/components/crm/MatchmakerSection';
 import ActivitySection from '@/components/crm/ActivitySection';
@@ -487,6 +488,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; deal_id?: string | null; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   // Which document row is being renamed, and the draft name in the box.
   // Editing a contact's notes without leaving their card — this is where you are
   // when you want to record who was in the room, so it is where @-tagging has to work.
@@ -11065,6 +11067,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* The fillable editor, launched from a deal */}
       {/* In-app document preview (view + print, no forced download) */}
       {previewFile && <DocPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+
+      {/* CRECO Copilot — AI CRM assistant */}
+      {!assistantOpen && (
+        <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot"
+          style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
+      )}
+      {assistantOpen && <AssistantPanel token={session?.access_token} onClose={() => setAssistantOpen(false)} />}
 
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
       {esignModal && activeDeal && (
