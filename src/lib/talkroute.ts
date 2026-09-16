@@ -339,6 +339,18 @@ export async function botLast(ringGroupId: string, humanSeconds: number, botForw
   return { members: after.sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99)).map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s${m.enabled === false ? ' (off)' : ''}`) };
 }
 
+/** Drop one person from a ring group's sequence (by phone number), keeping everyone else's order and timings. */
+export async function removeRingGroupMember(ringGroupId: string, number: string): Promise<{ removed: string | null; members: string[] }> {
+  const want = number.replace(/\D/g, '').slice(-10);
+  const current = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`)).data ?? [];
+  const gone = current.find(m => String(m.forwardingDevice?.number ?? '').replace(/\D/g, '').slice(-10) === want);
+  if (!gone) return { removed: null, members: current.map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s`) };
+  const keep = current.filter(m => m.id !== gone.id).sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99));
+  await tr(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`, { method: 'PUT', body: JSON.stringify(keep.map((m, i) => ({ enabled: m.enabled !== false, forwardingDeviceId: String(m.forwardingDevice?.id), forwardingSchedule: null, sequencePosition: i + 1, ringTimeout: m.ringTimeout ?? 15 }))) });
+  const after = (await tr<{ data: TrRingGroupMember[] }>(`/ring-groups/${encodeURIComponent(ringGroupId)}/members`)).data ?? [];
+  return { removed: gone.forwardingDevice?.description ?? want, members: after.sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99)).map(m => `${m.sequencePosition}. ${m.forwardingDevice?.description ?? '?'} ${m.ringTimeout}s`) };
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];
