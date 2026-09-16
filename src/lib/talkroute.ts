@@ -286,6 +286,21 @@ export function isBusinessOpen(now = new Date()): boolean {
   return hour >= 8 && hour < 18;
 }
 
+// ── Number destination (where a Talkroute number sends its calls) ─────────────
+export async function getNumberDestination(numberId: string | number): Promise<TrDestination | null> {
+  const j = await tr<{ data?: { destination?: TrDestination } }>(`/virtual-numbers/${numberId}`);
+  return j.data?.destination ?? null;
+}
+export async function setNumberDestination(numberId: string | number, destination: TrDestination): Promise<TrDestination | null> {
+  await tr(`/virtual-numbers/${numberId}`, { method: 'PATCH', body: JSON.stringify({ destination }) });
+  let after = await getNumberDestination(numberId);
+  if (!after || after.type !== destination.type || String(after.id) !== String(destination.id)) {
+    await tr(`/virtual-numbers/${numberId}`, { method: 'PATCH', body: JSON.stringify({ data: { destination } }) });
+    after = await getNumberDestination(numberId);
+  }
+  return after;
+}
+
 export async function listSubscriptions(): Promise<TrSubscription[]> {
   const j = await tr<Paged<TrSubscription>>('/subscriptions?pageSize=100');
   return j.data ?? [];

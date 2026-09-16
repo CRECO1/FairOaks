@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, clearHoursOverride, enableCallAnnounce, getHoursOverride, inspectRouting, isBusinessOpen, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, setHoursOverride, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, clearHoursOverride, enableCallAnnounce, getHoursOverride, getNumberDestination, setNumberDestination, inspectRouting, isBusinessOpen, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setAfterHoursViaSchedules, setBusinessHours, setHoursOverride, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -134,6 +134,13 @@ export async function POST(req: NextRequest) {
       const closed = await getHoursOverride();
       if (isBusinessOpen()) await clearHoursOverride(); // restore the correct state for right now
       return NextResponse.json({ ok: true, closed, after: await getHoursOverride() });
+    }
+    if (b.action === 'probe_number_destination') {
+      // Can the plan re-point a number? Switch to the bot group, read back, restore.
+      const before = await getNumberDestination(String(b.number_id));
+      const changed = await setNumberDestination(String(b.number_id), { type: 'ring_group', id: String(b.ring_group_id) });
+      const restored = before ? await setNumberDestination(String(b.number_id), before) : null;
+      return NextResponse.json({ ok: true, before, changed, restored });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;
