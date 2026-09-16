@@ -15,7 +15,7 @@ function ago(iso: string): string {
   return d < 7 ? `${d}d ago` : new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function CopilotActivity({ token, onClose }: { token?: string; onClose: () => void }) {
+export default function CopilotActivity({ token, isMobile = false, onClose }: { token?: string; isMobile?: boolean; onClose: () => void }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [agents, setAgents] = useState<AgentRef[]>([]);
   const [agentId, setAgentId] = useState('');
@@ -35,33 +35,33 @@ export default function CopilotActivity({ token, onClose }: { token?: string; on
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ background: '#fff', borderRadius: 14, width: 'min(760px, 100%)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.55)', zIndex: 1300, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 16, fontFamily: "'DM Sans',sans-serif" }}>
+      <div style={{ background: '#fff', borderRadius: isMobile ? '14px 14px 0 0' : 14, width: 'min(760px, 100%)', maxHeight: isMobile ? '92vh' : '86vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', background: '#1a1a1a', color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '16px 20px', background: '#1a1a1a', color: '#fff' }}>
           <span style={{ fontSize: 18 }}>👁</span>
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700 }}>Copilot Activity</div>
-            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.55)' }}>Every action the copilot took for an agent · super-admin only</div>
+            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.55)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Every action the copilot took for an agent · super-admin only</div>
           </div>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'rgba(255,255,255,.14)', border: 'none', color: '#fff', borderRadius: 8, width: 36, height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 16, lineHeight: 1, order: isMobile ? 2 : 4 }}>✕</button>
           <select value={agentId} onChange={e => setAgentId(e.target.value)}
-            style={{ background: 'rgba(255,255,255,.12)', color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer' }}>
+            style={{ background: 'rgba(255,255,255,.12)', color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 8, padding: isMobile ? '10px 10px' : '6px 10px', fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', order: 3, flex: isMobile ? '1 1 100%' : '0 0 auto', minWidth: 0, maxWidth: '100%' }}>
             <option value="" style={{ color: '#111' }}>All agents</option>
             {agents.map(a => <option key={a.id} value={a.id} style={{ color: '#111' }}>{a.name}</option>)}
           </select>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,.14)', border: 'none', color: '#fff', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', fontSize: 15 }}>✕</button>
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 8px calc(8px + env(safe-area-inset-bottom))' : 8 }}>
           {loading && <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Loading…</div>}
           {error && <div style={{ padding: 40, textAlign: 'center', color: '#dc2626' }}>{error}</div>}
           {!loading && !error && rows.length === 0 && (
             <div style={{ padding: 50, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>No copilot activity yet. Actions agents take through the ✨ copilot will show up here.</div>
           )}
           {!loading && !error && rows.map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '11px 14px', borderBottom: '1px solid #f3f4f6' }}>
-              <div style={{ width: 130, flexShrink: 0 }}>
+            <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: isMobile ? 9 : 12, padding: isMobile ? '11px 10px' : '11px 14px', borderBottom: '1px solid #f3f4f6' }}>
+              <div style={{ width: isMobile ? 92 : 130, flexShrink: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.agent}</div>
                 {r.business_unit && <div style={{ fontSize: 10.5, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>{r.business_unit}</div>}
               </div>

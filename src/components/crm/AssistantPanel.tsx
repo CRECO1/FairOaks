@@ -86,13 +86,13 @@ export default function AssistantPanel({ token, onClose }: { token?: string; onC
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(430px, 100vw)', background: '#f7f7f5', boxShadow: '-8px 0 30px rgba(0,0,0,.14)', zIndex: 1200, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', background: '#1a1a1a', color: '#fff', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(14px + env(safe-area-inset-top)) 16px 14px', background: '#1a1a1a', color: '#fff', flexShrink: 0 }}>
         <span style={{ fontSize: 18 }}>✨</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>CRECO Copilot</div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)' }}>Your CRM assistant</div>
         </div>
-        <button onClick={onClose} style={{ background: 'rgba(255,255,255,.14)', border: 'none', color: '#fff', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', fontSize: 15 }}>✕</button>
+        <button onClick={onClose} aria-label="Close" style={{ background: 'rgba(255,255,255,.14)', border: 'none', color: '#fff', borderRadius: 8, width: 36, height: 36, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
       </div>
 
       {/* Messages */}
@@ -116,18 +116,18 @@ export default function AssistantPanel({ token, onClose }: { token?: string; onC
           <div style={{ fontSize: 13, color: '#92400e', fontWeight: 600, marginBottom: 8 }}>Confirm to run:</div>
           {pending.map((p, i) => <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 6 }}>• {p.summary}</div>)}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button onClick={() => send('Yes, go ahead.', true)} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Confirm &amp; run</button>
-            <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Cancel</button>
+            <button onClick={() => send('Yes, go ahead.', true)} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Confirm &amp; run</button>
+            <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* Input */}
-      <div style={{ padding: 12, borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0, display: 'flex', gap: 8 }}>
+      <div style={{ padding: '12px 12px calc(12px + env(safe-area-inset-bottom))', borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <textarea value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder="Ask or tell me to do something…"
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-          style={{ flex: 1, resize: 'none', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', outline: 'none', maxHeight: 120 }} />
-        <button onClick={() => send(input)} disabled={loading || !input.trim()} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', fontWeight: 700, cursor: loading || !input.trim() ? 'default' : 'pointer', opacity: loading || !input.trim() ? 0.5 : 1, fontSize: 14 }}>↑</button>
+          style={{ flex: 1, resize: 'none', border: '1px solid #e5e7eb', borderRadius: 10, padding: '11px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', minHeight: 44, maxHeight: 120, boxSizing: 'border-box' }} />
+        <button onClick={() => send(input)} disabled={loading || !input.trim()} aria-label="Send" style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, cursor: loading || !input.trim() ? 'default' : 'pointer', opacity: loading || !input.trim() ? 0.5 : 1, fontSize: 18 }}>↑</button>
       </div>
     </div>
   );

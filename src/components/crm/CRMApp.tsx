@@ -11088,11 +11088,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       {/* CRECO Copilot — AI CRM assistant */}
       {!assistantOpen && (
-        <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot"
-          style={{ position: 'fixed', bottom: 22, right: 22, zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
+        <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot" aria-label="Open CRECO Copilot"
+          style={{ position: 'fixed', bottom: 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
       )}
       {assistantOpen && <AssistantPanel token={session?.access_token} onClose={() => setAssistantOpen(false)} />}
-      {copilotActivityOpen && <CopilotActivity token={session?.access_token} onClose={() => setCopilotActivityOpen(false)} />}
+      {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} onClose={() => setCopilotActivityOpen(false)} />}
 
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
       {esignModal && activeDeal && (
