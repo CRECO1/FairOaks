@@ -19,6 +19,7 @@ import { Resend } from 'resend';
 import { runPipeline } from '@/lib/broker-ingest';
 import { geocodeMissing } from '@/lib/broker-ingest/geocode';
 import { enrichMissing } from '@/lib/broker-ingest/enrich';
+import { linkBrokerContacts } from '@/lib/broker-ingest/link-brokers';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -120,11 +121,18 @@ export async function GET(req: NextRequest) {
     // Never fail or alert the ingest over them — log and continue.
     let geocoded = 0;
     let enriched = 0;
+    let brokersLinked = 0;
     try {
       geocoded = (await geocodeMissing(25)).geocoded;
       enriched = (await enrichMissing()).enriched;
     } catch (secErr) {
       console.error('broker-ingest: geocode/enrich failed (non-fatal):', secErr);
+    }
+    // Link each new listing's broker text to a real (deduped) master-list contact.
+    try {
+      brokersLinked = (await linkBrokerContacts({ commit: true })).linked;
+    } catch (linkErr) {
+      console.error('broker-ingest: broker-linking failed (non-fatal):', linkErr);
     }
     return NextResponse.json({
       scanned: r.scanned,
@@ -139,6 +147,7 @@ export async function GET(req: NextRequest) {
       fieldsEnriched: r.fieldsEnriched,
       geocoded,
       enriched,
+      brokersLinked,
       model: r.model,
     });
   } catch (err) {

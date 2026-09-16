@@ -628,7 +628,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         </div>
       )}
 
-      {active && <DetailModal p={active} onClose={() => setActive(null)} isMobile={isMobile} />}
+      {active && <DetailModal p={active} allProperties={properties} onOpenProperty={setActive} onClose={() => setActive(null)} isMobile={isMobile} />}
       {showAdd && (
         <AddPropertyModal
           businessUnit={businessUnit}
@@ -688,38 +688,95 @@ function StatTile({ label, value, accent }: { label: string; value?: string | nu
 
 // A broker/owner rendered as a real, actionable contact (call / email) with a
 // "Contact" badge when linked to the master list; falls back to the text fields.
-function ContactCardRow({ label, contact, fallbackName, fallbackCompany, fallbackPhone, isMobile }: {
+function ContactCardRow({ label, contact, fallbackName, fallbackCompany, fallbackPhone, isMobile, onOpen }: {
   label: string;
   contact: CrmContact | null;
   fallbackName?: string | null;
   fallbackCompany?: string | null;
   fallbackPhone?: string | null;
   isMobile?: boolean;
+  onOpen?: () => void;
 }) {
   const name = contact ? contactLabel(contact) : (fallbackName || fallbackCompany || '');
   const company = contact ? contactCompany(contact) : (fallbackCompany || '');
   const phone = contact ? contactPhone(contact) : (fallbackPhone || '');
   const email = contact?.email || '';
   if (!name && !company && !phone) return null;
+  const clickable = !!(contact && onOpen);
   return (
-    <div style={{ background: contact ? '#f4f9f4' : '#fbfbfa', border: `1px solid ${contact ? '#cfe6cf' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+    <div
+      onClick={clickable ? onOpen : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen!(); } } : undefined}
+      style={{ background: contact ? '#f4f9f4' : '#fbfbfa', border: `1px solid ${contact ? '#cfe6cf' : '#eef0f2'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: clickable ? 'pointer' : 'default' }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 10, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
           {label}
           {contact && <span style={{ color: '#15803d', background: '#dcfce7', padding: '2px 7px', borderRadius: 20, fontSize: 9.5, letterSpacing: .3 }}>👤 Contact</span>}
+          {clickable && <span style={{ color: '#9ca3af', fontSize: 11, fontWeight: 600 }}>· view card ›</span>}
         </div>
         <div style={{ fontSize: 15, fontWeight: 600, color: '#1a1a1a', marginTop: 3 }}>{name || company}</div>
         {company && name !== company && <div style={{ fontSize: 13, color: '#6b7280' }}>{company}</div>}
-        {email && <a href={`mailto:${email}`} style={{ fontSize: 12.5, color: '#a06a12', textDecoration: 'none', display: 'inline-block', marginTop: 2 }}>✉ {email}</a>}
+        {email && <a href={`mailto:${email}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 12.5, color: '#a06a12', textDecoration: 'none', display: 'inline-block', marginTop: 2 }}>✉ {email}</a>}
       </div>
       {phone && (
-        <a href={`tel:${phone}`} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {phone}</a>
+        <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '8px 14px', borderRadius: 8, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 44 : undefined }}>📞 {phone}</a>
       )}
     </div>
   );
 }
 
-function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: () => void; isMobile?: boolean }) {
+// The linked broker's own contact card, opened from a property: their details,
+// call/email, and every other Property-DB listing tied to this same contact.
+function BrokerCardModal({ contact, listings, onClose, onOpenListing, isMobile }: {
+  contact: CrmContact;
+  listings: Property[];
+  onClose: () => void;
+  onOpenListing?: (p: Property) => void;
+  isMobile?: boolean;
+}) {
+  const name = contactLabel(contact);
+  const company = contactCompany(contact);
+  const phone = contactPhone(contact);
+  const email = contact.email || '';
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', zIndex: 1200, padding: isMobile ? 0 : 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: isMobile ? '18px 18px 0 0' : 16, width: isMobile ? '100%' : 480, maxWidth: '100%', maxHeight: '85vh', overflow: 'auto', fontFamily: "'DM Sans',sans-serif", boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ padding: '20px 22px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: 20, fontSize: 10, fontWeight: 700 }}>👤 {contact.type || 'Contact'}</span>
+              <span style={{ fontSize: 10, color: '#9ca3af' }}>Linked to your contacts</span>
+            </div>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#1a1a1a', marginTop: 6, lineHeight: 1.1 }}>{name || company}</div>
+            {company && name !== company && <div style={{ fontSize: 14, color: '#6b7280', marginTop: 2 }}>{company}</div>}
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 18, color: '#6b7280', flexShrink: 0 }}>✕</button>
+        </div>
+        <div style={{ padding: '16px 22px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {phone && <a href={`tel:${phone}`} style={{ fontSize: 14, fontWeight: 700, color: '#a06a12', textDecoration: 'none', border: '1px solid #f0e2c4', background: '#fffdf6', padding: '10px 16px', borderRadius: 8 }}>📞 {phone}</a>}
+          {email && <a href={`mailto:${email}`} style={{ fontSize: 14, fontWeight: 600, color: '#a06a12', textDecoration: 'none', border: '1px solid #eee', background: '#fafafa', padding: '10px 16px', borderRadius: 8 }}>✉ Email</a>}
+        </div>
+        <div style={{ padding: '4px 22px 22px' }}>
+          <div style={{ fontSize: 11, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>
+            {listings.length} listing{listings.length === 1 ? '' : 's'} from this broker
+          </div>
+          {listings.slice(0, 40).map((l) => (
+            <button key={l.id} onClick={() => onOpenListing?.(l)} style={{ display: 'block', width: '100%', textAlign: 'left', background: '#fafafa', border: '1px solid #f0f1f3', borderRadius: 9, padding: '10px 12px', marginBottom: 6, cursor: onOpenListing ? 'pointer' : 'default', fontFamily: "'DM Sans',sans-serif" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a' }}>{l.name || l.address || 'Untitled'}</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{[l.address, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div>
+            </button>
+          ))}
+          {listings.length > 40 && <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>+{listings.length - 40} more</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailModal({ p, onClose, isMobile = false, allProperties = [], onOpenProperty }: { p: Property; onClose: () => void; isMobile?: boolean; allProperties?: Property[]; onOpenProperty?: (p: Property) => void }) {
+  const [brokerContact, setBrokerContact] = useState<CrmContact | null>(null);
   const as = assetStyle(p.asset_type);
   const st = statusPill(p.vacancy_status);
   const isSale = p.listing_type === 'Sale' || p.sale_price != null;
@@ -773,11 +830,22 @@ function DetailModal({ p, onClose, isMobile = false }: { p: Property; onClose: (
             <StatTile label="Year Built" value={p.year_built ? String(p.year_built) : null} />
           </div>
 
-          {/* Listing broker + owner — real linked contacts (call / email) when available */}
+          {/* Listing broker + owner — real linked contacts (call / email / click to open card) */}
           <ContactCardRow label="Listing Broker" contact={p.contact ?? null}
-            fallbackName={p.listing_agent_name} fallbackCompany={p.listing_company} fallbackPhone={p.listing_agent_phone} isMobile={isMobile} />
+            fallbackName={p.listing_agent_name} fallbackCompany={p.listing_company} fallbackPhone={p.listing_agent_phone} isMobile={isMobile}
+            onOpen={p.contact ? () => setBrokerContact(p.contact!) : undefined} />
           <ContactCardRow label="Owner" contact={p.owner ?? null}
-            fallbackName={p.owner_name} fallbackPhone={(p.owner_phone as string | undefined) ?? null} isMobile={isMobile} />
+            fallbackName={p.owner_name} fallbackPhone={(p.owner_phone as string | undefined) ?? null} isMobile={isMobile}
+            onOpen={p.owner ? () => setBrokerContact(p.owner!) : undefined} />
+          {brokerContact && (
+            <BrokerCardModal
+              contact={brokerContact}
+              listings={allProperties.filter((x) => x.contact?.id === brokerContact.id || x.owner?.id === brokerContact.id)}
+              onClose={() => setBrokerContact(null)}
+              onOpenListing={(l) => { setBrokerContact(null); onOpenProperty?.(l); }}
+              isMobile={isMobile}
+            />
+          )}
 
           <Group title="Building & Specs">
             <Field label="Subtype" value={p.property_subtype} />
