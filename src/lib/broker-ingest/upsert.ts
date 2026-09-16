@@ -112,7 +112,8 @@ export function toRecord(e: Extraction, source = 'broker_email'): PropertyRecord
     divisible: e.divisible ?? null,
     highlights: e.highlights ?? null,
     brochure_url: e.brochure_url ?? null,
-    flyer_url: null, // set later from the email's flyer image (upload → public URL)
+    flyer_url: null, // reserved for a marketing flyer (manual add); crawl fills photos
+    photos: null, // set later from the email's property photos (hero + gallery)
     available_date: e.available_date ?? null,
     address_key: dedupKey(e.name, e.address) || null,
   };
@@ -215,7 +216,7 @@ const EXISTING_SELECT =
   'year_built,lot_size_acres,office_sf,clear_height_ft,dock_doors,grade_doors,' +
   'power,sprinklered,zoning,elevator,listing_type,sale_price,price_per_sf,' +
   'lease_rate_min,lease_rate_max,lease_type,opex_psf,available_sf,divisible,' +
-  'highlights,brochure_url,available_date,flyer_url';
+  'highlights,brochure_url,available_date,flyer_url,photos';
 
 /**
  * Like fetchExistingKeys, but also returns a key → { id, data } map so the upsert
@@ -274,7 +275,7 @@ export interface UpsertResult {
  * missing a flyer gets one uploaded + patched on (the backfill path). Idempotent.
  */
 export async function upsertProperties(
-  items: Array<{ extraction: Extraction; flyer?: GmailImage }>,
+  items: Array<{ extraction: Extraction; photos?: GmailImage[] }>,
   opts: { commit: boolean; source?: string; existing?: ExistingIndex },
 ): Promise<UpsertResult> {
   // Reuse a caller-provided dedup index when chunking a run (one fetch, mutated as
@@ -287,16 +288,22 @@ export async function upsertProperties(
   let enriched = 0;
   let fieldsEnriched = 0;
 
-  // Upload each distinct flyer at most once per run (same content → same path anyway).
+  // Upload each distinct image at most once per run (same content → same path anyway).
   const uploadCache = new Map<GmailImage, string | null>();
-  const doUpload = async (flyer: GmailImage): Promise<string | null> => {
-    if (uploadCache.has(flyer)) return uploadCache.get(flyer)!;
-    const url = await uploadFlyer(flyer);
-    uploadCache.set(flyer, url);
+  const doUpload = async (img: GmailImage): Promise<string | null> => {
+    if (uploadCache.has(img)) return uploadCache.get(img)!;
+    const url = await uploadFlyer(img);
+    uploadCache.set(img, url);
     return url;
   };
+  /** Upload a listing's property photos, returning the public URLs that succeeded. */
+  const uploadPhotos = async (imgs: GmailImage[]): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const img of imgs) { const u = await doUpload(img); if (u) urls.push(u); }
+    return urls;
+  };
 
-  for (const { extraction: e, flyer } of items) {
+  for (const { extraction: e, photos } of items) {
     const rec = toRecord(e, opts.source ?? 'broker_email');
     if (!rec.address && !rec.name) { skippedNoAddress++; continue; }
     const key = dedupKey(rec.name, rec.address);
@@ -331,10 +338,11 @@ export async function upsertProperties(
             if (!cur.includes(incoming)) patch.notes = cur ? `${cur}\n${incoming}` : incoming;
           }
           const dataKeys = Object.keys(patch).filter((k) => k !== 'address_key');
-          // Attach a flyer to an existing row that has none (same PATCH).
-          if (flyer && isEmpty(row.data.flyer_url)) {
-            const url = await doUpload(flyer);
-            if (url) { patch.flyer_url = url; photosAdded++; }
+          // Attach property photos to an existing row that has none (same PATCH).
+          const existingPhotos = row.data.photos;
+          if (photos?.length && (!Array.isArray(existingPhotos) || existingPhotos.length === 0)) {
+            const urls = await uploadPhotos(photos);
+            if (urls.length) { patch.photos = urls; photosAdded += urls.length; }
           }
           if (Object.keys(patch).length) {
             await patchRow(row.id, patch);
@@ -348,10 +356,10 @@ export async function upsertProperties(
     seen.add(key);
     if (ck) seen.add(ck);
     if (nk) seen.add(nk);
-    // New listing: attach its flyer photo before insert.
-    if (flyer && opts.commit) {
-      const url = await doUpload(flyer);
-      if (url) { rec.flyer_url = url; photosAdded++; }
+    // New listing: attach its property photos before insert.
+    if (photos?.length && opts.commit) {
+      const urls = await uploadPhotos(photos);
+      if (urls.length) { rec.photos = urls; photosAdded += urls.length; }
     }
     toInsert.push(rec);
   }

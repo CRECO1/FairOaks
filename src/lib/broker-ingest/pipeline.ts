@@ -5,21 +5,21 @@
  * Used by both the weekly cron route and scripts/broker-backfill.mjs.
  */
 
-import { getBrokerAccessToken, listMessageIds, fetchEmail, fetchHostedFlyer } from './gmail';
+import { getBrokerAccessToken, listMessageIds, fetchEmail, fetchHostedImages } from './gmail';
 import { extractListing, extractDigestListings, MODEL } from './extract';
 import { upsertProperties, fetchExistingRows } from './upsert';
 import type { Extraction, FetchedEmail, GmailImage, PropertyRecord } from './types';
 
 /**
- * The flyer: prefer the largest actually-attached image (logos/pixels are tiny), but
- * most broker emails attach nothing and link the flyer remotely, so fall back to the
- * largest hosted <img> in the HTML. Only called for single listings, never digests.
+ * Property photos for a listing: prefer actually-attached images (rare), otherwise
+ * pull the hosted photos linked in the email HTML. Largest first, so photos[0] is the
+ * hero shot that drives the preview thumbnail. Only called for single listings.
  */
-async function pickFlyer(email: FetchedEmail): Promise<GmailImage | undefined> {
+async function pickPhotos(email: FetchedEmail): Promise<GmailImage[]> {
   if (email.images.length) {
-    return email.images.reduce((a, b) => (b.data.length > a.data.length ? b : a));
+    return [...email.images].sort((a, b) => b.data.length - a.data.length).slice(0, 3);
   }
-  return fetchHostedFlyer(email.html);
+  return fetchHostedImages(email.html, 3);
 }
 
 /**
@@ -124,7 +124,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const CHUNK = 6;
   let i = 0;
   for (let c = 0; c < ids.length; c += CHUNK) {
-    const items: Array<{ extraction: Extraction; flyer?: GmailImage }> = [];
+    const items: Array<{ extraction: Extraction; photos?: GmailImage[] }> = [];
     const digestItems: Array<{ extraction: Extraction }> = [];
 
     for (const id of ids.slice(c, c + CHUNK)) {
@@ -155,7 +155,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
           }
           continue;
         }
-        items.push({ extraction: ex, flyer: await pickFlyer(email) });
+        items.push({ extraction: ex, photos: await pickPhotos(email) });
         listings++;
         log(
           `  [${i}/${ids.length}] LISTING — ${ex.name ?? ex.address ?? '(no name)'} ` +

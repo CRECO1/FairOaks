@@ -141,6 +141,8 @@ export interface PropertyRecord {
   highlights: string[] | null;
   brochure_url: string | null;
   flyer_url: string | null;
+  /** Property photos (hero + gallery) pulled from the email; photos[0] drives previews. */
+  photos: string[] | null;
   available_date: string | null;
   address_key: string | null;
 }

@@ -227,15 +227,19 @@ function hostedImageUrls(html: string): string[] {
 }
 
 /**
- * Broker emails almost always link their flyer/hero photo remotely (`<img src=…>`)
- * instead of attaching it, so the attachment scan finds nothing. Download the
+ * Broker emails almost always link their property photos remotely (`<img src=…>`)
+ * instead of attaching them, so the attachment scan finds nothing. Download the
  * candidate hosted images (parallel, guarded by type/size/timeout) and return the
- * LARGEST one — the property photo is reliably the biggest content image.
+ * largest `maxKeep` — biggest first, since the hero photo is reliably the biggest
+ * content image and the smaller ones round out a gallery.
  */
-export async function fetchHostedFlyer(html: string | undefined): Promise<GmailImage | undefined> {
-  if (!html) return undefined;
+export async function fetchHostedImages(
+  html: string | undefined,
+  maxKeep = 3,
+): Promise<GmailImage[]> {
+  if (!html || maxKeep <= 0) return [];
   const urls = hostedImageUrls(html);
-  if (!urls.length) return undefined;
+  if (!urls.length) return [];
   const one = async (u: string): Promise<{ img: GmailImage; size: number } | null> => {
     try {
       const ctrl = new AbortController();
@@ -249,11 +253,12 @@ export async function fetchHostedFlyer(html: string | undefined): Promise<GmailI
       return { img: { mimeType: ct as GmailImage['mimeType'], data: buf.toString('base64') }, size: buf.length };
     } catch { return null; }
   };
-  const got = await Promise.all(urls.slice(0, 8).map(one));
-  const best = got
+  const got = await Promise.all(urls.slice(0, 10).map(one));
+  return got
     .filter((x): x is { img: GmailImage; size: number } => !!x)
-    .sort((a, b) => b.size - a.size)[0];
-  return best?.img;
+    .sort((a, b) => b.size - a.size)
+    .slice(0, maxKeep)
+    .map((x) => x.img);
 }
 
 /** Fetch a full message and reduce it to a FetchedEmail (headers + body + images). */
