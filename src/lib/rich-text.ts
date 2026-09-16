@@ -35,6 +35,16 @@ export function hasMarkup(s: string): boolean {
   return /(^|[^\\])\*/.test(s ?? '');
 }
 
+/** Width a string actually occupies when drawn. pdf-lib's widthOfTextAtSize subtracts
+ *  kerning pairs (Times "VA" is -135/1000), but drawText emits no kerning — so a word
+ *  placed by that measure overruns into the following space ("HVACin"). Summing glyphs
+ *  one at a time measures what is really painted. */
+export function drawnWidth(font: PDFFont, text: string, size: number): number {
+  let w = 0;
+  for (const ch of text) w += font.widthOfTextAtSize(ch, size);
+  return w;
+}
+
 const fontFor = (r: Run, f: RichFonts): PDFFont => (r.b && r.i) ? f.boldItal : r.b ? f.bold : r.i ? f.ital : f.reg;
 
 /** Split runs into words (whitespace-separated), each word an array of same-style pieces. */
@@ -69,7 +79,7 @@ export interface RichDrawOpts {
 /** Draw wrapped rich text; returns the number of lines drawn. */
 export function drawRichText(o: RichDrawOpts): number {
   const words = toWords(o.runs);
-  const wordW = (w: Run[]) => w.reduce((a, s) => a + fontFor(s, o.fonts).widthOfTextAtSize(s.text, o.size), 0);
+  const wordW = (w: Run[]) => w.reduce((a, s) => a + drawnWidth(fontFor(s, o.fonts), s.text, o.size), 0);
   const spaceW = o.fonts.reg.widthOfTextAtSize(' ', o.size);
   let line: Run[][] = [], lineW = 0, lines = 0;
   const flush = () => {
@@ -78,7 +88,7 @@ export function drawRichText(o: RichDrawOpts): number {
       if (wi > 0) cx += spaceW;
       for (const s of w) {
         o.page.drawText(s.text, { x: cx, y: o.y - lines * o.lineHeight, size: o.size, font: fontFor(s, o.fonts), color: o.color });
-        cx += fontFor(s, o.fonts).widthOfTextAtSize(s.text, o.size);
+        cx += drawnWidth(fontFor(s, o.fonts), s.text, o.size);
       }
     });
     lines++; line = []; lineW = 0;
@@ -96,7 +106,7 @@ export function drawRichText(o: RichDrawOpts): number {
 /** Line count a rich value will occupy at a given width (for layout that must reserve height). */
 export function countRichLines(runs: Run[], fonts: RichFonts, size: number, maxW: number): number {
   const words = toWords(runs);
-  const wordW = (w: Run[]) => w.reduce((a, s) => a + fontFor(s, fonts).widthOfTextAtSize(s.text, size), 0);
+  const wordW = (w: Run[]) => w.reduce((a, s) => a + drawnWidth(fontFor(s, fonts), s.text, size), 0);
   const spaceW = fonts.reg.widthOfTextAtSize(' ', size);
   let lineW = 0, lines = 0, started = false;
   for (const w of words) {

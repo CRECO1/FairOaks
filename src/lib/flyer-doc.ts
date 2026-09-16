@@ -9,6 +9,7 @@
 import { PDFDocument, StandardFonts, rgb, PDFFont, PDFImage, PDFPage } from 'pdf-lib';
 import type { RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
+import { drawnWidth } from '@/lib/rich-text';
 
 const BLACK: RGB = rgb(0.086, 0.086, 0.098);
 const GOLD: RGB = rgb(0.941, 0.616, 0.078);
@@ -98,10 +99,10 @@ function photoGridHeight(n: number, w: number) {
 function drawJustified(page: PDFPage, text: string, x: number, y: number, maxW: number, font: PDFFont, size: number, color: RGB) {
   const words = text.split(' ').filter(Boolean);
   if (words.length < 2) { page.drawText(text, { x, y, size, font, color }); return; }
-  const wordsW = words.reduce((s, w) => s + font.widthOfTextAtSize(w, size), 0);
+  const wordsW = words.reduce((s, w) => s + drawnWidth(font, w, size), 0);
   const gap = (maxW - wordsW) / (words.length - 1);
   let cx = x;
-  for (const w of words) { page.drawText(w, { x: cx, y, size, font, color }); cx += font.widthOfTextAtSize(w, size) + gap; }
+  for (const w of words) { page.drawText(w, { x: cx, y, size, font, color }); cx += drawnWidth(font, w, size) + gap; }
 }
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
 function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB): Rect {
