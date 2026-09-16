@@ -574,7 +574,8 @@ export default function TransactionDocEditor({
         spec={isLoiLease ? leaseSpec(assetFromFormName(form.name)) : LOI_PURCHASE_SPEC}
         submissionId={submissionId}
         listingId={listingId}
-        dealId={dealSel || dealId || undefined}
+        dealId={dealId}
+        deals={deals}
         businessUnit={businessUnit ?? 'commercial'}
         authToken={authToken}
         prefill={{

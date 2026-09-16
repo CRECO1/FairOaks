@@ -24,6 +24,8 @@ interface Props {
   submissionId?: string;
   listingId?: string;
   dealId?: string;
+  /** Offer a "link to a deal" picker (the library launcher, where no deal is implied). */
+  deals?: { id: string; client?: string; property?: string }[];
   businessUnit: string;
   authToken?: string;
   prefill?: Prefill;
@@ -129,9 +131,10 @@ function reconstructFromOverlay(values: unknown, base: LoiPurchaseData, spec: Lo
   };
 }
 
-export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissionId, listingId, dealId, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
+export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissionId, listingId, dealId, deals, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
   const [data, setData] = useState<LoiPurchaseData>(() => seedData(spec, prefill));
   const [savedId, setSavedId] = useState<string | undefined>(submissionId);
+  const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const [loading, setLoading] = useState(!!submissionId);
   const [busy, setBusy] = useState(false);
   const [edits, setEdits] = useState<{ id: string; summary: string; editor: string; created_at: string }[]>([]);
@@ -190,16 +193,24 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
-          form_id: formId, deal_id: dealId || null, listing_id: listingId || null,
+          // relink_deal only when the agent changed the picker, so a re-save never
+          // detaches a doc from the deal it was filed on.
+          form_id: formId, deal_id: dealSel || null, relink_deal: dealSel !== (dealId ?? ''), listing_id: listingId || null,
           business_unit: businessUnit, title: spec.title,
           values: sigFields, builder_data: data, pdfBase64: bytesToBase64(pdfBytes), submission_id: savedId,
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { onToast(j.error || 'Save failed'); return; }
-      if (j.submission?.id) setSavedId(j.submission.id);
+      const id = j.submission?.id as string | undefined;
+      if (id) setSavedId(id);
       onSaved();
-      if (closeAfter) onClose(); else onToast('Saved ✓');
+      if (closeAfter) { onClose(); return; }
+      onToast(dealSel ? '✓ Saved to the deal' : listingId ? '✓ Saved to the property' : 'Saved ✓');
+      if (id) {
+        fetch(`/api/crm/form-submissions/${id}`, { headers: authHeaders }).then(r => r.json())
+          .then(h => { if (Array.isArray(h?.edits)) setEdits(h.edits); }).catch(() => {});
+      }
     } catch (e) { console.error(e); onToast('Save failed'); }
     finally { setBusy(false); }
   }
@@ -229,6 +240,13 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
         <RtFormatButtons />
         <div style={{ width: 1, height: 26, background: '#eef0f2' }} />
         {savedId && <button onClick={() => setShowHistory(true)} title="Edit history — who changed what" style={{ padding: '8px 12px', fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>🕘 History{edits.length ? ` (${edits.length})` : ''}</button>}
+        {!listingId && deals && deals.length > 0 && (
+          <select value={dealSel} onChange={e => setDealSel(e.target.value)} title="Link this document to a deal"
+            style={{ padding: '8px 10px', fontSize: 13, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', maxWidth: 230 }}>
+            <option value="">— Link to a deal —</option>
+            {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
+          </select>
+        )}
         <button onClick={() => save(false)} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Save</button>
         <button onClick={() => save(true)} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 800, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save & close'}</button>
         <button onClick={onClose} style={{ padding: '8px 10px', fontSize: 16, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
