@@ -32,6 +32,30 @@ export interface LeaseValues {
    * a sentence to Basic Rent; leaving them unset renders exactly as before.
    */
   monthly_rent_year2?: string; year2_start?: string;
+  /**
+   * A monthly internet charge billed alongside rent. Kept separate from
+   * {{monthly_rent}} so the lease shows what is rent and what is a service, and
+   * states the combined figure the tenant actually pays. Leave unset (or 0) and the
+   * clause renders exactly as before. `monthly_total` is derived — see
+   * normalizeLeaseValues — so it can never disagree with the two parts.
+   */
+  internet_fee?: string; monthly_total?: string;
+}
+
+const money = (s?: string) => Number(String(s ?? '').replace(/[^0-9.]/g, ''));
+const fmtMoney = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** True when the lease carries an internet charge worth printing. */
+export const hasInternetFee = (v: LeaseValues) => !!(v.internet_fee || '').trim() && money(v.internet_fee) > 0;
+
+/**
+ * Fill derived values before rendering or storing. The total is computed from rent
+ * + internet every time rather than trusted from input, so an edited rent can't
+ * leave a stale total printed on a signed lease.
+ */
+export function normalizeLeaseValues<T extends LeaseValues>(v: T): T {
+  if (!hasInternetFee(v)) return { ...v, monthly_total: '' };
+  return { ...v, monthly_total: fmtMoney(money(v.monthly_rent) + money(v.internet_fee)) };
 }
 
 /** A fill-in blank, positioned the way crm_form_fields records one. */
@@ -69,6 +93,7 @@ const LABELS: Record<string, string> = {
   monthly_rent: 'Monthly rent ($)', security_deposit: 'Security deposit ($)',
   tenant_phone: 'Tenant phone', tenant_email: 'Tenant email', exec_day: 'Day', exec_month: 'Month',
   monthly_rent_year2: 'Year 2 monthly rent ($)', year2_start: 'Year 2 starts',
+  internet_fee: 'Internet ($/mo)', monthly_total: 'Total monthly ($)',
 };
 
 type Tok = { kind: 'w'; s: string } | { kind: 'b'; key: string };
@@ -94,7 +119,8 @@ function tokenize(text: string): Tok[] {
   return out;
 }
 
-export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; blanks: LeaseBlank[] }> {
+export async function buildLease(input: LeaseValues): Promise<{ pdf: Uint8Array; blanks: LeaseBlank[] }> {
+  const v = normalizeLeaseValues(input);
   const doc = await PDFDocument.create();
   const reg = await doc.embedFont(StandardFonts.TimesRoman);
   const bold = await doc.embedFont(StandardFonts.TimesRomanBold);
@@ -215,6 +241,7 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
   // The number comes from position in the list, never from the data, so dropping
   // a clause renumbers everything below it automatically.
   const steppedRent = !!(v.monthly_rent_year2 || '').trim();
+  const internet = hasInternetFee(v);
   // No deposit taken. Leaving the blank empty would read as an unfinished form on a
   // signed lease, so the clause states the position instead of trailing a blank rule.
   const noDeposit = !(v.security_deposit || '').trim() || Number(String(v.security_deposit).replace(/[^0-9.]/g, '')) === 0;
@@ -233,7 +260,11 @@ export async function buildLease(v: LeaseValues): Promise<{ pdf: Uint8Array; bla
           para('No security deposit is required under this lease. Tenant remains responsible for all covenants and obligations under this lease, including any damage to the Leased Premises beyond ordinary wear and tear.');
           continue;
         }
-        para(b.text);
+        if (internet && c.title === 'Basic Rent') {
+          para('The monthly rental amount for Suite {{suite}} is ${{monthly_rent}} per month, plus ${{internet_fee}} per month for internet service, for a total of ${{monthly_total}} per month. Lease includes shared use of conference room with all Tenants.');
+        } else {
+          para(b.text);
+        }
         if (steppedRent && c.title === 'Basic Rent') {
           para('Beginning {{year2_start}}, the monthly rental amount increases to ${{monthly_rent_year2}} per month for the remainder of the term.');
         }

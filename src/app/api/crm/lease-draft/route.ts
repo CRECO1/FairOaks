@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
-import { buildLease, type LeaseValues } from '@/lib/lease-doc';
+import { buildLease, normalizeLeaseValues, type LeaseValues } from '@/lib/lease-doc';
 
 /**
  * POST /api/crm/lease-draft
@@ -35,7 +35,7 @@ const SCHEMA = {
       additionalProperties: false,
       required: ['tenant_name', 'building', 'suite', 'effective_date', 'term_months',
                  'end_date', 'monthly_rent', 'security_deposit', 'tenant_phone', 'tenant_email',
-                 'monthly_rent_year2', 'year2_start'],
+                 'monthly_rent_year2', 'year2_start', 'internet_fee'],
       properties: {
         tenant_name:        { type: 'string', description: 'Legal name of the tenant as it should appear on the lease.' },
         building:           { type: 'string' },
@@ -49,6 +49,7 @@ const SCHEMA = {
         tenant_email:       { type: 'string' },
         monthly_rent_year2: { type: 'string', description: 'Empty string unless the rent steps up mid-term.' },
         year2_start:        { type: 'string', description: 'Empty string unless the rent steps up. Long date.' },
+        internet_fee:       { type: 'string', description: 'Monthly internet charge billed on top of rent, digits with two decimals. Empty string unless the request mentions internet.' },
       },
     },
     matched_suite: { type: 'string', description: 'The rent-roll suite this was drawn from, or "" if none matched.' },
@@ -114,6 +115,7 @@ export async function POST(req: NextRequest) {
     '- Leave security_deposit empty when the request says there is no deposit. Do not',
     '  default it to one month.',
     '- Only fill monthly_rent_year2 / year2_start when the request describes a step-up.',
+    '- An internet charge goes in internet_fee, never folded into monthly_rent.',
     '- Put every assumption, ambiguity and conflict in notes. If the request contradicts',
     '  the rent roll — a different rent, an overlapping lease — say so rather than',
     '  silently preferring one.',
@@ -144,7 +146,7 @@ export async function POST(req: NextRequest) {
     const draft = JSON.parse(text.text);
     const v = draft.values ?? {};
     for (const k of ['effective_date', 'end_date', 'year2_start']) v[k] = LONG(v[k]);
-    for (const k of ['monthly_rent', 'monthly_rent_year2', 'security_deposit']) v[k] = MONEY(v[k]);
+    for (const k of ['monthly_rent', 'monthly_rent_year2', 'security_deposit', 'internet_fee']) v[k] = MONEY(v[k]);
     const matched = tenants.find(t => String(t.suite) === String(draft.matched_suite)) ?? null;
     return NextResponse.json({ ...draft, values: v, matched, model: MODEL });
   } catch (e) {
@@ -176,7 +178,9 @@ export async function PUT(req: NextRequest) {
   if (!listing_id || !values) return NextResponse.json({ error: 'listing_id and values required' }, { status: 400 });
   if (!(await assertCanSeeRentRoll(listing_id, ctx))) return notFound('Property not found');
 
-  const v = values as LeaseValues & { suite?: string };
+  // Derived values (the rent + internet total) are filled here, so the stored field
+  // values, builder_data and the printed PDF all carry the same figure.
+  const v = normalizeLeaseValues(values as LeaseValues & { suite?: string });
   if (!String(v.tenant_name || '').trim() || !String(v.suite || '').trim()) {
     return NextResponse.json({ error: 'A tenant name and a suite are required.' }, { status: 400 });
   }
