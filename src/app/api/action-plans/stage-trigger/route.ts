@@ -57,11 +57,13 @@ export async function POST(req: NextRequest) {
 
     if (!client || client.unsubscribed_at || !client.email) return NextResponse.json({ enrolled: 0 });
 
-    // A plan may target a client type (audience). Skip plans whose audience doesn't match
-    // this client's type, so Buyer / Seller / Tenant "Closed & Won" plans that all sit on
-    // the "Closed" stage don't cross-fire. Null audience = fires for any type.
+    // A plan may target client types (audience — one type or a comma-separated list, e.g.
+    // "Seller,Landlord/Investor"). Skip plans whose audience doesn't include this client's
+    // type, so Buyer / Seller / Tenant "Closed & Won" plans that all sit on the "Closed"
+    // stage don't cross-fire. Null/empty audience = fires for any type.
     const clientType = (client.type || '').toLowerCase();
-    const matchedPlans = (plans ?? []).filter(p => !p.audience || String(p.audience).toLowerCase() === clientType);
+    const matchedPlans = (plans ?? []).filter(p =>
+      !p.audience || String(p.audience).split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(clientType));
     if (!matchedPlans.length) return NextResponse.json({ enrolled: 0 });
 
     const bu = businessUnit ?? 'commercial';
