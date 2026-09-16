@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
+import { createSubscription, deleteSubscription, ensureForwardingNumber, getAccount, getPlanInfo, inspectRouting, listForwardingNumbers, listSubscriptions, routeNoAnswerToBot, setBusinessHours, talkrouteConfigured, TalkrouteError, type TrHourBlock } from '@/lib/talkroute';
 import { twilioConfigured, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
@@ -100,6 +100,13 @@ export async function POST(req: NextRequest) {
       const fwd = (await listForwardingNumbers()).find(f => String(f.number ?? '').replace(/\D/g, '').slice(-10) === want);
       if (!fwd?.id) return NextResponse.json({ error: 'Add the bot line to Talkroute forwarding numbers first.' }, { status: 400 });
       return NextResponse.json({ ok: true, ...(await routeNoAnswerToBot(ringGroupId, seconds, String(fwd.id))) });
+    }
+    if (b.action === 'set_business_hours') {
+      // { timezone, blocks: [{dayStart,dayEnd,hourStart,hourEnd,minuteStart,minuteEnd}], closed_ring_group_id }
+      const blocks = (Array.isArray(b.blocks) ? b.blocks : []) as TrHourBlock[];
+      if (!blocks.length || !b.closed_ring_group_id) return NextResponse.json({ error: 'blocks and closed_ring_group_id required' }, { status: 400 });
+      const r = await setBusinessHours({ timezone: String(b.timezone || 'America/Chicago'), blocks, closedTo: { type: 'ring_group', id: String(b.closed_ring_group_id) } });
+      return NextResponse.json({ ok: true, ...r });
     }
     if (b.action === 'register_webhooks') {
       const secret = process.env.TALKROUTE_WEBHOOK_SECRET;

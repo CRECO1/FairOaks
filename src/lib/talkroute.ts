@@ -153,7 +153,7 @@ export async function inspectRouting(): Promise<Record<string, unknown>> {
   const menus = await safe('/menus');
   const menusWithOptions: unknown[] = [];
   for (const m of (Array.isArray(menus) ? menus : []) as Array<{ id: number }>) menusWithOptions.push({ ...m, options: await safe(`/menus/${m.id}/options`) });
-  return { numbers: full, ringGroups: groupsWithMembers, menus: menusWithOptions, hours: await safe('/hours/settings'), forwardingNumbers: await safe('/forwarding-numbers') };
+  return { numbers: full, ringGroups: groupsWithMembers, menus: menusWithOptions, hours: await safe('/hours/settings'), hourBlocks: await safe('/hours'), forwardingNumbers: await safe('/forwarding-numbers') };
 }
 
 /**
@@ -194,6 +194,27 @@ export async function routeNoAnswerToBot(ringGroupId: string, seconds: number, b
     if (!(await applied())) throw new TalkrouteError(500, 'Talkroute accepted the ring group update but did not apply it');
   }
   return { botGroupId: bot.id, created };
+}
+
+export interface TrHourBlock { id?: string; dayStart: string; dayEnd: string; hourStart: number; hourEnd: number; minuteStart: number; minuteEnd: number }
+
+/**
+ * Business hours: replace the open-hours schedule and send closed-hours calls to `closedTo`.
+ * Blocks are Talkroute's own shape (dayStart..dayEnd, hourStart:minuteStart..hourEnd:minuteEnd).
+ */
+export async function setBusinessHours(opts: { timezone: string; blocks: TrHourBlock[]; closedTo: TrDestination }): Promise<{ removed: number; added: number }> {
+  const existing = (await tr<{ data?: TrHourBlock[] }>('/hours')).data ?? [];
+  let removed = 0;
+  for (const h of existing) if (h.id) { try { await tr(`/hours/${h.id}`, { method: 'DELETE' }); removed++; } catch (e) { console.warn('[talkroute] delete hour block', e); } }
+  let added = 0;
+  for (const b of opts.blocks) { await tr('/hours', { method: 'POST', body: JSON.stringify(b) }); added++; }
+  const settings = { timezone: opts.timezone, closed: { audioFileId: null, destination: opts.closedTo } };
+  await tr('/hours/settings', { method: 'PATCH', body: JSON.stringify(settings) });
+  const after = (await tr<{ data?: { timezone?: string; closed?: { destination?: TrDestination } } }>('/hours/settings')).data;
+  if (after?.closed?.destination?.type !== opts.closedTo.type || String(after?.closed?.destination?.id) !== String(opts.closedTo.id)) {
+    await tr('/hours/settings', { method: 'PATCH', body: JSON.stringify({ data: settings }) });
+  }
+  return { removed, added };
 }
 
 export async function listSubscriptions(): Promise<TrSubscription[]> {
