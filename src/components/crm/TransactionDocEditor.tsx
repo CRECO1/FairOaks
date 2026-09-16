@@ -338,7 +338,17 @@ export default function TransactionDocEditor({
       // matching where the on-screen field renders.
       const y = height - f.fy * height + 2;
       const size = f.size * 0.85;
-      if (f.type === 'check') { if (f.value) pg.drawText('X', { x, y, size, font, color: ink }); continue; }
+      if (f.type === 'check') {
+        // Centre the X in the printed box (the field is the box: fw wide, bottom at fy)
+        // rather than hanging it off the left edge like a line of text.
+        if (String(f.value ?? '').trim()) {
+          const box = f.fw * width;
+          const xw = font.widthOfTextAtSize('X', size);
+          const cap = size * 0.72;
+          pg.drawText('X', { x: f.fx * width + Math.max(0, (box - xw) / 2), y: height - f.fy * height + Math.max(1, (box - cap) / 2), size, font, color: ink });
+        }
+        continue;
+      }
       const val = winAnsi(f.value || '');
       if (!val) continue;
       // Wrap long values to the field's width instead of running off the page; a short
@@ -724,25 +734,34 @@ export default function TransactionDocEditor({
                 onMouseEnter={() => setHovered(f.id)}
                 onMouseLeave={() => setHovered(h => (h === f.id ? null : h))}
                 style={{ position: 'absolute', left: `${f.fx * 100}%`, top: `${f.fy * 100}%`, width: `${f.fw * 100}%`,
-                  height: `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
+                  height: isCheck ? `max(11px, ${f.fw * 100}cqw)` : `max(11px, ${cqw(em * 1.1)})`, transform: 'translateY(-100%)', boxSizing: 'border-box', borderRadius: 2, overflow: 'visible',
                   display: 'flex', alignItems: isCheck ? 'center' : 'flex-end', touchAction: isSel ? 'none' : undefined,
                   background: isSel ? 'rgba(201,146,44,.20)' : (isCheck ? 'rgba(37,99,235,.05)' : 'rgba(37,99,235,.07)'),
                   outline: isSel ? '1.5px solid #c9922c' : 'none' }}>
-                {isCheck ? (
-                  <input
-                    className="pdf-fill-input"
-                    value={f.value}
-                    placeholder={f.label || ''}
-                    title={f.label || ''}
-                    onChange={e => updateVal(f.id, e.target.value)}
-                    onMouseDown={e => e.stopPropagation()}
-                    onTouchStart={e => e.stopPropagation()}
-                    onFocus={() => setSelected(f.id)}
-                    style={{ width: '100%', height: 'auto', minHeight: 0, boxSizing: 'border-box', border: 'none', background: 'transparent', outline: 'none',
-                      fontSize: cqw(em), lineHeight: cqw(em * 1.05), color: '#0b1f4d',
-                      textAlign: 'center', padding: '0 2px', margin: 0, fontFamily: 'Helvetica, Arial, sans-serif' }}
-                  />
-                ) : (
+                {isCheck ? (() => {
+                  // A checkbox is one click: tick or untick. It used to be a text input sized
+                  // to the printed box, so a click dropped a cursor into an 8pt square and the
+                  // hint text crammed inside it. Any non-empty value still stamps an "X" on save.
+                  const checked = !!String(f.value ?? '').trim();
+                  return (
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={checked}
+                      aria-label={f.label || 'Checkbox'}
+                      title={`${f.label || 'Checkbox'} — click to ${checked ? 'uncheck' : 'check'}`}
+                      onClick={e => { e.stopPropagation(); updateVal(f.id, checked ? '' : '✔'); setSelected(f.id); }}
+                      onMouseDown={e => e.stopPropagation()}
+                      onTouchStart={e => e.stopPropagation()}
+                      style={{ width: '100%', height: '100%', minWidth: 11, minHeight: 11, boxSizing: 'border-box', margin: 0, padding: 0,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                        border: `1.5px solid ${checked ? '#0b1f4d' : 'rgba(37,99,235,.55)'}`, borderRadius: 2,
+                        background: checked ? 'rgba(37,99,235,.10)' : 'rgba(255,255,255,.6)',
+                        color: '#0b1f4d', fontSize: cqw(em * 1.05), lineHeight: 1, fontWeight: 700, fontFamily: 'Helvetica, Arial, sans-serif' }}>
+                      {checked ? '✔' : ''}
+                    </button>
+                  );
+                })() : (
                   <RichText
                     value={f.value}
                     onChange={v => updateVal(f.id, v)}
