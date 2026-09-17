@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import type { Metadata } from 'next';
+import { FORG, CRECO } from '@/lib/site-identity';
 
 export const metadata: Metadata = {
   title: 'Fair Oaks Ranch Homes for Sale | #1 Local Realtor – Fair Oaks Realty Group',
@@ -461,6 +462,25 @@ export default async function HomePage() {
           </div>
         </Container>
       </section>
+
+      {/* ── Homepage schema: what this page is about, and its link to CRECO ── */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            '@id': `${FORG.url}/#webpage`,
+            url: FORG.url,
+            name: 'Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
+            description: FORG.summary,
+            isPartOf: { '@id': `${FORG.url}/#website` },
+            about: { '@id': FORG.id },
+            mentions: { '@id': CRECO.id },
+            relatedLink: [CRECO.url],
+          }),
+        }}
+      />
 
       {/* ── FAQ Schema ───────────────────────────────────────────────── */}
       <script

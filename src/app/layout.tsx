@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
 import StickyCTA from '@/components/ui/StickyCTA';
+import { FORG, CRECO, AFFILIATION } from '@/lib/site-identity';
 import './globals.css';
 
 export const viewport: Viewport = {
@@ -151,6 +152,10 @@ export default function RootLayout({
                     { '@type': 'City', name: 'Helotes', sameAs: 'https://en.wikipedia.org/wiki/Helotes,_Texas' },
                     { '@type': 'City', name: 'Leon Springs' },
                     { '@type': 'City', name: 'San Antonio' },
+                    { '@type': 'City', name: 'Bulverde' },
+                    { '@type': 'City', name: 'New Braunfels' },
+                    { '@type': 'City', name: 'Canyon Lake' },
+                    { '@type': 'City', name: 'Spring Branch' },
                     { '@type': 'State', name: 'Texas' },
                   ],
                   openingHoursSpecification: [
@@ -173,11 +178,27 @@ export default function RootLayout({
                     reviewCount: '127',
                     bestRating: '5',
                   },
-                  sameAs: [
-                    'https://www.facebook.com/fairoaksrealtygroup',
-                    'https://www.instagram.com/fairoaksrealtygroup',
-                  ],
+                  // Profiles linked from the site footer. crecotx.com is deliberately NOT
+                  // here: sameAs asserts the same entity, and CRECO is an affiliated brand
+                  // — see disambiguatingDescription and the CRECO node below.
+                  sameAs: [...FORG.sameAs],
                   priceRange: '$$$',
+                  disambiguatingDescription: `${FORG.summary} ${AFFILIATION}`,
+                  knowsAbout: [...FORG.services],
+                },
+                // The affiliated commercial brokerage, under the @id crecotx.com itself uses,
+                // so AI systems and search engines join the two sites' graphs.
+                {
+                  '@type': ['RealEstateAgent', 'LocalBusiness', 'Organization'],
+                  '@id': CRECO.id,
+                  name: CRECO.name,
+                  legalName: CRECO.legalName,
+                  url: CRECO.url,
+                  description: CRECO.summary,
+                  telephone: CRECO.telephone,
+                  email: CRECO.email,
+                  address: { '@type': 'PostalAddress', ...FORG.address },
+                  identifier: { '@type': 'PropertyValue', propertyID: 'TREC License', value: CRECO.license },
                 },
                 {
                   '@type': 'WebSite',
