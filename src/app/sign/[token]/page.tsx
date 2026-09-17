@@ -29,6 +29,13 @@ type SignField = { id: string; page: number; fx: number; fy: number; fw: number;
 type SignData = { status: string; doc_url: string | null; title: string; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
 const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : t === 'text' ? 'Fill in' : t === 'check' ? 'Check' : 'Date';
 const isInput = (t: string) => t === 'text' || t === 'check';
+// Imported documents carry their file name as the title ("Commercial_Lease_Amendment__filled_").
+// Shown as words: an unbroken underscore run can't wrap on a phone and reads like a file path.
+// Display only — the stored title (and the email subject) are left alone.
+const displayTitle = (t?: string | null) => {
+  const s = String(t || '').replace(/\.pdf$/i, '').replace(/_+/g, ' ').replace(/\s*\(?\bfilled\b\)?\s*$/i, '').replace(/\s+/g, ' ').trim();
+  return s || 'Document';
+};
 
 const GOLD = '#c9922c';
 const INK = '#0d1b4b';
@@ -153,8 +160,11 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, on
         }
         // Rasterize off the main thread so a long lease doesn't freeze the signing page
         // — signers are usually on a phone. Pages stream in: page 1 shows immediately.
+        // On a phone the page is ~340px wide, but signers pinch-zoom to read 10pt form text.
+        // The default raster (~2× the screen) went soft when zoomed; 1200px stays legible.
+        const phone = window.matchMedia('(max-width: 640px)').matches;
         await renderPdfPages(data, {
-          quality: 0.85, signal: ac.signal,
+          quality: 0.85, signal: ac.signal, targetWidth: phone ? 1200 : undefined,
           onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p]); },
         });
         if (!ac.signal.aborted) setState('ready');
@@ -211,7 +221,10 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, on
         };
         return (
           <div key={i} style={{ position: 'relative', marginBottom: i === pages.length - 1 ? 0 : gutter, boxShadow: '0 2px 10px rgba(0,0,0,.4)' }}>
-            <img src={pg.src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
+            {/* Height reserved from the page's shape, so lazily decoded pages don't shift
+                the markers (or a jump target) while they load. */}
+            <img src={pg.src} alt={`Page ${i + 1}`} loading="lazy" decoding="async"
+              style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: `${pg.w} / ${pg.h}` }} />
             {pageFields.map(f => {
               const isNext = activeId === f.id;
               // A text / checkbox spot is filled in the "Fill in" card below the document, with
@@ -227,7 +240,9 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, on
                   <div key={f.id} id={`fld-${f.id}`} role="button"
                     aria-label={`${f.label || typeLabel(f.type)}: ${has ? 'edit' : 'fill in'}`}
                     onClick={() => onPick?.(f)}
-                    style={{ position: 'absolute', left: `${f.fx * 100}%`, width: f.type === 'check' ? h : `${widthOf(f) * 100}%`,
+                    // Above the signature markers: their invisible thumb-sized tap margin spans
+                    // neighbouring lines on a phone and used to swallow taps on these bars.
+                    style={{ position: 'absolute', zIndex: 2, left: `${f.fx * 100}%`, width: f.type === 'check' ? h : `${widthOf(f) * 100}%`,
                       top: `${f.fy * 100}%`, transform: 'translateY(-100%)', height: h, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
                     <div style={{ height: '100%', boxSizing: 'border-box', borderRadius: 3, display: 'flex', alignItems: 'center',
                       justifyContent: f.type === 'check' ? 'center' : 'flex-start', padding: f.type === 'check' ? 0 : '0 4px', overflow: 'hidden',
@@ -253,7 +268,7 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, on
                   onClick={() => (done ? onClear?.(f) : onFill?.(f))}
                   title={done ? 'Tap to clear and redo this spot' : `Click to ${typeLabel(f.type).toLowerCase()} here`}
                   style={{
-                    position: 'absolute', left: `${f.fx * 100}%`, width: `${widthOf(f) * 100}%`,
+                    position: 'absolute', zIndex: 1, left: `${f.fx * 100}%`, width: `${widthOf(f) * 100}%`,
                     top: `${f.fy * 100}%`, transform: 'translateY(-100%)', height: h,
                     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
                   }}>
@@ -543,9 +558,23 @@ export default function SignPage() {
     } finally { setSubmitting(false); }
   }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField, scrollToInput, values]);
 
+  // While the keyboard is up, the floating control would ride above it and cover the very
+  // field being typed into — it steps aside until the signer is done typing.
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    const isTextEntry = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'TEXTAREA'
+      || (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes((t as HTMLInputElement).type)));
+    const on = (e: FocusEvent) => { if (isTextEntry(e.target)) setTyping(true); };
+    // Deferred, so moving from one input to the next doesn't flash the control back.
+    const off = () => setTimeout(() => setTyping(isTextEntry(document.activeElement)), 0);
+    document.addEventListener('focusin', on);
+    document.addEventListener('focusout', off);
+    return () => { document.removeEventListener('focusin', on); document.removeEventListener('focusout', off); };
+  }, []);
+
   // What the floating control does: walk the signer to their next spot, or — once the
   // spots are done (or the document has none) — down to Finish & Sign.
-  const pill: 'jump' | 'finish' | null = view !== 'ready' ? null
+  const pill: 'jump' | 'finish' | null = view !== 'ready' || typing ? null
     : fields.length > 0 && !allDone && nextField ? 'jump'
     : adoptInView ? null : 'finish';
 
@@ -577,13 +606,13 @@ export default function SignPage() {
   if (view === 'declined') return msg('✋', 'Declined', 'This document was declined and is no longer available to sign. The sender has been notified.');
   if (view === 'waiting') return msg('⏱️', 'Waiting on a previous signer', 'It’s not your turn yet. We’ll email you the moment the document is ready for your signature.');
   if (view === 'done') return msg('✅', 'You’ve already signed', 'Your signature is on file. You’ll receive the fully executed copy once everyone has signed.');
-  if (view === 'completed') return msg('🎉', 'Fully executed', `“${data?.title ?? 'This document'}” has been signed by all parties. A copy has been emailed to you.`);
+  if (view === 'completed') return msg('🎉', 'Fully executed', `“${data?.title ? displayTitle(data.title) : 'This document'}” has been signed by all parties. A copy has been emailed to you.`);
   if (view === 'signed') return msg(finalStatus === 'completed' ? '🎉' : '✅', 'Signature recorded — thank you!', finalStatus === 'completed' ? 'All parties have now signed. The fully executed copy is on its way to your inbox.' : 'Your signature has been recorded. We’ll route the document to the next party and email you the final copy when it’s complete.');
 
   // view === 'ready'
   const tab = (k: 'pick' | 'draw', label: string) => (
     <button onClick={() => setMode(k)}
-      style={{ flex: 1, minHeight: TAP, padding: '10px 0', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', border: 'none', borderRadius: 8,
+      style={{ flex: 1, minWidth: 0, minHeight: TAP, padding: '10px 4px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer', border: 'none', borderRadius: 8, whiteSpace: 'nowrap',
         background: mode === k ? '#fff' : 'transparent', color: mode === k ? INK : '#6b7280', boxShadow: mode === k ? '0 1px 3px rgba(0,0,0,.12)' : 'none' }}>
       {label}
     </button>
@@ -594,7 +623,7 @@ export default function SignPage() {
       {header}
       <div style={{ padding: narrow ? '16px 12px' : '20px 16px' }}>
         <div style={{ maxWidth: 960, margin: '0 auto 14px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
-          <h1 style={{ fontSize: narrow ? 20 : 22, margin: 0, overflowWrap: 'anywhere' }}>{data?.title ?? 'Document'}</h1>
+          <h1 style={{ fontSize: narrow ? 20 : 22, margin: 0, overflowWrap: 'anywhere' }}>{displayTitle(data?.title)}</h1>
           <span style={{ fontSize: 13, color: '#6b7280' }}>for {data?.signer?.name} · signing as <strong style={{ textTransform: 'capitalize' }}>{data?.signer?.role}</strong></span>
         </div>
 
@@ -609,11 +638,19 @@ export default function SignPage() {
 
         {fields.length > 0 && !allDone && (
           <div style={{ maxWidth: 960, margin: '0 auto 12px', fontSize: 14, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 10, padding: '12px 16px', lineHeight: 1.5 }}>
-            <strong>One more step — place your signature.</strong> Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump to my signature</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>} Then check the box and Finish &amp; Sign.
-            {' '}<button onClick={scrollToAdopt} style={{ display: 'inline-flex', alignItems: 'center', minHeight: TAP, background: 'none', border: 'none', padding: 0, color: GOLD, fontWeight: 700, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Draw your own signature instead ↓</button>
+            <strong>One more step — place your signature.</strong>{' '}
+            {narrow
+              // Nine lines of instructions pushed the document off a phone's first screen.
+              ? <>Tap the gold spots in the document, or the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>}</>
+              : <>Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump to my signature</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>} Then check the box and Finish &amp; Sign.</>}
+            {/* Its own row: a 44px-tall button inline in the paragraph split it in two. */}
+            <div>
+              <button onClick={scrollToAdopt} style={{ display: 'inline-flex', alignItems: 'center', minHeight: TAP, background: 'none', border: 'none', padding: 0, color: GOLD, fontWeight: 700, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Draw your own signature instead ↓</button>
+            </div>
           </div>
         )}
-        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
+        {/* Edge to edge on a phone: every pixel of width is document you can read. */}
+        <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden', ...(narrow ? { margin: '0 -12px 16px', borderRadius: 0 } : {}) }}>
           {data?.doc_url
             ? <DocView url={data.doc_url} fields={fields} filled={filled} values={values} onFill={fillField} onClear={clearField}
                 onPick={f => scrollToInput(f.id)} onLabels={setLabels} focusId={focusId}
@@ -622,17 +659,17 @@ export default function SignPage() {
             : <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>}
           {fields.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 8, padding: '10px 14px', borderTop: '1px solid #eef0f2', background: allDone ? '#ecfdf5' : '#fffdf6', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: allDone ? '#15803d' : '#7c5a12' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: allDone ? '#15803d' : '#7c5a12', ...(narrow ? { flex: '1 1 100%' } : {}) }}>
                 {allDone ? `✓ All ${fields.length} spot${fields.length === 1 ? '' : 's'} confirmed` : `${fields.length - remaining.length} of ${fields.length} confirmed`}
               </span>
-              <span style={{ flex: 1 }} />
+              {!narrow && <span style={{ flex: 1 }} />}
               {Object.keys(filled).length > 0 && (
                 <button onClick={startOver} title="Clear what you've placed and start again"
-                  style={{ minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer' }}>↺ Start over</button>
+                  style={{ minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>↺ Start over</button>
               )}
               {!allDone && (
                 <button onClick={() => { if (nextField) { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); } }}
-                  style={{ minHeight: TAP, fontSize: 14, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer' }}>
+                  style={{ minHeight: TAP, fontSize: 14, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer', whiteSpace: 'nowrap', ...(narrow ? { flex: '1 1 auto' } : {}) }}>
                   {remaining.length === fields.length ? 'Place my signature ▸' : `Place next — ${fields.length - remaining.length + 1} of ${fields.length} ▸`}
                 </button>
               )}
@@ -706,8 +743,8 @@ export default function SignPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 4, background: '#f1f2f4', borderRadius: 10, padding: 4, marginBottom: 14 }}>
-            {tab('pick', '✍️  Choose a style')}
-            {tab('draw', '🖊  Draw it yourself')}
+            {tab('pick', narrow ? '✍️ Pick a style' : '✍️  Choose a style')}
+            {tab('draw', narrow ? '🖊 Draw it' : '🖊  Draw it yourself')}
           </div>
 
           {mode === 'pick' ? (
@@ -740,10 +777,14 @@ export default function SignPage() {
                 <canvas ref={canvasRef} aria-label="Signature pad — draw your signature with your finger or mouse"
                   style={{ display: 'block', width: '100%', height: narrow ? 180 : 160, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, boxSizing: 'border-box', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair' }} />
                 <span aria-hidden style={{ position: 'absolute', left: 16, right: 16, bottom: 38, borderBottom: '1px dashed #d6d9de', pointerEvents: 'none' }} />
-                <button onClick={clearSig} style={{ position: 'absolute', top: 6, right: 6, minHeight: TAP, minWidth: 64, fontSize: 13, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '0 12px', cursor: 'pointer' }}>Clear</button>
               </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', margin: '6px 2px 16px' }}>
-                Draw above with your mouse or finger. Your initials use the <strong>{active.label}</strong> style.
+              {/* Clear sits below the pad, not on it: on a phone a signature that ran to the
+                  right edge landed on the button and wiped itself. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0 16px' }}>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#9ca3af', paddingLeft: 2 }}>
+                  Draw above with your mouse or finger. Your initials use the <strong>{active.label}</strong> style.
+                </div>
+                <button onClick={clearSig} style={{ flexShrink: 0, minHeight: TAP, minWidth: 64, fontSize: 13, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '0 14px', cursor: 'pointer' }}>Clear</button>
               </div>
             </>
           )}
@@ -808,13 +849,13 @@ export default function SignPage() {
             <button
               onClick={() => { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); }}
               title="Jump to your next signing spot and sign it"
-              style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 52, maxWidth: '100%', background: GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: '13px 22px', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(201,146,44,.5)' }}>
+              style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 52, maxWidth: '100%', whiteSpace: 'nowrap', background: GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: narrow ? '12px 18px' : '13px 22px', fontSize: narrow ? 14 : 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(201,146,44,.5)' }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, background: 'rgba(255,255,255,.25)', borderRadius: 999, padding: '2px 9px', flexShrink: 0 }}>{fields.length - remaining.length} / {fields.length}</span>
               {remaining.length === fields.length ? 'Jump to my signature ▸' : `Jump to next — ${typeLabel(nextField.type)} ▸`}
             </button>
           ) : (
             <button onClick={scrollToAdopt}
-              style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 52, background: allDone ? '#15803d' : GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: '13px 24px', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(0,0,0,.25)' }}>
+              style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 52, maxWidth: '100%', whiteSpace: 'nowrap', background: allDone ? '#15803d' : GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: narrow ? '12px 20px' : '13px 24px', fontSize: narrow ? 14 : 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(0,0,0,.25)' }}>
               {allDone ? '✓ Spots placed — Finish & Sign ▾' : 'Sign this document ▾'}
             </button>
           )}
