@@ -2025,17 +2025,17 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
                         const hasSigner = sendSigners.some(s => s.role === g.role && s.email.includes('@') && s.name.trim());
                         return (
-                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
+                          <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
                             <select value={g.role} disabled={!g.keep} onChange={e => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
                               title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: '#166534', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
                               {SIGNER_ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
-                            <span style={{ color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                            <span style={{ flex: '1 1 100px', minWidth: 0, color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
                             {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
                             <span style={{ flex: 1 }} />
                             {g.keep
-                              ? <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
-                              : <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
+                              ? <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
+                              : <button onClick={() => setSendFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
                           </div>
                         );
                       })}

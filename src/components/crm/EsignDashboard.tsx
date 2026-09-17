@@ -448,7 +448,9 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   {env.deal_id && onOpenDeal && <button onClick={() => onOpenDeal(env.deal_id!)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Open →</button>}
                   </div>
                   {actFor === env.id && (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef0f3' }}>
+                    // Its own full-width line inside the (wrapping) envelope card, rather than
+                    // whatever width was left beside the action buttons.
+                    <div style={{ flexBasis: '100%', width: '100%', minWidth: 0, marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef0f3' }}>
                       {!acts[env.id] ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Loading activity…</div>
                         : acts[env.id].length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>No activity recorded yet.</div>
                         : (
@@ -482,13 +484,25 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                             const ua = ev.user_agent || '';
                             const dev = /iPhone|Android|iPad|Mobile/i.test(ua) ? 'mobile' : ua ? 'desktop' : '';
                             return (
-                              <div key={ev.id} style={{ display: 'flex', alignItems: 'baseline', gap: 9, rowGap: 2, flexWrap: 'wrap', fontSize: 12.5 }}>
+                              // Two lines, not columns: what happened and when, then who / device / IP.
+                              // As one squeezed row on a phone, the device and IP left the name about
+                              // one character wide and it broke letter by letter ("Pat / ric / k").
+                              // Names wrap between words only.
+                              <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12.5, lineHeight: 1.45 }}>
                                 <span style={{ width: 16, flexShrink: 0 }}>{l.icon}</span>
-                                <span style={{ color: l.color, fontWeight: 600, minWidth: 'min(150px, 40%)' }}>{l.label}</span>
-                                <span style={{ color: '#374151', flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{who || '—'}</span>
-                                {dev && <span style={{ color: '#9ca3af' }}>{dev}</span>}
-                                {ev.ip && <span style={{ color: '#c8ccd2', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>{ev.ip}</span>}
-                                <span style={{ color: '#9ca3af', whiteSpace: 'nowrap' }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                                    <span style={{ flex: 1, minWidth: 0, color: l.color, fontWeight: 600 }}>{l.label}</span>
+                                    <span style={{ flexShrink: 0, color: '#9ca3af', whiteSpace: 'nowrap' }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                                  </div>
+                                  {(who || dev || ev.ip) && (
+                                    <div style={{ color: '#9ca3af', overflowWrap: 'break-word' }}>
+                                      {who && <span style={{ color: '#374151' }}>{who}</span>}
+                                      {dev && <span>{who ? ' · ' : ''}{dev}</span>}
+                                      {ev.ip && <span>{who || dev ? ' · ' : ''}<span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'nowrap' }}>{ev.ip}</span></span>}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}

@@ -118,17 +118,17 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
                 const summary = Object.entries(counts).map(([t, n]) => n > 1 ? `${n} ${fieldTypeLabel(t)}` : fieldTypeLabel(t)).join(' + ');
                 const hasSigner = signers.some(s => s.role === g.role && s.email.includes('@') && s.name.trim());
                 return (
-                  <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
+                  <div key={g.origRole} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, rowGap: 4, fontSize: 12, background: '#fff', border: '1px solid #d6f0dd', borderRadius: 7, padding: '4px 4px 4px 6px', opacity: g.keep ? 1 : 0.6 }}>
                     <select value={g.role} disabled={!g.keep} onChange={e => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, role: e.target.value } : x))}
                       title="Which party signs this block — change it to reassign the signature to a different signer" style={{ fontSize: 11.5, fontWeight: 700, color: '#166534', background: '#f7fdf9', border: '1px solid #cdeed8', borderRadius: 5, padding: '3px 6px', cursor: g.keep ? 'pointer' : 'default', textDecoration: g.keep ? 'none' : 'line-through' }}>
                       {ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                     </select>
-                    <span style={{ color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
+                    <span style={{ flex: '1 1 100px', minWidth: 0, color: '#4b7d5b', textDecoration: g.keep ? 'none' : 'line-through' }}>{summary}</span>
                     {g.keep && !hasSigner && <span title="No signer below is set to this party yet — add one (or change a signer's role) so this block gets signed" style={{ fontSize: 10, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 5, padding: '1px 5px' }}>no signer</span>}
                     <span style={{ flex: 1 }} />
                     {g.keep
-                      ? <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
-                      : <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
+                      ? <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: false } : x))} title="Remove these fields — no one will sign here" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Remove</button>
+                      : <button onClick={() => setFieldGroups(prev => prev.map((x, j) => j === gi ? { ...x, keep: true } : x))} title="Restore these fields" style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: '#15803d', background: '#fff', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>Undo</button>}
                   </div>
                 );
               })}
@@ -321,7 +321,7 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
                 <span style={{ fontSize: 12, fontWeight: 800, color: '#9ca3af' }}>{s.signing_order}.</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a' }}>{s.name} <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'capitalize' }}>· {s.signer_role}</span></div>
-                  <div style={{ fontSize: 12, color: '#6b7280', overflowWrap: 'anywhere' }}>{s.email}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280', overflowWrap: 'break-word' }}>{s.email}</div>
                 </div>
                 <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap', ...(done ? { background: '#dcfce7', color: '#15803d' } : isCurrent ? { background: '#dbeafe', color: '#1d4ed8' } : { background: '#f3f4f6', color: '#6b7280' }) }}>
                   {done ? '✓ Signed' : isCurrent ? (s.in_person ? '🖊 In person' : s.viewed_at ? '👁 Viewed' : `⏳ Waiting ${ago(s.sent_at)}`) : 'Up next'}
@@ -333,10 +333,10 @@ export function ManageView({ doc, env, authToken, isSuperAdmin, showToast, onBac
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <select value={editRole} onChange={e => setEditRole(e.target.value)} title="Signer's role" style={{ ...INP, width: 'auto', flex: '0 0 104px', padding: '5px 8px', fontSize: 12.5 }}>{ROLES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-                        <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" style={{ ...INP, fontSize: 12.5, padding: '5px 8px' }} />
+                        <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Name" style={{ ...INP, minWidth: 0, fontSize: 12.5, padding: '5px 8px' }} />
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="Email" style={{ ...INP, fontSize: 12.5, padding: '5px 8px' }} />
+                        <input value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="Email" style={{ ...INP, minWidth: 0, fontSize: 12.5, padding: '5px 8px' }} />
                         <button disabled={busy} onClick={() => { if (!editName.trim() || !editEmail.includes('@')) { showToast?.('Name + valid email'); return; } act({ action: 'update_signer', signer_id: s.id, name: editName, email: editEmail, role: editRole }, 'Signer updated ✓'); setEditId(null); }} style={{ ...mini, background: GOLD, color: '#fff', border: 'none' }}>Save</button>
                         <button onClick={() => setEditId(null)} style={mini}>✕</button>
                       </div>
@@ -462,9 +462,11 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
             {ordered.map(doc => {
               const st = statusOf(doc); const env = envByDoc[doc.id];
               return (
-                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', background: '#fff' }}>
+                // Wraps on a phone: the title keeps a readable width and the buttons drop to
+                // their own line, instead of squeezing the title to "…" and running off the card.
+                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, rowGap: 8, border: '1px solid #eef0f2', borderRadius: 10, padding: '10px 12px', background: '#fff' }}>
                   <span style={{ fontSize: 18 }}>📄</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: '1 1 160px', minWidth: 160 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title || doc.crm_forms?.name || 'Document'}</div>
                     <div style={{ fontSize: 11.5, marginTop: 1 }}>
                       {st === 'sent' ? <span style={{ color: '#1d4ed8', fontWeight: 700 }}>📤 Out for signature · {signedCount(env)}/{(env?.crm_envelope_signers || []).length}</span>
@@ -472,6 +474,7 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
                         : <span style={{ color: '#9ca3af' }}>Draft</span>}
                     </div>
                   </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginLeft: 'auto' }}>
                   {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280', display: 'inline-flex', alignItems: 'center' }}>PDF ↗</a>}
                   {st === 'sent' ? <button onClick={() => setView({ t: 'manage', doc })} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>Manage</button>
                     : st === 'completed' ? (env?.executed_url ? (
@@ -488,6 +491,7 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
                         </span>
                       ) : <span style={{ ...mini, color: '#9ca3af', cursor: 'default' }}>Signed</span>)
                     : <button onClick={() => setView({ t: 'send', doc })} disabled={!doc.url} title={doc.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...mini, background: GOLD, color: '#fff', border: 'none', cursor: doc.url ? 'pointer' : 'default', opacity: doc.url ? 1 : 0.5 }}>📤 Send</button>}
+                  </div>
                 </div>
               );
             })}
