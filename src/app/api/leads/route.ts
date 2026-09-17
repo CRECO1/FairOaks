@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
         // Find admin to assign as default owner
         const { data: adminProfile, error: adminErr } = await supabaseAdmin
-          .from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+          .from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
         if (adminErr) console.error('[leads] crm_profiles lookup error:', adminErr);
         const adminId = adminProfile?.id;
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
   const { listing_id, client_id, role } = await req.json().catch(() => ({}));
   if (!listing_id || !client_id) return NextResponse.json({ error: 'listing_id and client_id required' }, { status: 400 });
   if (!(await assertCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
+  // The linked contact must be in the caller's workspace, or the GET join leaks its PII.
+  if (!(await assertOwnsResource('crm_clients', client_id, ctx))) return notFound('Contact not found');
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_listing_contacts')

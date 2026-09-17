@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const unit = req.nextUrl.searchParams.get('business_unit') ?? 'commercial';
+  // Non-admins are pinned to their own workspace; only admins may pass ?business_unit=.
+  const unit = isAdminRole(ctx.role) ? (req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_listings')
@@ -22,8 +23,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const body = await req.json();
   const { name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, year_built, description, notes, highlights, zoning, elevator, grade_level_doors, dock_high_doors, flyer_type, co_agent_id, listing_agent_id, assigned_agent_ids, is_restricted, business_unit } = body;
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
@@ -38,12 +39,12 @@ export async function POST(req: NextRequest) {
     zoning: zoning || null,
     // Tri-state: unanswered stays null rather than defaulting to "No".
     elevator: elevator ?? null, grade_level_doors: grade_level_doors ?? null, dock_high_doors: dock_high_doors ?? null,
-    // Owner defaults to the creator so sharing has a natural owner from day one.
-    listing_agent_id: listing_agent_id || caller.id,
+    // Owner defaults to the creator; only admins may attribute to another agent or unit.
+    listing_agent_id: isAdminRole(ctx.role) ? (listing_agent_id || ctx.userId) : ctx.userId,
     assigned_agent_ids: Array.isArray(assigned_agent_ids) ? assigned_agent_ids : [],
     is_restricted: !!is_restricted,
-    business_unit: business_unit ?? 'commercial',
-    created_by: caller.id,
+    business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial'),
+    created_by: ctx.userId,
   }).select().single();
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
   return NextResponse.json({ listing: data });

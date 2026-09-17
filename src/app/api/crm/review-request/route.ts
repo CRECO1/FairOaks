@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const GOOGLE_REVIEW_URL = process.env.GOOGLE_REVIEW_URL ?? '';
@@ -10,8 +10,8 @@ function esc(s: string | null | undefined): string {
 }
 
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
 
   if (!process.env.RESEND_API_KEY) {
     return NextResponse.json({ error: 'Email not configured' }, { status: 503 });
@@ -26,12 +26,14 @@ export async function POST(req: NextRequest) {
 
   const supabase = adminClient();
 
-  // Fetch client
-  const { data: client, error: clientErr } = await supabase
+  // Fetch client — scoped to the caller's workspace so an agent can't trigger an
+  // email to (and mutate) a contact in another business unit by guessing its id.
+  let clientQ = supabase
     .from('crm_clients')
     .select('id, first_name, last_name, email, review_requested_at, unsubscribed_at')
-    .eq('id', clientId)
-    .single();
+    .eq('id', clientId);
+  if (!isAdminRole(ctx.role)) clientQ = clientQ.eq('business_unit', ctx.businessUnit);
+  const { data: client, error: clientErr } = await clientQ.maybeSingle();
 
   if (clientErr || !client) {
     return NextResponse.json({ error: 'Client not found' }, { status: 404 });
@@ -49,7 +51,7 @@ export async function POST(req: NextRequest) {
   const { data: agentProfile } = await supabase
     .from('crm_profiles')
     .select('first_name, last_name')
-    .eq('id', caller.id)
+    .eq('id', ctx.userId)
     .single();
 
   const agentName = agentProfile

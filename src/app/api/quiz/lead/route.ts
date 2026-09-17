@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     if (supabaseUrl && serviceKey) {
       try {
         const supabaseAdmin = createClient(supabaseUrl, serviceKey);
-        const { data: adminProfile } = await supabaseAdmin.from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        const { data: adminProfile } = await supabaseAdmin.from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
         const adminId = adminProfile?.id;
         if (adminId) {
           const { data: existing } = await supabaseAdmin.from('crm_clients').select('id').eq('email', email).maybeSingle();

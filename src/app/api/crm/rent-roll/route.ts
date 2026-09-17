@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib/crm-auth';
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -95,6 +95,8 @@ export async function POST(req: NextRequest) {
   if (!(await assertCanSeeRentRoll(listingId, ctx))) return notFound('Listing not found');
   const supabase = adminClient();
   const row = clean(body);
+  // A linked tenant contact must be in the caller's workspace (the SELECT join returns its PII).
+  if (row.contact_id && !(await assertOwnsResource('crm_clients', String(row.contact_id), ctx))) return NextResponse.json({ error: 'Invalid contact_id' }, { status: 400 });
   const { data, error } = await supabase.from('crm_property_tenants')
     .insert({ ...row, listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId })
     .select(SELECT).single();
@@ -115,6 +117,8 @@ export async function PATCH(req: NextRequest) {
   if (!cur?.listing_id) return notFound('Suite not found');
   if (!(await assertCanSeeRentRoll(cur.listing_id, ctx))) return notFound('Suite not found');
   const row = clean(body);
+  // A linked tenant contact must be in the caller's workspace (the SELECT join returns its PII).
+  if (row.contact_id && !(await assertOwnsResource('crm_clients', String(row.contact_id), ctx))) return NextResponse.json({ error: 'Invalid contact_id' }, { status: 400 });
   const { data, error } = await supabase.from('crm_property_tenants')
     .update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select(SELECT).single();
   if (error) { console.error('[rent-roll] PATCH', error); return NextResponse.json({ error: 'Could not save the change' }, { status: 500 }); }

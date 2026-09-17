@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
   const supabase = adminClient();
 
   // ── Find admin to assign lead to ──────────────────────────────────────────
-  const { data: adminProfile } = await supabase.from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+  const { data: adminProfile } = await supabase.from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
   const adminId = adminProfile?.id;
   if (!adminId) return NextResponse.json({ error: 'No admin found to assign lead to' }, { status: 500 });
 

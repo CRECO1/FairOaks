@@ -13,6 +13,8 @@
 
 // Relative import (not @/lib/...) so this module resolves identically under Next.js
 // AND under `tsx` when imported by scripts/broker-backfill.mjs.
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { decryptToken, encryptToken } from '../token-crypto';
 import type { FetchedEmail, GmailImage } from './types';
 
@@ -226,11 +228,79 @@ function hostedImageUrls(html: string): string[] {
   return [...urls];
 }
 
+/** Is this resolved IP in a private / loopback / link-local / reserved range? */
+function isBlockedIp(ip: string): boolean {
+  const v = isIP(ip);
+  if (v === 4) {
+    const p = ip.split('.').map(Number);
+    if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+    const [a, b] = p;
+    if (a === 0 || a === 10 || a === 127) return true;                 // this-network, private, loopback
+    if (a === 169 && b === 254) return true;                           // link-local (incl. cloud metadata)
+    if (a === 172 && b >= 16 && b <= 31) return true;                  // private
+    if (a === 192 && b === 168) return true;                           // private
+    if (a === 100 && b >= 64 && b <= 127) return true;                 // CGNAT
+    if (a === 198 && (b === 18 || b === 19)) return true;              // benchmark
+    if (a >= 224) return true;                                        // multicast + reserved
+    return false;
+  }
+  if (v === 6) {
+    const low = ip.toLowerCase().replace(/^\[|\]$/g, '');
+    if (low === '::1' || low === '::') return true;                    // loopback / unspecified
+    if (/^(fc|fd|fe|ff)/.test(low)) return true;                       // ULA / link-local / multicast
+    const m = low.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/);               // IPv4-mapped
+    if (m) return isBlockedIp(m[1]);
+    return false;
+  }
+  return true; // not a valid IP literal → refuse
+}
+
+/** Resolve a hostname and return a public IP, or null if it's an IP literal / DNS that lands on a blocked range. */
+async function resolvePublicIp(hostname: string): Promise<string | null> {
+  if (isIP(hostname)) return isBlockedIp(hostname) ? null : hostname;
+  try {
+    const addrs = await lookup(hostname, { all: true });
+    if (!addrs.length || addrs.some((a) => isBlockedIp(a.address))) return null;
+    return addrs[0].address;
+  } catch { return null; }
+}
+
+/**
+ * SSRF-safe image GET: http/https only, every hop's host DNS-resolved and checked
+ * against private/reserved ranges, and redirects followed MANUALLY so a public URL
+ * can't 30x-redirect to an internal target (the decisive bypass of a hostname-only
+ * guard). (Residual: a sub-request DNS-rebind between check and connect — acceptable
+ * for this low-value, external-email image path.)
+ */
+async function safeFetchImage(startUrl: string): Promise<Response | null> {
+  let current = startUrl;
+  for (let hop = 0; hop <= 4; hop++) {
+    let u: URL;
+    try { u = new URL(current); } catch { return null; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (!(await resolvePublicIp(u.hostname))) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6_000);
+    let r: Response;
+    try { r = await fetch(current, { redirect: 'manual', signal: ctrl.signal }); }
+    catch { clearTimeout(timer); return null; }
+    clearTimeout(timer);
+    if (r.status >= 300 && r.status < 400) {
+      const loc = r.headers.get('location');
+      if (!loc) return null;
+      try { current = new URL(loc, current).href; } catch { return null; }
+      continue; // re-validate the redirect target on the next hop
+    }
+    return r;
+  }
+  return null; // too many redirects
+}
+
 /**
  * Broker emails almost always link their property photos remotely (`<img src=…>`)
  * instead of attaching them, so the attachment scan finds nothing. Download the
- * candidate hosted images (parallel, guarded by type/size/timeout) and return the
- * largest `maxKeep` — biggest first, since the hero photo is reliably the biggest
+ * candidate hosted images (parallel, guarded by type/size/timeout + SSRF) and return
+ * the largest `maxKeep` — biggest first, since the hero photo is reliably the biggest
  * content image and the smaller ones round out a gallery.
  */
 export async function fetchHostedImages(
@@ -242,10 +312,8 @@ export async function fetchHostedImages(
   if (!urls.length) return [];
   const one = async (u: string): Promise<{ img: GmailImage; size: number } | null> => {
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 6_000);
-      const r = await fetch(u, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
-      if (!r.ok) return null;
+      const r = await safeFetchImage(u);
+      if (!r || !r.ok) return null;
       const ct = (r.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
       if (!SUPPORTED_IMAGE.has(ct)) return null;
       const buf = Buffer.from(await r.arrayBuffer());

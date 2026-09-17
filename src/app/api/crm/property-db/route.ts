@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, dbError, assertOwnsResource } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { normalizeAddress } from '@/lib/broker-ingest/upsert';
 
@@ -86,6 +86,13 @@ export async function POST(req: NextRequest) {
     ? ((typeof body.business_unit === 'string' && body.business_unit) || ctx.businessUnit || 'commercial')
     : (ctx.businessUnit || 'commercial');
   rec.created_by = ctx.userId;
+  // A linked contact/owner must live in the caller's workspace — otherwise the GET's
+  // foreign-key join would expose that contact's PII (name/email/phone) cross-unit.
+  for (const fk of ['contact_id', 'owner_client_id'] as const) {
+    if (rec[fk] && !(await assertOwnsResource('crm_clients', String(rec[fk]), ctx))) {
+      return NextResponse.json({ error: `Invalid ${fk}` }, { status: 400 });
+    }
+  }
   rec.source = 'agent_manual';
   if (!rec.vacancy_status) rec.vacancy_status = 'vacant';
   if (!rec.transaction_status) rec.transaction_status = 'Available';

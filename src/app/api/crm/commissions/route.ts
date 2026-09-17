@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
@@ -46,6 +46,12 @@ export async function POST(req: NextRequest) {
   if (!deal_id) return NextResponse.json({ error: 'deal_id required' }, { status: 400 });
   if (!sale_price || isNaN(Number(sale_price))) return NextResponse.json({ error: 'valid sale_price required' }, { status: 400 });
 
+  // The upsert keys on deal_id and overwrites any existing commission, so the caller
+  // MUST be allowed to act on this deal — otherwise any agent could reassign/zero out
+  // another workspace's commission ledger by its deal_id.
+  const deal = await assertOwnsResource('crm_deals', deal_id, ctx);
+  if (!deal) return notFound('Deal not found');
+
   const sp    = Number(sale_price);
   const rate  = Number(commission_rate ?? 3);
   const split = Number(agent_split ?? 70);
@@ -58,7 +64,8 @@ export async function POST(req: NextRequest) {
     .from('crm_commissions')
     .upsert({
       deal_id,
-      agent_id:        agent_id    ?? null,
+      // Non-admins can't reassign a commission to an arbitrary agent — default to self.
+      agent_id:        isAdminRole(ctx.role) ? (agent_id ?? null) : ctx.userId,
       business_unit:   isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial'),
       sale_price:      sp,
       deal_type:       deal_type   ?? null,

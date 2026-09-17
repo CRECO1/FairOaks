@@ -94,6 +94,13 @@ export async function GET(req: NextRequest) {
   const dealId = req.nextUrl.searchParams.get('deal_id');
   const listingId = req.nextUrl.searchParams.get('listing_id');
   const clientId = req.nextUrl.searchParams.get('client_id');
+  // These ids are interpolated into PostgREST .or() filter strings below, so reject
+  // anything that isn't a bare UUID — otherwise a value like "x,status.eq.signed"
+  // injects extra filter clauses and widens the query.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  for (const [k, v] of Object.entries({ deal_id: dealId, listing_id: listingId, client_id: clientId })) {
+    if (v && !UUID_RE.test(v)) return NextResponse.json({ error: `invalid ${k}` }, { status: 400 });
+  }
   const supabase = adminClient();
   let q = supabase
     .from('crm_form_submissions')
