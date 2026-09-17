@@ -67,7 +67,7 @@ export function normalizeLeaseValues<T extends LeaseValues>(v: T): T {
 /** A fill-in blank, positioned the way crm_form_fields records one. */
 export interface LeaseBlank {
   page: number; fx: number; fy: number; fw: number;
-  type: 'text' | 'signature' | 'date';
+  type: 'text' | 'signature' | 'date' | 'initial';
   field_key: string | null; label: string; signer_role?: 'landlord' | 'client';
 }
 
@@ -331,6 +331,16 @@ export async function buildLease(input: LeaseValues): Promise<{ pdf: Uint8Array;
       throw new Error(`lease-doc: blank "${b.label}" on p${b.page} runs outside the margins (${Math.round(b.fx * PAGE_W)}–${Math.round(right)}pt)`);
     }
   }
+
+  // Tenant initials on every page (Exhibit A included): a printed line in the
+  // bottom-right margin, below the body's bottom margin so nothing reflows, and an
+  // e-sign initials spot for the tenant on it.
+  const INIT_LABEL = 'Tenant Initials:', INIT_X = 492, INIT_W = 48, INIT_BASE = 40;
+  doc.getPages().forEach((p, i) => {
+    p.drawText(INIT_LABEL, { x: INIT_X - reg.widthOfTextAtSize(INIT_LABEL, 9) - 4, y: INIT_BASE, size: 9, font: reg, color: INK });
+    p.drawLine({ start: { x: INIT_X, y: INIT_BASE - 2 }, end: { x: INIT_X + INIT_W, y: INIT_BASE - 2 }, thickness: 0.5, color: RULE });
+    blanks.push({ page: i + 1, fx: INIT_X / PAGE_W, fy: (PAGE_H - INIT_BASE + 2) / PAGE_H, fw: INIT_W / PAGE_W, type: 'initial', field_key: null, label: 'tenant_initials', signer_role: 'client' });
+  });
 
   return { pdf: await doc.save(), blanks };
 }
