@@ -40,6 +40,12 @@ export interface LeaseValues {
    * normalizeLeaseValues — so it can never disagree with the two parts.
    */
   internet_fee?: string; monthly_total?: string;
+  /**
+   * The person signing for the tenant when the tenant is a business ("Abi Aesthetic
+   * Studio DBA …" is signed by Tiffany Hatfield). Printed under the tenant's By: line
+   * and as the notices Attn:. Unset → the tenant name, exactly as before.
+   */
+  tenant_signer?: string;
 }
 
 const money = (s?: string) => Number(String(s ?? '').replace(/[^0-9.]/g, ''));
@@ -92,6 +98,7 @@ const LABELS: Record<string, string> = {
   suite: 'Suite #', term_months: 'Term (months)', end_date: 'Lease end date',
   monthly_rent: 'Monthly rent ($)', security_deposit: 'Security deposit ($)',
   tenant_phone: 'Tenant phone', tenant_email: 'Tenant email', exec_day: 'Day', exec_month: 'Month',
+  tenant_signer: 'Signing for tenant',
   monthly_rent_year2: 'Year 2 monthly rent ($)', year2_start: 'Year 2 starts',
   internet_fee: 'Internet ($/mo)', monthly_total: 'Total monthly ($)',
 };
@@ -204,7 +211,7 @@ export async function buildLease(input: LeaseValues): Promise<{ pdf: Uint8Array;
       [LANDLORD.addr, '8000 Fair Oaks Parkway'],
       [LANDLORD.city, 'Bldg. {{building}}, Ste {{suite}}'],
       ['', 'Fair Oaks Ranch, TX 78015'],
-      [`Attn: ${LANDLORD.attn}`, 'Attn: {{tenant_name}}'],
+      [`Attn: ${LANDLORD.attn}`, (input.tenant_signer || '').trim() ? 'Attn: {{tenant_signer}}' : 'Attn: {{tenant_name}}'],
       [`Phone: ${LANDLORD.phone}`, 'Phone: {{tenant_phone}}'],
       [`Email: ${LANDLORD.email}`, 'Email: {{tenant_email}}'],
     ];
@@ -299,7 +306,7 @@ export async function buildLease(input: LeaseValues): Promise<{ pdf: Uint8Array;
     drawBlank(`${role}_date`, ML + 300, y, 'date', role, 110);
     y -= LEAD;
     if (keyed) { page.drawText(who, { x: ML + 26, y, size: BODY, font: reg, color: INK }); y -= LEAD; }
-    else { drawBlank('tenant_name', ML + 26, y, 'text', undefined, 210); y -= LEAD; }
+    else { drawBlank((input.tenant_signer || '').trim() ? 'tenant_signer' : 'tenant_name', ML + 26, y, 'text', undefined, 210); y -= LEAD; }
     y -= 26;
   };
   sigBlock('LANDLORD:', '8000 FAIR OAKS PLAZA, LLC', LANDLORD.attn, 'landlord', true);

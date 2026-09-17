@@ -9,12 +9,12 @@ import React, { useState } from 'react';
 export interface LeaseDraftValues {
   tenant_name: string; building: string; suite: string; effective_date: string;
   term_months: string; end_date: string; monthly_rent: string; security_deposit: string;
-  tenant_phone: string; tenant_email: string; monthly_rent_year2: string; year2_start: string;
+  tenant_phone: string; tenant_email: string; tenant_signer?: string; monthly_rent_year2: string; year2_start: string;
   internet_fee: string;
 }
 
 const FIELDS: Array<[keyof LeaseDraftValues, string]> = [
-  ['tenant_name', 'Tenant name'], ['building', 'Building'], ['suite', 'Suite'],
+  ['tenant_name', 'Tenant name'], ['tenant_signer', 'Signing for tenant (if a business)'], ['building', 'Building'], ['suite', 'Suite'],
   ['effective_date', 'Start date'], ['term_months', 'Term (months)'], ['end_date', 'End date'],
   ['monthly_rent', 'Monthly rent ($)'], ['monthly_rent_year2', 'Year 2 rent ($)'],
   ['year2_start', 'Year 2 starts'], ['internet_fee', 'Internet ($/mo)'], ['security_deposit', 'Security deposit ($)'],

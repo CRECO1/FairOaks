@@ -233,7 +233,7 @@ export default function TransactionDocEditor({
           setEdits(Array.isArray(j.edits) ? j.edits : []);
           const bd = j.submission?.builder_data;
           if (form.id === LEASE_FORM_ID && bd && typeof bd === 'object' && !onSend) {
-            const keys: (keyof LeaseDraftValues)[] = ['tenant_name', 'building', 'suite', 'effective_date', 'term_months', 'end_date', 'monthly_rent', 'security_deposit', 'tenant_phone', 'tenant_email', 'monthly_rent_year2', 'year2_start', 'internet_fee'];
+            const keys: (keyof LeaseDraftValues)[] = ['tenant_name', 'building', 'suite', 'effective_date', 'term_months', 'end_date', 'monthly_rent', 'security_deposit', 'tenant_phone', 'tenant_email', 'tenant_signer', 'monthly_rent_year2', 'year2_start', 'internet_fee'];
             setLeaseValues(Object.fromEntries(keys.map(k => [k, String((bd as Record<string, unknown>)[k] ?? '')])) as unknown as LeaseDraftValues);
             return;
           }

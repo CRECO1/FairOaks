@@ -175,7 +175,7 @@ const LEASE_LABELS: Record<string, string> = {
   tenant_name: 'Tenant name', building: 'Building', suite: 'Suite', effective_date: 'Start date',
   term_months: 'Term', end_date: 'End date', monthly_rent: 'Monthly rent', monthly_rent_year2: 'Year 2 rent',
   year2_start: 'Year 2 start', internet_fee: 'Internet', security_deposit: 'Security deposit',
-  tenant_phone: 'Tenant phone', tenant_email: 'Tenant email',
+  tenant_phone: 'Tenant phone', tenant_email: 'Tenant email', tenant_signer: 'Signing for tenant',
 };
 
 export async function PUT(req: NextRequest) {
