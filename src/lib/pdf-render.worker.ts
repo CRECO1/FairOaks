@@ -21,7 +21,9 @@ self.onmessage = async (e: MessageEvent<Req>) => {
   const post = (m: Record<string, unknown>) => (self as unknown as Worker).postMessage(m);
   const { id, bytes, targetWidth, quality } = e.data || ({} as Req);
   try {
-    const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '' }).promise;
+    // Most TAR/TREC forms don't embed Helvetica/Times; pdf.js draws them from these files.
+    // A worker can't fall back to system fonts, so without them every label renders as □.
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '', standardFontDataUrl: new URL('/pdfjs/standard_fonts/', self.location.origin).href }).promise;
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const base = page.getViewport({ scale: 1 });

@@ -112,7 +112,8 @@ function renderViaWorker(w: Worker, bytes: ArrayBuffer, targetWidth: number, qua
 async function renderOnMainThread(bytes: ArrayBuffer, targetWidth: number, quality: number, opts: Opts): Promise<RenderedPage[]> {
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
+  // '' unlocks owner-encrypted TAR/gov PDFs; the standard fonts draw non-embedded Helvetica/Times.
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '', standardFontDataUrl: new URL('/pdfjs/standard_fonts/', window.location.origin).href }).promise;
   const out: RenderedPage[] = [];
   // toBlob is on the real <canvas>; don't reference OffscreenCanvas here — it's often
   // missing in exactly the browsers that land on this fallback.

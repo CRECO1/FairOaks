@@ -84,7 +84,7 @@ interface DealLite { id: string; client?: string; property?: string; type?: stri
 // recipients (the E-Sign composer does), fields are placed against a person rather
 // than an abstract role — so two clients on one document can't collide.
 export interface EditorRecipient { key: string; name: string; email: string; role: string; color: string }
-export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; size?: number };
+export type EditorField = { page: number; fx: number; fy: number; fw: number; type: string; signerRole?: string; signerKey?: string; size?: number; label?: string };
 
 export default function TransactionDocEditor({
   form, url, authToken, isAdmin, deals, dealId, listingId, businessUnit, submissionId, fieldPrefill, isMobile = false, recipients, onSend, onFieldsChange, onBack, onToast, onClose, onSaved,
@@ -178,7 +178,8 @@ export default function TransactionDocEditor({
         const ab = await resp.arrayBuffer();
         bytesRef.current = new Uint8Array(ab.slice(0)); // copy — pdf.js detaches the buffer
         if (cancelled) return;
-        const pdf = await pdfjs.getDocument({ data: ab, password: '' }).promise; // '' unlocks owner-encrypted TAR/gov PDFs
+        // '' unlocks owner-encrypted TAR/gov PDFs; the standard fonts draw non-embedded Helvetica/Times.
+        const pdf = await pdfjs.getDocument({ data: ab, password: '', standardFontDataUrl: new URL('/pdfjs/standard_fonts/', window.location.origin).href }).promise;
         pdfRef.current = pdf as unknown as { getPage: (n: number) => Promise<PdfPage> };
         const dims: PageDim[] = [];
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -534,14 +535,15 @@ export default function TransactionDocEditor({
   const reportRef = useRef(onFieldsChange);
   reportRef.current = onFieldsChange;
   useEffect(() => {
-    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size })));
+    reportRef.current?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size, label: f.label })));
   }, [fields]);
 
   const sendNow = useCallback(async () => {
     const sig = fields.filter(f => ['signature', 'initial', 'date'].includes(f.type));
     if (!sig.length && !window.confirm('No signature fields are placed. Signers will sign on an added Signatures page instead. Continue?')) return;
     await saveToDeal();
-    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size })));
+    // The label travels with the field so the signer is told what the blank is for.
+    onSend?.(fields.map(f => ({ page: f.page, fx: f.fx, fy: f.fy, fw: f.fw, type: f.type, signerRole: f.signerRole, signerKey: f.signerKey, size: f.size, label: f.label })));
   }, [fields, saveToDeal, onSend]);
 
   // Jump the document pane to a page, and keep the navigator's highlight in step

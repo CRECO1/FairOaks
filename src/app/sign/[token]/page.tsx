@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { renderPdfPages, revokePages, type RenderedPage } from '@/lib/pdf-render';
+import { labelFor, readTextRuns, isGenericLabel } from '@/lib/pdf-field-labels';
 import { Dancing_Script, Great_Vibes, Sacramento, Homemade_Apple, Caveat } from 'next/font/google';
 
 // Five hands to adopt from, self-hosted by next/font (so no external font request has
@@ -96,15 +97,19 @@ async function renderHand(text: string, family: string, boxW: number, boxH: numb
 // `frame-src 'self'` — an <iframe>/<embed> of it is blocked and renders blank, which
 // is what signers were seeing. Rendering the pages with pdf.js keeps everything
 // same-origin (fetch is allowed by connect-src) and shows a real preview.
-function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, activeId, signaturePng, initialsPng, dateStr, narrow }: {
+function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, onLabels, activeId, focusId, signaturePng, initialsPng, dateStr, narrow }: {
   url: string;
   fields?: SignField[];
   filled?: Record<string, boolean>;
   values?: Record<string, string>;
   onFill?: (f: SignField) => void;
   onClear?: (f: SignField) => void;
-  onInput?: (f: SignField, v: string) => void;
+  // Text / checkbox spots are filled in the "Fill in" card; tapping one on the page goes there.
+  onPick?: (f: SignField) => void;
+  // Printed labels found beside unlabeled fill-in spots, keyed by field id.
+  onLabels?: (labels: Record<string, string>) => void;
   activeId?: string | null;
+  focusId?: string | null;
   signaturePng?: string;
   initialsPng?: string;
   dateStr?: string;
@@ -112,7 +117,9 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
   // scroller within a scroller fights the thumb, and pinch-zoom reads it better.
   narrow?: boolean;
 }) {
-  const [pages, setPages] = useState<string[]>([]);
+  const [pages, setPages] = useState<RenderedPage[]>([]);
+  const fieldsRef = useRef(fields); fieldsRef.current = fields;
+  const onLabelsRef = useRef(onLabels); onLabelsRef.current = onLabels;
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pageW, setPageW] = useState(0);
@@ -129,11 +136,26 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
         if (!resp.ok) throw new Error(`fetch ${resp.status}`);
         const data = await resp.arrayBuffer();
         if (ac.signal.aborted) return;
+        // A blank the agent dropped on a form line usually has no label of its own. Name
+        // it after the words printed beside it ("Printed Name", "Title"), so the signer
+        // isn't faced with a row of identical "Type here" boxes. Copied first: rendering
+        // may hand `data` to pdf.js, which takes ownership of it.
+        const unlabeled = fieldsRef.current.filter(f => isInput(f.type) && isGenericLabel(f.label));
+        if (unlabeled.length) {
+          readTextRuns(data.slice(0), unlabeled.map(f => f.page || 1))
+            .then(runs => {
+              if (ac.signal.aborted) return;
+              const found: Record<string, string> = {};
+              for (const f of unlabeled) { const l = labelFor(runs, f); if (l) found[f.id] = l; }
+              onLabelsRef.current?.(found);
+            })
+            .catch(e => console.warn('[sign] field labels', e));
+        }
         // Rasterize off the main thread so a long lease doesn't freeze the signing page
         // — signers are usually on a phone. Pages stream in: page 1 shows immediately.
         await renderPdfPages(data, {
           quality: 0.85, signal: ac.signal,
-          onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p.src]); },
+          onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p]); },
         });
         if (!ac.signal.aborted) setState('ready');
       } catch (e) {
@@ -167,44 +189,62 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
     );
   }
   const pw = pageW > 0 ? pageW : 900;
-  const sigH = Math.round(Math.min(46, Math.max(26, pw * 0.05)));
   return (
     <div id="doc-scroll" ref={scrollRef} style={{ maxHeight: narrow ? 'none' : '78vh', overflowY: narrow ? 'visible' : 'auto', background: '#4b4f52', padding: gutter }}>
-      {pages.map((src, i) => {
+      {pages.map((pg, i) => {
         const pageFields = fields.filter(f => (f.page || 1) === i + 1);
+        // Markers are sized to the page, not the screen: 1.6% of the page height is about
+        // 12.7pt, just under the ~13pt between lines of a TAR signature block. Fixed pixel
+        // boxes (they used to be 24–46px) covered three lines each on a phone and piled up
+        // over the text above. On a phone that's under 8px, so markers become slim bars
+        // without text there; the "Fill in" card carries the labels.
+        const ph = pw * (pg.h / Math.max(1, pg.w));
+        const sigH = Math.round(Math.min(46, Math.max(8, ph * 0.016)));
+        const fsz = (h: number) => Math.max(9, Math.min(13, Math.round(h * 0.62)));
+        const TEXT_MIN = 11;
+        // A marker stops before the next field on the same line, so a wide fill-in (the
+        // editor's default) doesn't run under the Date beside it.
+        const widthOf = (f: SignField) => {
+          let right = f.fx + Math.max(f.fw, isInput(f.type) ? 0.08 : 0.1);
+          for (const o of pageFields) if (o !== f && Math.abs(o.fy - f.fy) < 0.009 && o.fx > f.fx + 0.01) right = Math.min(right, o.fx - 0.004);
+          return Math.max(0.03, right - f.fx);
+        };
         return (
           <div key={i} style={{ position: 'relative', marginBottom: i === pages.length - 1 ? 0 : gutter, boxShadow: '0 2px 10px rgba(0,0,0,.4)' }}>
-            <img src={src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
+            <img src={pg.src} alt={`Page ${i + 1}`} style={{ display: 'block', width: '100%' }} />
             {pageFields.map(f => {
               const isNext = activeId === f.id;
-              // Text / checkbox spots are real inputs the signer fills in place.
-              if (f.type === 'text' || f.type === 'check') {
+              // A text / checkbox spot is filled in the "Fill in" card below the document, with
+              // a real label and a thumb-sized input. On the page it's a marker the size of
+              // the line it sits on, showing what goes there — tap it to jump to that input.
+              if (isInput(f.type)) {
                 const v = values?.[f.id] ?? '';
-                const ih = Math.max(f.type === 'check' ? 20 : 24, Math.round(sigH * 0.82));
+                const has = !!v.trim();
+                const hot = focusId === f.id || isNext;
+                const h = f.type === 'check' ? Math.max(8, Math.round(sigH * 0.8)) : sigH;
+                const shown = f.type === 'check' ? (has ? '✔' : '') : has ? v : (f.label || typeLabel(f.type));
                 return (
-                  <div key={f.id} id={`fld-${f.id}`} style={{ position: 'absolute', left: `${f.fx * 100}%`,
-                    width: f.type === 'check' ? undefined : `${Math.max(f.fw * 100, 8)}%`,
-                    top: `${f.fy * 100}%`, transform: 'translateY(-100%)', height: ih, display: 'flex', alignItems: 'center' }}>
-                    {f.type === 'check'
-                      ? <input id={`in-${f.id}`} type="checkbox" checked={!!v.trim()} aria-label={f.label || 'Check this box'}
-                          onChange={e => onInput?.(f, e.target.checked ? '✔' : '')}
-                          style={{ width: Math.min(ih, 22), height: Math.min(ih, 22), accentColor: GOLD, cursor: 'pointer', boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.35)' : 'none', borderRadius: 3 }} />
-                      : <input id={`in-${f.id}`} value={v} onChange={e => onInput?.(f, e.target.value)}
-                          placeholder={f.label || 'Type here'} aria-label={f.label || 'Fill in this field'}
-                          // 16px floor: a smaller font makes iOS zoom the whole page when the
-                          // signer taps in — the same rule the name/initials inputs follow.
-                          style={{ width: '100%', height: '100%', boxSizing: 'border-box', fontSize: Math.max(16, Math.min(20, ih * 0.5)),
-                            padding: '0 6px', borderRadius: 4, border: `2px solid ${GOLD}`, color: INK, fontFamily: 'inherit', fontWeight: 600,
-                            background: v.trim() ? 'rgba(255,255,255,.97)' : isNext ? 'rgba(201,146,44,.16)' : 'rgba(201,146,44,.10)',
-                            boxShadow: isNext ? '0 0 0 4px rgba(201,146,44,.3)' : 'none' }} />}
+                  <div key={f.id} id={`fld-${f.id}`} role="button"
+                    aria-label={`${f.label || typeLabel(f.type)}: ${has ? 'edit' : 'fill in'}`}
+                    onClick={() => onPick?.(f)}
+                    style={{ position: 'absolute', left: `${f.fx * 100}%`, width: f.type === 'check' ? h : `${widthOf(f) * 100}%`,
+                      top: `${f.fy * 100}%`, transform: 'translateY(-100%)', height: h, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>
+                    <div style={{ height: '100%', boxSizing: 'border-box', borderRadius: 3, display: 'flex', alignItems: 'center',
+                      justifyContent: f.type === 'check' ? 'center' : 'flex-start', padding: f.type === 'check' ? 0 : '0 4px', overflow: 'hidden',
+                      background: has ? 'rgba(255,255,255,.93)' : hot ? 'rgba(201,146,44,.32)' : 'rgba(201,146,44,.14)',
+                      border: `${hot ? 2 : 1}px solid ${GOLD}`, boxShadow: focusId === f.id ? '0 0 0 3px rgba(201,146,44,.35)' : 'none' }}>
+                      {h >= TEXT_MIN && <span style={{ fontSize: fsz(h), lineHeight: 1, fontWeight: has ? 600 : 700, fontStyle: has ? 'normal' : 'italic', color: has ? INK : '#7c5a12',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{shown}</span>}
+                    </div>
                   </div>
                 );
               }
               const done = !!filled?.[f.id];
               const img = f.type === 'signature' ? signaturePng : f.type === 'initial' ? initialsPng : undefined;
-              const h = f.type === 'date' ? Math.round(sigH * 0.74) : sigH;
-              const boxW = Math.max(f.fw, 0.1) * pw;
+              const h = f.type === 'date' ? Math.max(8, Math.round(sigH * 0.74)) : sigH;
+              const boxW = widthOf(f) * pw;
               const small = h < 34;
+              const labelSize = fsz(h);
               const label = boxW < 60 ? (f.type === 'initial' ? 'Init' : typeLabel(f.type))
                 : isNext && boxW >= 110 ? `▶ ${typeLabel(f.type)} here` : typeLabel(f.type);
               return (
@@ -213,7 +253,7 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
                   onClick={() => (done ? onClear?.(f) : onFill?.(f))}
                   title={done ? 'Tap to clear and redo this spot' : `Click to ${typeLabel(f.type).toLowerCase()} here`}
                   style={{
-                    position: 'absolute', left: `${f.fx * 100}%`, width: `${Math.max(f.fw * 100, 10)}%`,
+                    position: 'absolute', left: `${f.fx * 100}%`, width: `${widthOf(f) * 100}%`,
                     top: `${f.fy * 100}%`, transform: 'translateY(-100%)', height: h,
                     cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
                   }}>
@@ -231,8 +271,8 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onInput, a
                     {done
                       ? (img
                           ? <img src={img} alt="" style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                          : <span style={{ fontSize: small ? 11.5 : 14, color: INK, fontWeight: 600, whiteSpace: 'nowrap' }}>{dateStr}</span>)
-                      : <span style={{ fontSize: small ? 11.5 : 13, fontWeight: 800, color: isNext ? '#fff' : '#7c5a12', whiteSpace: 'nowrap' }}>{label}</span>}
+                          : h >= TEXT_MIN ? <span style={{ fontSize: labelSize, color: INK, fontWeight: 600, whiteSpace: 'nowrap' }}>{dateStr}</span> : null)
+                      : h >= TEXT_MIN && <span style={{ fontSize: labelSize, lineHeight: 1, fontWeight: 800, color: isNext ? '#fff' : '#7c5a12', whiteSpace: 'nowrap' }}>{label}</span>}
                   </div>
                 </div>
               );
@@ -285,8 +325,14 @@ export default function SignPage() {
   // Text / checkbox answers the signer fills in, keyed by field id. Signature-family
   // spots are booleans in `filled`; an input spot is "done" once it holds a value.
   const [values, setValues] = useState<Record<string, string>>({});
+  // Labels read off the PDF for fill-in spots the agent left unlabeled.
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [adopted, setAdopted] = useState<{ signature?: string; initials?: string } | null>(null);
-  const fields = useMemo(() => data?.fields ?? [], [data]);
+  const fields = useMemo(() => (data?.fields ?? []).map(f => isInput(f.type)
+    ? { ...f, label: isGenericLabel(f.label) ? labels[f.id] : f.label }
+    : f), [data, labels]);
+  const inputFields = useMemo(() => fields.filter(f => isInput(f.type)), [fields]);
   const isDone = useCallback((f: SignField) => isInput(f.type) ? !!(values[f.id] ?? '').trim() : !!filled[f.id], [values, filled]);
   const remaining = useMemo(() => fields.filter(f => !isDone(f)), [fields, isDone]);
   const nextField = remaining[0] ?? null;
@@ -297,6 +343,12 @@ export default function SignPage() {
   const scrollToField = useCallback((id: string) => {
     const el = document.getElementById(`fld-${id}`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
+  // Fill-in answers are typed in the "Fill in" card; bring that input into view and focus it.
+  const scrollToInput = useCallback((id: string) => {
+    const el = document.getElementById(`in-${id}`) as HTMLInputElement | null;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => el?.focus({ preventScroll: true }), 250);
   }, []);
   // The name, the pad and the Finish button live below the document. Anything that
   // needs the signer there has to take them there — on a phone it's pages away.
@@ -321,8 +373,7 @@ export default function SignPage() {
     // jump to it and focus the input.
     if (isInput(f.type)) {
       setErr('');
-      scrollToField(f.id);
-      setTimeout(() => (document.getElementById(`in-${f.id}`) as HTMLElement | null)?.focus(), 200);
+      scrollToInput(f.id);
       return;
     }
     if (!typed.trim()) { setErr('Enter your full legal name first.'); scrollToAdopt(); return; }
@@ -333,7 +384,7 @@ export default function SignPage() {
     // Move them along to the next one without making them hunt for it.
     const rest = fields.filter(x => x.id !== f.id && !filled[x.id]);
     if (rest[0]) setTimeout(() => scrollToField(rest[0].id), 180);
-  }, [typed, mode, adopt, fields, filled, scrollToField, scrollToAdopt]);
+  }, [typed, mode, adopt, fields, filled, scrollToField, scrollToAdopt, scrollToInput]);
 
   // Signers can undo: tap a placed spot to clear it, or Start over to redo everything.
   const clearField = useCallback((f: SignField) => {
@@ -470,7 +521,7 @@ export default function SignPage() {
     if (mode === 'draw' && !hasInk()) { setErr('Draw your signature above, or switch to “Choose a style”.'); return; }
     if (fields.length && remaining.length) {
       setErr(`You still have ${remaining.length} spot${remaining.length === 1 ? '' : 's'} to confirm on the document.`);
-      scrollToField(remaining[0].id);
+      if (isInput(remaining[0].type)) scrollToInput(remaining[0].id); else scrollToField(remaining[0].id);
       return;
     }
     setSubmitting(true);
@@ -490,7 +541,7 @@ export default function SignPage() {
       setFinalStatus(j.status || 'signed');
       setView('signed');
     } finally { setSubmitting(false); }
-  }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField, values]);
+  }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField, scrollToInput, values]);
 
   // What the floating control does: walk the signer to their next spot, or — once the
   // spots are done (or the document has none) — down to Finish & Sign.
@@ -558,13 +609,14 @@ export default function SignPage() {
 
         {fields.length > 0 && !allDone && (
           <div style={{ maxWidth: 960, margin: '0 auto 12px', fontSize: 14, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 10, padding: '12px 16px', lineHeight: 1.5 }}>
-            <strong>One more step — place your signature.</strong> Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump to my signature</span> button. Then check the box and Finish &amp; Sign.
+            <strong>One more step — place your signature.</strong> Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump to my signature</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>} Then check the box and Finish &amp; Sign.
             {' '}<button onClick={scrollToAdopt} style={{ display: 'inline-flex', alignItems: 'center', minHeight: TAP, background: 'none', border: 'none', padding: 0, color: GOLD, fontWeight: 700, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Draw your own signature instead ↓</button>
           </div>
         )}
         <div style={{ ...card, marginBottom: 16, padding: 0, overflow: 'hidden' }}>
           {data?.doc_url
-            ? <DocView url={data.doc_url} fields={fields} filled={filled} values={values} onFill={fillField} onClear={clearField} onInput={setFieldValue}
+            ? <DocView url={data.doc_url} fields={fields} filled={filled} values={values} onFill={fillField} onClear={clearField}
+                onPick={f => scrollToInput(f.id)} onLabels={setLabels} focusId={focusId}
                 activeId={nextField?.id ?? null} narrow={narrow}
                 signaturePng={adopted?.signature} initialsPng={adopted?.initials} dateStr={dateStr} />
             : <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>Document preview unavailable.</div>}
@@ -579,7 +631,7 @@ export default function SignPage() {
                   style={{ minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '9px 14px', cursor: 'pointer' }}>↺ Start over</button>
               )}
               {!allDone && (
-                <button onClick={() => { if (nextField) { scrollToField(nextField.id); fillField(nextField); } }}
+                <button onClick={() => { if (nextField) { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); } }}
                   style={{ minHeight: TAP, fontSize: 14, fontWeight: 800, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '10px 18px', cursor: 'pointer' }}>
                   {remaining.length === fields.length ? 'Place my signature ▸' : `Place next — ${fields.length - remaining.length + 1} of ${fields.length} ▸`}
                 </button>
@@ -592,6 +644,50 @@ export default function SignPage() {
             </div>
           )}
         </div>
+
+        {inputFields.length > 0 && (
+          <div style={{ ...card, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 4 }}>Fill in</div>
+            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14, lineHeight: 1.5 }}>
+              These go on the document where it’s marked in gold. Tap <strong>Show</strong> to see the spot.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {inputFields.map((f, n) => {
+                const label = f.label || `${f.type === 'check' ? 'Checkbox' : 'Blank'} ${n + 1}`;
+                const v = values[f.id] ?? '';
+                const focus = { onFocus: () => setFocusId(f.id), onBlur: () => setFocusId(id => (id === f.id ? null : id)) };
+                const show = (
+                  <button type="button" onClick={() => scrollToField(f.id)}
+                    style={{ minHeight: TAP, padding: '0 4px 0 10px', background: 'none', border: 'none', color: GOLD, fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    Show ↑
+                  </button>
+                );
+                return f.type === 'check' ? (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, minHeight: TAP, fontSize: 15, fontWeight: 600, color: '#1f2937', cursor: 'pointer' }}>
+                      <input id={`in-${f.id}`} type="checkbox" checked={!!v.trim()} onChange={e => setFieldValue(f, e.target.checked ? '✔' : '')} {...focus}
+                        style={{ width: 22, height: 22, accentColor: GOLD, flexShrink: 0 }} />
+                      {label}
+                    </label>
+                    {show}
+                  </div>
+                ) : (
+                  <div key={f.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <label htmlFor={`in-${f.id}`} style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: '#374151' }}>{label}</label>
+                      {show}
+                    </div>
+                    {/* 16px text: anything smaller makes iOS zoom the page when the signer taps in. */}
+                    <input id={`in-${f.id}`} value={v} onChange={e => setFieldValue(f, e.target.value)} {...focus}
+                      autoComplete="off" enterKeyHint="next"
+                      style={{ width: '100%', minHeight: TAP, padding: '10px 12px', boxSizing: 'border-box', borderRadius: 8, fontSize: 16, fontFamily: 'inherit', color: INK,
+                        border: `1.5px solid ${v.trim() ? '#e5e7eb' : '#e6d3a2'}`, background: v.trim() ? '#fff' : '#fffdf6' }} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div ref={adoptRef} style={{ ...card, scrollMarginTop: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 12 }}>Adopt your signature</div>
@@ -710,7 +806,7 @@ export default function SignPage() {
         <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, display: 'flex', justifyContent: 'center', padding: '0 12px calc(14px + env(safe-area-inset-bottom))', pointerEvents: 'none', zIndex: 60 }}>
           {pill === 'jump' && nextField ? (
             <button
-              onClick={() => { scrollToField(nextField.id); fillField(nextField); }}
+              onClick={() => { if (!isInput(nextField.type)) scrollToField(nextField.id); fillField(nextField); }}
               title="Jump to your next signing spot and sign it"
               style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 52, maxWidth: '100%', background: GOLD, color: '#fff', border: 'none', borderRadius: 999, padding: '13px 22px', fontSize: 15, fontWeight: 800, cursor: 'pointer', boxShadow: '0 10px 28px rgba(201,146,44,.5)' }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, background: 'rgba(255,255,255,.25)', borderRadius: 999, padding: '2px 9px', flexShrink: 0 }}>{fields.length - remaining.length} / {fields.length}</span>
