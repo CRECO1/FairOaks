@@ -224,7 +224,9 @@ export async function buildLease(input: LeaseValues): Promise<{ pdf: Uint8Array;
       // The tenant side wraps inside its column, so no value can run off the page.
       let x = RX;
       for (const t of tokenize(r)) {
-        const bw = t.kind === 'b' ? Math.min(NOTICE_BLANK[t.key] ?? 110, RW) : 0;
+        // A long value (a "X DBA Y" business name) stretches its rule instead of
+        // running past it — still capped to the column.
+        const bw = t.kind === 'b' ? Math.min(Math.max(NOTICE_BLANK[t.key] ?? 110, blankWidth(reg, String((v as Record<string, string | undefined>)[t.key] ?? ''))), RW) : 0;
         const tw = t.kind === 'b' ? bw : w(reg, t.s);
         if (x > RX && x + tw > RX + RW) { y -= LEAD; x = RX; }
         if (t.kind === 'b') { drawBlank(t.key, x, y, 'text', undefined, bw); x += bw + 3; continue; }
