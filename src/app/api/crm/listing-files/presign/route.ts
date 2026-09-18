@@ -26,7 +26,13 @@ export async function POST(req: NextRequest) {
   }
   // Never hand out an upload URL for a listing outside the caller's workspace.
   if (!(await callerCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
-  if (file_size && file_size > MAX_SIZE) {
+  // file_size is mandatory: when it was optional, omitting it skipped the cap
+  // entirely and the signed URL would then accept a file of any size. The
+  // bucket's own file_size_limit is the real backstop; this is the fast reject.
+  if (typeof file_size !== 'number' || !Number.isFinite(file_size) || file_size <= 0) {
+    return NextResponse.json({ error: 'file_size is required' }, { status: 400 });
+  }
+  if (file_size > MAX_SIZE) {
     return NextResponse.json({ error: 'File must be 50 MB or smaller' }, { status: 400 });
   }
   const ext = (filename.split('.').pop() ?? '').toLowerCase();

@@ -303,7 +303,7 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, on
 export default function SignPage() {
   const params = useParams();
   const token = String((params as Record<string, string>)?.token ?? '');
-  const [view, setView] = useState<'loading' | 'ready' | 'waiting' | 'done' | 'completed' | 'voided' | 'declined' | 'notfound' | 'signed' | 'error'>('loading');
+  const [view, setView] = useState<'loading' | 'ready' | 'waiting' | 'done' | 'completed' | 'voided' | 'declined' | 'expired' | 'notfound' | 'signed' | 'error'>('loading');
   const [declining, setDeclining] = useState(false);
   const [declineReason, setDeclineReason] = useState('');
   const [data, setData] = useState<SignData | null>(null);
@@ -419,7 +419,7 @@ export default function SignPage() {
         for (const f of (j.fields ?? []) as SignField[]) if (isInput(f.type)) seed[f.id] = f.value || '';
         setValues(seed);
         setTyped(j.signer?.name || '');
-        setView(['ready', 'waiting', 'done', 'completed', 'voided', 'declined'].includes(j.status) ? j.status : 'error');
+        setView(['ready', 'waiting', 'done', 'completed', 'voided', 'declined', 'expired'].includes(j.status) ? j.status : 'error');
       })
       .catch(() => setView('error'));
   }, [token]);
@@ -604,6 +604,7 @@ export default function SignPage() {
   if (view === 'error') return msg('⚠️', 'Something went wrong', 'We couldn’t load this document. Please try the link again in a moment.');
   if (view === 'voided') return msg('🚫', 'Request canceled', 'This signature request was canceled by the sender.');
   if (view === 'declined') return msg('✋', 'Declined', 'This document was declined and is no longer available to sign. The sender has been notified.');
+  if (view === 'expired') return msg('⌛', 'This link has expired', 'For security, signing links stop working after 30 days. Please contact your broker and they’ll send you a new one.');
   if (view === 'waiting') return msg('⏱️', 'Waiting on a previous signer', 'It’s not your turn yet. We’ll email you the moment the document is ready for your signature.');
   if (view === 'done') return msg('✅', 'You’ve already signed', 'Your signature is on file. You’ll receive the fully executed copy once everyone has signed.');
   if (view === 'completed') return msg('🎉', 'Fully executed', `“${data?.title ? displayTitle(data.title) : 'This document'}” has been signed by all parties. A copy has been emailed to you.`);

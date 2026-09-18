@@ -35,7 +35,13 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_TYPES.includes(contentType)) {
     return NextResponse.json({ error: 'File type not allowed' }, { status: 400 });
   }
-  if (size && size > MAX_SIZE_BYTES) {
+  // size is mandatory: when it was optional, omitting it skipped the cap entirely
+  // and the signed URL would then accept a file of any size. The bucket's own
+  // file_size_limit is the real backstop; this is the fast reject.
+  if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+    return NextResponse.json({ error: 'size is required' }, { status: 400 });
+  }
+  if (size > MAX_SIZE_BYTES) {
     return NextResponse.json({ error: 'File too large (max 12 MB)' }, { status: 400 });
   }
 

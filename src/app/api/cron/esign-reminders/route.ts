@@ -25,6 +25,7 @@ interface Signer {
   id: string; envelope_id: string; name: string; email: string; signing_order: number;
   status: string; access_token: string; sent_at: string | null; signed_at: string | null;
   declined_at: string | null; reminded_at: string | null; reminder_count: number; in_person: boolean;
+  expires_at: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
 
   const { data: allSigners } = await db
     .from('crm_envelope_signers')
-    .select('id, envelope_id, name, email, signing_order, status, access_token, sent_at, signed_at, declined_at, reminded_at, reminder_count, in_person')
+    .select('id, envelope_id, name, email, signing_order, status, access_token, sent_at, signed_at, declined_at, reminded_at, reminder_count, in_person, expires_at')
     .in('envelope_id', envs.map(e => e.id))
     .order('signing_order');
   const byEnv = new Map<string, Signer[]>();
@@ -71,6 +72,9 @@ export async function GET(req: NextRequest) {
     const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
     if (!current || !current.sent_at) continue;                       // not yet invited
     if (current.in_person) continue;                                  // no emailed link to chase
+    // Never chase a link that has already expired — the recipient would land on
+    // the expiry notice. The sender needs to issue a fresh envelope instead.
+    if (current.expires_at && Date.parse(current.expires_at) <= Date.now()) continue;
     if (current.reminder_count >= MAX_REMINDERS) continue;
 
     const waited = daysSince(current.sent_at);

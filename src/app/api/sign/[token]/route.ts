@@ -11,7 +11,7 @@ type Signer = {
   id: string; envelope_id: string; signer_role: string; name: string; email: string;
   signing_order: number; status: string; access_token: string; signature_path: string | null;
   typed_name: string | null; signed_at: string | null; viewed_at: string | null; ip: string | null;
-  in_person: boolean | null;
+  in_person: boolean | null; expires_at: string | null;
 };
 type Envelope = { id: string; title: string; business_unit: string; status: string; source_path: string | null; executed_path: string | null; created_by: string | null; submission_id: string | null };
 
@@ -28,11 +28,16 @@ async function load(token: string) {
   return { db, signer: signer as Signer, env: env as Envelope, signers: (signers ?? []) as Signer[] };
 }
 
-function turnStatus(env: Envelope, signer: Signer, signers: Signer[]): 'voided' | 'declined' | 'completed' | 'done' | 'waiting' | 'ready' {
+function turnStatus(env: Envelope, signer: Signer, signers: Signer[]): 'voided' | 'declined' | 'completed' | 'done' | 'expired' | 'waiting' | 'ready' {
   if (!env || env.status === 'voided') return 'voided';
   if (env.status === 'declined') return 'declined';
   if (env.status === 'completed') return 'completed';
   if (signer.status === 'signed' || signer.signed_at) return 'done';
+  // Expiry is checked only for links that still have something left to do, so a
+  // signer who already finished keeps seeing their executed copy rather than an
+  // expiry notice. POST guards on status === 'ready', so an expired link cannot
+  // sign or decline.
+  if (signer.expires_at && Date.parse(signer.expires_at) <= Date.now()) return 'expired';
   if (signers.some(s => s.signing_order < signer.signing_order && s.status !== 'signed')) return 'waiting';
   return 'ready';
 }
@@ -46,7 +51,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const status = turnStatus(env, signer, signers);
 
   let doc_url: string | null = null;
-  const path = status === 'completed' && env.executed_path ? env.executed_path : env.source_path;
+  // An expired link gets no document: the whole point of the expiry is to stop
+  // handing out the file to whoever ends up holding the URL.
+  const path = status === 'expired' ? null
+    : status === 'completed' && env.executed_path ? env.executed_path : env.source_path;
   if (path) { const { data: sg } = await db.storage.from(SIGN_BUCKET).createSignedUrl(path, 3600); doc_url = sg?.signedUrl ?? null; }
 
   // Every visit is logged, not just the first — a client who opened the document
