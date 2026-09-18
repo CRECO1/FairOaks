@@ -8,30 +8,15 @@ import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { supabase } from '@/lib/supabase';
 
-const DEMO_AGENTS = [
-  {
-    id: '1', name: 'Sandra Whitfield', slug: 'sandra-whitfield', title: 'Broker / Owner', email: 'sandra@fairoaksrealtygroup.com', phone: '210-555-1001', image_url: null, license_number: 'TX-0489212', years_experience: 22, featured: true, order: 1,
-    specialties: ['Luxury Estates', 'Relocation', 'Hill Country Acreage'],
-    bio: 'Sandra has called Fair Oaks Ranch home for over two decades. As Broker/Owner, she leads a team of dedicated agents with a shared commitment to honest, personalized service.',
-  },
-  {
-    id: '2', name: 'James Morales', slug: 'james-morales', title: 'Realtor® | Buyer Specialist', email: 'james@fairoaksrealtygroup.com', phone: '210-555-1002', image_url: null, license_number: 'TX-0631047', years_experience: 9, featured: false, order: 2,
-    specialties: ['First-Time Buyers', 'New Construction', 'Investment'],
-    bio: 'James brings energy and expertise to every transaction. Known for his patience and market knowledge, he is the go-to agent for buyers navigating the Hill Country market.',
-  },
-  {
-    id: '3', name: 'Karen Liu', slug: 'karen-liu', title: 'Realtor® | Listing Specialist', email: 'karen@fairoaksrealtygroup.com', phone: '210-555-1003', image_url: null, license_number: 'TX-0752839', years_experience: 14, featured: false, order: 3,
-    specialties: ['Home Staging', 'Negotiation', 'Downsizing'],
-    bio: 'Karen\'s eye for staging and strategic pricing has consistently helped sellers achieve top dollar. She brings a calm, professional approach to even the most complex transactions.',
-  },
-  {
-    id: '4', name: 'David Reyes', slug: 'david-reyes', title: 'Realtor® | Military & VA Specialist', email: 'david@fairoaksrealtygroup.com', phone: '210-555-1004', image_url: null, license_number: 'TX-0801543', years_experience: 7, featured: false, order: 4,
-    specialties: ['VA Loans', 'Military Relocation', 'Investment Properties'],
-    bio: 'A retired Army veteran himself, David has a special passion for helping active-duty and veteran families navigate their VA benefits to achieve homeownership.',
-  },
-];
+// The public team page shows only real agents from the `agents` table. There is
+// deliberately no placeholder roster here: a failed query used to publish four
+// fictitious agents, complete with invented names, bios and TX licence numbers.
+interface Agent {
+  id: string; name: string; slug: string; title: string; email: string; phone: string;
+  image_url: string | null; license_number: string | null; years_experience: number | null;
+  featured: boolean; order: number; specialties: string[] | null; bio: string | null;
+}
 
-type Agent = typeof DEMO_AGENTS[0];
 
 const STATS = [
   { value: '500+', label: 'Homes Sold' },
@@ -73,11 +58,10 @@ export default function TeamPage() {
       .select('*')
       .order('order', { ascending: true })
       .then(({ data, error }) => {
-        if (error || !data || data.length === 0) {
-          setAgents(DEMO_AGENTS);
-        } else {
-          setAgents(data as Agent[]);
-        }
+        // Never substitute placeholder agents — an empty roster is the honest
+        // result of a failed or empty query.
+        if (error || !data) { console.error('[team] agents query failed', error); setAgents([]); }
+        else setAgents(data as Agent[]);
       });
   }, []);
 
@@ -194,6 +178,12 @@ export default function TeamPage() {
                 </p>
               </div>
             </RevealOnScroll>
+            {agents.length === 0 && (
+              <p className="text-center text-body text-foreground-muted">
+                Our agent profiles are loading. If they don&apos;t appear, please{' '}
+                <a href="/contact" className="text-gold underline">contact us</a> and we&apos;ll connect you with the right agent.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {agents.map((agent, i) => (
                 <RevealOnScroll key={agent.id} delay={i * 80}>

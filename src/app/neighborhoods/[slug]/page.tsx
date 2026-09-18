@@ -13,31 +13,36 @@ import { formatPrice } from '@/lib/utils';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
-const DEMO_NEIGHBORHOODS: Record<string, object> = {
+// Editorial guides for neighbourhoods that have no row in the `neighborhoods`
+// table but are linked from the sitemap (helotes, leon-springs). This is
+// hand-written copy, not demo data standing in for a failed query — the
+// invented avg_price / avg_sqft figures that used to live here were removed,
+// and the page hides those stat tiles when the values are null.
+const STATIC_GUIDES: Record<string, object> = {
   'fair-oaks-ranch': {
     id: '1', name: 'Fair Oaks Ranch', slug: 'fair-oaks-ranch', city: 'Fair Oaks Ranch',
-    avg_price: 680000, avg_sqft: 2800, image_url: null, school_district: 'Boerne ISD',
+    avg_price: null, avg_sqft: null, image_url: null, school_district: 'Boerne ISD',
     description: 'A premier master-planned community set in the rolling Texas Hill Country northwest of San Antonio. Fair Oaks Ranch offers an unmatched lifestyle blending natural beauty, top-rated schools, and a strong sense of community. With over 5,000 acres of scenic terrain, residents enjoy quiet cul-de-sacs, equestrian trails, and sweeping views that make every drive feel like a getaway.',
     highlights: ['Top-rated Boerne ISD', 'Gated communities available', 'Hill Country views from most lots', 'Equestrian & hiking trails', '20 min to San Antonio', 'Active HOA & community events'],
     featured: true,
   },
   'boerne': {
     id: '2', name: 'Boerne', slug: 'boerne', city: 'Boerne',
-    avg_price: 575000, avg_sqft: 2400, image_url: null, school_district: 'Boerne ISD',
+    avg_price: null, avg_sqft: null, image_url: null, school_district: 'Boerne ISD',
     description: 'Boerne (pronounced "Bernie") is a charming Texas Hill Country town with a walkable historic Main Street, thriving local restaurants, and world-class outdoor recreation. The Cibolo Creek runs through town and the scenic countryside draws buyers from across Texas seeking a slower, richer pace of life without sacrificing modern convenience.',
     highlights: ['Historic Main Street', 'Cibolo Creek access', 'Vibrant arts & dining scene', 'Highly rated schools', '30 min to San Antonio', 'Annual events & festivals'],
     featured: true,
   },
   'helotes': {
     id: '3', name: 'Helotes', slug: 'helotes', city: 'Helotes',
-    avg_price: 490000, avg_sqft: 2200, image_url: null, school_district: 'Northside ISD',
+    avg_price: null, avg_sqft: null, image_url: null, school_district: 'Northside ISD',
     description: 'Helotes is a welcoming Hill Country community on the northwest edge of San Antonio that has preserved its small-town character while offering easy access to the city. Tree-shaded streets, a beloved annual rodeo, and quick highway access to Loop 1604 and I-10 make Helotes a perennial favorite for families who want space without sacrificing convenience.',
     highlights: ['Northside ISD schools', 'Quick access to Loop 1604 & I-10', 'Small-town Hill Country feel', 'Annual Cornyval Festival', '15 min to San Antonio', 'Large lots & acreage available'],
     featured: true,
   },
   'leon-springs': {
     id: '4', name: 'Leon Springs', slug: 'leon-springs', city: 'Leon Springs',
-    avg_price: 620000, avg_sqft: 2600, image_url: null, school_district: 'Northside ISD',
+    avg_price: null, avg_sqft: null, image_url: null, school_district: 'Northside ISD',
     description: 'Leon Springs sits at the crossroads of classic Hill Country living and modern San Antonio convenience. Known for its iconic dance halls, scenic ranch land, and a growing corridor of restaurants and shops along I-10, this unincorporated community attracts buyers seeking acreage properties and custom homes with room to breathe — all within 25 minutes of downtown San Antonio.',
     highlights: ['Scenic Hill Country acreage', 'Iconic Leon Springs dance halls', 'Quick access to I-10', 'Custom homes & ranch properties', 'Northside ISD schools', '25 min to downtown San Antonio'],
     featured: false,
@@ -50,7 +55,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let neighborhood: any = await getNeighborhoodBySlug(slug).catch(() => null);
-  if (!neighborhood && DEMO_NEIGHBORHOODS[slug]) neighborhood = DEMO_NEIGHBORHOODS[slug];
+  if (!neighborhood && STATIC_GUIDES[slug]) neighborhood = STATIC_GUIDES[slug];
   if (!neighborhood) return {};
 
   const name: string = neighborhood.name;
@@ -99,7 +104,7 @@ export default async function NeighborhoodDetailPage({ params }: Props) {
 
   let neighborhood = await getNeighborhoodBySlug(slug).catch(() => null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!neighborhood && DEMO_NEIGHBORHOODS[slug]) neighborhood = DEMO_NEIGHBORHOODS[slug] as any;
+  if (!neighborhood && STATIC_GUIDES[slug]) neighborhood = STATIC_GUIDES[slug] as any;
   if (!neighborhood) notFound();
 
   const listings = await getListingsByCity(neighborhood!.city).catch(() => []);

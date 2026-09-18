@@ -86,7 +86,6 @@ Areas with dedicated pages on this site: ${FORG.areas.join(', ')} (Texas).
 - Services overview: ${u('/services')}
 - Agents: ${u('/team')}
 - Common questions: ${u('/faq')}
-- Articles: ${u('/blog')}
 - Contact: ${u('/contact')}
 - Careers for real estate agents: ${u('/careers')}
 

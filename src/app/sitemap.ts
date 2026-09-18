@@ -92,13 +92,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.85,
     },
     // Blog
-    { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
-    { url: `${BASE_URL}/blog/veramendi-new-braunfels`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
-    { url: `${BASE_URL}/blog/headwaters-barton-creek`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
-    { url: `${BASE_URL}/blog/miralomas-helotes`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
-    { url: `${BASE_URL}/blog/boerne-market-report-spring-2025`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
-    { url: `${BASE_URL}/blog/fair-oaks-ranch-best-value`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
-    { url: `${BASE_URL}/blog/questions-before-buying-master-planned`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
     // Careers & join
     { url: `${BASE_URL}/careers`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE_URL}/join`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },

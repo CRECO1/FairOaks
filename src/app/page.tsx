@@ -76,18 +76,6 @@ import { formatPrice } from '@/lib/utils';
 import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 import { CommercialCallout } from '@/components/sections/CommercialCallout';
 
-const DEMO_TESTIMONIALS = [
-  { id: '1', client_name: 'The Martinez Family', client_location: 'Fair Oaks Ranch, TX', quote: 'Fair Oaks Realty Group made buying our dream home effortless. They knew every neighborhood and found us the perfect fit on the first try.', rating: 5 },
-  { id: '2', client_name: 'Robert & Linda Chen', client_location: 'Boerne, TX', quote: 'Professional, patient, and deeply knowledgeable about the Texas Hill Country market. We sold above asking price in under two weeks!', rating: 5 },
-  { id: '3', client_name: 'Sarah Thompson', client_location: 'Helotes, TX', quote: 'As first-time buyers, we were nervous. Our agent held our hand through every step and we couldn\'t be happier with our new home.', rating: 5 },
-];
-
-const DEMO_NEIGHBORHOODS = [
-  { id: '1', name: 'Fair Oaks Ranch', slug: 'fair-oaks-ranch', avg_price: 680000, image_url: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=1200&auto=format&fit=crop&q=80', highlights: ['Top-rated schools', 'Gated communities', 'Hill Country views'] },
-  { id: '2', name: 'Boerne', slug: 'boerne', avg_price: 575000, image_url: 'https://images.unsplash.com/photo-1523217582562-09d0def993a6?w=1200&auto=format&fit=crop&q=80', highlights: ['Historic charm', 'River access', 'Vibrant downtown'] },
-  { id: '3', name: 'The Dominion', slug: 'the-dominion', avg_price: 1200000, image_url: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200&auto=format&fit=crop&q=80', highlights: ['Ultra-luxury estates', 'Private golf club', 'Gated 24/7'] },
-];
-
 const DEFAULT_SETTINGS = {
   hero_headline: 'Your Home in the Texas Hill Country',
   hero_subheadline: 'Trusted local experts helping families find the perfect home in Fair Oaks Ranch, Boerne, and the greater San Antonio area.',
@@ -135,11 +123,13 @@ export default async function HomePage() {
     { area: 'Boerne',           listing: boerne.status      === 'fulfilled' ? boerne.value      : null },
   ].filter(f => f.listing !== null) as { area: string; listing: ReturnType<typeof resoPropertyToListing> }[];
 
-  const featuredTestimonials = testimonialsResult.status === 'fulfilled' && testimonialsResult.value.length > 0
-    ? testimonialsResult.value.slice(0, 3) : DEMO_TESTIMONIALS;
+  // No demo fallback: a failed or empty query renders nothing rather than
+  // fabricated client quotes and neighbourhood stats on the public homepage.
+  const featuredTestimonials = testimonialsResult.status === 'fulfilled'
+    ? testimonialsResult.value.slice(0, 3) : [];
 
-  const featuredNeighborhoods = neighborhoodsResult.status === 'fulfilled' && neighborhoodsResult.value.length > 0
-    ? neighborhoodsResult.value.slice(0, 3) : DEMO_NEIGHBORHOODS;
+  const featuredNeighborhoods = neighborhoodsResult.status === 'fulfilled'
+    ? neighborhoodsResult.value.slice(0, 3) : [];
 
   const s = (settingsResult.status === 'fulfilled' && settingsResult.value.data)
     ? settingsResult.value.data
@@ -215,6 +205,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── Neighborhoods ─────────────────────────────────────────────── */}
+      {featuredNeighborhoods.length > 0 && (
       <section className="section-luxury bg-background-cream">
         <Container>
           <RevealOnScroll>
@@ -256,6 +247,7 @@ export default async function HomePage() {
           </div>
         </Container>
       </section>
+      )}
 
       {/* ── Featured Listings ─────────────────────────────────────────── */}
       <section className="section-luxury bg-white">
@@ -377,6 +369,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── Testimonials ─────────────────────────────────────────────── */}
+      {featuredTestimonials.length > 0 && (
       <section className="section-luxury bg-background-cream">
         <Container>
           <RevealOnScroll>
@@ -423,6 +416,7 @@ export default async function HomePage() {
           </RevealOnScroll>
         </Container>
       </section>
+      )}
 
       {/* ── Home Valuation CTA ───────────────────────────────────────── */}
       <section id="valuation" className="section-luxury bg-primary text-white">

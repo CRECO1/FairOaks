@@ -40,15 +40,6 @@ import { getSoldProperties } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 import Link from 'next/link';
 
-const DEMO_SOLD = [
-  { id: '1', address: '215 Oak Crest Blvd', city: 'Fair Oaks Ranch', sale_price: 698000, sale_date: '2026-03-01', bedrooms: 4, bathrooms: 3, sqft: 2750, image_url: null, days_on_market: 12, created_at: '' },
-  { id: '2', address: '8811 Canyon Ridge', city: 'Boerne', sale_price: 540000, sale_date: '2026-02-14', bedrooms: 3, bathrooms: 2.5, sqft: 2100, image_url: null, days_on_market: 8, created_at: '' },
-  { id: '3', address: '4421 Laurel Creek', city: 'Fair Oaks Ranch', sale_price: 875000, sale_date: '2026-01-29', bedrooms: 5, bathrooms: 4, sqft: 3600, image_url: null, days_on_market: 21, created_at: '' },
-  { id: '4', address: '1702 Timber Ridge Rd', city: 'Helotes', sale_price: 395000, sale_date: '2026-01-10', bedrooms: 3, bathrooms: 2, sqft: 1780, image_url: null, days_on_market: 5, created_at: '' },
-  { id: '5', address: '9203 Copper Canyon', city: 'Boerne', sale_price: 1100000, sale_date: '2025-12-20', bedrooms: 5, bathrooms: 5, sqft: 4800, image_url: null, days_on_market: 18, created_at: '' },
-  { id: '6', address: '317 Saddleback Trail', city: 'Fair Oaks Ranch', sale_price: 620000, sale_date: '2025-12-01', bedrooms: 4, bathrooms: 3, sqft: 2650, image_url: null, days_on_market: 14, created_at: '' },
-];
-
 const STATS = [
   { icon: Home, value: '500+', label: 'Homes Sold' },
   { icon: TrendingUp, value: '103%', label: 'Avg. List-to-Sale Ratio' },
@@ -58,7 +49,8 @@ const STATS = [
 
 export default async function SoldPage() {
   const sold = await getSoldProperties(12).catch(() => []);
-  const properties = sold.length > 0 ? sold : DEMO_SOLD;
+  // No demo fallback: never present fabricated sale prices as our track record.
+  const properties = sold;
 
   return (
     <>
@@ -99,6 +91,12 @@ export default async function SoldPage() {
               </h2>
             </RevealOnScroll>
 
+            {properties.length === 0 && (
+              <p className="text-center text-body text-foreground-muted">
+                Recent sales aren&apos;t available right now. Please{' '}
+                <a href="/contact" className="text-gold underline">contact us</a> for our current track record.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {properties.map((p, i) => (
                 <RevealOnScroll key={p.id} delay={i * 80}>

@@ -1395,24 +1395,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                     <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af' }}>Hashtags</label>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await fetch('/api/crm/social/hashtags', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ content: composerContent, platforms: composerPlatforms }),
-                          });
-                          const data = await res.json();
-                          if (data.hashtags) setComposerHashtags(data.hashtags.join(' '));
-                        } catch {
-                          toast('Failed to suggest hashtags');
-                        }
-                      }}
-                      style={{ fontSize: 10, color: '#C9A84C', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
-                    >
-                      ✨ Suggest
-                    </button>
+                    {/* A "✨ Suggest" button used to sit here posting to
+                        /api/crm/social/hashtags — a route that has never existed.
+                        It 404'd, res.json() threw on the HTML error page, and the
+                        catch swallowed it, so the button silently did nothing.
+                        Removed rather than faked; hashtags are typed by hand. */}
                   </div>
                   <input
                     value={composerHashtags}

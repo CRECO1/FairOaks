@@ -39,18 +39,10 @@ import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getNeighborhoods, type Neighborhood } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 
-const DEMO_NEIGHBORHOODS = [
-  { id: '1', name: 'Fair Oaks Ranch', slug: 'fair-oaks-ranch', city: 'Fair Oaks Ranch', avg_price: 680000, image_url: null, highlights: ['Top-rated Boerne ISD', 'Gated communities', 'Hill Country views', 'Equestrian trails'], description: 'A premier master-planned community set in the rolling Texas Hill Country northwest of San Antonio.', featured: true, school_district: 'Boerne ISD', avg_sqft: 2800, created_at: '', updated_at: '' },
-  { id: '2', name: 'Boerne', slug: 'boerne', city: 'Boerne', avg_price: 575000, image_url: null, highlights: ['Historic Main Street', 'Cibolo Creek access', 'Vibrant arts scene', 'Top-rated schools'], description: 'Charming Texas Hill Country town with a walkable historic district and world-class outdoor recreation.', featured: true, school_district: 'Boerne ISD', avg_sqft: 2400, created_at: '', updated_at: '' },
-  { id: '3', name: 'Helotes', slug: 'helotes', city: 'Helotes', avg_price: 430000, image_url: null, highlights: ['Family-friendly neighborhoods', 'Large wooded lots', 'Close to UTSA & Loop 1604', 'Northside ISD'], description: 'A welcoming community on the northwest corner of San Antonio offering space, charm, and convenience.', featured: false, school_district: 'Northside ISD', avg_sqft: 2100, created_at: '', updated_at: '' },
-  { id: '4', name: 'Leon Springs', slug: 'leon-springs', city: 'Leon Springs', avg_price: 510000, image_url: null, highlights: ['Wildlife corridors', 'IH-10 access', 'Acreage available', 'Northside ISD'], description: 'Peaceful community along the banks of Leon Creek, offering larger lots and natural scenery.', featured: false, school_district: 'Northside ISD', avg_sqft: 2350, created_at: '', updated_at: '' },
-  { id: '5', name: 'The Dominion', slug: 'the-dominion', city: 'San Antonio', avg_price: 1200000, image_url: null, highlights: ['Ultra-luxury estates', 'Private golf club', '24-hr gated security', 'PGA Tour access'], description: 'San Antonio\'s most exclusive gated community, home to estates from $700K to $10M+.', featured: true, school_district: 'Northside ISD', avg_sqft: 5000, created_at: '', updated_at: '' },
-  { id: '6', name: 'Bulverde', slug: 'bulverde', city: 'Bulverde', avg_price: 485000, image_url: null, highlights: ['New master-planned communities', 'Comal ISD', 'Rapid growth corridor', 'Proximity to Canyon Lake'], description: 'One of the fastest-growing communities in the Hill Country, with new builds and great schools.', featured: false, school_district: 'Comal ISD', avg_sqft: 2600, created_at: '', updated_at: '' },
-];
-
 export default async function NeighborhoodsPage() {
-  const neighborhoods = await getNeighborhoods().catch(() => DEMO_NEIGHBORHOODS);
-  const data = neighborhoods.length > 0 ? neighborhoods : DEMO_NEIGHBORHOODS;
+  // No demo fallback: the featured/rest sections below already render nothing
+  // when the list is empty, which is the honest result of a failed query.
+  const data = await getNeighborhoods().catch(() => []);
 
   const featured = data.filter(n => n.featured);
   const rest = data.filter(n => !n.featured);
@@ -92,6 +84,14 @@ export default async function NeighborhoodsPage() {
         </div>
 
         {/* Featured Neighborhoods */}
+        {data.length === 0 && (
+          <Container>
+            <p className="py-12 text-center text-body text-foreground-muted">
+              Neighborhood guides aren&apos;t available right now. Please{' '}
+              <a href="/contact" className="text-gold underline">contact us</a> and we&apos;ll walk you through the area.
+            </p>
+          </Container>
+        )}
         {featured.length > 0 && (
           <section className="section-luxury bg-background-cream">
             <Container>

@@ -53,7 +53,6 @@ ${link('/seller-guide', 'Home seller guide')}
 ${link('/services', 'Services')}
 ${link('/team', 'Our team')}
 ${link('/faq', 'Frequently asked questions')}
-${link('/blog', 'Blog')}
 ${link('/contact', 'Contact')}
 
 ## Commercial real estate (affiliated brokerage)
