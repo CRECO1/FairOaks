@@ -33,6 +33,29 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
 
+/**
+ * The minimum gap between two sends of the same campaign to the same recipient.
+ *
+ * next_send_at is the primary cadence control and works correctly on its own,
+ * but it is a single mutable field: re-enrolling a contact, or editing
+ * next_send_at by hand, resets it and would let a recurring campaign go out
+ * again inside its own period. This window is the backstop — it is derived from
+ * the campaign's own frequency, so it applies to every recurring campaign
+ * rather than being special-cased for one of them.
+ *
+ * Slightly shorter than the nominal period so a send that drifts by a few hours
+ * (cron timing, a retry, a month boundary) is never wrongly suppressed.
+ */
+function cadenceWindowDays(frequency: string): number {
+  switch (frequency) {
+    case 'monthly':     return 25;
+    case 'quarterly':   return 80;
+    case 'semi-annual': return 170;
+    case 'annual':      return 350;
+    default:            return 0; // one-time: the enrollment is deactivated instead
+  }
+}
+
 function computeNextSend(frequency: string): string | null {
   if (frequency === 'one-time') return null; // one-time campaigns don't recur
   const now = new Date();
@@ -76,6 +99,33 @@ export async function GET(req: NextRequest) {
   if (fetchErr) {
     console.error('Cron fetch error:', fetchErr);
     return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+  }
+
+  // Cadence backstop: load the most recent successful send per
+  // (campaign, recipient) for everything due in this run, so a campaign can
+  // never go out twice to the same person inside its own period. One query for
+  // the whole batch rather than a lookup per enrollment.
+  const lastSentAt = new Map<string, string>();
+  if (enrollments?.length) {
+    const widestWindow = Math.max(
+      ...enrollments.map(e => cadenceWindowDays(((e.campaign as any)?.frequency as string) ?? '')),
+      0,
+    );
+    if (widestWindow > 0) {
+      const since = new Date(Date.now() - widestWindow * 86400_000).toISOString();
+      const { data: recentSends } = await supabase
+        .from('crm_campaign_sends')
+        .select('campaign_id, client_id, sent_at')
+        .eq('status', 'sent')
+        .gte('sent_at', since)
+        .in('campaign_id', [...new Set(enrollments.map(e => e.campaign_id))])
+        .in('client_id', [...new Set(enrollments.map(e => e.client_id))]);
+      for (const row of recentSends ?? []) {
+        const key = `${row.campaign_id}:${row.client_id}`;
+        const prev = lastSentAt.get(key);
+        if (!prev || row.sent_at > prev) lastSentAt.set(key, row.sent_at as string);
+      }
+    }
   }
 
   if (!enrollments?.length) return NextResponse.json({ processed: 0, sent: 0, failed: 0 });
@@ -142,8 +192,19 @@ export async function GET(req: NextRequest) {
     let subjectRendered = '';
     let bodyPreview = '';
 
+    // Backstop: refuse to re-send inside the campaign's own cadence window.
+    const windowDays = cadenceWindowDays(campaign.frequency);
+    const priorSend = lastSentAt.get(`${campaign.id}:${client.id}`);
+    const withinWindow =
+      windowDays > 0 &&
+      !!priorSend &&
+      Date.now() - new Date(priorSend).getTime() < windowDays * 86400_000;
+
     try {
-      if (campaign.type === 'email') {
+      if (withinWindow) {
+        status = 'skipped';
+        errorMessage = `Already sent ${campaign.frequency} campaign to this recipient on ${priorSend!.slice(0, 10)} — inside the ${windowDays}-day cadence window`;
+      } else if (campaign.type === 'email') {
         if (!client.email) {
           status = 'skipped';
           errorMessage = 'No email address';
