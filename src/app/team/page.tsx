@@ -201,7 +201,11 @@ export default function TeamPage() {
                       )}
                     </div>
                     <h3 className="font-heading text-heading font-semibold text-primary">{agent.name}</h3>
-                    <p className="text-body-sm text-foreground-muted mt-1 mb-4">{agent.title}</p>
+                    <p className="text-body-sm text-foreground-muted mt-1">{agent.title}</p>
+                    {agent.license_number && (
+                      <p className="text-caption text-foreground-subtle mt-1 mb-4">TREC License #{agent.license_number}</p>
+                    )}
+                    {!agent.license_number && <div className="mb-4" />}
                     {agent.specialties && (
                       <div className="flex flex-wrap justify-center gap-2 mb-5">
                         {(agent.specialties as string[]).slice(0, 3).map(s => (
@@ -275,7 +279,12 @@ export default function TeamPage() {
             {/* Content */}
             <div className="p-6 overflow-y-auto">
               <p className="text-caption font-semibold uppercase tracking-widest text-gold mb-0.5">{selected.title}</p>
-              <h2 className="font-heading text-heading-xl font-bold text-primary mb-2">{selected.name}</h2>
+              <h2 className="font-heading text-heading-xl font-bold text-primary mb-1">{selected.name}</h2>
+              {selected.license_number && (
+                <p className="text-caption text-foreground-subtle mb-2">
+                  TREC License #{selected.license_number}
+                </p>
+              )}
 
               {selected.years_experience && (
                 <div className="flex items-center gap-1.5 mb-3">

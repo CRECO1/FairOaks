@@ -11,9 +11,24 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 // licensed agents worked here.
 //
 // Every field below is either confirmed by the brokerage or omitted. No emails,
-// telephone numbers, specialties or licence numbers appear per person: the
-// organisation's own contact details already live in the site-wide Organization
-// schema, and a licence number is published only once a real one is supplied.
+// telephone numbers or specialties appear per person — the organisation's own
+// contact details already live in the site-wide Organization schema.
+//
+// The licence numbers are the individual TREC numbers taken from the brokerage's
+// Information About Brokerage Services (IABS) forms held in transaction-forms
+// storage, not the firm's number (#9014367, which belongs to the entity and is
+// shown in the footer).
+const TREC = (id: string) => ({
+  '@type': 'EducationalOccupationalCredential',
+  credentialCategory: 'Texas Real Estate License',
+  identifier: id,
+  recognizedBy: {
+    '@type': 'Organization',
+    name: 'Texas Real Estate Commission',
+    url: 'https://www.trec.texas.gov',
+  },
+});
+
 const personSchema = {
   '@context': 'https://schema.org',
   '@graph': [
@@ -23,13 +38,17 @@ const personSchema = {
       jobTitle: 'Broker / Owner',
       worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
       url: `${BASE_URL}/team`,
+      identifier: '691174',
+      hasCredential: TREC('691174'),
     },
     {
       '@type': 'Person',
       name: 'Brian Blanco',
-      jobTitle: 'Real Estate Agent',
+      jobTitle: 'Director of Leasing',
       worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
       url: `${BASE_URL}/team`,
+      identifier: '848449',
+      hasCredential: TREC('848449'),
     },
   ],
 };
