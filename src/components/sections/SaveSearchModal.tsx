@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Bell, X, CheckCircle } from 'lucide-react';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 interface Props {
   cities: string[];
@@ -42,6 +43,7 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          recaptchaToken: await getRecaptchaToken('listing_alerts'),
           name,
           email,
           cities,

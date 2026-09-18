@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { trackLead } from '@/lib/analytics';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -31,6 +32,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          recaptchaToken: await getRecaptchaToken('lead_form'),
           name, email,
           phone: phone || undefined,
           message: message || `I'm interested in ${listingTitle}`,

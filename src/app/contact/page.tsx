@@ -7,6 +7,7 @@ import { Header, Footer } from '@/components/layout';
 import { trackLead, trackPhoneClick, trackEmailClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 const CONTACT_REASONS = [
   'Schedule a Showing',
@@ -31,6 +32,7 @@ export default function ContactPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          recaptchaToken: await getRecaptchaToken('lead_form'),
           name: data.get('name'),
           email: data.get('email'),
           phone: data.get('phone'),

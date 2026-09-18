@@ -10,6 +10,7 @@ import { trackLead } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import Link from 'next/link';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ export default function CareersPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          recaptchaToken: await getRecaptchaToken('agent_apply'),
           name: data.get('name'),
           email: data.get('email'),
           phone: data.get('phone'),

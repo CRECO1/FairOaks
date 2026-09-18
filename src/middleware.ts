@@ -7,6 +7,14 @@ import { validateCsrf } from '@/lib/csrf';
 const protectedRoutes = ['/manage'];
 const publicRoutes = ['/manage/login'];
 
+// App shells that must receive the security headers / CSP below, but must NOT be
+// gated here. /crm keeps its session in cookies (@supabase/ssr) while /admin
+// keeps its in localStorage (plain supabase-js), which middleware cannot see —
+// a redirect on a missing cookie would lock legitimately signed-in admins out.
+// Both shells gate themselves client-side and, more importantly, every piece of
+// data behind them comes from an authenticated API route plus RLS.
+const headerOnlyRoutes = ['/crm', '/admin'];
+
 // API routes that need session refresh + CSRF protection
 const apiSessionRoutes = [
   '/api/campaigns',
@@ -83,6 +91,11 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // App shells: security headers only, never an auth redirect (see above).
+  if (headerOnlyRoutes.some(route => pathname.startsWith(route))) {
+    return withSecurityHeaders(NextResponse.next());
+  }
+
   // Skip middleware for non-admin page routes
   const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
   const isPublicRoute = publicRoutes.some(route => pathname === route);
@@ -121,6 +134,11 @@ export const config = {
   matcher: [
     // Match all admin page routes
     '/manage/:path*',
+    // CRM and admin shells — security headers / CSP only (no auth redirect)
+    '/crm/:path*',
+    '/crm',
+    '/admin/:path*',
+    '/admin',
     // Match API routes that require session refresh + CSRF protection
     '/api/campaigns/:path*',
     '/api/campaigns',

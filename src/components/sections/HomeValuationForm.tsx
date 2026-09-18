@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Home, ArrowRight } from 'lucide-react';
 import { trackLead } from '@/lib/analytics';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 export function HomeValuationForm() {
   const router = useRouter();
@@ -28,6 +29,7 @@ export function HomeValuationForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          recaptchaToken: await getRecaptchaToken('lead_form'),
           name: form.name,
           email: form.email,
           phone: form.phone,

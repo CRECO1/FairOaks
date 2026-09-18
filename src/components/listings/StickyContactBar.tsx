@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Phone, MessageSquare, X } from 'lucide-react';
 import { trackLead, trackPhoneClick } from '@/lib/analytics';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 interface Props {
   listingTitle: string;
@@ -43,6 +44,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          recaptchaToken: await getRecaptchaToken('lead_form'),
           name, phone, email: email || undefined,
           message: `Requesting a showing for: ${listingTitle}`,
           property_interest: listingTitle,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
+import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
@@ -19,6 +20,17 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => null);
     if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+
+    // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
+    const captcha = await verifyRecaptcha(
+      body.recaptchaToken,
+      'quiz_lead',
+      req.headers.get('x-forwarded-for')?.split(',')[0].trim(),
+    );
+    if (!captcha.ok) {
+      console.warn('[quiz_lead] reCAPTCHA rejected', captcha.reason, captcha.score);
+      return NextResponse.json(RECAPTCHA_REJECTED, { status: 403 });
+    }
     const { name, email, phone, answers, business_unit } = body;
     const unit: 'residential' | 'commercial' = business_unit === 'commercial' ? 'commercial' : 'residential';
 

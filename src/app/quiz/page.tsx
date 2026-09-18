@@ -7,6 +7,7 @@ import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import Link from 'next/link';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 interface QuizStep {
   id: string;
@@ -131,7 +132,8 @@ export default function QuizPage() {
     await fetch('/api/quiz/lead', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, phone, answers }),
+      body: JSON.stringify({
+    recaptchaToken: await getRecaptchaToken('quiz_lead'), name, email, phone, answers }),
     }).catch(() => {});
     trackQuizComplete();
     trackLead({ form_type: 'quiz' });

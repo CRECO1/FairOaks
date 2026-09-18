@@ -6,6 +6,7 @@ import { Header, Footer } from '@/components/layout';
 import { trackLead, trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 const PERKS = [
   {
@@ -75,7 +76,7 @@ export default function JoinPage() {
       const res = await fetch('/api/agent-apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, recaptchaToken: await getRecaptchaToken('agent_apply') }),
       });
       if (!res.ok) throw new Error('Submission failed');
       setSubmitted(true);

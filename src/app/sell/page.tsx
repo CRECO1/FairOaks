@@ -7,6 +7,7 @@ import { trackLead, trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
+import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 const STEPS = [
   { number: '01', title: 'Free Home Valuation', description: 'We analyze recent sales, market trends, and your home\'s unique features to establish the ideal listing price.' },
@@ -35,6 +36,7 @@ export default function SellPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        recaptchaToken: await getRecaptchaToken('lead_form'),
         name: data.get('name'),
         email: data.get('email'),
         phone: data.get('phone'),

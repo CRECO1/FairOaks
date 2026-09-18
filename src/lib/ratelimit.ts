@@ -1,8 +1,10 @@
 /**
  * Rate limiting via Upstash Redis + @upstash/ratelimit
  *
- * Fails OPEN if KV env vars are not configured — so the app still works
- * in local dev without Redis, and a missing env var won't break production.
+ * In development, fails OPEN if the KV env vars are not configured, so the app
+ * still works locally without Redis. In production it fails CLOSED: leaving the
+ * public endpoints entirely unprotected is the worse outcome, and the condition
+ * is logged at error level so it surfaces immediately.
  *
  * Usage:
  *   const { success, limit, remaining } = await rateLimit(req, 'leads');
@@ -42,17 +44,20 @@ type LimiterKey = keyof typeof LIMITS;
 // Lazily-initialised limiter cache
 const limiters = new Map<LimiterKey, Ratelimit>();
 
-function getLimiter(key: LimiterKey): Ratelimit | null {
+function getLimiter(key: LimiterKey): Ratelimit | 'unavailable' | null {
   if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
     if (process.env.NODE_ENV === 'production') {
       // Error-level log in production so it surfaces in alerts/dashboards
       console.error(
         '[ratelimit] CRITICAL: KV_REST_API_URL or KV_REST_API_TOKEN not configured — ' +
-        `rate limiting is DISABLED for endpoint "${key}". ` +
-        'Set these environment variables in Vercel to re-enable protection.'
+        `endpoint "${key}" is now REJECTING requests (fail-closed). ` +
+        'Set these environment variables in Vercel to restore service.'
       );
     }
-    return null; // fail-open (app still works, but unprotected)
+    // Fail CLOSED in production: an unprotected public endpoint is worse than a
+    // temporarily rejected submission, and this is only reachable if the KV env
+    // vars go missing. Local dev still works without Redis.
+    return process.env.NODE_ENV === 'production' ? 'unavailable' : null;
   }
 
   if (!limiters.has(key)) {
@@ -83,14 +88,16 @@ function getIp(req: NextRequest): string {
 
 /**
  * Check rate limit for a given endpoint key.
- * Returns { success: true } if KV is not configured (fail-open).
+ * If KV is not configured: { success: true } in development, { success: false }
+ * in production (fail-closed).
  */
 export async function rateLimit(
   req: NextRequest,
   key: LimiterKey,
 ): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
   const limiter = getLimiter(key);
-  if (!limiter) return { success: true, limit: 0, remaining: 0, reset: 0 }; // fail-open
+  if (limiter === 'unavailable') return { success: false, limit: 0, remaining: 0, reset: 0 }; // fail-closed in prod
+  if (!limiter) return { success: true, limit: 0, remaining: 0, reset: 0 }; // dev without Redis
 
   const ip = getIp(req);
   const result = await limiter.limit(ip);
