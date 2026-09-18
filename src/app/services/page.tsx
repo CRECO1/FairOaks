@@ -118,7 +118,7 @@ const SERVICES = [
 ];
 
 const WHY_US = [
-  { icon: Star,       text: '20+ years of Texas Hill Country expertise' },
+  { icon: Star,       text: 'Texas Hill Country market expertise' },
   { icon: Shield,     text: 'Fiduciary duty — your interests always come first' },
   { icon: Medal,      text: 'Proud military community partners' },
   { icon: CheckCircle, text: 'Transparent communication at every step' },

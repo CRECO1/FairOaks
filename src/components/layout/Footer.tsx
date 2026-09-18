@@ -67,7 +67,7 @@ export function Footer() {
                 />
               </Link>
               <p className="text-foreground-light text-body-sm leading-relaxed mb-6 max-w-xs">
-                Trusted local experts helping families find their perfect home in the Texas Hill Country since 2004.
+                Trusted local experts helping families find their perfect home in the Texas Hill Country.
               </p>
               <div className="flex gap-4">
                 <a href="https://facebook.com/fairoaksrealtygroup" target="_blank" rel="noopener noreferrer" aria-label="Facebook"

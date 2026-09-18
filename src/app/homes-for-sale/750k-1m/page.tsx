@@ -356,7 +356,7 @@ export default function From750kTo1mPage() {
                 </div>
                 <ul className="mt-6 space-y-3">
                   {[
-                    '20+ years of Hill Country market transactions',
+                    'Experience across Hill Country transactions',
                     'Deep knowledge of gated communities and their covenants',
                     'Builder relationships for pre-market access',
                     'Expert negotiation on $750K–$1M offers',

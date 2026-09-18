@@ -117,7 +117,7 @@ export default function SellPage() {
                     'Targeted ads reaching active buyers in your price range',
                     'Weekly progress reports — we keep you informed',
                     'No sale, no fee — you pay nothing unless we sell',
-                    '20+ years of local Hill Country market expertise',
+                    'Deep local Hill Country market expertise',
                   ].map(item => (
                     <li key={item} className="flex items-start gap-3 text-body text-foreground-muted">
                       <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-gold" />

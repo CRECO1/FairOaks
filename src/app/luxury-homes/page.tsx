@@ -406,7 +406,7 @@ export default function LuxuryHomesPage() {
                 </div>
                 <ul className="mt-6 space-y-3">
                   {[
-                    '20+ years of Hill Country market experience',
+                    'Hill Country luxury market experience',
                     'Deep relationships with luxury builders and developers',
                     'Proven track record in $1M+ transactions',
                     'Full-service — from search to keys and beyond',
