@@ -137,7 +137,7 @@ const jsonLd = {
   '@graph': [
     {
       '@type': 'RealEstateAgent',
-      '@id': `${BASE_URL}/#business`,
+      '@id': `${BASE_URL}/#organization`,
       name: 'Fair Oaks Realty Group',
       url: BASE_URL,
       telephone: '+1-2103909997',

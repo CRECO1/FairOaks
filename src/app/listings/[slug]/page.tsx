@@ -190,6 +190,9 @@ export default async function ListingDetailPage({ params }: Props) {
   const realEstateListingLd = {
     '@context': 'https://schema.org',
     '@type': 'RealEstateListing',
+    // Ties every listing back to the one organization node, so an assistant can
+    // tell who is marketing the property without re-stating the brokerage here.
+    offeredBy: { '@id': `${BASE_URL}/#organization` },
     name: listing.title,
     description: listing.description ?? listing.address,
     url: `${BASE_URL}/listings/${slug}`,

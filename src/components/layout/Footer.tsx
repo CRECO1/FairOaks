@@ -74,7 +74,7 @@ export function Footer() {
                   className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white/60 transition-colors hover:border-gold hover:text-gold">
                   <Facebook className="h-4 w-4" />
                 </a>
-                <a href="https://instagram.com/fairoaksrealtygroup" target="_blank" rel="noopener noreferrer" aria-label="Instagram"
+                <a href="https://www.instagram.com/fairoaksrealty_group" target="_blank" rel="noopener noreferrer" aria-label="Instagram"
                   className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-white/60 transition-colors hover:border-gold hover:text-gold">
                   <Instagram className="h-4 w-4" />
                 </a>

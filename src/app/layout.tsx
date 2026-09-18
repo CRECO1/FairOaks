@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
 import StickyCTA from '@/components/ui/StickyCTA';
-import { FORG, CRECO, AFFILIATION } from '@/lib/site-identity';
+import { FORG, CRECO, AFFILIATION, ORG_ID, areaServed, peopleNodes, trecCredential } from '@/lib/site-identity';
 import './globals.css';
 import { jsonLdScript } from '@/lib/json-ld';
 
@@ -124,15 +124,16 @@ export default function RootLayout({
               '@context': 'https://schema.org',
               '@graph': [
                 {
-                  '@type': ['RealEstateAgent', 'LocalBusiness'],
-                  '@id': 'https://www.fairoaksrealtygroup.com/#business',
+                  '@type': ['RealEstateAgent', 'LocalBusiness', 'Organization'],
+                  '@id': ORG_ID,
                   name: 'Fair Oaks Realty Group',
+                  alternateName: [...FORG.alternateName],
                   url: 'https://www.fairoaksrealtygroup.com',
                   logo: 'https://www.fairoaksrealtygroup.com/images/logo.png',
                   image: 'https://www.fairoaksrealtygroup.com/images/og-home.jpg',
                   description:
                     'Residential real estate agency serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country.',
-                  telephone: '+1-2103909997',
+                  telephone: FORG.telephone,
                   email: 'info@fairoaksrealtygroup.com',
                   address: {
                     '@type': 'PostalAddress',
@@ -147,17 +148,28 @@ export default function RootLayout({
                     latitude: 29.7494,
                     longitude: -98.6318,
                   },
-                  areaServed: [
-                    { '@type': 'City', name: 'Fair Oaks Ranch', sameAs: 'https://en.wikipedia.org/wiki/Fair_Oaks_Ranch,_Texas' },
-                    { '@type': 'City', name: 'Boerne', sameAs: 'https://en.wikipedia.org/wiki/Boerne,_Texas' },
-                    { '@type': 'City', name: 'Helotes', sameAs: 'https://en.wikipedia.org/wiki/Helotes,_Texas' },
-                    { '@type': 'City', name: 'Leon Springs' },
-                    { '@type': 'City', name: 'San Antonio' },
-                    { '@type': 'City', name: 'Bulverde' },
-                    { '@type': 'City', name: 'New Braunfels' },
-                    { '@type': 'City', name: 'Canyon Lake' },
-                    { '@type': 'City', name: 'Spring Branch' },
-                    { '@type': 'State', name: 'Texas' },
+                  // State → region → counties → the cities with their own pages here.
+                  areaServed: areaServed(),
+                  hasMap: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(FORG.addressLine)}`,
+                  // The firm's own TREC licence, machine-readable and labelled.
+                  identifier: { '@type': 'PropertyValue', propertyID: 'TREC License', value: FORG.trecLicense },
+                  hasCredential: trecCredential(
+                    FORG.trecLicense,
+                    `Texas Real Estate Broker License ${FORG.trecLicenseDisplay}`,
+                    'Texas Real Estate Broker License (business entity)',
+                  ),
+                  contactPoint: [{
+                    '@type': 'ContactPoint',
+                    contactType: 'sales',
+                    telephone: FORG.telephone,
+                    email: FORG.email,
+                    areaServed: 'US-TX',
+                    availableLanguage: ['English'],
+                  }],
+                  founder: { '@id': `${FORG.url}/team#zachary-stovall` },
+                  employee: [
+                    { '@id': `${FORG.url}/team#zachary-stovall` },
+                    { '@id': `${FORG.url}/team#brian-blanco` },
                   ],
                   openingHoursSpecification: [
                     {
@@ -183,7 +195,7 @@ export default function RootLayout({
                   sameAs: [...FORG.sameAs],
                   priceRange: '$$$',
                   disambiguatingDescription: `${FORG.summary} ${AFFILIATION}`,
-                  knowsAbout: [...FORG.services],
+                  knowsAbout: [...FORG.knowsAbout, ...FORG.services],
                 },
                 // The affiliated commercial brokerage, under the @id crecotx.com itself uses,
                 // so AI systems and search engines join the two sites' graphs.
@@ -196,16 +208,27 @@ export default function RootLayout({
                   description: CRECO.summary,
                   telephone: CRECO.telephone,
                   email: CRECO.email,
-                  address: { '@type': 'PostalAddress', ...FORG.address },
+                  // CRECO is Suite 100 — a different suite from Fair Oaks' 102. This
+                  // node previously reused the Fair Oaks address wholesale.
+                  address: {
+                    '@type': 'PostalAddress',
+                    streetAddress: '8000 Fair Oaks Pkwy, Suite 100',
+                    addressLocality: 'Fair Oaks Ranch',
+                    addressRegion: 'TX',
+                    postalCode: '78015',
+                    addressCountry: 'US',
+                  },
                   identifier: { '@type': 'PropertyValue', propertyID: 'TREC License', value: CRECO.license },
                 },
+                // The licensed people, each carrying their own individual TREC number.
+                ...peopleNodes(),
                 {
                   '@type': 'WebSite',
                   '@id': 'https://www.fairoaksrealtygroup.com/#website',
                   url: 'https://www.fairoaksrealtygroup.com',
                   name: 'Fair Oaks Realty Group',
                   description: 'Fair Oaks Ranch TX Homes for Sale – Texas Hill Country Real Estate',
-                  publisher: { '@id': 'https://www.fairoaksrealtygroup.com/#business' },
+                  publisher: { '@id': 'https://www.fairoaksrealtygroup.com/#organization' },
                   potentialAction: {
                     '@type': 'SearchAction',
                     target: {
