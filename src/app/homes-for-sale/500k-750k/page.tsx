@@ -9,6 +9,7 @@ import {
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/homes-for-sale/500k-750k`;
@@ -129,7 +130,7 @@ const STATS = [
 export default function From500kTo750kPage() {
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <Header />
       <main className="min-h-screen pt-20">
 

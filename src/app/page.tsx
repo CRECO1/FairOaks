@@ -75,6 +75,7 @@ import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sa
 import { formatPrice } from '@/lib/utils';
 import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 import { CommercialCallout } from '@/components/sections/CommercialCallout';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const DEFAULT_SETTINGS = {
   hero_headline: 'Your Home in the Texas Hill Country',
@@ -461,7 +462,7 @@ export default async function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'WebPage',
             '@id': `${FORG.url}/#webpage`,
@@ -480,7 +481,7 @@ export default async function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+          __html: jsonLdScript({
             '@context': 'https://schema.org',
             '@type': 'FAQPage',
             mainEntity: [

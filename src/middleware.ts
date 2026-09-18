@@ -3,10 +3,6 @@ import type { NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { validateCsrf } from '@/lib/csrf';
 
-// Protected routes that require authentication (redirect to login if no user)
-const protectedRoutes = ['/manage'];
-const publicRoutes = ['/manage/login'];
-
 // App shells that must receive the security headers / CSP below, but must NOT be
 // gated here. /crm keeps its session in cookies (@supabase/ssr) while /admin
 // keeps its in localStorage (plain supabase-js), which middleware cannot see —
@@ -96,44 +92,12 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(NextResponse.next());
   }
 
-  // Skip middleware for non-admin page routes
-  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
-  const isPublicRoute = publicRoutes.some(route => pathname === route);
-
-  if (!isProtectedRoute) {
-    return withSecurityHeaders(NextResponse.next());
-  }
-
-  // Allow public routes within /manage
-  if (isPublicRoute) {
-    return withSecurityHeaders(NextResponse.next());
-  }
-
-  try {
-    // Update session and get user
-    const { supabaseResponse, user } = await updateSession(request);
-
-    // If no user, redirect to login
-    if (!user) {
-      const loginUrl = new URL('/manage/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return withSecurityHeaders(NextResponse.redirect(loginUrl));
-    }
-
-    return withSecurityHeaders(supabaseResponse);
-  } catch (error) {
-    console.error('Middleware auth error:', error);
-    // On error, redirect to login
-    const loginUrl = new URL('/manage/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return withSecurityHeaders(NextResponse.redirect(loginUrl));
-  }
+  // Everything else: security headers only.
+  return withSecurityHeaders(NextResponse.next());
 }
 
 export const config = {
   matcher: [
-    // Match all admin page routes
-    '/manage/:path*',
     // CRM and admin shells — security headers / CSP only (no auth redirect)
     '/crm/:path*',
     '/crm',

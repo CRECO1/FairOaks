@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -77,7 +78,7 @@ export default function TeamLayout({ children }: { children: React.ReactNode }) 
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(personSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(personSchema) }}
       />
       {children}
     </>

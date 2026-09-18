@@ -38,6 +38,7 @@ import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getNeighborhoods, type Neighborhood } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
+import { jsonLdScript } from '@/lib/json-ld';
 
 export default async function NeighborhoodsPage() {
   // No demo fallback: the featured/rest sections below already render nothing
@@ -68,7 +69,7 @@ export default async function NeighborhoodsPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
       />
       <Header />
       <main className="min-h-screen pt-20">

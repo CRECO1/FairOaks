@@ -3,6 +3,7 @@ import AnalyticsScripts from '@/components/AnalyticsScripts';
 import StickyCTA from '@/components/ui/StickyCTA';
 import { FORG, CRECO, AFFILIATION } from '@/lib/site-identity';
 import './globals.css';
+import { jsonLdScript } from '@/lib/json-ld';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -119,7 +120,7 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
+            __html: jsonLdScript({
               '@context': 'https://schema.org',
               '@graph': [
                 {

@@ -1,5 +1,3 @@
-import { withPayload } from '@payloadcms/next/withPayload';
-
 // `next dev` compiles modules through eval() for hot-module replacement, so the
 // dev server renders a blank page under a CSP without 'unsafe-eval'. This is
 // gated on NODE_ENV so it can never reach a built artifact: `next build` and
@@ -126,4 +124,4 @@ const nextConfig = {
   },
 };
 
-export default withPayload(nextConfig);
+export default nextConfig;

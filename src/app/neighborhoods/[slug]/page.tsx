@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getNeighborhoodBySlug, getListingsByCity } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -146,7 +147,7 @@ export default async function NeighborhoodDetailPage({ params }: Props) {
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <Header variant="minimal" />
       <main className="min-h-screen pt-20">
         {/* Back */}

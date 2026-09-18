@@ -7,6 +7,7 @@ import {
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { jsonLdScript } from '@/lib/json-ld';
 
 export const revalidate = 86400;
 
@@ -179,7 +180,7 @@ export default function MilitaryHomebuyingPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
       />
       <Header />
       <main className="min-h-screen pt-20">

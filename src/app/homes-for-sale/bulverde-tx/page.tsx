@@ -10,6 +10,7 @@ import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CITY = 'Bulverde';
@@ -91,7 +92,7 @@ const WHY_BUY = [
 export default function BulverdeTxPage() {
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <Header />
       <main className="min-h-screen pt-20">
 

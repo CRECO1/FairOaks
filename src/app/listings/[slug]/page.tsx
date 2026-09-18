@@ -15,6 +15,7 @@ import { ListingGallery } from '@/components/sections/ListingGallery';
 import { StickyContactBar } from '@/components/listings/StickyContactBar';
 import { ListingViewTracker } from './ListingViewTracker';
 import { PhoneLink } from './PhoneLink';
+import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
@@ -216,8 +217,8 @@ export default async function ListingDetailPage({ params }: Props) {
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(realEstateListingLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(realEstateListingLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
       <Header variant="minimal" />
       <ListingViewTracker
         id={listing.listing_key}
