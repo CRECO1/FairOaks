@@ -187,16 +187,6 @@ export default function ContactPage() {
                           />
                         </div>
 
-                        {/* Social proof */}
-                        <div className="rounded-xl border border-border bg-background-cream p-5">
-                          <div className="mb-2 flex gap-0.5">
-                            {[1,2,3,4,5].map(i => <span key={i} className="text-gold text-lg leading-none">★</span>)}
-                          </div>
-                          <p className="text-body-sm italic text-foreground-muted leading-relaxed">
-                            &ldquo;Zach and his team made our move from Dallas completely seamless. We were under contract in two weeks and closed on time — without ever feeling rushed.&rdquo;
-                          </p>
-                          <p className="mt-2 text-caption font-semibold text-primary">— The Rodriguez Family · Fair Oaks Ranch</p>
-                        </div>
 
                         <p className="text-caption text-foreground-muted">
                           By submitting, you agree to be contacted by Fair Oaks Realty Group regarding your inquiry.

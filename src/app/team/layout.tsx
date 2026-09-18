@@ -56,7 +56,7 @@ const personSchema = {
 export const metadata: Metadata = {
   title: 'Meet Our Real Estate Team | Fair Oaks Realty Group',
   description:
-    'Meet the experienced real estate agents at Fair Oaks Realty Group. Local experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country since 2004.',
+    'Meet the real estate agents at Fair Oaks Realty Group. Local experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country.',
   keywords: [
     'Fair Oaks Ranch real estate agents',
     'Fair Oaks Ranch realtor team',

@@ -37,7 +37,7 @@ const PERKS = [
   {
     icon: Award,
     title: 'Local Market Authority',
-    description: 'Leverage our 20+ years of Texas Hill Country expertise and trusted brand recognition.',
+    description: 'Leverage our Texas Hill Country market knowledge and local relationships.',
   },
 ];
 

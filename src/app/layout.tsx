@@ -173,12 +173,10 @@ export default function RootLayout({
                       closes: '16:00',
                     },
                   ],
-                  aggregateRating: {
-                    '@type': 'AggregateRating',
-                    ratingValue: '5.0',
-                    reviewCount: '127',
-                    bestRating: '5',
-                  },
+                  // No aggregateRating: a 5.0 / 127-review rating was published here with
+                  // nothing behind it — the site stores three testimonials and no review
+                  // records. Google also requires an aggregateRating to reflect reviews
+                  // shown on the page. Reinstate only from real, displayed review data.
                   // Profiles linked from the site footer. crecotx.com is deliberately NOT
                   // here: sameAs asserts the same entity, and CRECO is an affiliated brand
                   // — see disambiguatingDescription and the CRECO node below.

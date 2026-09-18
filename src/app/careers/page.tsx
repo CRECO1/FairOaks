@@ -14,13 +14,6 @@ import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const STATS = [
-  { value: '20+', label: 'Years in Business' },
-  { value: '$500M+', label: 'In Sales Volume' },
-  { value: '1,000+', label: 'Families Served' },
-  { value: '2', label: 'Offices (Res + Comm)' },
-];
-
 const OPEN_ROLES = [
   {
     title: 'Residential Real Estate Agent',
@@ -60,7 +53,7 @@ const PERKS = [
   { icon: Megaphone, title: 'Marketing Support', description: 'Professional photography, listing presentations, social media content, and brand resources.' },
   { icon: TrendingUp, title: 'Proven Lead Flow', description: 'Benefit from our established online presence, Zillow partnerships, and referral network.' },
   { icon: Users, title: 'Collaborative Culture', description: 'A team-first environment where experienced agents mentor and support each other.' },
-  { icon: Award, title: 'Local Market Authority', description: 'Leverage our 20+ years of Texas Hill Country expertise and trusted brand recognition.' },
+  { icon: Award, title: 'Local Market Authority', description: 'Leverage our Texas Hill Country market knowledge and local relationships.' },
 ];
 
 const PRODUCTION_OPTIONS = ['Under $2M', '$2M – $5M', '$5M – $10M', '$10M – $20M', '$20M+', 'New Agent / Pre-License'];
@@ -129,20 +122,6 @@ export default function CareersPage() {
               <a href="#apply" className="inline-flex items-center gap-2 rounded-lg border border-white/30 px-7 py-3.5 font-semibold text-white transition-colors hover:border-gold hover:text-gold">
                 Apply Now
               </a>
-            </div>
-          </Container>
-        </div>
-
-        {/* ── Stats bar ── */}
-        <div className="bg-gold py-8">
-          <Container>
-            <div className="grid grid-cols-2 gap-6 sm:grid-cols-4 text-center">
-              {STATS.map(s => (
-                <div key={s.label}>
-                  <div className="font-heading text-3xl font-bold text-primary">{s.value}</div>
-                  <div className="mt-1 text-body-sm font-medium text-primary/70">{s.label}</div>
-                </div>
-              ))}
             </div>
           </Container>
         </div>

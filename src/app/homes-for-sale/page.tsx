@@ -255,9 +255,7 @@ export default function HomesForSaleIndexPage() {
                 <div className="grid grid-cols-2 gap-6">
                   {[
                     { stat: '8', label: 'Communities Served' },
-                    { stat: '20+', label: 'Years of Experience' },
                     { stat: '$385K–$680K', label: 'Price Range Covered' },
-                    { stat: '100%', label: 'Local Expertise' },
                   ].map(({ stat, label }) => (
                     <div key={label}>
                       <div className="font-heading text-display-sm font-bold text-gold">{stat}</div>

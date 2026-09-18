@@ -425,7 +425,6 @@ export default function SellerGuidePage() {
             <div className="mt-10 rounded-2xl bg-primary p-8 sm:p-10 text-white">
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 text-center">
                 {[
-                  { value: '200+', label: 'Listing Syndication Sites' },
                   { value: 'Day 1', label: 'MLS Live After Sign' },
                   { value: '$0', label: 'Upfront Marketing Cost' },
                 ].map(item => (

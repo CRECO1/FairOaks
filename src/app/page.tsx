@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { FORG, CRECO } from '@/lib/site-identity';
 
 export const metadata: Metadata = {
-  title: 'Fair Oaks Ranch Homes for Sale | #1 Local Realtor – Fair Oaks Realty Group',
+  title: 'Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
   description:
     'Browse homes for sale in Fair Oaks Ranch, TX with Fair Oaks Realty Group — your local Hill Country real estate experts. Search Boerne, Helotes & San Antonio listings. Free home valuation.',
   keywords: [
