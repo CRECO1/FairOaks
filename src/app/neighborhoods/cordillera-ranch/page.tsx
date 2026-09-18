@@ -69,7 +69,6 @@ const WHY_FAIR_OAKS = [
   'Relationships with community\'s top custom builders',
   'Access to off-market estate listings before they hit MLS',
   'Deep knowledge of lot values, views, and deed restrictions',
-  'Sandra Whitfield: Broker/Owner and Hill Country luxury specialist',
   'Full-service — from search through custom build management',
 ];
 
@@ -171,7 +170,7 @@ export default function CordilleraRanchPage() {
                   <Link href="/listings?community=cordillera-ranch">Browse Cordillera Listings</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <Link href="/contact?area=CordilleraRanch">Contact Sandra Whitfield</Link>
+                  <Link href="/contact?area=CordilleraRanch">Contact Fair Oaks Realty Group</Link>
                 </Button>
               </div>
             </div>
@@ -283,7 +282,7 @@ export default function CordilleraRanchPage() {
                   </ul>
                   <Button asChild>
                     <Link href="/contact?area=CordilleraRanch">
-                      Talk to Sandra Whitfield <ArrowRight className="ml-2 h-4 w-4" />
+                      Talk to Our Team <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
                 </div>
@@ -317,11 +316,11 @@ export default function CordilleraRanchPage() {
                       Interested in Cordillera Ranch?
                     </h3>
                     <p className="mb-5 text-body-sm text-foreground-muted">
-                      Our luxury specialists have deep knowledge of Cordillera Ranch and can help you find
+                      Our team has deep knowledge of Cordillera Ranch and can help you find
                       the right home — or the right lot to build on.
                     </p>
                     <Button size="lg" fullWidth asChild>
-                      <Link href="/contact?area=CordilleraRanch">Contact Sandra Whitfield</Link>
+                      <Link href="/contact?area=CordilleraRanch">Contact Fair Oaks Realty Group</Link>
                     </Button>
                     <Button size="lg" variant="outline" fullWidth className="mt-3" asChild>
                       <Link href="/listings?community=cordillera-ranch">View Current Listings</Link>
@@ -390,11 +389,11 @@ export default function CordilleraRanchPage() {
               </h2>
               <p className="mb-8 mx-auto max-w-xl text-body-lg text-white/70">
                 Whether you want a move-in ready estate or a custom lot to build your dream home,
-                our luxury specialists are ready to help. Contact Sandra Whitfield for a private consultation.
+                our team is ready to help. Get in touch for a private consultation.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button size="lg" asChild>
-                  <Link href="/contact?area=CordilleraRanch">Contact Sandra Whitfield</Link>
+                  <Link href="/contact?area=CordilleraRanch">Contact Fair Oaks Realty Group</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
                   <Link href="/listings?community=cordillera-ranch">

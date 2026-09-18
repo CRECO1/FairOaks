@@ -62,7 +62,6 @@ const WHY_FAIR_OAKS = [
   'Access to off-market and pre-market estate listings',
   'Discretion and confidentiality for every transaction',
   'Expert luxury negotiation — not just a search portal',
-  'Sandra Whitfield: Broker/Owner and luxury specialist',
 ];
 
 const FAQS = [
@@ -163,7 +162,7 @@ export default function TheDominionPage() {
                   <Link href="/listings?community=the-dominion">Browse Dominion Listings</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <Link href="/contact?area=TheDominion">Contact Sandra Whitfield</Link>
+                  <Link href="/contact?area=TheDominion">Contact Fair Oaks Realty Group</Link>
                 </Button>
               </div>
             </div>
@@ -299,7 +298,7 @@ export default function TheDominionPage() {
                   </ul>
                   <Button asChild>
                     <Link href="/contact?area=TheDominion">
-                      Talk to Sandra Whitfield <ArrowRight className="ml-2 h-4 w-4" />
+                      Talk to Our Team <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
                 </div>
@@ -333,11 +332,11 @@ export default function TheDominionPage() {
                       Ready to buy in The Dominion?
                     </h3>
                     <p className="mb-5 text-body-sm text-foreground-muted">
-                      Sandra Whitfield is our Broker/Owner and luxury specialist. She has years of experience
-                      in The Dominion and knows the community inside out.
+                      Our team knows The Dominion and can walk you through what is available,
+                      what has sold, and what a realistic offer looks like.
                     </p>
                     <Button size="lg" fullWidth asChild>
-                      <Link href="/contact?area=TheDominion">Contact Sandra Whitfield</Link>
+                      <Link href="/contact?area=TheDominion">Contact Fair Oaks Realty Group</Link>
                     </Button>
                     <Button size="lg" variant="outline" fullWidth className="mt-3" asChild>
                       <Link href="/listings?community=the-dominion">View Current Listings</Link>
@@ -405,12 +404,12 @@ export default function TheDominionPage() {
                 Find Your Dominion Estate Today
               </h2>
               <p className="mb-8 mx-auto max-w-xl text-body-lg text-white/70">
-                Whether you&apos;re buying, selling, or exploring a custom build in The Dominion, our luxury specialists
-                are ready to guide you. Contact Sandra Whitfield for a private, no-pressure consultation.
+                Whether you&apos;re buying, selling, or exploring a custom build in The Dominion, our team
+                is ready to guide you. Get in touch for a private, no-pressure consultation.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Button size="lg" asChild>
-                  <Link href="/contact?area=TheDominion">Contact Sandra Whitfield</Link>
+                  <Link href="/contact?area=TheDominion">Contact Fair Oaks Realty Group</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
                   <Link href="/listings?community=the-dominion">

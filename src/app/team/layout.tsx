@@ -3,44 +3,33 @@ import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
+// The real team, and only the real team: two people.
+//
+// This graph previously asserted four Person entities, none of whom exist. They
+// carried invented @fairoaksrealtygroup.com addresses and were published as
+// structured data, so search engines and AI assistants were told four fictitious
+// licensed agents worked here.
+//
+// Every field below is either confirmed by the brokerage or omitted. No emails,
+// telephone numbers, specialties or licence numbers appear per person: the
+// organisation's own contact details already live in the site-wide Organization
+// schema, and a licence number is published only once a real one is supplied.
 const personSchema = {
   '@context': 'https://schema.org',
   '@graph': [
     {
       '@type': 'Person',
-      name: 'Sandra Whitfield',
+      name: 'Zachary Stovall',
       jobTitle: 'Broker / Owner',
       worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
-      email: 'sandra@fairoaksrealtygroup.com',
       url: `${BASE_URL}/team`,
-      knowsAbout: ['Luxury Estates', 'Relocation', 'Hill Country Acreage', 'Texas Real Estate'],
     },
     {
       '@type': 'Person',
-      name: 'James Morales',
-      jobTitle: 'Realtor® — Buyer Specialist',
+      name: 'Brian Blanco',
+      jobTitle: 'Real Estate Agent',
       worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
-      email: 'james@fairoaksrealtygroup.com',
       url: `${BASE_URL}/team`,
-      knowsAbout: ['First-Time Buyers', 'New Construction', 'Investment Properties'],
-    },
-    {
-      '@type': 'Person',
-      name: 'Karen Liu',
-      jobTitle: 'Realtor® — Listing Specialist',
-      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
-      email: 'karen@fairoaksrealtygroup.com',
-      url: `${BASE_URL}/team`,
-      knowsAbout: ['Home Staging', 'Negotiation', 'Downsizing'],
-    },
-    {
-      '@type': 'Person',
-      name: 'David Reyes',
-      jobTitle: 'Realtor® — Military & VA Specialist',
-      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
-      email: 'david@fairoaksrealtygroup.com',
-      url: `${BASE_URL}/team`,
-      knowsAbout: ['VA Loans', 'Military Relocation', 'Investment Properties'],
     },
   ],
 };

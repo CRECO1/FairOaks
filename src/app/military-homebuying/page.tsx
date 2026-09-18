@@ -317,26 +317,26 @@ export default function MilitaryHomebuyingPage() {
           </Container>
         </section>
 
-        {/* About David Reyes */}
+        {/* How we support military buyers. No personal attribution and no military
+            service claimed for any individual: this section previously profiled a
+            fabricated agent presented as a retired Army veteran. */}
         <section className="section-compact bg-white">
           <Container>
             <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
               <div>
-                <p className="overline mb-3 text-gold">Your VA Specialist</p>
+                <p className="overline mb-3 text-gold">Military &amp; VA Support</p>
                 <h2 className="mb-5 font-heading text-display-sm font-bold text-primary">
-                  Meet David Reyes —<br />A Veteran Who Gets It
+                  Built Around a PCS Timeline
                 </h2>
                 <p className="mb-5 text-body text-foreground-muted leading-relaxed">
-                  David Reyes is a retired U.S. Army veteran and a licensed Texas REALTOR® with over 7 years of experience helping military families navigate the home buying process in San Antonio and the Hill Country. He has personally used the VA loan benefit and has helped hundreds of fellow veterans and active-duty service members do the same.
+                  A PCS move puts real pressure on a home search: tight timelines, orders that can shift, and often the need to choose a home remotely before your family arrives. We build the process around those realities rather than a standard 60-day search.
                 </p>
                 <p className="mb-7 text-body text-foreground-muted leading-relaxed">
-                  David understands the unique pressures of a PCS move — the tight timelines, the uncertainty, the need to find a home remotely before your family arrives. He builds his entire client process around those realities. Whether you have 30 days or 90 days, David will get you into the right home.
+                  We work with buyers using the VA loan benefit across San Antonio and the Hill Country, including families reporting to Joint Base San Antonio — Fort Sam Houston, Lackland and Randolph. Whether you have 30 days or 90, we can work to your schedule.
                 </p>
                 <ul className="mb-8 space-y-3">
                   {[
-                    'Retired U.S. Army veteran',
-                    'Specialized VA loan and PCS relocation expertise',
-                    '7+ years of Hill Country market experience',
+                    'VA loan and PCS relocation experience',
                     'Virtual tours and remote closings available',
                     'Available outside normal business hours for military clients',
                     'All branches welcome: Army, Air Force, Navy, Marines, Coast Guard',
@@ -349,7 +349,7 @@ export default function MilitaryHomebuyingPage() {
                 </ul>
                 <Button size="lg" asChild>
                   <Link href="/contact?service=military">
-                    Talk to David <ArrowRight className="ml-2 h-4 w-4" />
+                    Talk to Our Team <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
               </div>
@@ -421,7 +421,7 @@ export default function MilitaryHomebuyingPage() {
                 Schedule Your Free VA Consultation
               </h2>
               <p className="mb-8 mx-auto max-w-xl text-body-lg text-white/70">
-                30 minutes with a veteran-specialist agent can save you thousands. Let&apos;s review your VA entitlement, your budget, and your timeline — completely free.
+                30 minutes with our team can save you thousands. Let&apos;s review your VA entitlement, your budget, and your timeline — completely free.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <Link

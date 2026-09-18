@@ -116,7 +116,7 @@ const FAQ_CATEGORIES = [
       },
       {
         q: 'Do you have experience with military relocations (PCS moves)?',
-        a: 'Absolutely. Our team has extensive experience helping service members and their families navigate PCS (Permanent Change of Station) moves to the San Antonio area. We understand the time pressure of PCS orders, the importance of being near specific installations like Fort Sam Houston, Randolph AFB, Lackland AFB, and Kelly Field, and the unique financial considerations including BAH (Basic Allowance for Housing) rates. We offer virtual tours, remote consultations, and flexible scheduling to accommodate buyers who are relocating from other duty stations. David Reyes, our VA specialist, is himself a veteran who has navigated a PCS move — he gets it firsthand.',
+        a: 'Absolutely. Our team has extensive experience helping service members and their families navigate PCS (Permanent Change of Station) moves to the San Antonio area. We understand the time pressure of PCS orders, the importance of being near specific installations like Fort Sam Houston, Randolph AFB, Lackland AFB, and Kelly Field, and the unique financial considerations including BAH (Basic Allowance for Housing) rates. We offer virtual tours, remote consultations, and flexible scheduling to accommodate buyers who are relocating from other duty stations.',
       },
     ],
   },

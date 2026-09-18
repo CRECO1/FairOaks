@@ -138,15 +138,18 @@ const LUXURY_SERVICES = [
   },
 ];
 
-const AGENT_PROFILE = {
-  name: 'Sandra Whitfield',
-  title: 'Luxury Property Specialist',
-  bio: 'Sandra has been representing buyers and sellers in the Hill Country\'s luxury tier for over 15 years. With deep roots in the Cordillera Ranch, The Dominion, and Fair Oaks Ranch gated communities, she has closed over $200M in luxury real estate and is consistently recognized as one of the region\'s top producers. Sandra brings discretion, deep market knowledge, and genuine commitment to every $1M+ client she serves.',
-  credentials: [
-    'CLHMS (Certified Luxury Home Marketing Specialist)',
-    '$200M+ in luxury transaction volume',
-    '15+ years in Hill Country luxury market',
-    'Deep relationships in Cordillera Ranch & The Dominion',
+// Was a profile of a fabricated agent, with invented
+// credentials ($200M+ volume, 15+ years, a CLHMS designation). Replaced with what
+// the brokerage actually offers, attributed to no individual and claiming no
+// figures or designations we cannot evidence.
+const LUXURY_SUPPORT = {
+  heading: 'Working With Us on a $1M+ Purchase',
+  intro: 'Buying at this level is a different process: fewer comparable sales, more off-market inventory, and listing agents who expect a serious, well-prepared offer. We represent buyers and sellers across the Hill Country\'s gated and estate communities, including Cordillera Ranch, The Dominion and Fair Oaks Ranch.',
+  points: [
+    'Discretion and confidentiality throughout the transaction',
+    'Comparable analysis in a thin, high-value market',
+    'Access to off-market and pre-market estate listings',
+    'Coordination with custom builders, lenders and inspectors',
   ],
 };
 
@@ -304,19 +307,18 @@ export default function Over1mPage() {
           </Container>
         </section>
 
-        {/* Agent Profile */}
+        {/* Luxury representation — service-level, no individual named */}
         <section className="section-compact bg-white">
           <Container>
             <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
               <div>
-                <p className="overline mb-3 text-gold">Your Luxury Specialist</p>
+                <p className="overline mb-3 text-gold">Luxury Representation</p>
                 <h2 className="mb-5 font-heading text-heading-xl font-bold text-primary">
-                  {AGENT_PROFILE.name}
+                  {LUXURY_SUPPORT.heading}
                 </h2>
-                <p className="mb-2 text-body-sm font-semibold text-gold">{AGENT_PROFILE.title}</p>
-                <p className="mb-6 text-body text-foreground-muted leading-relaxed">{AGENT_PROFILE.bio}</p>
+                <p className="mb-6 text-body text-foreground-muted leading-relaxed">{LUXURY_SUPPORT.intro}</p>
                 <ul className="space-y-3">
-                  {AGENT_PROFILE.credentials.map((c) => (
+                  {LUXURY_SUPPORT.points.map((c) => (
                     <li key={c} className="flex items-start gap-3 text-body-sm text-foreground-muted">
                       <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
                       {c}

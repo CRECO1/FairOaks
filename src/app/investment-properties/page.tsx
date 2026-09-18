@@ -112,7 +112,7 @@ const FAQS = [
   },
   {
     q: 'Can I use a VA loan to buy investment property?',
-    a: 'The VA loan is a primary residence benefit — you cannot use it to purchase a pure investment property. However, military buyers can use a VA loan to purchase a small multifamily property (up to 4 units) if they occupy one of the units as their primary residence. This is an excellent strategy for building long-term wealth while serving. Our VA specialist David Reyes can walk you through the details.',
+    a: 'The VA loan is a primary residence benefit — you cannot use it to purchase a pure investment property. However, military buyers can use a VA loan to purchase a small multifamily property (up to 4 units) if they occupy one of the units as their primary residence. This is an excellent strategy for building long-term wealth while serving. Get in touch and our team can walk you through the details.',
   },
   {
     q: 'How do I get started finding investment properties in San Antonio?',
@@ -350,12 +350,6 @@ export default function InvestmentPropertiesPage() {
                   renovation cost estimation, and an understanding of financing vehicles like DSCR loans
                   and 1031 exchanges. Our team has that background, and we apply it to every investor client.
                 </p>
-                <p className="mb-7 text-body text-foreground-muted leading-relaxed">
-                  David Reyes is our dedicated VA and investment property specialist — a retired U.S. Army
-                  veteran with deep knowledge of the JBSA rental market, military-relocation tenant dynamics,
-                  and VA multifamily strategies. Whether you&apos;re a first-time investor or a seasoned portfolio
-                  builder, David brings the analytical rigor and local relationships your investment deserves.
-                </p>
                 <ul className="mb-8 space-y-3">
                   {AGENT_SERVICES.map(item => (
                     <li key={item} className="flex items-start gap-2.5 text-body-sm text-foreground-muted">
@@ -374,12 +368,12 @@ export default function InvestmentPropertiesPage() {
               <div className="rounded-2xl bg-primary p-8 sm:p-10 text-white">
                 <Star className="mb-4 h-9 w-9 text-[#C9A84C]" />
                 <h3 className="mb-3 font-heading text-heading-xl font-bold text-white">
-                  David Reyes — VA &amp; Investment Specialist
+                  Investment Property Support
                 </h3>
                 <p className="mb-5 text-body text-white/70 leading-relaxed">
-                  Retired U.S. Army veteran. Licensed Texas REALTOR® with 7+ years of experience in
-                  Hill Country investment real estate. David has personally guided investors through
-                  single-family rentals, small multifamily acquisitions, and VA house-hacking strategies.
+                  We work with investors on single-family rentals, small multifamily acquisitions and
+                  house-hacking strategies across the Hill Country and greater San Antonio, including
+                  the rental market around Joint Base San Antonio.
                 </p>
                 <ul className="mb-6 space-y-2">
                   {[
@@ -396,8 +390,8 @@ export default function InvestmentPropertiesPage() {
                   ))}
                 </ul>
                 <Button size="lg" fullWidth asChild>
-                  <Link href="/contact?service=investment&agent=david">
-                    Talk to David Reyes
+                  <Link href="/contact?service=investment">
+                    Talk to Our Team
                   </Link>
                 </Button>
                 <a
