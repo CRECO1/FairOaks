@@ -22,17 +22,10 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Texas Home Seller's Guide | How to Get Top Dollar in Hill Country",
     description:
-      'Pricing strategy, staging tips, marketing, and our proven 103% list-to-sale process for Texas Hill Country sellers.',
+      'Pricing strategy, staging tips and marketing for Texas Hill Country sellers.',
     url: BASE_URL + '/seller-guide',
   },
 };
-
-const STATS = [
-  { icon: TrendingUp, value: '103%', label: 'List-to-Sale Price' },
-  { icon: Clock, value: '21', label: 'Avg. Days on Market' },
-  { icon: Users, value: '500+', label: 'Homes Sold' },
-  { icon: DollarSign, value: '$0', label: 'Upfront Marketing Cost' },
-];
 
 const PREP_TIPS = [
   {
@@ -200,7 +193,7 @@ export default function SellerGuidePage() {
         {/* Hero */}
         <section className="bg-primary py-14 sm:py-20 text-white">
           <Container>
-            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+            <div className="max-w-3xl">
               <div>
                 <p className="overline mb-3 text-gold">The Seller&apos;s Playbook</p>
                 <h1 className="mb-5 font-heading text-display font-bold text-white">
@@ -208,7 +201,7 @@ export default function SellerGuidePage() {
                   <span className="text-gradient-gold">for Top Dollar in Texas</span>
                 </h1>
                 <p className="mb-6 max-w-lg text-body-lg text-white/70">
-                  A proven guide to selling your home in Fair Oaks Ranch, Boerne, and the Texas Hill Country. Pricing strategy, preparation, marketing, and our record of 103% list-to-sale price ratio.
+                  A practical guide to selling your home in Fair Oaks Ranch, Boerne, and the Texas Hill Country: pricing strategy, preparation, marketing and negotiation.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Button size="lg" asChild>
@@ -218,17 +211,6 @@ export default function SellerGuidePage() {
                     <a href="tel:+12103909997"><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
                   </Button>
                 </div>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4">
-                {STATS.map(({ icon: Icon, value, label }) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-5 sm:p-6 text-center backdrop-blur-sm">
-                    <Icon className="mx-auto mb-3 h-8 w-8 text-gold" />
-                    <div className="font-heading text-display-sm font-bold text-white">{value}</div>
-                    <div className="mt-1 text-caption uppercase tracking-wider text-white/50">{label}</div>
-                  </div>
-                ))}
               </div>
             </div>
           </Container>
@@ -380,7 +362,7 @@ export default function SellerGuidePage() {
                   The CMA tells us the market range. Our job is to price your home at the right point within that range to generate maximum buyer activity. The goal isn&apos;t to list at the top of the range and hope — it&apos;s to create a compelling value that brings multiple buyers to the table and creates upward pressure through competition.
                 </p>
                 <p className="text-body text-foreground-muted leading-relaxed">
-                  Our 103% list-to-sale price ratio is not achieved by underpricing. It is achieved through disciplined market analysis, professional presentation, and strategic offer management.
+                  Pricing well is not the same as underpricing. It comes from disciplined market analysis, professional presentation and negotiating from a position of genuine demand.
                 </p>
               </div>
 

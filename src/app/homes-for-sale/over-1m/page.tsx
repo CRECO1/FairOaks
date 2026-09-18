@@ -154,7 +154,6 @@ const LUXURY_SUPPORT = {
 };
 
 const STATS = [
-  { label: 'Avg. Days on Market', value: '45', sub: 'Luxury $1M+ segment' },
   { label: 'Starting Price', value: '$1M', sub: 'Entry to luxury tier' },
   { label: 'Avg. Lot Size', value: '2–10 ac', sub: 'Estate properties' },
   { label: 'Communities', value: '6+', sub: 'Gated luxury options' },
@@ -385,18 +384,8 @@ export default function Over1mPage() {
                   The $1M+ Market: What Buyers Should Know
                 </h2>
               </div>
-              <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-8">
                 {[
-                  {
-                    stat: '45',
-                    label: 'Avg. Days on Market',
-                    desc: 'Luxury homes take longer to sell — patience and correct pricing are essential.',
-                  },
-                  {
-                    stat: '97%',
-                    label: 'List-to-Sale Ratio',
-                    desc: 'Well-positioned luxury listings typically close near list price in this market.',
-                  },
                   {
                     stat: '$1M–$5M+',
                     label: 'Active Price Range',

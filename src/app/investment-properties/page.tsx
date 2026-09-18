@@ -75,7 +75,6 @@ const INVESTMENT_TYPES = [
 
 const MARKET_STATS = [
   { label: 'Avg. Cap Rate (SFR Rental)', value: '4% – 6%', note: 'Single-family residential, metro average' },
-  { label: 'Avg. Days on Market', value: '35 – 55 days', note: 'Varies by price point and submarket' },
   { label: '5-Year Appreciation Rate', value: '35% – 50%', note: 'San Antonio metro, 2019–2024 (select corridors higher)' },
   { label: 'Rental Vacancy Rate', value: '~4% – 5%', note: 'Below US national average of ~6%' },
 ];

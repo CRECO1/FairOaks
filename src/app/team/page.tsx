@@ -18,13 +18,6 @@ interface Agent {
 }
 
 
-const STATS = [
-  { value: '500+', label: 'Homes Sold' },
-  { value: '2024', label: 'Founded' },
-  { value: '98%', label: 'Client Satisfaction' },
-  { value: '21', label: 'Avg Days on Market' },
-];
-
 const VALUES = [
   {
     title: 'Local Expertise',
@@ -44,8 +37,6 @@ const CREDENTIALS = [
   'REALTOR® Member',
   'Texas REALTORS® Member',
   'SABOR Member',
-  'Accredited Buyer\'s Representative',
-  'Certified Luxury Home Marketing Specialist',
 ];
 
 export default function TeamPage() {
@@ -79,24 +70,13 @@ export default function TeamPage() {
                 Trusted{' '}
                 <span className="text-gradient-gold">Hill Country Real Estate</span>
               </h1>
-              <p className="text-body-lg text-white/70 max-w-2xl mb-16">
+              <p className="text-body-lg text-white/70 max-w-2xl">
                 Founded in 2024, Fair Oaks Realty Group has been the local experts families across
                 Fair Oaks Ranch, Boerne, and the greater Texas Hill Country turn to when it matters
                 most. We are not just agents — we are neighbors.
               </p>
             </RevealOnScroll>
 
-            {/* Stats Row */}
-            <div className="grid grid-cols-2 gap-4 sm:gap-6 sm:grid-cols-4">
-              {STATS.map(({ value, label }, i) => (
-                <RevealOnScroll key={label} delay={i * 80}>
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-5 sm:p-7 text-center backdrop-blur-sm">
-                    <div className="font-heading text-display-sm font-bold text-gold mb-1">{value}</div>
-                    <div className="text-caption uppercase tracking-widest text-white/60">{label}</div>
-                  </div>
-                </RevealOnScroll>
-              ))}
-            </div>
           </Container>
         </section>
 

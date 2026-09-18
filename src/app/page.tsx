@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
     description:
-      'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. 500+ homes sold. Free home valuations. Texas Hill Country real estate experts.',
+      'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. Free home valuations from Texas Hill Country real estate experts.',
     url: 'https://www.fairoaksrealtygroup.com',
     type: 'website',
   },
@@ -81,10 +81,12 @@ const DEFAULT_SETTINGS = {
   hero_headline: 'Your Home in the Texas Hill Country',
   hero_subheadline: 'Trusted local experts helping families find the perfect home in Fair Oaks Ranch, Boerne, and the greater San Antonio area.',
   hero_image_url: null as string | null,
-  stat_homes_sold: 500,
-  stat_years_experience: 20,
-  stat_satisfaction: '98%',
-  stat_avg_days: 21,
+  // No fallback figures: these are performance claims, so if site_settings is
+  // unavailable the stats band is hidden rather than showing invented numbers.
+  stat_homes_sold: null as number | null,
+  stat_years_experience: null as number | null,
+  stat_satisfaction: null as string | null,
+  stat_avg_days: null as number | null,
   about_headline: 'Why Fair Oaks Realty Group?',
   about_text: 'We\'ve been helping families call the Texas Hill Country home for over 20 years. Our deep roots in Fair Oaks Ranch give you an insider advantage.',
   cta_headline: 'Not sure where to start?',
@@ -136,12 +138,13 @@ export default async function HomePage() {
     ? settingsResult.value.data
     : DEFAULT_SETTINGS;
 
+  // Only render a figure the database actually supplied.
   const STATS = [
-    { value: `${s.stat_homes_sold}+`, label: 'Homes Sold', icon: Home },
-    { value: `${s.stat_years_experience}+`, label: 'Years Experience', icon: Award },
-    { value: s.stat_satisfaction, label: 'Client Satisfaction', icon: Star },
-    { value: String(s.stat_avg_days), label: 'Avg Days on Market', icon: TrendingUp },
-  ];
+    s.stat_homes_sold ? { value: `${s.stat_homes_sold}+`, label: 'Homes Sold', icon: Home } : null,
+    s.stat_years_experience ? { value: `${s.stat_years_experience}+`, label: 'Years Experience', icon: Award } : null,
+    s.stat_satisfaction ? { value: s.stat_satisfaction, label: 'Client Satisfaction', icon: Star } : null,
+    s.stat_avg_days ? { value: String(s.stat_avg_days), label: 'Avg Days on Market', icon: TrendingUp } : null,
+  ].filter((x): x is { value: string; label: string; icon: typeof Home } => x !== null);
 
   return (
     <>
@@ -188,6 +191,7 @@ export default async function HomePage() {
             </Button>
           </div>
 
+          {STATS.length > 0 && (
           <div className="mt-10 sm:mt-16 grid grid-cols-2 gap-4 sm:gap-6 sm:grid-cols-4 animate-fade-in delay-500 fill-both">
             {STATS.map(({ value, label, icon: Icon }) => (
               <div key={label} className="text-center">
@@ -196,6 +200,7 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
+          )}
         </Container>
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
@@ -354,6 +359,7 @@ export default async function HomePage() {
                 </Button>
               </div>
             </RevealOnScroll>
+            {STATS.length > 0 && (
             <RevealOnScroll direction="right">
               <div className="grid grid-cols-2 gap-4 sm:gap-5">
                 {STATS.map(({ value, label, icon: Icon }) => (
@@ -365,6 +371,7 @@ export default async function HomePage() {
                 ))}
               </div>
             </RevealOnScroll>
+            )}
           </div>
         </Container>
       </section>
@@ -436,7 +443,6 @@ export default async function HomePage() {
                   'Hyper-local market analysis',
                   'No cost, no commitment',
                   'Response within 1 business day',
-                  'Trusted by 500+ Texas Hill Country families',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-3 text-body text-white/80">
                     <span className="h-5 w-5 rounded-full bg-gold flex items-center justify-center shrink-0">
@@ -514,7 +520,7 @@ export default async function HomePage() {
                 name: 'How long does it take to sell a home in Fair Oaks Ranch?',
                 acceptedAnswer: {
                   '@type': 'Answer',
-                  text: 'Our listings average 21 days on market with a 103% list-to-sale price ratio. Market conditions vary but our strategic pricing and marketing consistently outperform the local average.',
+                  text: 'It depends on price point, condition and how the home is presented. We will give you a realistic timeline for your home and your segment of the market when we put together your pricing strategy.',
                 },
               },
             ],

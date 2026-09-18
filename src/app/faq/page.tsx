@@ -67,10 +67,6 @@ const FAQ_CATEGORIES = [
         a: 'Not necessarily — but strategic improvements can significantly impact your sale price. We provide every seller with a pre-listing consultation to identify which repairs deliver the best return on investment. High-impact, low-cost updates include fresh interior paint, landscaping and curb appeal, deep cleaning, and fixing obvious defects (leaky faucets, broken fixtures, damaged screens). Major renovations like kitchen remodels rarely recoup their full cost before a sale. We\'ll help you prioritize what to fix, what to leave, and how to price accordingly so you net the most money without overspending on repairs.',
       },
       {
-        q: 'What is your list-to-sale price ratio?',
-        a: 'Our team consistently achieves a 103% list-to-sale price ratio — meaning our sellers receive, on average, 3% above their listing price. This is the result of strategic pricing (not underpricing), professional marketing that generates competitive offers, and skilled negotiation that keeps multiple buyers engaged. Compare this to the national average of roughly 99%, and the difference on a $500,000 home is approximately $20,000 in additional proceeds. Our track record speaks for itself: we don\'t just list homes, we sell them for more.',
-      },
-      {
         q: 'What does it cost to sell a home in Texas?',
         a: 'Total seller costs in Texas typically run 7–9% of the sale price. The largest expense is agent commission — traditionally split between the listing agent and buyer\'s agent. Seller closing costs add another 1–2%, covering items like title insurance (Texas requires sellers to pay for the owner\'s policy), prorated property taxes, HOA transfer fees, and any agreed-upon buyer concessions. On a $500,000 sale, plan for roughly $35,000–$45,000 in total selling costs, leaving you with $455,000–$465,000 before your remaining mortgage balance. We provide a detailed net sheet at the start of every listing consultation so you know exactly what to expect.',
       },

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Recently Sold Homes in Fair Oaks Ranch TX | Fair Oaks Realty Group',
     description:
-      'Browse homes we\'ve sold in Fair Oaks Ranch, Boerne & Helotes TX. Proven results with a 103% list-to-sale price ratio.',
+      'Browse homes we\'ve sold in Fair Oaks Ranch, Boerne & Helotes TX.',
     url: 'https://www.fairoaksrealtygroup.com/sold',
     type: 'website',
   },
@@ -40,13 +40,6 @@ import { getSoldProperties } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 import Link from 'next/link';
 
-const STATS = [
-  { icon: Home, value: '500+', label: 'Homes Sold' },
-  { icon: TrendingUp, value: '103%', label: 'Avg. List-to-Sale Ratio' },
-  { icon: Clock, value: '21', label: 'Avg. Days on Market' },
-  { icon: CheckCircle, value: '98%', label: 'Client Satisfaction' },
-];
-
 export default async function SoldPage() {
   const sold = await getSoldProperties(12).catch(() => []);
   // No demo fallback: never present fabricated sale prices as our track record.
@@ -64,21 +57,6 @@ export default async function SoldPage() {
             <p className="mt-3 max-w-xl text-body text-white/60">
               A look at homes we&apos;ve successfully sold for our clients in Fair Oaks Ranch and the surrounding Texas Hill Country.
             </p>
-          </Container>
-        </div>
-
-        {/* Stats */}
-        <div className="bg-gold py-10">
-          <Container>
-            <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-              {STATS.map(({ icon: Icon, value, label }) => (
-                <div key={label} className="text-center">
-                  <Icon className="mx-auto mb-1 sm:mb-2 h-5 w-5 sm:h-6 sm:w-6 text-primary/60" />
-                  <div className="font-heading text-2xl sm:text-display-sm font-bold text-primary">{value}</div>
-                  <div className="text-[10px] sm:text-caption uppercase tracking-wider text-primary/60 leading-tight">{label}</div>
-                </div>
-              ))}
-            </div>
           </Container>
         </div>
 

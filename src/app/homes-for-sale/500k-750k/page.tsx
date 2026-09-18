@@ -121,8 +121,6 @@ const NEIGHBORHOODS = [
 ];
 
 const STATS = [
-  { label: 'Avg. Days on Market', value: '28', sub: '$500K–$750K segment' },
-  { label: 'List-to-Sale Ratio', value: '99%', sub: 'Consistent pricing' },
   { label: 'Avg. Home Size', value: '2,600 sf', sub: 'In this price range' },
   { label: 'School Options', value: 'Boerne + Northside ISD', sub: 'Top-rated districts' },
 ];
@@ -357,8 +355,6 @@ export default function From500kTo750kPage() {
                 <p className="overline mb-4 text-gold">Market Insight</p>
                 <div className="grid grid-cols-2 gap-6">
                   {[
-                    { stat: '28', label: 'Avg. Days on Market' },
-                    { stat: '99%', label: 'List-to-Sale Ratio' },
                     { stat: '2,600 sf', label: 'Avg. Home Size' },
                     { stat: '$650K', label: 'Median in Fair Oaks Ranch' },
                   ].map(({ stat, label }) => (

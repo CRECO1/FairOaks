@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Sell Your Home in Fair Oaks Ranch TX | Free Home Valuation',
     description:
-      'Get a free home valuation from the top Fair Oaks Ranch realtors. We sell homes at 103% of list price with an average of 21 days on market.',
+      'Get a free home valuation from Fair Oaks Realty Group, serving Fair Oaks Ranch, Boerne and Helotes TX.',
     url: 'https://www.fairoaksrealtygroup.com/sell',
     type: 'website',
   },

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     template: '%s | Fair Oaks Realty Group',
   },
   description:
-    'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. Top-rated local realtors with 500+ homes sold. Free home valuations. Texas Hill Country real estate experts.',
+    'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. Local realtors and free home valuations across the Texas Hill Country.',
   keywords: [
     'Fair Oaks Ranch homes for sale',
     'Fair Oaks Ranch real estate',
@@ -73,7 +73,7 @@ export const metadata: Metadata = {
     siteName: 'Fair Oaks Realty Group',
     title: 'Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
     description:
-      'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. Top-rated local realtors with 500+ homes sold. Free home valuations. Texas Hill Country real estate experts.',
+      'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. Local realtors and free home valuations across the Texas Hill Country.',
     images: [
       {
         url: '/images/og-home.jpg',
@@ -131,7 +131,7 @@ export default function RootLayout({
                   logo: 'https://www.fairoaksrealtygroup.com/images/logo.png',
                   image: 'https://www.fairoaksrealtygroup.com/images/og-home.jpg',
                   description:
-                    'Top-rated residential real estate agency serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country. 500+ homes sold with a 103% list-to-sale price ratio.',
+                    'Residential real estate agency serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country.',
                   telephone: '+1-2103909997',
                   email: 'info@fairoaksrealtygroup.com',
                   address: {

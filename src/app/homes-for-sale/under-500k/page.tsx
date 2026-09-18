@@ -136,8 +136,6 @@ const NEIGHBORHOODS = [
 ];
 
 const STATS = [
-  { label: 'Avg. Days on Market', value: '21', sub: 'For under-$500K homes' },
-  { label: 'List-to-Sale Ratio', value: '103%', sub: 'Competitive segment' },
   { label: 'Starting Price', value: '$280K', sub: 'Entry point in region' },
   { label: 'School Districts', value: '4+', sub: 'Quality ISDs available' },
 ];
@@ -347,8 +345,7 @@ export default function Under500kPage() {
                 </div>
                 <ul className="mt-6 space-y-3">
                   {[
-                    'Avg. 21 days on market — move fast or miss out',
-                    '103% list-to-sale ratio in competitive segments',
+                    'Homes in this range can move quickly — be ready to act',
                     'Pre-approval letter dramatically improves offer acceptance',
                     'Instant MLS alerts for new under-$500K listings',
                   ].map((item) => (
@@ -363,8 +360,6 @@ export default function Under500kPage() {
                 <p className="overline mb-4 text-gold">By the Numbers</p>
                 <div className="grid grid-cols-2 gap-6">
                   {[
-                    { stat: '21', label: 'Avg. Days on Market' },
-                    { stat: '103%', label: 'List-to-Sale Ratio' },
                     { stat: '$280K', label: 'Entry Price Point' },
                     { stat: '4+', label: 'Quality ISDs Covered' },
                   ].map(({ stat, label }) => (

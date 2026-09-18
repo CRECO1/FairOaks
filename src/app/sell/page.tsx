@@ -17,13 +17,6 @@ const STEPS = [
   { number: '05', title: 'Smooth Closing', description: 'We coordinate inspections, appraisals, title, and every detail so your closing is stress-free.' },
 ];
 
-const STATS = [
-  { icon: TrendingUp, value: '103%', label: 'Avg. List-to-Sale Price' },
-  { icon: Clock, value: '21', label: 'Avg. Days on Market' },
-  { icon: DollarSign, value: '$0', label: 'Upfront Marketing Cost' },
-  { icon: Users, value: '500+', label: 'Homes Sold' },
-];
-
 export default function SellPage() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,7 +50,7 @@ export default function SellPage() {
         {/* Hero */}
         <section className="bg-primary py-14 sm:py-20 text-white">
           <Container>
-            <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+            <div className="max-w-3xl">
               <div>
                 <p className="overline mb-3 sm:mb-4 text-gold">Sell with Confidence</p>
                 <h1 className="mb-5 sm:mb-6 font-heading text-display font-bold text-white">
@@ -75,16 +68,6 @@ export default function SellPage() {
                     <a href="tel:+12103909997" onClick={() => trackPhoneClick('sell_page')}><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
                   </Button>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 sm:gap-5">
-                {STATS.map(({ icon: Icon, value, label }) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 text-center backdrop-blur-sm">
-                    <Icon className="mx-auto mb-3 h-8 w-8 text-gold" />
-                    <div className="font-heading text-display-sm font-bold text-white">{value}</div>
-                    <div className="mt-1 text-caption uppercase tracking-wider text-white/50">{label}</div>
-                  </div>
-                ))}
               </div>
             </div>
           </Container>

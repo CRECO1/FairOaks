@@ -145,7 +145,6 @@ const COMPARISON = [
 ];
 
 const STATS = [
-  { label: 'Avg. Days on Market', value: '35', sub: '$750K–$1M segment' },
   { label: 'Avg. Home Size', value: '3,400 sf', sub: 'In this price range' },
   { label: 'Lot Size Range', value: '0.5–3 ac', sub: 'Typical estate lots' },
   { label: 'Communities', value: '10+', sub: 'Gated options available' },
