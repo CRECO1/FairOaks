@@ -512,7 +512,7 @@ export default function ActivitySection({ businessUnit, authHeaders, showToast }
         {tab === 'ratios' && (
           <div style={{ padding: 24 }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Personal Conversion Physics</h3>
-            <p style={{ margin: '0 0 20px', fontSize: 12, color: '#94a3b8' }}>All-time cumulative ratios — your personal prospecting "physics"</p>
+            <p style={{ margin: '0 0 20px', fontSize: 12, color: '#94a3b8' }}>All-time cumulative ratios — your personal prospecting &quot;physics&quot;</p>
 
             {allLogs.length === 0 && !loading && (
               <p style={{ color: '#94a3b8', fontSize: 13 }}>No data yet. Start logging daily activity to see your conversion ratios.</p>

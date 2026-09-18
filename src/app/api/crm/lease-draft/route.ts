@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'The Anthropic API key was rejected — check it is current and in credit.' }, { status: 502 });
     }
     console.error('[lease-draft]', e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not draft the lease' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not draft the lease' }, { status: 500 });
   }
 }
 
@@ -261,6 +261,6 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ submission: data, linked_to_contact: !!row?.contact_id });
   } catch (e) {
     console.error('[lease-draft] build', e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Could not build the lease' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not build the lease' }, { status: 500 });
   }
 }

@@ -68,8 +68,9 @@ export async function GET(req: NextRequest) {
   );
 
   if (!sendAsRes.ok) {
-    const err = await sendAsRes.json();
-    return NextResponse.json({ error: err.error?.message ?? 'Failed to fetch Gmail settings' }, { status: 400 });
+    const err = await sendAsRes.text();
+    console.error('[gmail/signature] sendAs lookup failed', sendAsRes.status, err.slice(0, 500));
+    return NextResponse.json({ error: 'Failed to fetch Gmail settings' }, { status: 400 });
   }
 
   const sendAsData = await sendAsRes.json();

@@ -32,7 +32,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { title, description, due_date, assigned_to, client_id, deal_id, priority, status, type, business_unit } = body;
   // A linked client/deal must be in the caller's workspace (the GET join returns client PII).
   if (client_id && !(await assertOwnsResource('crm_clients', String(client_id), ctx))) return NextResponse.json({ error: 'Invalid client_id' }, { status: 400 });

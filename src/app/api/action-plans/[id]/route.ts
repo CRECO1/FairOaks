@@ -30,7 +30,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!ctx) return unauthorized();
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { name, description, trigger_type, trigger_value, status, completion_campaign_id, created_by, from_name, from_email, audience } = body;
 
   const supabase = adminClient();

@@ -12,7 +12,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Only admins may edit another agent's profile.
   if (ctx.userId !== id && !isAdmin) return forbidden('Cannot update another agent\'s profile');
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
 
   // Safe fields — never role, never id. email + business_unit are ADMIN-ONLY:
   // business_unit is the horizontal workspace boundary every scoped guard trusts,

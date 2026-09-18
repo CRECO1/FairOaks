@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { dbError } from '@/lib/crm-auth';
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   if (error) {
     console.error('[gmail-token-refresh] Failed to fetch connections:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbError('cron/gmail-token-refresh', error);
   }
 
   if (!connections?.length) {

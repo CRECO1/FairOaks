@@ -6,6 +6,7 @@ import { trackQuizStart, trackQuizStep, trackQuizComplete, trackLead } from '@/l
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import Link from 'next/link';
 
 interface QuizStep {
   id: string;
@@ -171,7 +172,7 @@ export default function QuizPage() {
                 </ul>
               </div>
               <Button size="lg" asChild>
-                <a href="/">Back to Homepage</a>
+                <Link href="/">Back to Homepage</Link>
               </Button>
             </div>
           </Container>

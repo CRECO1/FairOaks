@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
+import { safeJson } from '@/lib/safe-json';
 
 const CRM_RETURN = 'https://crm.vultstack.com/crm/residential#social';
 
@@ -53,8 +54,8 @@ export async function GET(req: NextRequest) {
     }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
+  const tokenData = await safeJson<{ access_token?: string; expires_in?: number; refresh_token?: string }>(tokenRes, 'linkedin/callback token');
+  if (!tokenData?.access_token) {
     console.error('[linkedin/callback] Token exchange failed:', tokenData);
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=linkedin&reason=token_exchange`);
   }
@@ -63,9 +64,9 @@ export async function GET(req: NextRequest) {
   const profileRes = await fetch('https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName)', {
     headers: { Authorization: `Bearer ${tokenData.access_token}` },
   });
-  const liProfile = await profileRes.json();
+  const liProfile = await safeJson<{ id?: string; name?: string; localizedFirstName?: string; localizedLastName?: string }>(profileRes, 'linkedin/callback profile');
 
-  if (!liProfile.id) {
+  if (!liProfile?.id) {
     console.error('[linkedin/callback] Failed to fetch LinkedIn profile:', liProfile);
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=linkedin&reason=profile_fetch`);
   }

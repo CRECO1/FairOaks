@@ -23,7 +23,8 @@ export async function POST(req: NextRequest) {
   const user = await getCrmUser();
   if (!user) return unauthorized();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { title, content, category } = body;
 
   if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });

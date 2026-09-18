@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
+import { safeJson } from '@/lib/safe-json';
 
 export async function POST(req: NextRequest) {
   const caller = await getCrmAdmin();
@@ -42,15 +43,15 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const linkData = await linkRes.json();
+    const linkData = await safeJson<{ action_link?: string; id?: string; user?: { id?: string } }>(linkRes, 'crm/invite generate-link');
 
-    if (!linkRes.ok) {
+    if (!linkRes.ok || !linkData?.action_link) {
       console.error('[invite] Generate link error:', linkData);
       return NextResponse.json({ error: 'Failed to generate invite link. The email may already be registered.' }, { status: 400 });
     }
 
     const inviteLink: string = linkData.action_link;
-    const invitedUserId: string = linkData.user?.id ?? linkData.id;
+    const invitedUserId = linkData.user?.id ?? linkData.id ?? '';
 
     // Step 2: Send the invite email ourselves via Resend
     const emailRes = await fetch('https://api.resend.com/emails', {
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const emailData = await emailRes.json();
+    const emailData = await safeJson<Record<string, unknown>>(emailRes, 'crm/invite resend');
 
     if (!emailRes.ok) {
       console.error('[invite] Resend email error:', emailData);

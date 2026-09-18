@@ -9,6 +9,7 @@ import { Header, Footer } from '@/components/layout';
 import { trackLead } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import Link from 'next/link';
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ export default function CareersPage() {
           <Container className="relative">
             <p className="overline mb-3 text-gold">Now Hiring</p>
             <h1 className="font-heading text-display-sm sm:text-display font-bold max-w-3xl leading-tight">
-              Build a Career You're<br />
+              Build a Career You&apos;re<br />
               <span className="text-gold">Proud Of</span>
             </h1>
             <p className="mt-5 text-body text-white/70 max-w-xl leading-relaxed">
@@ -337,7 +338,7 @@ export default function CareersPage() {
                     </p>
                     <div className="mt-6 flex justify-center gap-4 flex-wrap">
                       <a href="/team" className="text-body-sm font-semibold text-gold hover:text-gold-dark">Meet the Team →</a>
-                      <a href="/" className="text-body-sm font-semibold text-foreground-muted hover:text-primary">Back to Home →</a>
+                      <Link href="/" className="text-body-sm font-semibold text-foreground-muted hover:text-primary">Back to Home →</Link>
                     </div>
                   </div>
                 ) : (

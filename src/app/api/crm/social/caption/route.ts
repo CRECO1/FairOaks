@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { platforms, topic, tone } = body;
 
   if (!topic) return NextResponse.json({ error: 'topic required' }, { status: 400 });

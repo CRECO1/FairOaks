@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { listing_id, filename, category, file_size, file_type } = body;
 
   if (!listing_id || !filename) {
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {
     console.error('[listing-files/presign] error:', error);
-    return NextResponse.json({ error: error?.message ?? 'Could not generate upload URL' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not generate upload URL' }, { status: 500 });
   }
 
   return NextResponse.json({

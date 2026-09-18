@@ -25,7 +25,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { client_ids, agent_id } = body;
 
   if (!client_ids?.length) {
@@ -62,7 +63,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params;
   if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { client_id } = body;
 
   if (!client_id) {

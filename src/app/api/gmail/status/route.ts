@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { dbError } from '@/lib/crm-auth';
 
 function makeClient() {
   return createClient(
@@ -59,7 +60,7 @@ export async function DELETE(req: NextRequest) {
 
   if (error) {
     console.error('[gmail/status DELETE]', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbError('gmail/status DELETE', error);
   }
 
   return NextResponse.json({ success: true });

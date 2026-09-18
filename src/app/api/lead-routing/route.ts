@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const caller = await getCrmAdmin();
   if (!caller) return unauthorized();
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { business_unit, source, property_keyword, assign_to_agent_id, priority } = body;
   if (!assign_to_agent_id) return NextResponse.json({ error: 'assign_to_agent_id required' }, { status: 400 });
   const supabase = adminClient();

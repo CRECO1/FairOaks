@@ -35,7 +35,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { step_order, type, delay_days, subject, body: stepBody } = body;
 
   if (!type || !VALID_TYPES.includes(type)) {
@@ -72,7 +73,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { steps } = body;
 
   if (!Array.isArray(steps)) {

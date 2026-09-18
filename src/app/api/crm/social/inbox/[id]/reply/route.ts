@@ -70,7 +70,8 @@ export async function POST(
   if (!user) return unauthorized();
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { content } = body;
 
   if (!content) return NextResponse.json({ error: 'content required' }, { status: 400 });

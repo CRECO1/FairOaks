@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { listing_id, filename, category, file_size, file_type, storage_path } = body;
 
   if (!listing_id || !filename || !storage_path) {

@@ -38,7 +38,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return notFound('Resource not found.');
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const safe: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const key of Object.keys(body)) {
     if (ALLOWED.has(key)) safe[key] = body[key];

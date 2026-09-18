@@ -93,9 +93,9 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
-                <h3 className="font-heading text-heading-lg font-bold text-primary">You're all set!</h3>
+                <h3 className="font-heading text-heading-lg font-bold text-primary">You&apos;re all set!</h3>
                 <p className="text-body-sm text-foreground-muted">
-                  You'll get email alerts when new listings match your search. Check your inbox for a confirmation email.
+                  You&apos;ll get email alerts when new listings match your search. Check your inbox for a confirmation email.
                 </p>
                 <button
                   onClick={() => setOpen(false)}

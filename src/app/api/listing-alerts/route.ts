@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Too many requests — please wait a few minutes.' }, { status: 429 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     const { name, email, cities, min_price, max_price, min_beds, min_baths, search } = body;
 
     if (!name?.trim() || !email?.trim()) {

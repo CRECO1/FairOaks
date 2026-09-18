@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { safeJson } from '@/lib/safe-json';
 
 type GmailConn = { id: string; access_token: string; refresh_token: string; expires_at: string; gmail_email: string };
 
@@ -23,10 +24,11 @@ async function getValidAccessToken(conn: GmailConn): Promise<string | null> {
     }),
   });
 
-  const refreshed = await refreshRes.json();
-  if (!refreshRes.ok || !refreshed.access_token) return null;
+  const refreshed = await safeJson<{ access_token?: string; expires_in?: number }>(refreshRes, 'calendar/create token refresh');
+  if (!refreshed?.access_token) return null;
 
-  const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
+  // Google omits expires_in on some refreshes; fall back to its documented 1 hour.
+  const newExpiry = new Date(Date.now() + (refreshed.expires_in ?? 3600) * 1000).toISOString();
   await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${conn.id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
@@ -54,8 +56,8 @@ export async function POST(req: NextRequest) {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}&limit=1`, {
       headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceRoleKey}` },
     });
-    const connections: GmailConn[] = await res.json();
-    if (!connections || connections.length === 0) {
+    const connections = await safeJson<GmailConn[]>(res, 'calendar/create connections');
+    if (!Array.isArray(connections) || connections.length === 0) {
       return NextResponse.json({ error: 'No Google account connected' }, { status: 401 });
     }
 
@@ -101,15 +103,17 @@ export async function POST(req: NextRequest) {
     );
 
     if (!createRes.ok) {
-      const err = await createRes.json();
+      const err = await createRes.text().catch(() => '');
       // 403 = scope not granted yet (user needs to re-auth)
       if (createRes.status === 403) {
         return NextResponse.json({ error: 'scope_missing', message: 'Calendar write permission not granted. Please reconnect Google in Settings.' }, { status: 403 });
       }
-      return NextResponse.json({ error: err?.error?.message ?? 'Calendar API error' }, { status: 500 });
+      console.error('[calendar/create] Google API error', createRes.status, err.slice(0, 500));
+      return NextResponse.json({ error: 'Calendar API error' }, { status: 500 });
     }
 
-    const created = await createRes.json();
+    const created = await safeJson<{ id?: string; htmlLink?: string }>(createRes, 'calendar/create event');
+    if (!created) return NextResponse.json({ error: 'Calendar API error' }, { status: 500 });
     return NextResponse.json({ success: true, eventId: created.id, htmlLink: created.htmlLink });
   } catch (err) {
     console.error('Calendar create error:', err);

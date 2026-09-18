@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
+import { safeJson } from '@/lib/safe-json';
 
 const CRM_BASE = 'https://crm.vultstack.com/crm/residential';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
@@ -68,9 +69,9 @@ export async function GET(req: NextRequest) {
     }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
-    console.error('[facebook/callback] Token exchange failed:', tokenData.error);
+  const tokenData = await safeJson<{ access_token?: string; error?: unknown }>(tokenRes, 'facebook/callback token');
+  if (!tokenData?.access_token) {
+    console.error('[facebook/callback] Token exchange failed:', tokenData?.error);
     return done('social=error&platform=facebook&reason=token_exchange');
   }
 
@@ -85,23 +86,23 @@ export async function GET(req: NextRequest) {
       fb_exchange_token: tokenData.access_token,
     }),
   });
-  const longLivedData = await longLivedRes.json();
-  const userToken = longLivedData.access_token || tokenData.access_token;
+  const longLivedData = await safeJson<{ access_token?: string; expires_in?: number }>(longLivedRes, 'facebook/callback long-lived token');
+  const userToken = longLivedData?.access_token || tokenData.access_token;
   const userTokenExpiresAt = new Date(
-    Date.now() + ((longLivedData.expires_in ?? 5_184_000) * 1000)
+    Date.now() + ((longLivedData?.expires_in ?? 5_184_000) * 1000)
   ).toISOString();
 
   // Get pages managed by this user — include instagram_business_account in the same call
   const pagesRes = await fetch(
     `https://graph.facebook.com/v18.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${userToken}`
   );
-  const pagesData = await pagesRes.json();
+  const pagesData = await safeJson<{ data?: Array<{ id: string; name: string; access_token: string; instagram_business_account?: { id: string } }> }>(pagesRes, 'facebook/callback pages');
   const pages: Array<{
     id: string;
     name: string;
     access_token: string;
     instagram_business_account?: { id: string };
-  }> = pagesData.data ?? [];
+  }> = pagesData?.data ?? [];
 
   if (pages.length === 0) {
     console.error('[facebook/callback] No pages found');
@@ -142,8 +143,8 @@ export async function GET(req: NextRequest) {
       const r2 = await fetch(
         `https://graph.facebook.com/v18.0/${page.id}?fields=connected_instagram_account&access_token=${page.access_token}`
       );
-      const d2 = await r2.json();
-      igAccountId = d2.connected_instagram_account?.id;
+      const d2 = await safeJson<{ connected_instagram_account?: { id: string } }>(r2, 'facebook/callback ig lookup');
+      igAccountId = d2?.connected_instagram_account?.id;
     }
 
     // Attempt 3: /page/instagram_accounts edge (page token)
@@ -151,8 +152,8 @@ export async function GET(req: NextRequest) {
       const r3 = await fetch(
         `https://graph.facebook.com/v18.0/${page.id}/instagram_accounts?access_token=${page.access_token}`
       );
-      const d3 = await r3.json();
-      igAccountId = d3.data?.[0]?.id;
+      const d3 = await safeJson<{ data?: Array<{ id: string }> }>(r3, 'facebook/callback ig accounts');
+      igAccountId = d3?.data?.[0]?.id;
     }
 
     // Attempt 4: /me?fields=instagram_business_accounts (user token)
@@ -160,8 +161,8 @@ export async function GET(req: NextRequest) {
       const r4 = await fetch(
         `https://graph.facebook.com/v18.0/me?fields=instagram_business_accounts&access_token=${userToken}`
       );
-      const d4 = await r4.json();
-      igAccountId = d4.instagram_business_accounts?.data?.[0]?.id;
+      const d4 = await safeJson<{ instagram_business_accounts?: { data?: Array<{ id: string }> } }>(r4, 'facebook/callback ig business');
+      igAccountId = d4?.instagram_business_accounts?.data?.[0]?.id;
     }
 
     // Skip PBIA — when no real IG account is linked, Facebook returns the page ID itself
@@ -171,7 +172,7 @@ export async function GET(req: NextRequest) {
       const igInfoRes = await fetch(
         `https://graph.facebook.com/v18.0/${igAccountId}?fields=name,username&access_token=${page.access_token}`
       );
-      const igInfo = await igInfoRes.json();
+      const igInfo = await safeJson<{ username?: string; name?: string }>(igInfoRes, 'facebook/callback ig info');
 
       const { error: igUpsertError } = await supabase
         .from('social_connections')
@@ -181,7 +182,7 @@ export async function GET(req: NextRequest) {
             org_id: profile.org_id,
             platform: 'instagram',
             platform_account_id: igAccountId,
-            account_name: igInfo.username || igInfo.name || `IG: ${page.name}`,
+            account_name: igInfo?.username || igInfo?.name || `IG: ${page.name}`,
             access_token: encryptToken(page.access_token),
             refresh_token: encryptToken(userToken),
             expires_at: userTokenExpiresAt,

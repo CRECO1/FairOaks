@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
 import crypto from 'crypto';
+import { safeJson } from '@/lib/safe-json';
 
 const CRM_BASE = 'https://crm.vultstack.com/crm/residential';
 
@@ -87,8 +88,8 @@ export async function GET(req: NextRequest) {
     }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
+  const tokenData = await safeJson<{ access_token?: string; refresh_token?: string; expires_in?: number }>(tokenRes, 'twitter/callback token');
+  if (!tokenData?.access_token) {
     console.error('[twitter/callback] Token exchange failed:', tokenData);
     return NextResponse.redirect(`${CRM_BASE}?social=error&platform=twitter&reason=token_exchange`);
   }
@@ -97,8 +98,8 @@ export async function GET(req: NextRequest) {
   const userRes = await fetch('https://api.twitter.com/2/users/me?user.fields=name,username,profile_image_url', {
     headers: { Authorization: `Bearer ${tokenData.access_token}` },
   });
-  const userData = await userRes.json();
-  const twitterUser = userData.data;
+  const userData = await safeJson<{ data?: { id: string; username?: string; name?: string } }>(userRes, 'twitter/callback user');
+  const twitterUser = userData?.data;
 
   if (!twitterUser?.id) {
     console.error('[twitter/callback] Failed to fetch Twitter user:', userData);

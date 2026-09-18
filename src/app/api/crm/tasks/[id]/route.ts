@@ -9,7 +9,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Tasks are shared across a workspace, so business_unit is the scope (admins bypass).
   if (!(await assertOwnsResource('crm_tasks', id, ctx))) return notFound();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const allowed = ['title','description','due_date','assigned_to','status','priority','client_id','deal_id'];
   const update: Record<string,unknown> = { updated_at: new Date().toISOString() };
   for (const k of allowed) if (k in body) update[k] = body[k] !== '' ? body[k] : null;

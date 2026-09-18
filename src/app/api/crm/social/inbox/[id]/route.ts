@@ -10,7 +10,8 @@ export async function PATCH(
   if (!user) return unauthorized();
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { status, assigned_to } = body;
 
   const supabase = adminClient();

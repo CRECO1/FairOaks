@@ -60,7 +60,8 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { name, description, trigger_type, trigger_value, status, completion_campaign_id, business_unit, from_name, from_email, audience } = body;
 
   if (!name || !trigger_type) {

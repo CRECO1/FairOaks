@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { encryptToken } from '@/lib/token-crypto';
+import { safeJson } from '@/lib/safe-json';
 
 const CRM_BASE = 'https://crm.vultstack.com/crm/residential';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
@@ -63,8 +64,8 @@ export async function GET(req: NextRequest) {
     }),
   });
 
-  const tokenData = await tokenRes.json();
-  if (!tokenData.access_token) {
+  const tokenData = await safeJson<{ access_token?: string; refresh_token?: string; expires_in?: number }>(tokenRes, 'youtube/callback token');
+  if (!tokenData?.access_token) {
     console.error('[youtube/callback] Token exchange failed:', tokenData);
     return done('social=error&platform=youtube&reason=token_exchange');
   }
@@ -74,8 +75,8 @@ export async function GET(req: NextRequest) {
     'https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',
     { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
   );
-  const channelData = await channelRes.json();
-  const channel = channelData.items?.[0];
+  const channelData = await safeJson<{ items?: Array<{ id?: string; snippet?: { title?: string; thumbnails?: Record<string, { url?: string }> } }> }>(channelRes, 'youtube/callback channel');
+  const channel = channelData?.items?.[0];
 
   if (!channel) {
     console.error('[youtube/callback] No YouTube channel found:', channelData);

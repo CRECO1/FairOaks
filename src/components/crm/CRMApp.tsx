@@ -4661,7 +4661,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, padding: 40 }}>
                   <div style={{ fontSize: 56 }}>🔑</div>
                   <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 600, color: '#111' }}>Calendar Permission Needed</h3>
-                  <p style={{ fontSize: 14, color: '#6b7280', maxWidth: 400, textAlign: 'center' }}>Your Google account is connected but calendar access wasn't granted. Reconnect to enable it.</p>
+                  <p style={{ fontSize: 14, color: '#6b7280', maxWidth: 400, textAlign: 'center' }}>Your Google account is connected but calendar access wasn&apos;t granted. Reconnect to enable it.</p>
                   <a href={`/api/gmail/auth?userId=${session!.user.id}&bu=${businessUnit}`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', background: '#c9922c', color: '#111', borderRadius: 7, textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>
                     🔄 Reconnect Google Account
@@ -5494,7 +5494,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f9fafb', borderRadius: 10, border: '1px dashed #e5e7eb', color: '#9ca3af' }}>
                         <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
                         <div style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No paid commissions for {commission1099Year}</div>
-                        <div style={{ fontSize: 13 }}>Mark commissions as "Paid" on each deal to include them in this report.</div>
+                        <div style={{ fontSize: 13 }}>Mark commissions as &quot;Paid&quot; on each deal to include them in this report.</div>
                       </div>
                     ) : (
                       <>
@@ -5573,7 +5573,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </table>
                                 {mustFile && (
                                   <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
-                                    ⚠ Verify recipient's SSN/EIN and address before filing. This report is for internal reference only — consult your tax professional or CPA.
+                                    ⚠ Verify recipient&apos;s SSN/EIN and address before filing. This report is for internal reference only — consult your tax professional or CPA.
                                   </div>
                                 )}
                               </div>
@@ -5976,7 +5976,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {isExpanded && (
                                   <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     {projectCampaigns.length === 0 ? (
-                                      <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>No campaigns in this project yet — click "+ Campaign" above</div>
+                                      <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>No campaigns in this project yet — click &quot;+ Campaign&quot; above</div>
                                     ) : projectCampaigns.map(renderCampaignRow)}
                                   </div>
                                 )}

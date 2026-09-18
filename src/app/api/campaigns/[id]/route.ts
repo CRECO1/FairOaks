@@ -49,7 +49,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!ctx) return unauthorized();
 
   const { id } = await params;
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
 
   // Validate size of large text fields
   if (typeof body.email_body === 'string' && body.email_body.length > 100_000) {

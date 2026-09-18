@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, year_built, description, notes, highlights, zoning, elevator, grade_level_doors, dock_high_doors, flyer_type, co_agent_id, listing_agent_id, assigned_agent_ids, is_restricted, business_unit } = body;
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   const supabase = adminClient();

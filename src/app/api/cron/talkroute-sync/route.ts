@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { syncTalkroute, syncTexts, talkrouteConfigured } from '@/lib/talkroute';
+import { dbError } from '@/lib/crm-auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -27,6 +28,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, ...r, texts });
   } catch (e) {
     console.error('[cron/talkroute-sync]', e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return dbError('cron/talkroute-sync', e);
   }
 }

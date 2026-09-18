@@ -10,7 +10,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!ctx) return unauthorized();
   const { id } = await params;
   if (!(await assertCanAccessListing(id, ctx))) return notFound('Listing not found');
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of ALLOWED) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
   const supabase = adminClient();

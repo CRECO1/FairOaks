@@ -92,7 +92,8 @@ export async function POST(req: NextRequest) {
   try {
     let overrideFilter: string | undefined;
     try {
-      const body = await req.json();
+      const body = await req.json().catch(() => null);
+      if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
       overrideFilter = body?.filter;
     } catch {
       // no body / not JSON — fine

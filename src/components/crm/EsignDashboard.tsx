@@ -340,7 +340,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is waiting to be signed.</div>
-            <div style={{ fontSize: 13 }}>Import a document above, or send one from a deal's E-Sign tab.</div>
+            <div style={{ fontSize: 13 }}>Import a document above, or send one from a deal&apos;s E-Sign tab.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
