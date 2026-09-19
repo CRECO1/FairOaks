@@ -26,7 +26,7 @@ type Party = { role: string; name: string; order: number; status: string };
 // A spot this signer has to confirm. Positions are page fractions, y measured from
 // the top to the field's baseline — the same frame the editor placed them in.
 type SignField = { id: string; page: number; fx: number; fy: number; fw: number; type: string; label?: string; value?: string; required?: boolean };
-type SignData = { status: string; doc_url: string | null; title: string; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
+type SignData = { status: string; doc_url: string | null; title: string; business_unit?: string; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
 const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : t === 'text' ? 'Fill in' : t === 'check' ? 'Check' : 'Date';
 const isInput = (t: string) => t === 'text' || t === 'check';
 // Imported documents carry their file name as the title ("Commercial_Lease_Amendment__filled_").
@@ -606,12 +606,26 @@ export default function SignPage() {
   const wrap: React.CSSProperties = { minHeight: '100vh', background: '#f4f5f7', fontFamily: "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif", color: '#1a1a1a',
     padding: view === 'ready' ? '0 0 calc(96px + env(safe-area-inset-bottom))' : '0 0 48px' };
   const card: React.CSSProperties = { maxWidth: 960, margin: '0 auto', background: '#fff', borderRadius: 14, boxShadow: '0 6px 24px rgba(0,0,0,.06)', padding: narrow ? 16 : 24 };
+  // The envelope's business unit picks the brand, exactly as it picks the email
+  // sender (resendConfig): residential → Fair Oaks Realty Group, anything else →
+  // CRECO. Until the envelope has loaded (or if the link is bad) no logo is shown,
+  // so a Fair Oaks signer never sees a flash of the commercial brand.
+  const brand = !data ? null : data.business_unit === 'residential' ? 'fairoaks' : 'creco';
   const header = (
     <div style={{ borderBottom: `3px solid ${GOLD}`, background: '#fff' }}>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: narrow ? '10px 16px' : '14px 24px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: narrow ? '10px 16px' : '14px 24px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', minHeight: narrow ? 38 : 44 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" style={{ height: narrow ? 38 : 44, width: 'auto', display: 'block' }} />
-        <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, letterSpacing: .3, paddingLeft: 4, borderLeft: '1px solid #e5e7eb' }}>Secure e-signature</span>
+        {brand === 'creco' && <img src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" style={{ height: narrow ? 38 : 44, width: 'auto', display: 'block' }} />}
+        {brand === 'fairoaks' && (
+          // The Fair Oaks mark is a tall tree; its own wordmark is unreadable at header
+          // height, so the name is set beside it.
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/fair-oaks-logo.png" alt="" aria-hidden style={{ height: narrow ? 42 : 50, width: 'auto', display: 'block' }} />
+            <span style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: narrow ? 17 : 20, fontWeight: 600, color: INK, letterSpacing: .2, whiteSpace: 'nowrap' }}>Fair Oaks Realty Group</span>
+          </span>
+        )}
+        <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, letterSpacing: .3, ...(brand ? { paddingLeft: 4, borderLeft: '1px solid #e5e7eb' } : {}) }}>Secure e-signature</span>
       </div>
     </div>
   );

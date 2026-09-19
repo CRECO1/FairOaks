@@ -105,6 +105,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   return NextResponse.json({
     status, doc_url, fields,
     title: env.title ?? 'Document',
+    // Which brand the signer sees — the same field that picks the email sender.
+    business_unit: env.business_unit,
     signer: { name: signer.name, role: signer.signer_role, email: signer.email, in_person: !!signer.in_person },
     parties: signers.map(s => ({ role: s.signer_role, name: s.name, order: s.signing_order, status: s.signed_at ? 'signed' : s.status })),
   });
