@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Recently Sold Homes in Fair Oaks Ranch TX | Our Track Record',
   description:
-    'See homes recently sold by Fair Oaks Realty Group in Fair Oaks Ranch, Boerne & Helotes TX. We consistently sell above asking price with an average of 21 days on market.',
+    'See homes recently sold by Fair Oaks Realty Group in Fair Oaks Ranch, Boerne & Helotes TX.',
   keywords: [
     'recently sold homes Fair Oaks Ranch TX',
     'Fair Oaks Ranch sold properties',
@@ -14,7 +14,6 @@ export const metadata: Metadata = {
     'Boerne TX recently sold homes',
     'Texas Hill Country homes sold',
     'Fair Oaks Realty Group sold homes',
-    'Fair Oaks Ranch sold above asking price',
     'Fair Oaks Ranch real estate track record',
     'sold homes near San Antonio TX',
   ],

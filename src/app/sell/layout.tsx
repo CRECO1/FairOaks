@@ -13,7 +13,6 @@ export const metadata: Metadata = {
     'home seller Fair Oaks Ranch Texas',
     'Fair Oaks Ranch realtor sell home',
     'Texas Hill Country home seller',
-    'sell home above asking price Fair Oaks Ranch',
     'Fair Oaks Ranch real estate agent seller',
     'Boerne TX home valuation',
     'Helotes TX sell home',

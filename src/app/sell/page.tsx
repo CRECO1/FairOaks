@@ -58,7 +58,7 @@ export default function SellPage() {
                   <span className="text-gradient-gold">for Your Home</span>
                 </h1>
                 <p className="mb-6 sm:mb-8 max-w-lg text-body-lg text-white/70">
-                  Our proven marketing system and deep knowledge of the Texas Hill Country market consistently delivers results above asking price — and fewer days on market.
+                  We price your home from real comparable sales, prepare it to show well, and market it across the Texas Hill Country — then negotiate for your best terms.
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <Button size="lg" className="w-full sm:w-auto" asChild>
