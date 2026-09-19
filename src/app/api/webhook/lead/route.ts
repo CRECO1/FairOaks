@@ -33,6 +33,9 @@ import { rateLimit } from '@/lib/ratelimit';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+// Dedicated secret for the crecotx.com → CRM lead hand-off, so that integration
+// can be rotated without touching the shared secret the older feeds use.
+const CRM_LEAD_WEBHOOK_SECRET = process.env.CRM_LEAD_WEBHOOK_SECRET;
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
@@ -52,9 +55,10 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
   const apiKey = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
   // Timing-safe comparison to prevent secret enumeration via timing attacks
-  const secretValid = !!WEBHOOK_SECRET && !!apiKey &&
-    apiKey.length === WEBHOOK_SECRET.length &&
-    require('crypto').timingSafeEqual(Buffer.from(apiKey), Buffer.from(WEBHOOK_SECRET));
+  const matches = (expected: string | undefined) =>
+    !!expected && !!apiKey && apiKey.length === expected.length &&
+    require('crypto').timingSafeEqual(Buffer.from(apiKey), Buffer.from(expected));
+  const secretValid = matches(WEBHOOK_SECRET) || matches(CRM_LEAD_WEBHOOK_SECRET);
   if (!secretValid) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -100,9 +104,24 @@ export async function POST(req: NextRequest) {
 
   const supabase = adminClient();
 
-  // ── Find admin to assign lead to ──────────────────────────────────────────
-  const { data: adminProfile } = await supabase.from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
-  const adminId = adminProfile?.id;
+  // ── Owner ────────────────────────────────────────────────────────────────
+  // The broker (super_admin) owns web leads unless the caller names someone:
+  // .in(['admin','super_admin']).limit(1) returned whichever row came first,
+  // so a lead could land on another admin.
+  const requestedAgentId = typeof body.agent_id === 'string' ? body.agent_id : null;
+  let adminId: string | undefined;
+  if (requestedAgentId) {
+    const { data: named } = await supabase.from('crm_profiles').select('id').eq('id', requestedAgentId).maybeSingle();
+    adminId = named?.id;
+  }
+  if (!adminId) {
+    const { data: superAdmin } = await supabase.from('crm_profiles').select('id').eq('role', 'super_admin').limit(1).maybeSingle();
+    adminId = superAdmin?.id;
+  }
+  if (!adminId) {
+    const { data: anyAdmin } = await supabase.from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
+    adminId = anyAdmin?.id;
+  }
   if (!adminId) return NextResponse.json({ error: 'No admin found to assign lead to' }, { status: 500 });
 
   // ── Deduplicate by email ──────────────────────────────────────────────────
@@ -158,7 +177,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Notify team via email ─────────────────────────────────────────────────
-  if (process.env.RESEND_API_KEY) {
+  // A caller that already emailed its own team (the crecotx.com forms do) passes
+  // notify:false, so one web lead doesn't produce two internal alerts.
+  const notifyInternally = body.notify !== false;
+  if (process.env.RESEND_API_KEY && notifyInternally) {
     const resend = new Resend(process.env.RESEND_API_KEY);
     await resend.emails.send({
       from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
