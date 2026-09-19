@@ -13,8 +13,20 @@ function applyMergeFields(template: string, ctx: {
   agent: { first_name: string; last_name: string; email: string; phone?: string };
   brokerage: string;
   defaultPhone: string;
-}, businessUnit?: string): string {
+}, businessUnit?: string, perRecipient?: Record<string, unknown> | null): string {
   const unsubscribeUrl = unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token);
+  // Per-recipient values stored on the enrollment (crm_campaign_enrollments.merge_fields),
+  // e.g. { property: "your lease at 7830 Louis Pasteur" } or a { first_name } override.
+  // Applied first, so they win over the contact-record fields below. Values are
+  // HTML-escaped; only plain lowercase keys are honoured.
+  const escHtml = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  for (const [key, val] of Object.entries(perRecipient ?? {})) {
+    if (/^[a-z_]{1,40}$/.test(key) && typeof val === 'string' && val.trim()) {
+      template = template.replaceAll(`{{${key}}}`, escHtml(val.trim()));
+    }
+  }
+  // A {{property}} with no per-recipient value must never reach an inbox raw.
+  template = template.replaceAll('{{property}}', 'your recent transaction');
   // A commercial contact is often a company with no person's name on it, and
   // "{{first_name}}" then rendered empty — tenant notices have gone out addressed
   // to "Hi ,". Fall back to the business, then to a plain greeting.
@@ -85,7 +97,7 @@ export async function GET(req: NextRequest) {
   const { data: enrollments, error: fetchErr } = await supabase
     .from('crm_campaign_enrollments')
     .select(`
-      id, campaign_id, client_id, next_send_at,
+      id, campaign_id, client_id, next_send_at, merge_fields,
       campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit, org_id),
       client:crm_clients!inner(id, first_name, last_name, business_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
@@ -209,8 +221,9 @@ export async function GET(req: NextRequest) {
           status = 'skipped';
           errorMessage = 'No email address';
         } else {
-          subjectRendered = applyMergeFields(campaign.email_subject || '', ctx, campaign.business_unit);
-          let renderedBody = applyMergeFields(campaign.email_body || '', ctx, campaign.business_unit);
+          const perRecipient = (enrollment as { merge_fields?: Record<string, unknown> | null }).merge_fields ?? null;
+          subjectRendered = applyMergeFields(campaign.email_subject || '', ctx, campaign.business_unit, perRecipient);
+          let renderedBody = applyMergeFields(campaign.email_body || '', ctx, campaign.business_unit, perRecipient);
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
 
           // Inject 1×1 tracking pixel just before </body> (or at end if no body tag)

@@ -30,7 +30,9 @@ function applyMergeFields(template: string, agentFirstName: string, agentLastNam
     .replaceAll('{{agent_email}}',   agentEmail)
     .replaceAll('{{agent_phone}}',   agentPhone)
     .replaceAll('{{brokerage}}',     brokerage)
-    .replaceAll('{{unsubscribe_url}}', '#preview-unsubscribe');
+    .replaceAll('{{unsubscribe_url}}', '#preview-unsubscribe')
+    // Per-recipient value (enrollment merge_fields); the preview shows a sample.
+    .replaceAll('{{property}}',      'your lease at 7830 Louis Pasteur');
 }
 
 export async function POST(req: NextRequest) {
