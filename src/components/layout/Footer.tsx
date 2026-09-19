@@ -181,7 +181,7 @@ export function Footer() {
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             <span className="text-caption font-semibold uppercase tracking-widest text-white/40">Disclosure Notices:</span>
             <a
-              href="https://www.dropbox.com/scl/fi/f2mtiupgx22xhzx81vnwn/IABSCRECOTX.pdf?rlkey=7fs8jtl92j3pq97he11blehwm&e=1&dl=0"
+              href="/legal/IABS-Fair-Oaks-Realty-Group.pdf"
               target="_blank" rel="noopener noreferrer"
               className="text-caption text-gold/70 transition-colors hover:text-gold">
               TREC Information About Brokerage Services
