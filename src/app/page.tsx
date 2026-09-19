@@ -29,6 +29,8 @@ export const metadata: Metadata = {
       'Search homes for sale in Fair Oaks Ranch, Boerne & Helotes TX. Free home valuations from Texas Hill Country real estate experts.',
     url: 'https://www.fairoaksrealtygroup.com',
     type: 'website',
+    // A page-level openGraph replaces the layout's, image included — so it is set here too.
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
   },
   alternates: {
     canonical: '/',

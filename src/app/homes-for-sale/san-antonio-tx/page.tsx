@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Browse San Antonio TX homes for sale. Fair Oaks Realty Group specializes in NW San Antonio, Hill Country, and Northside ISD neighborhoods.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/san-antonio-tx' },
     openGraph: {

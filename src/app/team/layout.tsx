@@ -1,60 +1,27 @@
 import type { Metadata } from 'next';
 import { jsonLdScript } from '@/lib/json-ld';
+import { ORG_ID, BROKER_ID, AGENT_ID } from '@/lib/site-identity';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
-// The real team, and only the real team: two people.
-//
-// This graph previously asserted four Person entities, none of whom exist. They
-// carried invented @fairoaksrealtygroup.com addresses and were published as
-// structured data, so search engines and AI assistants were told four fictitious
-// licensed agents worked here.
-//
-// Every field below is either confirmed by the brokerage or omitted. No emails,
-// telephone numbers or specialties appear per person — the organisation's own
-// contact details already live in the site-wide Organization schema.
-//
-// The licence numbers are the individual TREC numbers taken from the brokerage's
-// Information About Brokerage Services (IABS) forms held in transaction-forms
-// storage, not the firm's number (#9014367, which belongs to the entity and is
-// shown in the footer).
-const TREC = (id: string) => ({
-  '@type': 'EducationalOccupationalCredential',
-  credentialCategory: 'Texas Real Estate License',
-  identifier: id,
-  recognizedBy: {
-    '@type': 'Organization',
-    name: 'Texas Real Estate Commission',
-    url: 'https://www.trec.texas.gov',
-  },
-});
-
-const personSchema = {
+// The two licensed people (Zachary Stovall, Brian Blanco) are declared once, in the
+// site-wide graph (root layout → peopleNodes()), with stable @ids and their
+// individual TREC licences. This page used to emit them a second time as
+// anonymous Person nodes, which read as two more people; now it only points at
+// the canonical nodes.
+const teamPageSchema = {
   '@context': 'https://schema.org',
-  '@graph': [
-    {
-      '@type': 'Person',
-      name: 'Zachary Stovall',
-      jobTitle: 'Broker / Owner',
-      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
-      url: `${BASE_URL}/team`,
-      identifier: '691174',
-      hasCredential: TREC('691174'),
-    },
-    {
-      '@type': 'Person',
-      name: 'Brian Blanco',
-      jobTitle: 'Director of Leasing',
-      worksFor: { '@type': 'RealEstateAgent', name: 'Fair Oaks Realty Group', url: BASE_URL },
-      url: `${BASE_URL}/team`,
-      identifier: '848449',
-      hasCredential: TREC('848449'),
-    },
-  ],
+  '@type': 'AboutPage',
+  '@id': `${BASE_URL}/team#webpage`,
+  url: `${BASE_URL}/team`,
+  name: 'Meet the Fair Oaks Realty Group Team',
+  about: { '@id': ORG_ID },
+  mentions: [{ '@id': BROKER_ID }, { '@id': AGENT_ID }],
 };
 
 export const metadata: Metadata = {
-  title: 'Meet Our Real Estate Team | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Meet Our Real Estate Team | Fair Oaks Realty Group' },
   description:
     'Meet the real estate agents at Fair Oaks Realty Group. Local experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country.',
   keywords: [
@@ -85,7 +52,7 @@ export default function TeamLayout({ children }: { children: React.ReactNode }) 
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLdScript(personSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(teamPageSchema) }}
       />
       {children}
     </>

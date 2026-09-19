@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/neighborhoods/stone-creek-ranch`;
 
 export const metadata: Metadata = {
-  title: 'Stone Creek Ranch Homes for Sale | Fair Oaks Ranch TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Stone Creek Ranch Homes for Sale | Fair Oaks Ranch TX | Fair Oaks Realty Group' },
   description:
     'Homes for sale in Stone Creek Ranch, Fair Oaks Ranch TX. Gated master-planned community with resort-style amenities, large homesites 0.25–1+ acres, Hill Country views, and top-rated Boerne ISD schools. $550K–$1.2M.',
   alternates: { canonical: '/neighborhoods/stone-creek-ranch' },

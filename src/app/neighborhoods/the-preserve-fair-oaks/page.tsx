@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/neighborhoods/the-preserve-fair-oaks`;
 
 export const metadata: Metadata = {
-  title: 'The Preserve at Fair Oaks Homes for Sale | Fair Oaks Ranch TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'The Preserve at Fair Oaks Homes for Sale | Fair Oaks Ranch TX | Fair Oaks Realty Group' },
   description:
     'Homes for sale in The Preserve at Fair Oaks, Fair Oaks Ranch TX. Newer custom and semi-custom builds on 0.5–2+ acre homesites with greenbelt backing, wildlife corridors, and Boerne ISD schools. $650K–$1.8M.',
   alternates: { canonical: '/neighborhoods/the-preserve-fair-oaks' },

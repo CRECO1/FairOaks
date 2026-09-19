@@ -19,6 +19,7 @@ export const metadata: Metadata = {
     'gated communities Fair Oaks Ranch TX',
   ],
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: 'Fair Oaks Ranch Neighborhoods & Communities | Area Guide',
     description:
       'Explore the best neighborhoods in Fair Oaks Ranch, Boerne & Helotes TX. Compare home prices, school districts, and community features.',

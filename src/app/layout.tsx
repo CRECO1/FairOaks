@@ -145,8 +145,8 @@ export default function RootLayout({
                   },
                   geo: {
                     '@type': 'GeoCoordinates',
-                    latitude: 29.7494,
-                    longitude: -98.6318,
+                    latitude: FORG.latitude,
+                    longitude: FORG.longitude,
                   },
                   // State → region → counties → the cities with their own pages here.
                   areaServed: areaServed(),
@@ -166,6 +166,10 @@ export default function RootLayout({
                     areaServed: 'US-TX',
                     availableLanguage: ['English'],
                   }],
+                  // Fair Oaks Realty Group and CRECO are assumed names on the same TREC
+                  // licence (#9014367); CRECO is the parent brokerage. crecotx.com
+                  // declares the inverse (subOrganization), so the link is two-way.
+                  parentOrganization: { '@id': CRECO.id },
                   founder: { '@id': `${FORG.url}/team#zachary-stovall` },
                   employee: [
                     { '@id': `${FORG.url}/team#zachary-stovall` },

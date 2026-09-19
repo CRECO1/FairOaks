@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Find homes for sale in Boerne, TX — charming Hill Country town with top-rated Boerne ISD schools, scenic landscapes, and homes from $300K to $1.5M+.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/boerne-tx' },
     openGraph: {

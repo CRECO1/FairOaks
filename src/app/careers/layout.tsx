@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Careers | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Careers | Fair Oaks Realty Group' },
   description: 'Join Fair Oaks Realty Group in the Texas Hill Country. Competitive splits, built-in lead flow, full marketing support, and a culture that has your back.',
   keywords: ['real estate agent jobs San Antonio', 'join real estate team Texas', 'real estate careers Hill Country', 'Fair Oaks Realty Group careers', 'real estate agent Fair Oaks Ranch', 'CRECO careers'],
   alternates: { canonical: 'https://www.fairoaksrealtygroup.com/careers' },

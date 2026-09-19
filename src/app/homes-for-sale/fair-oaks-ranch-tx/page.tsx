@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Browse homes for sale in Fair Oaks Ranch, TX. Gated communities, horse properties, and Hill Country estates from $400K–$2M+. Local MLS listings updated daily.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/fair-oaks-ranch-tx' },
     openGraph: {

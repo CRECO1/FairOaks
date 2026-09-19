@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/neighborhoods/herff-ranch`;
 
 export const metadata: Metadata = {
-  title: 'Herff Ranch Boerne Homes for Sale | Boerne TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Herff Ranch Boerne Homes for Sale | Boerne TX | Fair Oaks Realty Group' },
   description:
     'Homes for sale in Herff Ranch, Boerne TX. Large master-planned community with newer builds from Highland Homes, Drees, and Perry Homes. Community pools, parks, trails, and top-rated Boerne ISD schools. $380K–$750K.',
   alternates: { canonical: '/neighborhoods/herff-ranch' },

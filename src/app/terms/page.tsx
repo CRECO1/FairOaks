@@ -13,7 +13,8 @@ import { Container } from '@/components/ui/Container';
  * before treating it as legally binding.
  */
 export const metadata: Metadata = {
-  title: 'Terms of Use | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Terms of Use | Fair Oaks Realty Group' },
   description:
     'Fair Oaks Realty Group Terms of Use — the terms that govern use of fairoaksrealtygroup.com, our services, and the content published on the site.',
   alternates: { canonical: 'https://www.fairoaksrealtygroup.com/terms' },

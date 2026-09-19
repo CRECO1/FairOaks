@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/neighborhoods/sonoma-verde`;
 
 export const metadata: Metadata = {
-  title: 'Sonoma Verde Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Sonoma Verde Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group' },
   description:
     'Homes for sale in Sonoma Verde, Fair Oaks Ranch TX. Gated community with Mediterranean architecture, rolling Hill Country terrain, community pool, walking trails, and Boerne ISD schools. $500K–$950K.',
   alternates: { canonical: '/neighborhoods/sonoma-verde' },

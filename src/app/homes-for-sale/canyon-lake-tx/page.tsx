@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Browse Canyon Lake TX homes for sale — waterfront properties, Hill Country cabins, and lake-view estates. A peaceful escape 45 minutes from San Antonio.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/canyon-lake-tx' },
     openGraph: {

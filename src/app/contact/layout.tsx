@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Contact Fair Oaks Realty Group | Fair Oaks Ranch TX Realtors',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Contact Fair Oaks Realty Group | Fair Oaks Ranch TX Realtors' },
   description:
     'Contact Fair Oaks Realty Group — local real estate experts serving Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country. Call, email, or request a showing.',
   keywords: [

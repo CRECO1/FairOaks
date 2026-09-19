@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   keywords: ['texas home buyer guide', 'how to buy a home in texas', 'first-time homebuyer texas', 'home buying process texas hill country', 'mortgage preapproval texas', 'closing costs texas', 'home inspection texas', 'fair oaks ranch buyer guide', 'boerne tx home buying', 'texas real estate process'],
   alternates: { canonical: '/buyer-guide' },
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: "Texas Home Buyer's Guide | Step-by-Step Guide for Hill Country Buyers",
     description:
       'Complete guide to buying a home in the Texas Hill Country — step-by-step process, costs, and local market insights.',

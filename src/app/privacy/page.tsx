@@ -15,7 +15,8 @@ import { Container } from '@/components/ui/Container';
  * General-purpose boilerplate — review with counsel.
  */
 export const metadata: Metadata = {
-  title: 'Privacy Policy | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Privacy Policy | Fair Oaks Realty Group' },
   description:
     'How Fair Oaks Realty Group collects, uses, and protects the information you share through fairoaksrealtygroup.com, including text messaging.',
   alternates: { canonical: 'https://www.fairoaksrealtygroup.com/privacy' },

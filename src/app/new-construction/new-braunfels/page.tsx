@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/new-construction/new-braunfels`;
 
 export const metadata: Metadata = {
-  title: 'New Construction Homes in New Braunfels, TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'New Construction Homes in New Braunfels, TX | Fair Oaks Realty Group' },
   description:
     'Browse new construction in New Braunfels TX — rapidly growing Hill Country city with Comal ISD schools and easy access to Austin and San Antonio.',
   keywords: [

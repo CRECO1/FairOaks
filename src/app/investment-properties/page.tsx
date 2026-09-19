@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/investment-properties`;
 
 export const metadata: Metadata = {
-  title: 'Investment Properties in San Antonio & Texas Hill Country | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Investment Properties in San Antonio & Texas Hill Country | Fair Oaks Realty Group' },
   description:
     'Find investment properties in San Antonio and the Texas Hill Country — rental homes, multi-family, and land. Expert guidance from Fair Oaks Realty Group.',
   alternates: { canonical: '/investment-properties' },

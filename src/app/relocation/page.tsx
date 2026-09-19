@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/relocation`;
 
 export const metadata: Metadata = {
-  title: 'Relocating to San Antonio & Texas Hill Country | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Relocating to San Antonio & Texas Hill Country | Fair Oaks Realty Group' },
   description:
     'Relocating to San Antonio or the Texas Hill Country? Our complete relocation guide covers neighborhoods, schools, commute times, and the local real estate market.',
   alternates: { canonical: '/relocation' },

@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Find homes for sale in Spring Branch, TX — rural Hill Country living near Canyon Lake with large acreage properties and Comal ISD schools.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/spring-branch-tx' },
     openGraph: {

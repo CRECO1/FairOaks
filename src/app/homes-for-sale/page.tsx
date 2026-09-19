@@ -13,7 +13,8 @@ import { jsonLdScript } from '@/lib/json-ld';
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
 export const metadata: Metadata = {
-  title: 'Texas Hill Country Homes for Sale | Browse All Areas | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Texas Hill Country Homes for Sale | Browse All Areas | Fair Oaks Realty Group' },
   description:
     'Search homes for sale across Fair Oaks Ranch, Boerne, Helotes, Bulverde, and San Antonio. Fair Oaks Realty Group — Hill Country\'s local real estate experts.',
   alternates: { canonical: '/homes-for-sale' },

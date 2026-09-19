@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'MLS Listings in Fair Oaks Ranch, Boerne & Texas Hill Country | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'MLS Listings in Fair Oaks Ranch, Boerne & Texas Hill Country | Fair Oaks Realty Group' },
   description:
     'Search all active MLS listings in Fair Oaks Ranch, Boerne, Helotes, and the Texas Hill Country. Filter by price, beds, and neighborhood. Updated daily from SABOR MLS.',
   keywords: [

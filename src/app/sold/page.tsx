@@ -18,6 +18,7 @@ export const metadata: Metadata = {
     'sold homes near San Antonio TX',
   ],
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: 'Recently Sold Homes in Fair Oaks Ranch TX | Fair Oaks Realty Group',
     description:
       'Browse homes we\'ve sold in Fair Oaks Ranch, Boerne & Helotes TX.',

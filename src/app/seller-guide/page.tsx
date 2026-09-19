@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   keywords: ['sell my home texas', 'how to sell your home', 'home selling process texas', 'pricing your home', 'home staging tips', 'list to sale ratio texas', 'fair oaks ranch home seller', 'boerne tx sell home', 'texas hill country home sale', 'home valuation texas'],
   alternates: { canonical: '/seller-guide' },
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: "Texas Home Seller's Guide | How to Get Top Dollar in Hill Country",
     description:
       'Pricing strategy, staging tips and marketing for Texas Hill Country sellers.',

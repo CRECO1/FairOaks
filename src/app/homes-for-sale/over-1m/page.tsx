@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/homes-for-sale/over-1m`;
 
 export const metadata: Metadata = {
-  title: 'Luxury Homes Over $1 Million in Texas Hill Country | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Luxury Homes Over $1 Million in Texas Hill Country | Fair Oaks Realty Group' },
   description:
     'Explore luxury homes over $1 million in Fair Oaks Ranch, Boerne, The Dominion, and Cordillera Ranch. Hill Country\'s finest properties with acreage and custom features.',
   alternates: { canonical: '/homes-for-sale/over-1m' },

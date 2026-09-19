@@ -16,6 +16,7 @@ export const metadata: Metadata = {
     'Answers to common questions about buying and selling homes in Fair Oaks Ranch, Boerne, and the Texas Hill Country. Fair Oaks Realty Group FAQ.',
   alternates: { canonical: '/faq' },
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: 'Real Estate FAQ | Texas Hill Country Home Buying & Selling Questions',
     description:
       'Answers to the most common real estate questions for buyers and sellers in the Texas Hill Country.',

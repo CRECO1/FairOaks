@@ -7,13 +7,15 @@ import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 
 export const metadata: Metadata = {
-  title: 'Hill Country Real Estate Market Report Q1 2025 | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Hill Country Real Estate Market Report Q1 2025 | Fair Oaks Realty Group' },
   description:
     'Q1 2025 market update for Fair Oaks Ranch, Boerne, and Greater San Antonio. Median sale prices, days on market, neighborhood breakdowns, and expert analysis from Fair Oaks Realty Group.',
   alternates: {
     canonical: '/market-reports',
   },
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: 'Hill Country Real Estate Market Report Q1 2025 | Fair Oaks Realty Group',
     description:
       'Q1 2025 Hill Country market stats: median prices, inventory trends, and neighborhood breakdowns for Fair Oaks Ranch, Boerne, Cordillera Ranch, and surrounding areas.',

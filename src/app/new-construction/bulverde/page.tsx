@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/new-construction/bulverde`;
 
 export const metadata: Metadata = {
-  title: 'New Construction Homes in Bulverde, TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'New Construction Homes in Bulverde, TX | Fair Oaks Realty Group' },
   description:
     'New construction homes in Bulverde TX — growing Hill Country community with Comal ISD schools, large lots, and new master-planned developments.',
   keywords: [

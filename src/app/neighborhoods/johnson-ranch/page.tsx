@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/neighborhoods/johnson-ranch`;
 
 export const metadata: Metadata = {
-  title: 'Johnson Ranch Boerne Homes for Sale | Boerne TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Johnson Ranch Boerne Homes for Sale | Boerne TX | Fair Oaks Realty Group' },
   description:
     'Homes for sale in Johnson Ranch, Boerne TX. Established Hill Country community with large live oaks, community amenities, and top-rated Boerne ISD schools. Close to Boerne city center. $350K–$650K.',
   alternates: { canonical: '/neighborhoods/johnson-ranch' },

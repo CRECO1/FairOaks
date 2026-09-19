@@ -14,11 +14,13 @@ export const revalidate = 86400;
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
 export const metadata: Metadata = {
-  title: 'Military & VA Home Buying in San Antonio TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Military & VA Home Buying in San Antonio TX | Fair Oaks Realty Group' },
   description:
     'VA loan specialists helping military families buy homes near San Antonio, TX. Fair Oaks Realty Group understands military relocation and PCS moves.',
   alternates: { canonical: '/military-homebuying' },
   openGraph: {
+    images: [{ url: '/images/og-home.jpg', width: 1200, height: 630, alt: 'Fair Oaks Realty Group' }],
     title: 'Military & VA Home Buying in San Antonio TX | Fair Oaks Realty Group',
     description:
       'Expert VA loan guidance for military families in San Antonio. Zero down payment, no PMI, competitive rates.',
@@ -150,20 +152,8 @@ const VA_FAQS = [
 const jsonLd = {
   '@context': 'https://schema.org',
   '@graph': [
-    {
-      '@type': 'LocalBusiness',
-      name: 'Fair Oaks Realty Group',
-      url: BASE_URL,
-      telephone: '+12103909997',
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: 'Fair Oaks Ranch',
-        addressRegion: 'TX',
-        addressCountry: 'US',
-      },
-      description:
-        'Military and VA home buying specialists serving San Antonio, Fort Sam Houston, Randolph AFB, Lackland AFB, and the Texas Hill Country.',
-    },
+    // No separate LocalBusiness here: it had no @id or street address and read as a
+    // second, weaker business. The site-wide graph's #organization is the entity.
     {
       '@type': 'FAQPage',
       mainEntity: VA_FAQS.map(({ q, a }) => ({

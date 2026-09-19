@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/homes-for-sale/under-500k`;
 
 export const metadata: Metadata = {
-  title: 'Homes Under $500K in Fair Oaks Ranch & Texas Hill Country | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Homes Under $500K in Fair Oaks Ranch & Texas Hill Country | Fair Oaks Realty Group' },
   description:
     'Search homes for sale under $500,000 in Fair Oaks Ranch, Boerne, Helotes, and San Antonio. Affordable Hill Country and NW San Antonio homes updated daily.',
   alternates: { canonical: '/homes-for-sale/under-500k' },

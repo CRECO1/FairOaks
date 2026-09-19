@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/new-construction/boerne`;
 
 export const metadata: Metadata = {
-  title: 'New Construction Homes in Boerne, TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'New Construction Homes in Boerne, TX | Fair Oaks Realty Group' },
   description:
     'Browse new construction homes in Boerne TX — new builds in master-planned communities near top-rated Boerne ISD schools. Prices from $400K.',
   keywords: [

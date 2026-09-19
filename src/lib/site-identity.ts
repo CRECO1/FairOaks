@@ -53,8 +53,10 @@ export const FORG = {
     addressCountry: 'US',
   },
   addressLine: '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015',
-  latitude: 29.7494,
-  longitude: -98.6318,
+  // The building's OSM house-number geocode ("8000, Fair Oaks Parkway") — the same
+  // point crecotx.com uses. The old 29.7494, -98.6318 sat about 2 km away.
+  latitude: 29.734008,
+  longitude: -98.643139,
   hours: 'Mon–Fri 9 AM–6 PM, Sat 10 AM–4 PM (Central)',
   /**
    * Only profiles the brokerage has confirmed. An entry here asserts to search
@@ -64,11 +66,15 @@ export const FORG = {
    *
    * TODO: add the Fair Oaks Google Business Profile Maps URL once the brokerage
    * confirms which account manages that profile.
-   * TODO: the Facebook and YouTube links in the footer are unverified — confirm
-   * or retire them before asserting them here.
+   * YouTube confirmed 2026-09-19: the channel's own description carries this
+   * site's URL, (210) 390-9997 and info@fairoaksrealtygroup.com, and the footer
+   * links it — a two-way match.
+   * TODO: the footer Facebook link is unverified — confirm or retire it before
+   * asserting it here.
    */
   sameAs: [
     'https://www.instagram.com/fairoaksrealty_group',
+    'https://www.youtube.com/@FairOaksRealtyGroupTX',
   ],
   /** Residential topics, in the plain nouns someone would actually search. */
   knowsAbout: [

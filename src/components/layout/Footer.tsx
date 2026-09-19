@@ -187,7 +187,7 @@ export function Footer() {
               TREC Information About Brokerage Services
             </a>
             <a
-              href="https://www.dropbox.com/scl/fi/2n75lzyn066n3rj46h9ot/CN-1-5_0.pdf?rlkey=4qbweqe2x7y5scl8zhn4ut211&e=1&dl=0"
+              href="https://www.trec.texas.gov/sites/default/files/pdf-forms/CN%201-5_0.pdf"
               target="_blank" rel="noopener noreferrer"
               className="text-caption text-gold/70 transition-colors hover:text-gold">
               Consumer Protection Notice

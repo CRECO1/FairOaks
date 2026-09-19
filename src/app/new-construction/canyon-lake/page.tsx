@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/new-construction/canyon-lake`;
 
 export const metadata: Metadata = {
-  title: 'New Construction Homes in Canyon Lake, TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'New Construction Homes in Canyon Lake, TX | Fair Oaks Realty Group' },
   description:
     'New construction homes near Canyon Lake TX — custom builds and spec homes with Hill Country views, acreage, and lake proximity.',
   keywords: [

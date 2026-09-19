@@ -14,7 +14,8 @@ import { jsonLdScript } from '@/lib/json-ld';
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 
 export const metadata: Metadata = {
-  title: 'Luxury Homes for Sale in Texas Hill Country | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'Luxury Homes for Sale in Texas Hill Country | Fair Oaks Realty Group' },
   description:
     'Explore luxury homes for sale in the Texas Hill Country — Fair Oaks Ranch, Boerne, and San Antonio\'s finest neighborhoods. Properties from $750K to $3M+.',
   keywords: ['luxury homes texas hill country', 'luxury homes fair oaks ranch', 'luxury homes boerne tx', 'homes over 1 million san antonio', 'gated communities san antonio', 'cordillera ranch homes', 'the dominion san antonio', 'hill country estates', 'custom homes texas hill country', 'waterfront luxury homes texas'],

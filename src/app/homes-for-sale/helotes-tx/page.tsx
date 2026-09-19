@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Search homes for sale in Helotes, TX — peaceful Hill Country suburb near San Antonio with great schools, large lots, and easy highway access.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/helotes-tx' },
     openGraph: {

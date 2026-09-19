@@ -27,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
     `Search New Braunfels TX homes for sale. Hill Country charm meets rapid growth — Comal ISD schools, Guadalupe River access, and diverse price points.`;
 
   return {
-    title,
+    // Already carries the brand: absolute, so the layout template does not append it twice.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/homes-for-sale/new-braunfels-tx' },
     openGraph: {

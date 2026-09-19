@@ -15,7 +15,8 @@ const BASE_URL = 'https://www.fairoaksrealtygroup.com';
 const CANONICAL = `${BASE_URL}/new-construction/san-antonio`;
 
 export const metadata: Metadata = {
-  title: 'New Construction Homes in San Antonio, TX | Fair Oaks Realty Group',
+  // Already carries the brand: absolute, so the layout template does not append it twice.
+  title: { absolute: 'New Construction Homes in San Antonio, TX | Fair Oaks Realty Group' },
   description:
     'Find new construction homes in San Antonio TX — new communities in the NW corridor, Stone Oak, and Hill Country Village. Move-in ready options available.',
   keywords: [
