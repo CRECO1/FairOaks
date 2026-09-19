@@ -21,7 +21,7 @@ const LINE: RGB = rgb(0.85, 0.86, 0.88);
 const W = 612, H = 792;
 // Matches the letterhead used on the LOIs — a rule, the tagline, the company line.
 const FOOT_TAG = 'Where your real estate ventures find the support they deserve';
-const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
+const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
 
 export interface FlyerInput {
   badge: string;                 // "FOR LEASE" / "FOR SALE"

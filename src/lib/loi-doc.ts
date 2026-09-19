@@ -248,9 +248,9 @@ const CONTENT_BOTTOM = 80, FOOTER_RULE_Y = 64, LOGO_W = 240;
 const ink = rgb(0.09, 0.09, 0.12);
 const lineCol = rgb(0.45, 0.45, 0.5);
 const BLACK = rgb(0.11, 0.11, 0.12), GRAY = rgb(0.34, 0.36, 0.40), ITAL = rgb(0.20, 0.20, 0.22);
-const HEAD_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015      •      (210) 817-3443      •      crecotx.com';
+const HEAD_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015      •      (210) 817-3443      •      crecotx.com';
 const FOOT_TAG = 'Where your real estate ventures find the support they deserve';
-const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
+const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
 
 function wrapText(str: string, font: PDFFont, size: number, maxW: number): string[] {
   const words = sane(str).split(/\s+/).filter(Boolean);

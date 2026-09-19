@@ -15,9 +15,9 @@ const LOGO_W = 240;             // header logo width (points); height derives fr
 const CONTENT_BOTTOM = 80;      // body must stay above this — the footer sits below it
 const FOOTER_RULE_Y = 64;
 
-const HEAD_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015      •      (210) 817-3443      •      crecotx.com';
+const HEAD_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015      •      (210) 817-3443      •      crecotx.com';
 const FOOT_TAG     = 'Where your real estate ventures find the support they deserve';
-const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 102, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
+const FOOT_CONTACT = '8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015   |   (210) 817-3443   |   info@crecotx.com   |   crecotx.com';
 
 async function loadBranding(doc) {
   return {

@@ -2877,7 +2877,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   });
 
   function getDefaultEmailBody(): string {
-    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015</small></p>`;
+    // Each brand's own office: Fair Oaks Realty Group is Suite 102, CRECO is Suite 100.
+    const officeAddress = businessUnit === 'residential'
+      ? '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015'
+      : '8000 Fair Oaks Pkwy Suite 100, Fair Oaks Ranch, TX 78015';
+    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · ${officeAddress}</small></p>`;
   }
 
   // ── Render guards ─────────────────────────────────────────────────────────────
