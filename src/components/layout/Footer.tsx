@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { FooterListingAlerts } from './FooterListingAlerts';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Phone, Mail, MapPin, Facebook, Instagram, Youtube } from 'lucide-react';
@@ -131,6 +132,7 @@ export function Footer() {
             {/* Contact Info */}
             <div>
               <h3 className="mb-5 text-body-sm font-semibold uppercase tracking-widest text-gold">Get in Touch</h3>
+              <div className="mb-6"><FooterListingAlerts /></div>
               <ul className="space-y-4">
                 <li>
                   <a href={telHref}

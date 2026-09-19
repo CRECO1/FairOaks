@@ -5,6 +5,7 @@ import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
+const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 
 function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -32,8 +33,10 @@ export async function POST(req: NextRequest) {
     }
     const { name, email, cities, min_price, max_price, min_beds, min_baths, search } = body;
 
-    if (!name?.trim() || !email?.trim()) {
-      return NextResponse.json({ error: 'Name and email are required' }, { status: 400 });
+    // Email is the only thing an alert needs. Requiring a name cost signups on
+    // the footer capture, where someone is one field away from subscribing.
+    if (!email?.trim()) {
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
@@ -66,7 +69,7 @@ export async function POST(req: NextRequest) {
     const safeSearch = typeof search === 'string' ? search.slice(0, 200).trim() : null;
 
     const { error: dbErr } = await supabase.from('listing_alerts').insert([{
-      name: name.trim(),
+      name: typeof name === 'string' ? name.trim() : '',
       email: email.toLowerCase().trim(),
       cities: safeCities,
       min_price: min_price ?? null,
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
             <div style="margin-bottom: 32px; border-bottom: 2px solid #c9a84c; padding-bottom: 24px;">
               <p style="font-size: 22px; font-weight: bold; margin: 0;">Fair Oaks <span style="color: #c9a84c;">Realty Group</span></p>
             </div>
-            <h1 style="font-size: 22px; font-weight: bold; margin: 0 0 8px;">You&rsquo;re all set, ${esc(name)}!</h1>
+            <h1 style="font-size: 22px; font-weight: bold; margin: 0 0 8px;">You&rsquo;re all set${name?.trim() ? `, ${esc(name.trim())}` : ''}!</h1>
             <p style="color: #666; margin: 0 0 24px;">We&rsquo;ll email you the moment a new listing matches your search:</p>
             <div style="background: #f8f5ee; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; font-weight: 600;">
               ${esc(filterParts)}
@@ -118,6 +121,25 @@ export async function POST(req: NextRequest) {
             </p>
           </div>`,
       }).catch(e => console.error('Resend confirmation error:', e));
+
+      // Internal notification: a listing-alert signup is a lead, and nobody was
+      // told about it — the subscriber got a confirmation and that was that.
+      await resend.emails.send({
+        from: `Fair Oaks Realty Group <${FROM_EMAIL}>`,
+        to: NOTIFICATION_EMAIL,
+        replyTo: email,
+        subject: `🔔 New listing alert signup: ${email}`,
+        html: `
+          <div style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 560px; color:#1a1a2e">
+            <h2 style="margin:0 0 12px;font-size:18px">New listing-alert signup</h2>
+            <table style="border-collapse:collapse;font-size:14px">
+              <tr><td style="padding:6px 12px 6px 0;color:#666">Name</td><td>${esc(name?.trim() || '—')}</td></tr>
+              <tr><td style="padding:6px 12px 6px 0;color:#666">Email</td><td><a href="mailto:${esc(email)}">${esc(email)}</a></td></tr>
+              <tr><td style="padding:6px 12px 6px 0;color:#666">Search</td><td>${esc(filterParts)}</td></tr>
+            </table>
+            <p style="font-size:13px;color:#666;margin-top:16px">Reply to this email to reach them directly.</p>
+          </div>`,
+      }).catch(e => console.error('Resend internal notification error:', e));
     }
 
     return NextResponse.json({ ok: true });

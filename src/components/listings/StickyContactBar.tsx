@@ -38,14 +38,16 @@ export function StickyContactBar({ listingTitle, price }: Props) {
     const name  = (fd.get('name')  as string).trim();
     const phone = (fd.get('phone') as string).trim();
     const email = (fd.get('email') as string).trim();
-    if (!name || !phone) { setError('Name and phone are required.'); setSending(false); return; }
+    // Phone OR email — requiring both a name and a phone number turned away
+    // people who would happily leave an email address.
+    if (!name || (!phone && !email)) { setError('Add your name and either a phone number or an email.'); setSending(false); return; }
     try {
       const res = await fetch('/api/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recaptchaToken: await getRecaptchaToken('lead_form'),
-          name, phone, email: email || undefined,
+          name, phone: phone || undefined, email: email || undefined,
           message: `Requesting a showing for: ${listingTitle}`,
           property_interest: listingTitle,
           source: 'listing',
@@ -78,9 +80,9 @@ export function StickyContactBar({ listingTitle, price }: Props) {
               <div className="grid grid-cols-2 gap-2">
                 <input name="name" required placeholder="Your Name"
                   className="col-span-2 rounded-lg border border-border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
-                <input name="phone" type="tel" required placeholder="Phone Number"
+                <input name="phone" type="tel" placeholder="Phone Number"
                   className="rounded-lg border border-border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
-                <input name="email" type="email" placeholder="Email (optional)"
+                <input name="email" type="email" placeholder="Email Address"
                   className="rounded-lg border border-border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gold" />
               </div>
               <button type="submit" disabled={sending}
