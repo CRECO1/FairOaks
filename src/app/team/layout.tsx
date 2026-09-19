@@ -60,7 +60,6 @@ export const metadata: Metadata = {
   keywords: [
     'Fair Oaks Ranch real estate agents',
     'Fair Oaks Ranch realtor team',
-    'best realtor Fair Oaks Ranch TX',
     'top real estate agent Fair Oaks Ranch',
     'Texas Hill Country real estate agent',
     'Fair Oaks Realty Group team',

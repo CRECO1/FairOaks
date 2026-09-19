@@ -87,7 +87,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Fair Oaks Ranch Homes for Sale | Fair Oaks Realty Group',
     description:
-      'Top-rated realtors in Fair Oaks Ranch, TX. Search listings, get a free home valuation, and connect with local experts.',
+      'Fair Oaks Ranch, TX realtors. Search listings, get a free home valuation, and connect with local experts.',
     images: ['/images/og-home.jpg'],
   },
   robots: {

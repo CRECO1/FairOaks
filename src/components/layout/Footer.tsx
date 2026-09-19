@@ -192,12 +192,13 @@ export function Footer() {
               className="text-caption text-gold/70 transition-colors hover:text-gold">
               Consumer Protection Notice
             </a>
-            <a
-              href="https://www.dropbox.com/scl/fi/crqxkops3pxzk6oi9k8og/Privacy-Policy.pdf?rlkey=4rprpu2t86y4xf83iatceszez&e=1&st=1ctnq1ov&dl=0"
-              target="_blank" rel="noopener noreferrer"
+            {/* On-domain policy. Previously a Dropbox PDF that was CRECO's text-messaging
+                policy; its SMS commitments are carried into /privacy for Fair Oaks. */}
+            <Link
+              href="/privacy"
               className="text-caption text-gold/70 transition-colors hover:text-gold">
               Privacy Policy
-            </a>
+            </Link>
           </div>
         </Container>
       </div>

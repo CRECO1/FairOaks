@@ -48,7 +48,7 @@ const OPEN_ROLES = [
 ];
 
 const PERKS = [
-  { icon: DollarSign, title: 'Competitive Splits', description: 'Industry-leading commission structures with no desk fees eating into your earnings.' },
+  { icon: DollarSign, title: 'Competitive Splits', description: 'Commission structures with no desk fees eating into your earnings.' },
   { icon: Laptop, title: 'Tech & CRM Tools', description: 'Full access to our custom CRM, automated drip campaigns, and lead management platform.' },
   { icon: Megaphone, title: 'Marketing Support', description: 'Professional photography, listing presentations, social media content, and brand resources.' },
   { icon: TrendingUp, title: 'Proven Lead Flow', description: 'Benefit from our established online presence, Zillow partnerships, and referral network.' },

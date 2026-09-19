@@ -1,7 +1,7 @@
-import CRMApp from '@/components/crm/CRMApp';
+import CRMAppClient from '@/components/crm/CRMAppClient';
 
 export const metadata = { title: 'Fair Oaks CRM — Residential' };
 
 export default function ResidentialCRM() {
-  return <CRMApp businessUnit="residential" />;
+  return <CRMAppClient businessUnit="residential" />;
 }

@@ -60,7 +60,7 @@ const FAQ_CATEGORIES = [
       },
       {
         q: 'What is the average time to sell a home in the Fair Oaks Ranch area?',
-        a: 'Our team averages just 21 days on market for our listings — well below the broader San Antonio metro average. Fair Oaks Ranch, Boerne, and the surrounding Hill Country communities continue to attract strong buyer demand from San Antonio professionals, retirees, and relocation buyers drawn to the area\'s top-rated schools, safety, and lifestyle. The right pricing and marketing strategy is what separates a fast, top-dollar sale from a listing that lingers. Homes priced correctly and marketed aggressively consistently sell in under 30 days.',
+        a: 'It varies with price point, condition and season, so we give you a realistic timeline for your specific home when we prepare your pricing strategy. Fair Oaks Ranch, Boerne, and the surrounding Hill Country communities continue to attract strong buyer demand from San Antonio professionals, retirees, and relocation buyers drawn to the area\'s top-rated schools, safety, and lifestyle. The right pricing and marketing strategy is what separates a fast, top-dollar sale from a listing that lingers. Homes priced correctly and marketed aggressively consistently sell in under 30 days.',
       },
       {
         q: 'Do I need to make repairs before listing?',

@@ -212,7 +212,7 @@ export default function TeamPage() {
                 Interested in Joining Our Team?
               </h2>
               <p className="text-body text-white/70 mb-8">
-                We&apos;re always looking for talented, motivated agents who want to grow their career with one of the Texas Hill Country&apos;s most trusted brokerages.
+                We&apos;re always looking for talented, motivated agents who want to grow their career in the Texas Hill Country.
               </p>
               <a
                 href="/careers"

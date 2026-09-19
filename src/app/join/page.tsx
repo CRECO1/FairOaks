@@ -12,7 +12,7 @@ const PERKS = [
   {
     icon: DollarSign,
     title: 'Competitive Splits',
-    description: 'Industry-leading commission structures with no desk fees eating into your earnings.',
+    description: 'Commission structures with no desk fees eating into your earnings.',
   },
   {
     icon: Laptop,
@@ -103,7 +103,7 @@ export default function JoinPage() {
               <span className="text-gold">Fair Oaks Realty Group</span>
             </h1>
             <p className="mt-4 text-body text-white/70 max-w-xl">
-              Join one of the Texas Hill Country&apos;s most trusted real estate teams. Whether you&apos;re an experienced agent or just starting out, we have the tools, support, and culture to help you thrive.
+              Join our Texas Hill Country real estate team. Whether you&apos;re an experienced agent or just starting out, we have the tools, support, and culture to help you thrive.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <a href="#apply"

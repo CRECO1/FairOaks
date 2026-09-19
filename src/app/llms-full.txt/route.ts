@@ -96,7 +96,7 @@ ${CRECO.summary}
 - Legal entity: ${CRECO.legalName} (d/b/a ${CRECO.name}), Texas Real Estate Commission license #${CRECO.license}
 - Phone: ${CRECO.phoneDisplay}
 - Email: ${CRECO.email}
-- Office: ${FORG.addressLine}
+- Office: 8000 Fair Oaks Pkwy, Suite 100, Fair Oaks Ranch, TX 78015
 - AI reference: ${CRECO.url}/llms.txt and ${CRECO.url}/llms-full.txt
 
 Questions about leasing, tenant representation, landlord representation, or buying and selling retail, office, industrial, flex, or land belong with CRECO, not ${FORG.name}.

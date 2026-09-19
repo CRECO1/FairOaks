@@ -65,8 +65,8 @@ export default function SignupPage() {
 
         <p style={{ color: '#6b7280', fontSize: 13, marginTop: 20 }}>
           Didn&apos;t get the email? Contact{' '}
-          <a href="mailto:vultstack@gmail.com" style={{ color: '#c9922c' }}>
-            vultstack@gmail.com
+          <a href="mailto:info@fairoaksrealtygroup.com" style={{ color: '#c9922c' }}>
+            info@fairoaksrealtygroup.com
           </a>
           .
         </p>

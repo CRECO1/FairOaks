@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   alternates: { canonical: 'https://www.fairoaksrealtygroup.com/join' },
   openGraph: {
     title: 'Join Our Team — Fair Oaks Realty Group',
-    description: 'Competitive splits, tech tools, and a proven lead system. Apply to join one of the Texas Hill Country\'s most trusted real estate teams.',
+    description: 'Competitive splits, tech tools, and a lead system. Apply to join Fair Oaks Realty Group in the Texas Hill Country.',
     url: 'https://www.fairoaksrealtygroup.com/join',
     images: [{ url: 'https://www.fairoaksrealtygroup.com/images/og-home.jpg', width: 1200, height: 630 }],
   },

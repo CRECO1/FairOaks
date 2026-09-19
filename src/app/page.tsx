@@ -12,7 +12,6 @@ export const metadata: Metadata = {
     'Fair Oaks Ranch real estate',
     'homes for sale Fair Oaks Ranch Texas',
     'Fair Oaks Ranch TX realtor',
-    'best realtor Fair Oaks Ranch TX',
     'Texas Hill Country homes for sale',
     'Fair Oaks Ranch real estate agent',
     'luxury homes Fair Oaks Ranch TX',
@@ -81,14 +80,8 @@ const DEFAULT_SETTINGS = {
   hero_headline: 'Your Home in the Texas Hill Country',
   hero_subheadline: 'Trusted local experts helping families find the perfect home in Fair Oaks Ranch, Boerne, and the greater San Antonio area.',
   hero_image_url: null as string | null,
-  // No fallback figures: these are performance claims, so if site_settings is
-  // unavailable the stats band is hidden rather than showing invented numbers.
-  stat_homes_sold: null as number | null,
-  stat_years_experience: null as number | null,
-  stat_satisfaction: null as string | null,
-  stat_avg_days: null as number | null,
   about_headline: 'Why Fair Oaks Realty Group?',
-  about_text: 'We\'ve been helping families call the Texas Hill Country home for over 20 years. Our deep roots in Fair Oaks Ranch give you an insider advantage.',
+  about_text: 'We are a Fair Oaks Ranch real estate team helping families buy and sell homes across the Texas Hill Country.',
   cta_headline: 'Not sure where to start?',
   cta_subheadline: 'Take our 2-minute quiz and we\'ll match you with your perfect neighborhood.',
   phone: '210-390-9997',
@@ -138,14 +131,6 @@ export default async function HomePage() {
     ? settingsResult.value.data
     : DEFAULT_SETTINGS;
 
-  // Only render a figure the database actually supplied.
-  const STATS = [
-    s.stat_homes_sold ? { value: `${s.stat_homes_sold}+`, label: 'Homes Sold', icon: Home } : null,
-    s.stat_years_experience ? { value: `${s.stat_years_experience}+`, label: 'Years Experience', icon: Award } : null,
-    s.stat_satisfaction ? { value: s.stat_satisfaction, label: 'Client Satisfaction', icon: Star } : null,
-    s.stat_avg_days ? { value: String(s.stat_avg_days), label: 'Avg Days on Market', icon: TrendingUp } : null,
-  ].filter((x): x is { value: string; label: string; icon: typeof Home } => x !== null);
-
   return (
     <>
       <Header variant="transparent" />
@@ -191,16 +176,6 @@ export default async function HomePage() {
             </Button>
           </div>
 
-          {STATS.length > 0 && (
-          <div className="mt-10 sm:mt-16 grid grid-cols-2 gap-4 sm:gap-6 sm:grid-cols-4 animate-fade-in delay-500 fill-both">
-            {STATS.map(({ value, label, icon: Icon }) => (
-              <div key={label} className="text-center">
-                <div className="mb-1 font-heading text-2xl sm:text-3xl font-bold text-gold">{value}</div>
-                <div className="text-xs sm:text-caption uppercase tracking-widest text-white/60">{label}</div>
-              </div>
-            ))}
-          </div>
-          )}
         </Container>
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
@@ -333,7 +308,7 @@ export default async function HomePage() {
       {/* ── Why Us ───────────────────────────────────────────────────── */}
       <section className="section-luxury bg-primary text-white">
         <Container>
-          <div className="grid grid-cols-1 gap-16 lg:grid-cols-2 lg:items-center">
+          <div className="max-w-3xl">
             <RevealOnScroll direction="left">
               <p className="overline mb-4 text-gold">Why Fair Oaks Realty Group</p>
               <h2 className="mb-6 font-heading text-display-sm font-bold text-white">
@@ -359,19 +334,6 @@ export default async function HomePage() {
                 </Button>
               </div>
             </RevealOnScroll>
-            {STATS.length > 0 && (
-            <RevealOnScroll direction="right">
-              <div className="grid grid-cols-2 gap-4 sm:gap-5">
-                {STATS.map(({ value, label, icon: Icon }) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 text-center backdrop-blur-sm">
-                    <Icon className="mx-auto mb-2 sm:mb-3 h-6 w-6 sm:h-8 sm:w-8 text-gold" />
-                    <div className="font-heading text-2xl sm:text-display-sm font-bold text-white">{value}</div>
-                    <div className="mt-1 text-[10px] sm:text-caption uppercase tracking-wider text-white/50">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </RevealOnScroll>
-            )}
           </div>
         </Container>
       </section>

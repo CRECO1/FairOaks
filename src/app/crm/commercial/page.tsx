@@ -1,7 +1,7 @@
-import CRMApp from '@/components/crm/CRMApp';
+import CRMAppClient from '@/components/crm/CRMAppClient';
 
 export const metadata = { title: 'CRECO CRM — Commercial' };
 
 export default function CommercialCRM() {
-  return <CRMApp businessUnit="commercial" />;
+  return <CRMAppClient businessUnit="commercial" />;
 }
