@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fairOaksEmail } from '@/lib/fair-oaks-email';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
@@ -205,16 +206,16 @@ export async function POST(req: NextRequest) {
         from: FROM_EMAIL,
         to: email,
         subject: 'We received your inquiry — Fair Oaks Realty Group',
-        html: `
-          <div style="font-family:sans-serif;max-width:600px">
-            <h2 style="color:#1a1a2e">Hi ${esc(name)},</h2>
-            <p>Thank you for reaching out to <strong>Fair Oaks Realty Group</strong>!</p>
-            <p>A member of our team will be in touch within 1 business day.</p>
-            <p>In the meantime, feel free to browse our latest listings or call us directly at <a href="tel:+12103909997">210-390-9997</a>.</p>
-            <br/>
-            <p>— The Fair Oaks Realty Group Team</p>
-          </div>
-        `,
+        html: fairOaksEmail({
+          preheader: 'We have your message — a member of our team will be in touch within one business day.',
+          heading: 'Thanks for reaching out',
+          paragraphs: [
+            `Hi ${esc(name)}, thank you for contacting Fair Oaks Realty Group. A member of our team will be in touch within one business day.`,
+            'In the meantime you can browse current listings, or call or text us at <a href="tel:+12103909997" style="color:#A68B4B;text-decoration:none;">210-390-9997</a> if it is urgent.',
+          ],
+          cta: { label: 'Browse homes for sale', href: 'https://www.fairoaksrealtygroup.com/listings' },
+          reason: 'You&rsquo;re receiving this because you contacted Fair Oaks Realty Group at fairoaksrealtygroup.com.',
+        }),
       });
     }
 

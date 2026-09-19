@@ -13,10 +13,13 @@ function applyMergeFields(template: string, ctx: {
   agent: { first_name: string; last_name: string; email: string; phone?: string };
 }, businessUnit?: string): string {
   const unsubscribeUrl = unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token);
+  // A commercial contact is often a company with no person's name, and an empty
+  // {{first_name}} renders "Hi ,". Same fallback the campaigns cron uses.
+  const greeting = (ctx.client.first_name || '').trim() || 'there';
   return template
-    .replaceAll('{{first_name}}', ctx.client.first_name || '')
+    .replaceAll('{{first_name}}', greeting)
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
-    .replaceAll('{{full_name}}', `${ctx.client.first_name} ${ctx.client.last_name}`.trim())
+    .replaceAll('{{full_name}}', `${ctx.client.first_name ?? ''} ${ctx.client.last_name ?? ''}`.trim() || 'there')
     .replaceAll('{{email}}', ctx.client.email || '')
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
