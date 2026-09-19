@@ -162,7 +162,10 @@ async function authenticate(): Promise<string> {
 
 // ─── Generic fetch helper ─────────────────────────────────────────────────────
 
-async function resoFetch<T>(path: string, params: Record<string, string> = {}): Promise<ResoResponse<T>> {
+// `revalidate` lets a server-rendered (ISR) page cache the response in Next's data
+// cache for that many seconds. Omitted, the request is uncached — what the live
+// search API wants, and the behaviour every existing caller keeps.
+async function resoFetch<T>(path: string, params: Record<string, string> = {}, revalidate?: number): Promise<ResoResponse<T>> {
   const token = await authenticate();
 
   // SABOR requires literal $ in OData param names ($select, $filter, etc.)
@@ -179,7 +182,7 @@ async function resoFetch<T>(path: string, params: Record<string, string> = {}): 
       'OData-MaxVersion': '4.0',
       'OData-Version': '4.0',
     },
-    cache: 'no-store',
+    ...(revalidate ? { next: { revalidate } } : { cache: 'no-store' as const }),
   });
 
   if (!res.ok) {
@@ -200,6 +203,8 @@ export interface PropertySearchOptions {
   orderby?: string;
   count?: boolean;
   expand?: string;
+  /** Seconds to cache in Next's data cache (ISR pages). Omit for uncached. */
+  revalidate?: number;
 }
 
 // Note: ClosePrice and StreetSuffix are not valid SABOR fields — omit to avoid 400
@@ -232,7 +237,7 @@ export async function searchProperties(opts: PropertySearchOptions = {}): Promis
   if (opts.count)   params['$count']   = 'true';
   if (opts.expand)  params['$expand']  = opts.expand;
 
-  return resoFetch<ResoProperty>('Property', params);
+  return resoFetch<ResoProperty>('Property', params, opts.revalidate);
 }
 
 /**
@@ -264,7 +269,7 @@ export async function searchPropertiesAll(
  * SABOR: use ResourceRecordID (= ListingId) not ResourceRecordKey.
  * Returns a map of ListingId → MediaURL[]
  */
-export async function getMediaBatch(listingIds: string[]): Promise<Map<string, string[]>> {
+export async function getMediaBatch(listingIds: string[], revalidate?: number): Promise<Map<string, string[]>> {
   const map = new Map<string, string[]>();
   // SABOR ResourceRecordID doesn't support `in` filter — use `or` conditions
   // Keep batches small to avoid URL length limits
@@ -281,7 +286,7 @@ export async function getMediaBatch(listingIds: string[]): Promise<Map<string, s
         $orderby: 'Order asc',
         $select: 'ResourceRecordID,MediaURL,Order,ImageHeight,ImageWidth',
         $top: '500',
-      });
+      }, revalidate);
       for (const m of res.value) {
         if (!m.ResourceRecordID || !m.MediaURL) continue;
         const arr = map.get(m.ResourceRecordID) ?? [];
