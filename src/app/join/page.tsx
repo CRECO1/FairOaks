@@ -26,7 +26,7 @@ const PERKS = [
   },
   {
     icon: TrendingUp,
-    title: 'Proven Lead Flow',
+    title: 'Lead Flow',
     description: 'Benefit from our established online presence, Zillow partnerships, and referral network.',
   },
   {
