@@ -51,9 +51,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   const status = turnStatus(env, signer, signers);
 
   let doc_url: string | null = null;
-  // An expired link gets no document: the whole point of the expiry is to stop
-  // handing out the file to whoever ends up holding the URL.
-  const path = status === 'expired' ? null
+  // An expired, voided or declined link gets no document: once the request is dead
+  // (or the link has lapsed) the file must stop being handed to whoever holds the URL.
+  const path = status === 'expired' || status === 'voided' || status === 'declined' ? null
     : status === 'completed' && env.executed_path ? env.executed_path : env.source_path;
   if (path) { const { data: sg } = await db.storage.from(SIGN_BUCKET).createSignedUrl(path, 3600); doc_url = sg?.signedUrl ?? null; }
 

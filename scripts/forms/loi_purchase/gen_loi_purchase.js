@@ -174,7 +174,7 @@ const { loadBranding, drawHeader, drawFooter, CONTENT_BOTTOM } = require('../lib
   staticBlock('Sincerely,', 14);
   fieldBlock('agent_name', M, 260, 'Zachary A. Stovall');
   fieldBlock('agent_email', M, 260, 'zack@crecotx.com');
-  fieldBlock('agent_phone', M, 260, '(210) 355-8683', 20);
+  fieldBlock('agent_phone', M, 260, '(210) 817-3443', 20);  // business line, never the broker's cell
 
   // ── Two seller acceptance blocks — blank, kept together on one page ──────────
   const SIGW = 250, LABX = M + 64;
