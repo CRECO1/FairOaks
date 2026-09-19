@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
@@ -146,6 +147,8 @@ export async function POST(req: NextRequest) {
               console.error('[leads] crm_clients insert error:', JSON.stringify(crmInsertErr));
             } else {
               console.log(`[leads] CRM client created: ${first_name} ${last_name} (${email ?? phone})`);
+              // Welcome sequence: off unless LEAD_AUTOENROLL_UNITS names this unit.
+              if (newClient?.id) await maybeAutoEnrollLead(supabaseAdmin, { clientId: newClient.id, agentId: adminId ?? null, businessUnit: unit as 'commercial' | 'residential' });
               // Write to email_lead_imports so the Prospects tab shows this lead immediately
               await supabaseAdmin.from('email_lead_imports').insert([{
                 gmail_message_id:    `website-${crypto.randomUUID()}`,

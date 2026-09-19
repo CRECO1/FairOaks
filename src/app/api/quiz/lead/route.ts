@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
@@ -90,7 +91,10 @@ export async function POST(req: NextRequest) {
               business_unit: unit,
               tags: unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
-            }]);
+            }]).select('id').single().then(async ({ data: created }) => {
+              // Welcome sequence: off unless LEAD_AUTOENROLL_UNITS names this unit.
+              if (created?.id) await maybeAutoEnrollLead(supabaseAdmin, { clientId: created.id, agentId: adminId ?? null, businessUnit: unit as 'commercial' | 'residential' });
+            });
           }
         }
       } catch (crmErr) {

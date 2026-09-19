@@ -26,6 +26,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
@@ -203,6 +204,10 @@ export async function POST(req: NextRequest) {
       `,
     }).catch((err) => { console.error('[webhook] lead notification email failed:', err?.message ?? err); }); // non-fatal
   }
+
+  // New website leads can be enrolled in the brand's welcome sequence. Off
+  // unless LEAD_AUTOENROLL_UNITS names this unit; see lib/lead-autoenroll.ts.
+  if (isNew) await maybeAutoEnrollLead(supabase, { clientId, agentId: adminId ?? null, businessUnit: unit });
 
   return NextResponse.json({ success: true, clientId, isNew });
 }
