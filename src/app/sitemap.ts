@@ -95,6 +95,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Careers & join
     { url: `${BASE_URL}/careers`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE_URL}/join`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.65 },
+    // Legal
+    { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${BASE_URL}/privacy`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.3 },
     // City landing pages
     { url: `${BASE_URL}/homes-for-sale`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.9 },
     { url: `${BASE_URL}/homes-for-sale/boerne-tx`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
