@@ -178,15 +178,9 @@ export default function RootLayout({
                   openingHoursSpecification: [
                     {
                       '@type': 'OpeningHoursSpecification',
-                      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-                      opens: '09:00',
-                      closes: '18:00',
-                    },
-                    {
-                      '@type': 'OpeningHoursSpecification',
-                      dayOfWeek: ['Saturday'],
-                      opens: '10:00',
-                      closes: '16:00',
+                      dayOfWeek: [...FORG.openingHours.dayOfWeek],
+                      opens: FORG.openingHours.opens,
+                      closes: FORG.openingHours.closes,
                     },
                   ],
                   // No aggregateRating: a 5.0 / 127-review rating was published here with

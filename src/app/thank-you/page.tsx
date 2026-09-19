@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { FORG } from '@/lib/site-identity';
 import Link from 'next/link';
 import { CheckCircle, Phone, Search, Home, ArrowRight } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
@@ -94,7 +95,7 @@ export default function ThankYouPage() {
                 >
                   210-390-9997
                 </a>
-                <p className="mt-2 text-body-sm text-white/50">Mon–Fri 9am–6pm · Sat 10am–4pm · Sun by appointment</p>
+                <p className="mt-2 text-body-sm text-white/50">{FORG.hoursShort} · Central</p>
               </div>
             </div>
           </Container>

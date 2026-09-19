@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FORG } from '@/lib/site-identity';
 import { useRouter } from 'next/navigation';
 import { Phone, Mail, MapPin, Clock, Calendar } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
@@ -128,9 +129,8 @@ export default function ContactPage() {
                     <div>
                       <p className="font-semibold text-primary">Hours</p>
                       <p className="text-body-sm text-foreground-muted">
-                        Mon–Fri: 9am – 6pm<br />
-                        Sat: 10am – 4pm<br />
-                        Sun: By Appointment
+                        {FORG.hoursShort}<br />
+                        Central Time
                       </p>
                     </div>
                   </div>

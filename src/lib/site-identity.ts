@@ -57,7 +57,16 @@ export const FORG = {
   // point crecotx.com uses. The old 29.7494, -98.6318 sat about 2 km away.
   latitude: 29.734008,
   longitude: -98.643139,
-  hours: 'Mon–Fri 9 AM–6 PM, Sat 10 AM–4 PM (Central)',
+  // Open every day, 8 AM–6 PM Central (set by Zack 2026-09-19). The schema, the
+  // llms files and the visible hours on /contact and /thank-you all read these,
+  // so they can't disagree.
+  hours: 'Mon–Sun 8 AM–6 PM (Central)',
+  hoursShort: 'Mon–Sun 8am–6pm',
+  openingHours: {
+    dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+    opens: '08:00',
+    closes: '18:00',
+  },
   /**
    * Only profiles the brokerage has confirmed. An entry here asserts to search
    * engines that this IS the same entity, so a wrong handle points them at a
