@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { BreadcrumbJsonLd } from '@/components/seo/BreadcrumbJsonLd';
 
 export const metadata: Metadata = {
   title: 'Find My Perfect Home | Fair Oaks Ranch TX Home Finder Quiz',
@@ -29,5 +30,10 @@ export const metadata: Metadata = {
 };
 
 export default function QuizLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <BreadcrumbJsonLd crumbs={[{ name: 'Home Match Quiz', path: '/quiz' }]} />
+      {children}
+    </>
+  );
 }

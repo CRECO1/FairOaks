@@ -447,50 +447,8 @@ export default async function HomePage() {
         }}
       />
 
-      {/* ── FAQ Schema ───────────────────────────────────────────────── */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: jsonLdScript({
-            '@context': 'https://schema.org',
-            '@type': 'FAQPage',
-            mainEntity: [
-              {
-                '@type': 'Question',
-                name: 'How do I find homes for sale in Fair Oaks Ranch, TX?',
-                acceptedAnswer: {
-                  '@type': 'Answer',
-                  text: 'Browse our live MLS listings at fairoaksrealtygroup.com/listings. We update directly from SABOR MLS so you always see the latest active and pending properties in Fair Oaks Ranch, Boerne, Helotes, and surrounding Texas Hill Country communities.',
-                },
-              },
-              {
-                '@type': 'Question',
-                name: 'What is my home worth in Fair Oaks Ranch?',
-                acceptedAnswer: {
-                  '@type': 'Answer',
-                  text: 'Home values in Fair Oaks Ranch range widely based on subdivision, size, and condition. Our agents provide free, no-obligation home valuations based on recent comparable sales. Contact us or visit our Sell page to request yours.',
-                },
-              },
-              {
-                '@type': 'Question',
-                name: 'Do you work with VA loans and military buyers?',
-                acceptedAnswer: {
-                  '@type': 'Answer',
-                  text: 'Yes — we specialize in VA homebuying and PCS relocations. We serve active duty, veterans, and military families near Fort Sam Houston, Lackland AFB, and Randolph AFB. VA loans offer $0 down and no PMI, and our agents know how to maximize your benefit.',
-                },
-              },
-              {
-                '@type': 'Question',
-                name: 'How long does it take to sell a home in Fair Oaks Ranch?',
-                acceptedAnswer: {
-                  '@type': 'Answer',
-                  text: 'It depends on price point, condition and how the home is presented. We will give you a realistic timeline for your home and your segment of the market when we put together your pricing strategy.',
-                },
-              },
-            ],
-          }),
-        }}
-      />
+      {/* No FAQPage markup here: the four Q&As it carried were never shown on the page,
+          and structured data must match visible content. See Zack's punch list. */}
 
       <Footer />
     </>

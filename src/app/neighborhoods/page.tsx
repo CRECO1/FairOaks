@@ -1,6 +1,7 @@
 export const revalidate = 3600;
 
 import type { Metadata } from 'next';
+import { BreadcrumbJsonLd } from '@/components/seo/BreadcrumbJsonLd';
 
 export const metadata: Metadata = {
   title: 'Fair Oaks Ranch Neighborhoods & Communities | Area Guide',
@@ -68,6 +69,8 @@ export default async function NeighborhoodsPage() {
 
   return (
     <>
+      {/* Index page only — child pages carry their own breadcrumbs. */}
+      <BreadcrumbJsonLd crumbs={[{ name: 'Neighborhoods', path: '/neighborhoods' }]} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}

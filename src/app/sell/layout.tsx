@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { BreadcrumbJsonLd } from '@/components/seo/BreadcrumbJsonLd';
 
 export const metadata: Metadata = {
   title: 'Sell Your Home in Fair Oaks Ranch TX | Free Home Valuation',
@@ -30,5 +31,10 @@ export const metadata: Metadata = {
 };
 
 export default function SellLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+  return (
+    <>
+      <BreadcrumbJsonLd crumbs={[{ name: 'Sell Your Home', path: '/sell' }]} />
+      {children}
+    </>
+  );
 }

@@ -231,17 +231,7 @@ export default function SpringBranchTxPage() {
                     </Link>
                   </Button>
                 </div>
-
-                <div className="mt-6 flex items-center gap-3 rounded-xl border border-border bg-white p-5">
-                  <MapPin className="h-5 w-5 text-gold shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-body-sm font-semibold text-primary">Spring Branch Neighborhood Guide</p>
-                    <p className="text-caption text-foreground-muted">Explore acreage areas, river access properties & local insights</p>
-                  </div>
-                  <Link href="/neighborhoods/spring-branch" className="inline-flex items-center gap-1 text-body-sm font-semibold text-gold hover:text-primary transition-colors">
-                    View Guide <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
+                {/* No neighborhood-guide link: /neighborhoods/spring-branch does not exist. */}
               </div>
 
               <div>

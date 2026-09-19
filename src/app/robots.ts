@@ -25,6 +25,8 @@ const AI_CRAWLERS = [
   'ClaudeBot', 'Claude-User', 'Claude-SearchBot', 'anthropic-ai', 'Claude-Web',
   // Perplexity
   'PerplexityBot', 'Perplexity-User',
+  // xAI (Grok)
+  'GrokBot', 'xAI-Bot',
   // Google (Gemini / AI training control) + Apple Intelligence
   'Google-Extended', 'Applebot', 'Applebot-Extended',
   // Common Crawl (feeds many LLM datasets), ByteDance, Amazon, Meta, Microsoft, others

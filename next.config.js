@@ -115,11 +115,26 @@ const nextConfig = {
 
   // Add security headers to all routes
   async headers() {
+    const NOINDEX = [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }];
     return [
       {
         source: '/:path*',
         headers: securityHeaders,
       },
+      // Private surfaces: never indexed, even when a URL is linked from elsewhere
+      // (robots.txt only stops crawling, not indexing of a linked URL).
+      { source: '/crm', headers: NOINDEX },
+      { source: '/crm/:path*', headers: NOINDEX },
+      { source: '/sign/:path*', headers: NOINDEX },
+      { source: '/signup', headers: NOINDEX },
+      { source: '/signup/:path*', headers: NOINDEX },
+      { source: '/admin', headers: NOINDEX },
+      { source: '/admin/:path*', headers: NOINDEX },
+      { source: '/manage', headers: NOINDEX },
+      { source: '/manage/:path*', headers: NOINDEX },
+      { source: '/api/:path*', headers: NOINDEX },
+      { source: '/billing/:path*', headers: NOINDEX },
+      { source: '/client/:path*', headers: NOINDEX },
     ];
   },
 };

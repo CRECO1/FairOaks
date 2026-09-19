@@ -145,6 +145,38 @@ export default async function ListingDetailPage({ params }: Props) {
     .toLowerCase()
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '');
+  // Only link pages that exist. Every listing used to link /neighborhoods/<city>,
+  // which 404'd for most MLS cities (San Antonio, Converse, New Braunfels, …).
+  // City guide if there is one, else the city's homes-for-sale page, else nothing.
+  const CITY_GUIDES = new Set(['fair-oaks-ranch', 'boerne', 'helotes', 'leon-springs']);
+  const CITY_HOME_PAGES = new Set(['bulverde', 'canyon-lake', 'new-braunfels', 'san-antonio', 'spring-branch']);
+  const areaLink = CITY_GUIDES.has(citySlug)
+    ? { href: `/neighborhoods/${citySlug}`, label: `View the ${listing.city} neighborhood guide →` }
+    : CITY_HOME_PAGES.has(citySlug)
+      ? { href: `/homes-for-sale/${citySlug}-tx`, label: `See more ${listing.city} homes for sale →` }
+      : null;
+
+  // ── Listing facts for structured data, all read from the MLS record ─────────
+  // Leases: every SABOR lease in the feed is priced as monthly rent (≈$1–5K), and
+  // every sale — land included — is $14K+. So a price under $10K is monthly rent.
+  const isLease = !!listing.price && listing.price < 10000;
+  const pt = (listing.property_type ?? '').toLowerCase();
+  const LAND_OR_COMMERCIAL = ['relot', 'ltacr', 'lwris', 'cmlnd', 'farnc', 'retailshop'];
+  const propertyType = pt === 'sfd' || pt === 'sfdet' ? 'SingleFamilyResidence'
+    : LAND_OR_COMMERCIAL.includes(pt) ? 'Place' : 'Residence';
+  // Under contract / pending → no availability claim; only active is InStock.
+  const availability = listing.status === 'active' ? 'https://schema.org/InStock' : undefined;
+  const offer = listing.price ? {
+    '@type': 'Offer',
+    businessFunction: isLease ? 'http://purl.org/goodrelations/v1#LeaseOut' : 'http://purl.org/goodrelations/v1#Sell',
+    ...(isLease
+      ? { priceSpecification: { '@type': 'UnitPriceSpecification', price: listing.price, priceCurrency: 'USD', unitCode: 'MON', unitText: 'month' } }
+      : { price: listing.price, priceCurrency: 'USD' }),
+    ...(availability ? { availability } : {}),
+    // The listing brokerage from the MLS record — often not Fair Oaks (IDX).
+    ...(listing.list_office_name ? { offeredBy: { '@type': 'RealEstateAgent', name: listing.list_office_name } } : {}),
+  } : null;
+  const propertyId = `${BASE_URL}/listings/${slug}#property`;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -158,7 +190,8 @@ export default async function ListingDetailPage({ params }: Props) {
         ],
       },
       {
-        '@type': 'SingleFamilyResidence',
+        '@type': propertyType,
+        '@id': propertyId,
         name: listing.title,
         url: `${BASE_URL}/listings/${slug}`,
         description: listing.description ?? undefined,
@@ -174,14 +207,6 @@ export default async function ListingDetailPage({ params }: Props) {
           postalCode: listing.zip ?? undefined,
           addressCountry: 'US',
         },
-        ...(listing.price ? {
-          offers: {
-            '@type': 'Offer',
-            price: listing.price,
-            priceCurrency: 'USD',
-            availability: 'https://schema.org/InStock',
-          },
-        } : {}),
         ...(images[0] ? { image: images[0] } : {}),
       },
     ],
@@ -190,15 +215,14 @@ export default async function ListingDetailPage({ params }: Props) {
   const realEstateListingLd = {
     '@context': 'https://schema.org',
     '@type': 'RealEstateListing',
-    // Ties every listing back to the one organization node, so an assistant can
-    // tell who is marketing the property without re-stating the brokerage here.
-    offeredBy: { '@id': `${BASE_URL}/#organization` },
+    // IDX: the listing brokerage is in the offer (from the MLS record). This used to
+    // credit every listing to Fair Oaks, including ones listed by other brokerages.
     name: listing.title,
+    about: { '@id': propertyId },
     description: listing.description ?? listing.address,
     url: `${BASE_URL}/listings/${slug}`,
     ...(listing.listing_date ? { datePosted: listing.listing_date } : {}),
-    price: listing.price ?? undefined,
-    priceCurrency: 'USD',
+    ...(offer ? { offers: offer } : {}),
     ...(images[0] ? { image: images[0] } : {}),
     address: {
       '@type': 'PostalAddress',
@@ -330,26 +354,37 @@ export default async function ListingDetailPage({ params }: Props) {
                 </div>
               </div>
 
-              {/* Neighborhood Guide CTA */}
-              <div className="mt-8 rounded-xl border border-gold/30 bg-gold/5 p-5">
-                <p className="text-body-sm text-foreground-muted">
-                  <MapPin className="mr-1 inline h-3.5 w-3.5 text-gold" />
-                  This home is located in{' '}
-                  <Link
-                    href={`/neighborhoods/${citySlug}`}
-                    className="font-semibold text-primary hover:text-gold transition-colors"
-                  >
-                    {listing.city}
+              {/* Neighborhood Guide CTA — only when the area page exists */}
+
+              {areaLink && (
+
+                <div className="mt-8 rounded-xl border border-gold/30 bg-gold/5 p-5">
+
+                  <p className="text-body-sm text-foreground-muted">
+
+                    <MapPin className="mr-1 inline h-3.5 w-3.5 text-gold" />
+
+                    This home is located in{' '}
+
+                    <Link href={areaLink.href} className="font-semibold text-primary hover:text-gold transition-colors">
+
+                      {listing.city}
+
+                    </Link>
+
+                    {' '}— explore schools, lifestyle, and more homes in the area.
+
+                  </p>
+
+                  <Link href={areaLink.href} className="mt-3 inline-flex items-center gap-1.5 text-body-sm font-semibold text-gold hover:underline">
+
+                    {areaLink.label}
+
                   </Link>
-                  {' '}— explore schools, lifestyle, and more homes in the area.
-                </p>
-                <Link
-                  href={`/neighborhoods/${citySlug}`}
-                  className="mt-3 inline-flex items-center gap-1.5 text-body-sm font-semibold text-gold hover:underline"
-                >
-                  View the {listing.city} neighborhood guide →
-                </Link>
-              </div>
+
+                </div>
+
+              )}
             </div>
 
             {/* Sidebar */}
@@ -362,7 +397,8 @@ export default async function ListingDetailPage({ params }: Props) {
                   Contact us to schedule a private showing or ask any questions.
                 </p>
                 <ListingContactForm listingTitle={listing.title} />
-                <MortgageCalculator listingPrice={listing.price} />
+                {/* A mortgage estimate on monthly rent is meaningless. */}
+                {!isLease && <MortgageCalculator listingPrice={listing.price} />}
                 <div className="mt-6 pt-6 border-t border-border text-center">
                   <p className="text-caption text-foreground-muted mb-2">Or call us directly</p>
                   <PhoneLink location="listing_detail">

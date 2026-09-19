@@ -1,4 +1,5 @@
 import { Header, Footer } from '@/components/layout';
+import { BreadcrumbJsonLd } from '@/components/seo/BreadcrumbJsonLd';
 import { Container } from '@/components/ui/Container';
 import { getFirstPageListings } from '@/lib/listings-first-page';
 import { ListingsBrowser } from './ListingsBrowser';
@@ -17,6 +18,8 @@ export default async function ListingsPage() {
 
   return (
     <>
+      {/* Index page only — child pages carry their own breadcrumbs. */}
+      <BreadcrumbJsonLd crumbs={[{ name: 'MLS Listings', path: '/listings' }]} />
       <Header />
       <main className="min-h-screen pt-20">
 

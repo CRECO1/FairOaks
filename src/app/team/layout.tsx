@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { BreadcrumbJsonLd } from '@/components/seo/BreadcrumbJsonLd';
 import { jsonLdScript } from '@/lib/json-ld';
 import { ORG_ID, BROKER_ID, AGENT_ID } from '@/lib/site-identity';
 
@@ -54,6 +55,7 @@ export default function TeamLayout({ children }: { children: React.ReactNode }) 
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLdScript(teamPageSchema) }}
       />
+      <BreadcrumbJsonLd crumbs={[{ name: 'Our Team', path: '/team' }]} />
       {children}
     </>
   );
