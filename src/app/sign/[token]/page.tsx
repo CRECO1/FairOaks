@@ -344,6 +344,11 @@ export default function SignPage() {
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [focusId, setFocusId] = useState<string | null>(null);
   const [adopted, setAdopted] = useState<{ signature?: string; initials?: string } | null>(null);
+  // Step 1 is adopting a signature; the document is only shown once that's done. Every
+  // signing link opens here, so the signer knows exactly what will be stamped before
+  // they see a single spot.
+  const [adoptStep, setAdoptStep] = useState(true);
+  const [adopting, setAdopting] = useState(false);
   const fields = useMemo(() => (data?.fields ?? []).map(f => isInput(f.type)
     ? { ...f, label: isGenericLabel(f.label) ? labels[f.id] : f.label }
     : f), [data, labels]);
@@ -365,23 +370,47 @@ export default function SignPage() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     setTimeout(() => el?.focus({ preventScroll: true }), 250);
   }, []);
-  // The name, the pad and the Finish button live below the document. Anything that
+  // Consent and the Finish button live below the document (step 2). Anything that
   // needs the signer there has to take them there — on a phone it's pages away.
   const scrollToAdopt = useCallback(() => {
     adoptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
-  // Turn the chosen hand into the images the page stamps into each spot, once.
-  const adopt = useCallback(async () => {
-    if (adopted) return adopted;
+  // Turn the chosen hand into the images the page stamps into each spot.
+  const renderAdopted = useCallback(async () => {
+    const family = (STYLES.find(s => s.key === styleKey) ?? STYLES[0]).family;
     const sig = mode === 'draw'
       ? exportStrokes(strokes.current)
-      : await renderHand(typed, active.family, 640, 150);
-    const ini = await renderHand(initials, active.family, 220, 150);
-    const a = { signature: sig, initials: ini };
+      : await renderHand(typed, family, 640, 150);
+    const ini = await renderHand(initials, family, 220, 150);
+    return { signature: sig, initials: ini };
+  }, [mode, typed, initials, styleKey]);
+  const adopt = useCallback(async () => {
+    if (adopted) return adopted;
+    const a = await renderAdopted();
     setAdopted(a);
     return a;
-  }, [adopted, mode, typed, initials]); // eslint-disable-line
+  }, [adopted, renderAdopted]);
+
+  // Step 1 → step 2. Re-adopting (after "Change") replaces the marks everywhere at
+  // once: placed spots draw from `adopted`, so they update without being redone.
+  const adoptAndContinue = useCallback(async () => {
+    if (!typed.trim()) { setErr('Enter your full legal name.'); return; }
+    if (mode === 'draw' && !hasInk()) { setErr('Draw your signature, or switch to “Pick a style”.'); return; }
+    setErr(''); setAdopting(true);
+    try {
+      const a = await renderAdopted();
+      if (!a.signature) { setErr('We couldn’t create your signature. Please try again.'); return; }
+      setAdopted(a);
+      setAdoptStep(false);
+      window.scrollTo({ top: 0 });
+    } finally { setAdopting(false); }
+  }, [typed, mode, renderAdopted]);
+
+  const changeSignature = useCallback(() => {
+    setErr(''); setAdoptStep(true);
+    window.scrollTo({ top: 0 });
+  }, []);
 
   const fillField = useCallback(async (f: SignField) => {
     // A text / checkbox spot is filled by typing into it, not by adopting a signature —
@@ -391,21 +420,20 @@ export default function SignPage() {
       scrollToInput(f.id);
       return;
     }
-    if (!typed.trim()) { setErr('Enter your full legal name first.'); scrollToAdopt(); return; }
-    if (mode === 'draw' && !hasInk()) { setErr('Draw your signature first, or choose a style.'); scrollToAdopt(); return; }
+    // Adoption comes first, so this only happens if something reset it.
+    if (!adopted) { setAdoptStep(true); window.scrollTo({ top: 0 }); return; }
     setErr('');
-    await adopt();
     setFilled(prev => ({ ...prev, [f.id]: true }));
     // Move them along to the next one without making them hunt for it.
     const rest = fields.filter(x => x.id !== f.id && !filled[x.id]);
     if (rest[0]) setTimeout(() => scrollToField(rest[0].id), 180);
-  }, [typed, mode, adopt, fields, filled, scrollToField, scrollToAdopt, scrollToInput]);
+  }, [adopted, fields, filled, scrollToField, scrollToInput]);
 
   // Signers can undo: tap a placed spot to clear it, or Start over to redo everything.
   const clearField = useCallback((f: SignField) => {
     setFilled(prev => { const n = { ...prev }; delete n[f.id]; return n; });
   }, []);
-  const startOver = useCallback(() => { setFilled({}); setAdopted(null); setErr(''); }, []);
+  const startOver = useCallback(() => { setFilled({}); setErr(''); }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -431,7 +459,7 @@ export default function SignPage() {
   // ink is sharp on a retina phone and lands exactly under the finger; strokes are
   // replayed whenever the pad changes size.
   useEffect(() => {
-    if (view !== 'ready' || mode !== 'draw') return;
+    if (view !== 'ready' || !adoptStep || mode !== 'draw') return;
     const c = canvasRef.current; if (!c) return;
     const ctx = c.getContext('2d'); if (!ctx) return;
 
@@ -491,14 +519,12 @@ export default function SignPage() {
       c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up);
       c.removeEventListener('touchmove', noScroll);
     };
-  }, [view, mode]);
+  }, [view, adoptStep, mode]);
 
   function clearSig() {
     strokes.current = [];
     const c = canvasRef.current; const ctx = c?.getContext('2d');
     if (c && ctx) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height); ctx.restore(); }
-    // Spots already stamped with the old drawing would otherwise submit it.
-    if (adopted) { setAdopted(null); setFilled({}); }
   }
 
   const active = useMemo(() => STYLES.find(s => s.key === styleKey) ?? STYLES[0], [styleKey]);
@@ -532,8 +558,7 @@ export default function SignPage() {
   const submit = useCallback(async () => {
     setErr('');
     if (!consent) { setErr('Please check the box to consent to sign electronically.'); return; }
-    if (!typed.trim()) { setErr('Enter your full legal name.'); return; }
-    if (mode === 'draw' && !hasInk()) { setErr('Draw your signature above, or switch to “Choose a style”.'); return; }
+    if (!adopted) { changeSignature(); return; }
     if (fields.length && remaining.length) {
       setErr(`You still have ${remaining.length} spot${remaining.length === 1 ? '' : 's'} to confirm on the document.`);
       if (isInput(remaining[0].type)) scrollToInput(remaining[0].id); else scrollToField(remaining[0].id);
@@ -556,7 +581,7 @@ export default function SignPage() {
       setFinalStatus(j.status || 'signed');
       setView('signed');
     } finally { setSubmitting(false); }
-  }, [consent, typed, initials, mode, active, token, fields, remaining, adopt, scrollToField, scrollToInput, values]);
+  }, [consent, typed, mode, active, token, fields, remaining, adopt, adopted, changeSignature, scrollToField, scrollToInput, values]);
 
   // While the keyboard is up, the floating control would ride above it and cover the very
   // field being typed into — it steps aside until the signer is done typing.
@@ -574,7 +599,7 @@ export default function SignPage() {
 
   // What the floating control does: walk the signer to their next spot, or — once the
   // spots are done (or the document has none) — down to Finish & Sign.
-  const pill: 'jump' | 'finish' | null = view !== 'ready' || typing ? null
+  const pill: 'jump' | 'finish' | null = view !== 'ready' || adoptStep || typing ? null
     : fields.length > 0 && !allDone && nextField ? 'jump'
     : adoptInView ? null : 'finish';
 
@@ -637,16 +662,125 @@ export default function SignPage() {
           </div>
         )}
 
+        {/* Step 1 — adopt the signature before the document is shown, the way
+            DocuSign's "Adopt Your Signature" comes first. The document keeps loading
+            underneath, so it's ready the moment they continue. */}
+        {adoptStep && (
+          <div style={{ ...card, maxWidth: 720, scrollMarginTop: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 6 }}>Step 1 of 2 · Adopt your signature</div>
+            <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5, margin: '0 0 16px' }}>
+              Confirm your name and choose how your signature and initials will look. They’re placed wherever the document asks you to sign or initial — you’ll see each spot next.
+            </p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+              <div style={{ flex: '2 1 260px', minWidth: 0 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Full legal name</label>
+                <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Your full name" autoComplete="name"
+                  style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ flex: '1 1 110px', minWidth: 0 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Initials</label>
+                <input value={initials} onChange={e => { setInitialsEdited(true); setInitials(e.target.value.slice(0, 4)); }} placeholder="ABC" autoCapitalize="characters"
+                  style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 4, background: '#f1f2f4', borderRadius: 10, padding: 4, marginBottom: 14 }}>
+              {tab('pick', narrow ? '✍️ Pick a style' : '✍️  Choose a style')}
+              {tab('draw', narrow ? '🖊 Draw it' : '🖊  Draw it yourself')}
+            </div>
+
+            {mode === 'pick' ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(288px,100%),1fr))', gap: 10 }}>
+                  {STYLES.map(s => {
+                    const on = s.key === styleKey;
+                    return (
+                      <button key={s.key} onClick={() => setStyleKey(s.key)}
+                        style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 10, cursor: 'pointer', background: on ? '#fffdf6' : '#fff', minWidth: 0,
+                          border: on ? `2px solid ${GOLD}` : '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
+                        <span style={{ flex: 1, minWidth: 0, fontFamily: s.family, fontSize: 23, color: INK, lineHeight: 1.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {typed.trim() || 'Your name'}
+                        </span>
+                        <span style={{ flexShrink: 0, fontFamily: s.family, fontSize: 20, color: INK, opacity: .75, borderLeft: '1px solid #eef0f2', paddingLeft: 10 }}>
+                          {initials || 'AB'}
+                        </span>
+                        {on && <span style={{ flexShrink: 0, color: GOLD, fontSize: 14, fontWeight: 800 }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 12, color: '#9ca3af', margin: '10px 2px 16px' }}>
+                  Pick the hand you want. It’s used for your signature <em>and</em> your initials wherever the document asks for them.
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ position: 'relative' }}>
+                  <canvas ref={canvasRef} aria-label="Signature pad — draw your signature with your finger or mouse"
+                    style={{ display: 'block', width: '100%', height: narrow ? 180 : 160, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, boxSizing: 'border-box', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair' }} />
+                  <span aria-hidden style={{ position: 'absolute', left: 16, right: 16, bottom: 38, borderBottom: '1px dashed #d6d9de', pointerEvents: 'none' }} />
+                </div>
+                {/* Clear sits below the pad, not on it: on a phone a signature that ran to the
+                    right edge landed on the button and wiped itself. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0 16px' }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#9ca3af', paddingLeft: 2 }}>
+                    Draw above with your mouse or finger. Your initials use the <strong>{active.label}</strong> style.
+                  </div>
+                  <button onClick={clearSig} style={{ flexShrink: 0, minHeight: TAP, minWidth: 64, fontSize: 13, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '0 14px', cursor: 'pointer' }}>Clear</button>
+                </div>
+              </>
+            )}
+            {err && <div role="alert" style={{ background: '#fef2f2', color: '#dc2626', fontSize: 13.5, padding: '10px 12px', borderRadius: 8, marginBottom: 12 }}>{err}</div>}
+            <button onClick={adoptAndContinue} disabled={adopting}
+              style={{ width: '100%', minHeight: 52, padding: '14px 0', background: GOLD, color: '#fff', border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 700, cursor: adopting ? 'default' : 'pointer', opacity: adopting ? 0.7 : 1 }}>
+              {adopting ? 'Adopting…' : 'Adopt and continue ▸'}
+            </button>
+            {!declining ? (
+              <button onClick={() => setDeclining(true)} disabled={submitting}
+                style={{ width: '100%', marginTop: 6, minHeight: TAP, padding: '12px 0', background: 'none', color: '#9ca3af', border: 'none', fontSize: 13.5, cursor: 'pointer', textDecoration: 'underline' }}>
+                I can’t sign this
+              </button>
+            ) : (
+              <div style={{ marginTop: 14, padding: 14, border: '1px solid #fecaca', background: '#fef2f2', borderRadius: 10 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#b91c1c', marginBottom: 6 }}>Decline to sign?</div>
+                <div style={{ fontSize: 12.5, color: '#7f1d1d', lineHeight: 1.5, marginBottom: 10 }}>
+                  This cancels the request for everyone and notifies the sender. It can’t be undone — a new request would have to be sent.
+                </div>
+                {/* 16px text: anything smaller makes iOS zoom the whole page on focus. */}
+                <textarea value={declineReason} onChange={e => setDeclineReason(e.target.value)} rows={3}
+                  placeholder="What’s the problem? (optional, but it helps)"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: '1px solid #fecaca', borderRadius: 8, fontSize: 16, fontFamily: 'inherit', resize: 'vertical', marginBottom: 10 }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setDeclining(false); setDeclineReason(''); }} disabled={submitting}
+                    style={{ flex: 1, minHeight: TAP, padding: '12px 0', background: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                    Never mind
+                  </button>
+                  <button onClick={decline} disabled={submitting}
+                    style={{ flex: 1, minHeight: TAP, padding: '12px 0', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: submitting ? 'default' : 'pointer', opacity: submitting ? 0.7 : 1 }}>
+                    {submitting ? '…' : 'Decline'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {data && data.parties.length > 1 && (
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #f3f4f6', fontSize: 12, color: '#9ca3af' }}>
+                Signing order: {data.parties.map(p => `${p.name} (${p.role})${p.status === 'signed' ? ' ✓' : ''}`).join('  →  ')}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={adoptStep ? { display: 'none' } : undefined}>
         {fields.length > 0 && !allDone && (
           <div style={{ maxWidth: 960, margin: '0 auto 12px', fontSize: 14, color: '#7c5a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 10, padding: '12px 16px', lineHeight: 1.5 }}>
-            <strong>One more step — place your signature.</strong>{' '}
+            <strong>Place your signature.</strong>{' '}
             {narrow
               // Nine lines of instructions pushed the document off a phone's first screen.
               ? <>Tap the gold spots in the document, or the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>}</>
               : <>Tap each highlighted gold spot in the document below (there {fields.length === 1 ? 'is 1' : `are ${fields.length}`}), or use the gold <span style={{ color: GOLD, fontWeight: 700 }}>Jump to my signature</span> button.{inputFields.length > 0 && <> Type your details under <strong>Fill in</strong>.</>} Then check the box and Finish &amp; Sign.</>}
             {/* Its own row: a 44px-tall button inline in the paragraph split it in two. */}
             <div>
-              <button onClick={scrollToAdopt} style={{ display: 'inline-flex', alignItems: 'center', minHeight: TAP, background: 'none', border: 'none', padding: 0, color: GOLD, fontWeight: 700, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Draw your own signature instead ↓</button>
+              <button onClick={changeSignature} style={{ display: 'inline-flex', alignItems: 'center', minHeight: TAP, background: 'none', border: 'none', padding: 0, color: GOLD, fontWeight: 700, fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Change my signature style</button>
             </div>
           </div>
         )}
@@ -728,67 +862,21 @@ export default function SignPage() {
         )}
 
         <div ref={adoptRef} style={{ ...card, scrollMarginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 12 }}>Adopt your signature</div>
+          <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 12 }}>Step 2 of 2 · Finish &amp; sign</div>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-            <div style={{ flex: '2 1 260px', minWidth: 0 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Full legal name</label>
-              <input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Your full name" autoComplete="name"
-                style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' }} />
+          {/* The adopted marks, as they're being placed in the document. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 12px', border: '1px solid #eef0f2', borderRadius: 10, marginBottom: 16 }}>
+            <div style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {adopted?.signature && <img src={adopted.signature} alt="Your adopted signature" style={{ height: 44, maxWidth: '70%', objectFit: 'contain', objectPosition: 'left' }} />}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {adopted?.initials && <img src={adopted.initials} alt="Your adopted initials" style={{ height: 36, objectFit: 'contain', borderLeft: '1px solid #eef0f2', paddingLeft: 12 }} />}
             </div>
-            <div style={{ flex: '1 1 110px', minWidth: 0 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Initials</label>
-              <input value={initials} onChange={e => { setInitialsEdited(true); setInitials(e.target.value.slice(0, 4)); }} placeholder="ABC" autoCapitalize="characters"
-                style={{ width: '100%', padding: '11px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 16, boxSizing: 'border-box' }} />
-            </div>
+            <button onClick={changeSignature}
+              style={{ flexShrink: 0, minHeight: TAP, fontSize: 13, fontWeight: 700, color: '#7c5a12', background: '#fff', border: '1px solid #e6d3a2', borderRadius: 8, padding: '0 14px', cursor: 'pointer' }}>
+              Change
+            </button>
           </div>
-
-          <div style={{ display: 'flex', gap: 4, background: '#f1f2f4', borderRadius: 10, padding: 4, marginBottom: 14 }}>
-            {tab('pick', narrow ? '✍️ Pick a style' : '✍️  Choose a style')}
-            {tab('draw', narrow ? '🖊 Draw it' : '🖊  Draw it yourself')}
-          </div>
-
-          {mode === 'pick' ? (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(288px,100%),1fr))', gap: 10 }}>
-                {STYLES.map(s => {
-                  const on = s.key === styleKey;
-                  return (
-                    <button key={s.key} onClick={() => setStyleKey(s.key)}
-                      style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 10, cursor: 'pointer', background: on ? '#fffdf6' : '#fff', minWidth: 0,
-                        border: on ? `2px solid ${GOLD}` : '1px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
-                      <span style={{ flex: 1, minWidth: 0, fontFamily: s.family, fontSize: 23, color: INK, lineHeight: 1.55, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {typed.trim() || 'Your name'}
-                      </span>
-                      <span style={{ flexShrink: 0, fontFamily: s.family, fontSize: 20, color: INK, opacity: .75, borderLeft: '1px solid #eef0f2', paddingLeft: 10 }}>
-                        {initials || 'AB'}
-                      </span>
-                      {on && <span style={{ flexShrink: 0, color: GOLD, fontSize: 14, fontWeight: 800 }}>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 12, color: '#9ca3af', margin: '10px 2px 16px' }}>
-                Pick the hand you want. It’s used for your signature <em>and</em> your initials wherever the document asks for them.
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ position: 'relative' }}>
-                <canvas ref={canvasRef} aria-label="Signature pad — draw your signature with your finger or mouse"
-                  style={{ display: 'block', width: '100%', height: narrow ? 180 : 160, background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 10, boxSizing: 'border-box', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'crosshair' }} />
-                <span aria-hidden style={{ position: 'absolute', left: 16, right: 16, bottom: 38, borderBottom: '1px dashed #d6d9de', pointerEvents: 'none' }} />
-              </div>
-              {/* Clear sits below the pad, not on it: on a phone a signature that ran to the
-                  right edge landed on the button and wiped itself. */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0 16px' }}>
-                <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#9ca3af', paddingLeft: 2 }}>
-                  Draw above with your mouse or finger. Your initials use the <strong>{active.label}</strong> style.
-                </div>
-                <button onClick={clearSig} style={{ flexShrink: 0, minHeight: TAP, minWidth: 64, fontSize: 13, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '0 14px', cursor: 'pointer' }}>Clear</button>
-              </div>
-            </>
-          )}
 
           <label id="finish-section" style={{ display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 13.5, color: '#374151', lineHeight: 1.5, cursor: 'pointer', marginBottom: 16, padding: '4px 0' }}>
             <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ marginTop: 1, accentColor: GOLD, width: 22, height: 22, flexShrink: 0 }} />
@@ -837,6 +925,7 @@ export default function SignPage() {
               Signing order: {data.parties.map(p => `${p.name} (${p.role})${p.status === 'signed' ? ' ✓' : ''}`).join('  →  ')}
             </div>
           )}
+        </div>
         </div>
       </div>
 
