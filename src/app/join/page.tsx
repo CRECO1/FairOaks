@@ -1,45 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckCircle, TrendingUp, Laptop, Megaphone, Users, Award, DollarSign } from 'lucide-react';
+import { CheckCircle, Laptop, Megaphone, Search, Network, UserCheck, DollarSign } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { trackLead, trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { FAIR_OAKS_VALUE_PROPS } from '@/lib/recruiting';
 
-const PERKS = [
-  {
-    icon: DollarSign,
-    title: 'Competitive Splits',
-    description: 'Commission structures with no desk fees eating into your earnings.',
-  },
-  {
-    icon: Laptop,
-    title: 'Tech & CRM Tools',
-    description: 'Full access to our custom CRM, automated drip campaigns, and lead management platform.',
-  },
-  {
-    icon: Megaphone,
-    title: 'Marketing Support',
-    description: 'Professional photography, listing presentations, social media content, and brand resources.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Lead Flow',
-    description: 'Benefit from our established online presence, Zillow partnerships, and referral network.',
-  },
-  {
-    icon: Users,
-    title: 'Collaborative Culture',
-    description: 'A team-first environment where experienced agents mentor and support each other.',
-  },
-  {
-    icon: Award,
-    title: 'Local Market Authority',
-    description: 'Leverage our Texas Hill Country market knowledge and local relationships.',
-  },
-];
+// The pitch itself lives in lib/recruiting.ts so the site, the CRECO page and
+// the printed one-pagers can't drift apart. Icons are resolved here because
+// that module stays free of React.
+const ICONS = { UserCheck, Laptop, Megaphone, Search, Network, DollarSign } as const;
 
 const PRODUCTION_OPTIONS = [
   'Under $2M',
@@ -97,13 +70,16 @@ export default function JoinPage() {
         <div className="relative bg-primary py-16 sm:py-20 text-white overflow-hidden">
           <div className="absolute inset-0 bg-[url('/images/hero-bg.jpg')] bg-cover bg-center opacity-10" />
           <Container className="relative">
-            <p className="overline mb-3 text-gold">We&apos;re Growing</p>
+            <p className="overline mb-3 text-gold">Now Hiring Agents</p>
             <h1 className="font-heading text-display-sm font-bold max-w-2xl">
-              Build Your Career With<br />
-              <span className="text-gold">Fair Oaks Realty Group</span>
+              A brokerage where you can<br />
+              <span className="text-gold">reach the broker directly</span>
             </h1>
             <p className="mt-4 text-body text-white/70 max-w-xl">
-              Join our Texas Hill Country real estate team. Whether you&apos;re an experienced agent or just starting out, we have the tools, support, and culture to help you thrive.
+              Fair Oaks Realty Group is a Hill Country residential brokerage led hands-on by
+              Zachary A. Stovall. You get a broker who answers, a CRM built for this office,
+              and lead generation you inherit on day one — plus a commercial sister company
+              to refer across.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <a href="#apply"
@@ -124,19 +100,25 @@ export default function JoinPage() {
             <div className="text-center mb-12">
               <p className="overline mb-2 text-gold">Why Fair Oaks</p>
               <h2 className="font-heading text-display-xs font-bold text-primary">
-                Everything You Need to Succeed
+                What you actually get
               </h2>
+              <p className="mt-3 text-body text-foreground-muted max-w-2xl mx-auto">
+                No inflated claims — here is exactly what this brokerage puts behind you.
+              </p>
             </div>
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {PERKS.map((perk) => (
-                <div key={perk.title} className="rounded-2xl bg-white p-6 shadow-card">
-                  <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gold/15">
-                    <perk.icon className="h-6 w-6 text-gold-dark" />
+              {FAIR_OAKS_VALUE_PROPS.map((prop) => {
+                const Icon = ICONS[prop.icon];
+                return (
+                  <div key={prop.title} className="rounded-2xl bg-white p-6 shadow-card">
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gold/15">
+                      <Icon className="h-6 w-6 text-gold-dark" />
+                    </div>
+                    <h3 className="mb-2 font-heading text-heading font-bold text-primary">{prop.title}</h3>
+                    <p className="text-body-sm text-foreground-muted">{prop.body}</p>
                   </div>
-                  <h3 className="mb-2 font-heading text-heading font-bold text-primary">{perk.title}</h3>
-                  <p className="text-body-sm text-foreground-muted">{perk.description}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Container>
         </section>
@@ -149,7 +131,7 @@ export default function JoinPage() {
                 <p className="overline mb-2 text-gold">Join Our Team</p>
                 <h2 className="font-heading text-display-xs font-bold text-primary">Agent Application</h2>
                 <p className="mt-3 text-body text-foreground-muted">
-                  Tell us a bit about yourself and we&apos;ll be in touch within 1 business day.
+                  Tell us about yourself. Zack reads these himself and will reach out personally — you will not get an automated email back.
                 </p>
               </div>
 
@@ -163,7 +145,7 @@ export default function JoinPage() {
                       Application Received!
                     </h3>
                     <p className="text-body text-foreground-muted max-w-md mx-auto">
-                      Thanks for your interest in joining Fair Oaks Realty Group. A member of our leadership team will reach out within 1 business day.
+                      Thanks for your interest in joining Fair Oaks Realty Group. Zack has your application and will reach out personally. We don&apos;t send automated replies, so nothing else will land in your inbox from us in the meantime.
                     </p>
                   </div>
                 ) : (

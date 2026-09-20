@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { createRecruitContact } from '@/lib/recruiting-crm';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
@@ -41,60 +43,63 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
 
+    // ── File the applicant in the CRM recruiting funnel ──────────────────────
+    // Tagged Recruiting + Recruiting: Prospect, owned by the broker. Capture
+    // must never break the submission, so failures are logged inside the helper.
+    let crmContactId: string | null = null;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && serviceKey) {
+      const result = await createRecruitContact(createClient(supabaseUrl, serviceKey), {
+        name, email, phone, license, experience, current_brokerage, production, message,
+        sourceLabel: 'Agent application — fairoaksrealtygroup.com',
+        businessUnit: 'residential',
+      });
+      crmContactId = result.id;
+    } else {
+      console.error('[agent_apply] Supabase env missing — applicant not filed in the CRM');
+    }
+
     if (process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);
 
-      // Notify the team
+      // Notify the broker. Applicants are NOT auto-replied to — Zack answers
+      // these personally, so the only mail this route sends is internal.
       await resend.emails.send({
         from: FROM_EMAIL,
         to: NOTIFICATION_EMAIL,
-        subject: `🏡 New Agent Application: ${esc(name)}`,
+        // Hitting reply in the broker's inbox goes straight to the applicant.
+        replyTo: email,
+        subject: `New agent application: ${esc(name)}`,
         html: `
-          <div style="font-family:sans-serif;max-width:620px;color:#1a1a2e">
-            <div style="background:#1a1a2e;padding:24px 32px;border-radius:8px 8px 0 0">
-              <h2 style="margin:0;color:#d4a843;font-size:20px">New Agent Application</h2>
-              <p style="margin:4px 0 0;color:#ffffff99;font-size:14px">Fair Oaks Realty Group</p>
+          <div style="font-family:Arial,Helvetica,sans-serif;max-width:620px;color:#1A1A1A">
+            <div style="background:#1A1A1A;padding:24px 32px;border-radius:8px 8px 0 0">
+              <h2 style="margin:0;color:#C9A962;font-size:20px;font-family:Georgia,'Times New Roman',serif">New Agent Application</h2>
+              <p style="margin:4px 0 0;color:#ffffff99;font-size:14px">Fair Oaks Realty Group · Recruiting</p>
             </div>
-            <div style="background:#f9f9f9;padding:24px 32px;border-radius:0 0 8px 8px;border:1px solid #eee">
-              <table style="border-collapse:collapse;width:100%;font-size:14px">
-                <tr><td style="padding:10px 12px;font-weight:600;background:#fff;border:1px solid #eee;width:180px">Name</td><td style="padding:10px 12px;border:1px solid #eee;background:#fff">${esc(name)}</td></tr>
-                <tr><td style="padding:10px 12px;font-weight:600;background:#f9f9f9;border:1px solid #eee">Email</td><td style="padding:10px 12px;border:1px solid #eee;background:#f9f9f9"><a href="mailto:${esc(email)}" style="color:#d4a843">${esc(email)}</a></td></tr>
-                <tr><td style="padding:10px 12px;font-weight:600;background:#fff;border:1px solid #eee">Phone</td><td style="padding:10px 12px;border:1px solid #eee;background:#fff"><a href="tel:${esc(phone)}" style="color:#d4a843">${esc(phone)}</a></td></tr>
-                <tr><td style="padding:10px 12px;font-weight:600;background:#f9f9f9;border:1px solid #eee">TX License #</td><td style="padding:10px 12px;border:1px solid #eee;background:#f9f9f9">${esc(license) || '—'}</td></tr>
-                <tr><td style="padding:10px 12px;font-weight:600;background:#fff;border:1px solid #eee">Experience</td><td style="padding:10px 12px;border:1px solid #eee;background:#fff">${esc(experience) || '—'}</td></tr>
-                <tr><td style="padding:10px 12px;font-weight:600;background:#f9f9f9;border:1px solid #eee">Current Brokerage</td><td style="padding:10px 12px;border:1px solid #eee;background:#f9f9f9">${esc(current_brokerage) || '—'}</td></tr>
-                <tr><td style="padding:10px 12px;font-weight:600;background:#fff;border:1px solid #eee">Annual Production</td><td style="padding:10px 12px;border:1px solid #eee;background:#fff">${esc(production) || '—'}</td></tr>
-                ${message ? `<tr><td style="padding:10px 12px;font-weight:600;background:#f9f9f9;border:1px solid #eee">Message</td><td style="padding:10px 12px;border:1px solid #eee;background:#f9f9f9">${esc(message)}</td></tr>` : ''}
+            <div style="background:#F5F0E6;padding:24px 32px;border-radius:0 0 8px 8px;border:1px solid #E5DCC8">
+              <table style="border-collapse:collapse;width:100%;font-size:14px;background:#fff">
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8;width:180px">Name</td><td style="padding:10px 12px;border:1px solid #E5DCC8">${esc(name)}</td></tr>
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">Email</td><td style="padding:10px 12px;border:1px solid #E5DCC8"><a href="mailto:${esc(email)}" style="color:#8A6D2F">${esc(email)}</a></td></tr>
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">Phone</td><td style="padding:10px 12px;border:1px solid #E5DCC8"><a href="tel:${esc(phone)}" style="color:#8A6D2F">${esc(phone)}</a></td></tr>
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">TX License #</td><td style="padding:10px 12px;border:1px solid #E5DCC8">${esc(license) || '—'}</td></tr>
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">Experience</td><td style="padding:10px 12px;border:1px solid #E5DCC8">${esc(experience) || '—'}</td></tr>
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">Current Brokerage</td><td style="padding:10px 12px;border:1px solid #E5DCC8">${esc(current_brokerage) || '—'}</td></tr>
+                <tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">Annual Production</td><td style="padding:10px 12px;border:1px solid #E5DCC8">${esc(production) || '—'}</td></tr>
+                ${message ? `<tr><td style="padding:10px 12px;font-weight:600;border:1px solid #E5DCC8">Message</td><td style="padding:10px 12px;border:1px solid #E5DCC8">${esc(message)}</td></tr>` : ''}
               </table>
+              <p style="margin:16px 0 0;font-size:13px;color:#6B6B6B">
+                ${crmContactId
+                  ? 'Filed in the CRM as a recruiting prospect (tagged <strong>Recruiting</strong> → <strong>Recruiting: Prospect</strong>).'
+                  : '⚠️ Could not be filed in the CRM automatically — add this applicant by hand.'}
+                No automatic reply was sent to the applicant.
+              </p>
               <div style="margin-top:20px">
-                <a href="mailto:${esc(email)}" style="display:inline-block;background:#d4a843;color:#1a1a2e;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:14px">Reply to Applicant</a>
+                <a href="mailto:${esc(email)}" style="display:inline-block;background:#C9A962;color:#1A1A1A;font-weight:700;padding:12px 24px;border-radius:8px;text-decoration:none;font-size:14px">Reply to Applicant</a>
               </div>
-            </div>
-          </div>
-        `,
-      });
-
-      // Auto-reply to applicant
-      await resend.emails.send({
-        from: FROM_EMAIL,
-        to: email,
-        subject: 'Your application to Fair Oaks Realty Group',
-        html: `
-          <div style="font-family:sans-serif;max-width:600px;color:#1a1a2e">
-            <div style="background:#1a1a2e;padding:24px 32px;border-radius:8px 8px 0 0">
-              <h2 style="margin:0;color:#d4a843;font-size:20px">Fair Oaks Realty Group</h2>
-            </div>
-            <div style="background:#f9f9f9;padding:32px;border-radius:0 0 8px 8px;border:1px solid #eee">
-              <p style="margin:0 0 16px;font-size:16px">Hi ${esc(name)},</p>
-              <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6">
-                Thank you for applying to join <strong>Fair Oaks Realty Group</strong>! We've received your application and a member of our leadership team will be in touch with you within <strong>1 business day</strong>.
+              <p style="margin:24px 0 0;font-size:12px;color:#8A8A8A;border-top:1px solid #E5DCC8;padding-top:12px">
+                Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015 · 210-390-9997
               </p>
-              <p style="margin:0 0 16px;font-size:15px;color:#444;line-height:1.6">
-                In the meantime, feel free to learn more about our team at <a href="https://fairoaksrealtygroup.com/team" style="color:#d4a843">fairoaksrealtygroup.com/team</a> or give us a call at <a href="tel:+12103909997" style="color:#d4a843">210-390-9997</a>.
-              </p>
-              <p style="margin:0;font-size:15px;color:#444">We look forward to speaking with you!</p>
-              <br/>
-              <p style="margin:0;font-size:14px;color:#888">— The Fair Oaks Realty Group Team</p>
             </div>
           </div>
         `,

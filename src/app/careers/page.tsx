@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import {
-  CheckCircle, TrendingUp, Laptop, Megaphone, Users, Award,
+  CheckCircle, Laptop, Megaphone, Users, Search, Network, UserCheck,
   DollarSign, MapPin, Clock, Briefcase, ArrowRight, Star,
 } from 'lucide-react';
+import { FAIR_OAKS_VALUE_PROPS } from '@/lib/recruiting';
 import { Header, Footer } from '@/components/layout';
 import { trackLead } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
@@ -22,7 +23,7 @@ const OPEN_ROLES = [
     division: 'Residential',
     divisionColor: '#1e40af',
     divisionBg: '#dbeafe',
-    description: 'Serve buyers, sellers, and relocation clients across the Texas Hill Country. Ideal for licensed agents looking for a high-support environment with built-in lead flow.',
+    description: 'Serve buyers, sellers, and relocation clients across the Texas Hill Country. Ideal for licensed agents who want direct access to the broker, a CRM that does the follow-up, and lead generation they inherit on day one.',
     requirements: ['Active TX Real Estate License', 'Strong communication skills', 'Self-motivated with a client-first mindset', 'Experience preferred but new agents welcome'],
   },
   {
@@ -32,29 +33,23 @@ const OPEN_ROLES = [
     division: 'Commercial (CRECO)',
     divisionColor: '#92400e',
     divisionBg: '#fef3c7',
-    description: 'Work with investors, tenants, and landlords on industrial, office, and retail transactions. Join the CRECO team and tap into our established commercial network.',
+    description: 'Work with investors, tenants and landlords on industrial, office and retail transactions through CRECO, our commercial brokerage. Principal-led, with an active leasing pipeline and the same CRM and lead generation behind you.',
     requirements: ['Active TX Real Estate License', 'Interest in commercial real estate', 'Strong negotiation skills', 'Experience in commercial preferred'],
   },
-  {
-    title: 'Real Estate Team Lead / Mentor',
-    type: 'Full-Time · Commission + Override',
-    location: 'Fair Oaks Ranch, TX',
-    division: 'Residential',
-    divisionColor: '#1e40af',
-    divisionBg: '#dbeafe',
-    description: 'Lead and mentor a small team of agents while maintaining your own book of business. Help shape the future of our brokerage and earn on your team\'s production.',
-    requirements: ['5+ years real estate experience', 'Active TX Real Estate License', 'Proven production record', 'Passion for coaching others'],
-  },
 ];
+// A "Team Lead / Mentor" role with an override structure used to be listed
+// here. It was removed rather than rewritten: no such position or override has
+// been defined, and advertising one would be inventing an offer. Add it back
+// once the broker confirms the role exists and what it pays.
 
-const PERKS = [
-  { icon: DollarSign, title: 'Competitive Splits', description: 'Commission structures with no desk fees eating into your earnings.' },
-  { icon: Laptop, title: 'Tech & CRM Tools', description: 'Full access to our custom CRM, automated drip campaigns, and lead management platform.' },
-  { icon: Megaphone, title: 'Marketing Support', description: 'Professional photography, listing presentations, social media content, and brand resources.' },
-  { icon: TrendingUp, title: 'Lead Flow', description: 'Benefit from our established online presence, Zillow partnerships, and referral network.' },
-  { icon: Users, title: 'Collaborative Culture', description: 'A team-first environment where experienced agents mentor and support each other.' },
-  { icon: Award, title: 'Local Market Authority', description: 'Leverage our Texas Hill Country market knowledge and local relationships.' },
-];
+// Icons resolved here; the copy itself is shared with /join and the printed
+// one-pagers via lib/recruiting.ts so the pitch never diverges.
+const ICONS = { UserCheck, Laptop, Megaphone, Search, Network, DollarSign } as const;
+const PERKS = FAIR_OAKS_VALUE_PROPS.map(p => ({
+  icon: ICONS[p.icon],
+  title: p.title,
+  description: p.body,
+}));
 
 const PRODUCTION_OPTIONS = ['Under $2M', '$2M – $5M', '$5M – $10M', '$10M – $20M', '$20M+', 'New Agent / Pre-License'];
 
@@ -137,7 +132,7 @@ export default function CareersPage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               {OPEN_ROLES.map((role) => (
                 <div key={role.title} className="flex flex-col rounded-2xl bg-white shadow-card overflow-hidden border border-border">
                   {/* Card header */}
@@ -244,7 +239,7 @@ export default function CareersPage() {
                 <h2 className="font-heading text-display-xs font-bold text-primary mb-6">What Happens After You Apply</h2>
                 <div className="space-y-6">
                   {[
-                    { step: '01', title: 'Application Review', desc: 'We review every application personally — no automated rejections. Expect a response within 1 business day.' },
+                    { step: '01', title: 'Application Review', desc: 'Zack reviews every application personally — no automated screening and no automated reply. He contacts you directly.' },
                     { step: '02', title: 'Discovery Call', desc: 'A 20–30 minute call with our leadership team to get to know you and answer any questions about the role.' },
                     { step: '03', title: 'Team Introduction', desc: 'Shadow a current agent for a day, see how we operate, and make sure we\'re the right fit for each other.' },
                     { step: '04', title: 'Offer & Onboarding', desc: 'Get your commission structure, CRM access, and marketing assets — and start building your business.' },
@@ -268,12 +263,12 @@ export default function CareersPage() {
                 </div>
                 <div className="space-y-4">
                   {[
-                    ['License Required?', 'Yes — or currently pursuing'],
-                    ['Experience Required?', 'Not always — we welcome new agents'],
-                    ['Desk Fees?', 'None'],
-                    ['Team Size', 'Small & intentional — not a factory'],
-                    ['Residential + Commercial?', 'Yes — both divisions available'],
-                    ['Response Time', 'Within 1 business day'],
+                    ['License required?', 'Yes — or currently pursuing'],
+                    ['Experience required?', 'Not always — new agents welcome'],
+                    ['Commission split', '[commission split — confirm]'],
+                    ['Desk / monthly fees', '[desk / monthly fees — confirm]'],
+                    ['Residential + commercial?', 'Yes — both brokerages, one owner'],
+                    ['Who reviews it', 'Zachary A. Stovall, broker/owner'],
                   ].map(([q, a]) => (
                     <div key={q} className="flex justify-between items-start gap-4 py-3 border-b border-border last:border-0">
                       <span className="text-body-sm text-foreground-muted">{q}</span>
@@ -315,7 +310,7 @@ export default function CareersPage() {
                     </div>
                     <h3 className="mb-2 font-heading text-heading-xl font-bold text-primary">Application Received!</h3>
                     <p className="text-body text-foreground-muted max-w-md mx-auto">
-                      Thanks for applying to Fair Oaks Realty Group. A member of our leadership team will reach out within 1 business day.
+                      Thanks for applying to Fair Oaks Realty Group. Zack has your application and will reach out personally.
                     </p>
                     <div className="mt-6 flex justify-center gap-4 flex-wrap">
                       <a href="/team" className="text-body-sm font-semibold text-gold hover:text-gold-dark">Meet the Team →</a>
