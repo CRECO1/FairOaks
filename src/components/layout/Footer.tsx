@@ -13,6 +13,7 @@ const footerLinks = {
     { href: '/listings?status=active', label: 'Homes for Sale' },
     { href: '/listings?type=new-construction', label: 'New Construction' },
     { href: '/listings?price=luxury', label: 'Luxury Homes' },
+    { href: '/home-valuation', label: "What's My Home Worth?" },
   ],
   areas: [
     { href: '/neighborhoods/fair-oaks-ranch', label: 'Fair Oaks Ranch' },

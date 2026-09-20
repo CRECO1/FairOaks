@@ -7,7 +7,7 @@ import { Container } from '@/components/ui/Container';
 
 export const metadata: Metadata = {
   title: 'Thank You | Fair Oaks Realty Group',
-  description: 'Thank you for contacting Fair Oaks Realty Group. A member of our team will be in touch within one business day.',
+  description: 'Thank you for contacting Fair Oaks Realty Group. A member of our team will be in touch personally.',
   robots: 'noindex, nofollow',
 };
 
@@ -15,7 +15,7 @@ const NEXT_STEPS = [
   {
     icon: Phone,
     title: 'Expect a call or email',
-    body: 'A member of our team will reach out within 1 business day — usually the same day.',
+    body: 'A member of our team will reach out to you personally.',
   },
   {
     icon: Search,
@@ -49,7 +49,7 @@ export default function ThankYouPage() {
                 You&apos;re all set!
               </h1>
               <p className="text-body-lg text-white/75 leading-relaxed">
-                We received your message and will be in touch within one business day — usually the same day.
+                We received your message and will be in touch personally.
                 Keep an eye on your phone and email.
               </p>
             </div>

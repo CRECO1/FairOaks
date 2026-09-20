@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { TrendingUp, Clock, DollarSign, Users, CheckCircle, ArrowRight, Phone } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { ValuationCta } from '@/components/sections/ValuationCta';
 import { trackLead, trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
@@ -135,13 +136,13 @@ export default function SellPage() {
                       <CheckCircle className="mx-auto mb-4 h-14 w-14 text-gold" />
                       <h3 className="font-heading text-heading-xl font-bold text-primary mb-2">Request Received!</h3>
                       <p className="text-body text-foreground-muted">
-                        One of our agents will reach out within 24 hours to discuss your home&apos;s value.
+                        One of our agents will reach out personally to discuss your home&apos;s value.
                       </p>
                     </div>
                   ) : (
                     <>
                       <h3 className="mb-2 font-heading text-heading-xl font-bold text-primary">Get Your Free Home Valuation</h3>
-                      <p className="mb-6 text-body-sm text-foreground-muted">No obligations. We&apos;ll provide a detailed market analysis within 24 hours.</p>
+                      <p className="mb-6 text-body-sm text-foreground-muted">No obligations. We&apos;ll prepare a detailed market analysis of your home.</p>
                       <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <input name="name" required placeholder="Your Name" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
@@ -171,6 +172,7 @@ export default function SellPage() {
           </Container>
         </section>
       </main>
+      <ValuationCta surface="sell" />
       <Footer />
     </>
   );

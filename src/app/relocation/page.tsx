@@ -270,7 +270,7 @@ export default function RelocationPage() {
                 >
                   Talk to a Relocation Specialist <ArrowRight className="h-4 w-4" />
                 </Link>
-                <p className="mt-3 text-caption text-center text-foreground-muted">Free · No obligation · Same-day response</p>
+                <p className="mt-3 text-caption text-center text-foreground-muted">Free · No obligation · A person replies</p>
               </div>
             </div>
           </Container>

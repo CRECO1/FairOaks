@@ -5,6 +5,7 @@ import {
   Phone, Camera, BarChart2, Globe, Mail, Home, AlertTriangle,
 } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { ValuationCta } from '@/components/sections/ValuationCta';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { jsonLdScript } from '@/lib/json-ld';
@@ -437,6 +438,7 @@ export default function SellerGuidePage() {
         </section>
 
       </main>
+      <ValuationCta surface="seller-guide" />
       <Footer />
     </>
   );

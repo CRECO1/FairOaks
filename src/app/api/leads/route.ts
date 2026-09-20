@@ -113,6 +113,11 @@ export async function POST(req: NextRequest) {
             const first_name = nameParts[0] ?? name;
             const last_name = nameParts.slice(1).join(' ') ?? '';
 
+            // A home-valuation request is an owner telling us what they hold
+            // and hinting they may sell — tag it so it never sits in the
+            // general pile.
+            const isValuation = source === 'valuation' && unit !== 'commercial';
+
             // Map source → client type
             const clientType = source === 'valuation' ? 'Seller'
               : source === 'landlord' ? 'Landlord/Investor'
@@ -137,10 +142,14 @@ export async function POST(req: NextRequest) {
               notes: noteLines.join('\n'),
               agent_id: adminId,
               assigned_agent_ids: [],
-              lead_source: 'Website',
+              lead_source: isValuation
+                ? 'Home valuation — fairoaksrealtygroup.com/home-valuation'
+                : 'Website',
               prospect_status: 'new',
               business_unit: unit,
-              tags: unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
+              tags: isValuation
+                ? ['New Lead', 'Website Lead', 'Valuation', 'Seller', 'Fair Oaks']
+                : unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
             }]).select('id').single();
 
@@ -185,10 +194,16 @@ export async function POST(req: NextRequest) {
       await resend.emails.send({
         from: FROM_EMAIL,
         to: NOTIFICATION_EMAIL,
-        subject: `📬 New Lead: ${name} — ${source ?? 'Contact Form'}`,
+        replyTo: email || undefined,
+        subject: source === 'valuation'
+          ? `🏡 Home valuation request: ${name}`
+          : `📬 New Lead: ${name} — ${source ?? 'Contact Form'}`,
         html: `
-          <div style="font-family:sans-serif;max-width:600px">
-            <h2 style="color:#1a1a2e">New Lead — Fair Oaks Realty Group</h2>
+          <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;color:#1A1A1A">
+            <div style="background:#1A1A1A;padding:18px 22px;border-radius:8px 8px 0 0">
+              <h2 style="margin:0;color:#C9A962;font-size:19px;font-family:Georgia,'Times New Roman',serif">${source === 'valuation' ? 'Home Valuation Request' : 'New Lead'}</h2>
+              <p style="margin:4px 0 0;color:#ffffff99;font-size:13px">Fair Oaks Realty Group</p>
+            </div>
             <table style="border-collapse:collapse;width:100%">
               <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Name</td><td style="padding:8px 12px;border:1px solid #eee">${esc(name)}</td></tr>
               <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Email</td><td style="padding:8px 12px;border:1px solid #eee"><a href="mailto:${esc(email)}">${esc(email)}</a></td></tr>
@@ -197,6 +212,9 @@ export async function POST(req: NextRequest) {
               ${property_interest ? `<tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Property</td><td style="padding:8px 12px;border:1px solid #eee">${esc(property_interest)}</td></tr>` : ''}
               ${message ? `<tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Message</td><td style="padding:8px 12px;border:1px solid #eee">${esc(message)}</td></tr>` : ''}
             </table>
+            <p style="margin:16px 0 0;font-size:12px;color:#8A8A8A">
+              Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015 · 210-390-9997
+            </p>
           </div>
         `,
       });
@@ -207,10 +225,10 @@ export async function POST(req: NextRequest) {
         to: email,
         subject: 'We received your inquiry — Fair Oaks Realty Group',
         html: fairOaksEmail({
-          preheader: 'We have your message — a member of our team will be in touch within one business day.',
+          preheader: 'We have your message — a member of our team will be in touch personally.',
           heading: 'Thanks for reaching out',
           paragraphs: [
-            `Hi ${esc(name)}, thank you for contacting Fair Oaks Realty Group. A member of our team will be in touch within one business day.`,
+            `Hi ${esc(name)}, thank you for contacting Fair Oaks Realty Group. A member of our team will be in touch with you personally.`,
             'In the meantime you can browse current listings, or call or text us at <a href="tel:+12103909997" style="color:#A68B4B;text-decoration:none;">210-390-9997</a> if it is urgent.',
           ],
           cta: { label: 'Browse homes for sale', href: 'https://www.fairoaksrealtygroup.com/listings' },

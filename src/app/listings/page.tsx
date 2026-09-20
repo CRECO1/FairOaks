@@ -1,4 +1,5 @@
 import { Header, Footer } from '@/components/layout';
+import { ValuationCta } from '@/components/sections/ValuationCta';
 import { BreadcrumbJsonLd } from '@/components/seo/BreadcrumbJsonLd';
 import { Container } from '@/components/ui/Container';
 import { getFirstPageListings } from '@/lib/listings-first-page';
@@ -56,6 +57,7 @@ export default async function ListingsPage() {
         </div>
 
       </main>
+      <ValuationCta surface="listings" />
       <Footer />
     </>
   );

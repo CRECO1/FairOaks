@@ -154,7 +154,7 @@ export default function ContactPage() {
                 <div className="rounded-2xl bg-white p-5 sm:p-8 shadow-card lg:p-10">
                   <>
                       <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
-                      <p className="mb-6 text-body-sm text-foreground-muted">We respond within 1 business day — usually same day.</p>
+                      <p className="mb-6 text-body-sm text-foreground-muted">We read every message ourselves and reply personally.</p>
                       <form onSubmit={handleSubmit} className="space-y-5">
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                           <div>

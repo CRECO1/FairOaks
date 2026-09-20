@@ -299,7 +299,7 @@ export default function MarketReportsPage() {
                 </h2>
                 <p className="text-body-lg text-white/70 mb-8">
                   Get your free, hyper-local market report. We&rsquo;ll analyze recent comparable
-                  sales in your specific neighborhood and get back to you within one business day.
+                  sales in your specific neighborhood and get back to you personally.
                 </p>
                 <Button size="lg" asChild>
                   <Link href="/contact">

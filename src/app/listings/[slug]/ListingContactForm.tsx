@@ -59,7 +59,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
       <div className="rounded-lg bg-green-50 border border-green-200 p-6 text-center">
         <div className="text-2xl mb-2">✅</div>
         <p className="font-semibold text-green-800">Request received!</p>
-        <p className="text-sm text-green-700 mt-1">We&apos;ll be in touch within 1 business day.</p>
+        <p className="text-sm text-green-700 mt-1">We&apos;ll be in touch personally.</p>
       </div>
     );
   }

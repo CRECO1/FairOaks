@@ -155,7 +155,7 @@ export default function QuizPage() {
                 Your Results Are On the Way!
               </h1>
               <p className="mb-8 text-body text-foreground-muted">
-                Based on your answers, one of our local experts will reach out within 24 hours with personalized home recommendations just for you.
+                Based on your answers, one of our local experts will reach out personally with home recommendations matched to your answers.
               </p>
               <div className="rounded-xl bg-white p-6 shadow-card mb-8">
                 <h3 className="font-heading text-heading font-semibold text-primary mb-4">Your Preferences Summary</h3>
@@ -197,7 +197,7 @@ export default function QuizPage() {
                   Almost There!
                 </h2>
                 <p className="text-body text-foreground-muted">
-                  Tell us how to reach you and we&apos;ll send personalized home recommendations within 24 hours.
+                  Tell us how to reach you and we&apos;ll send personalized home recommendations.
                 </p>
               </div>
               <form onSubmit={handleContact} className="space-y-4 bg-white rounded-2xl shadow-card p-5 sm:p-8">

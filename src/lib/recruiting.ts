@@ -42,7 +42,7 @@ export const FAIR_OAKS_VALUE_PROPS: ValueProp[] = [
     icon: 'UserCheck',
     title: 'You work directly with the broker',
     body:
-      'Zachary Stovall is a hands-on broker/owner, not a name on the wall. You bring him a deal question and you get an answer the same day — from the person who actually signs off on the file.',
+      'Zachary Stovall is a hands-on broker/owner, not a name on the wall. You bring him a deal question and you get an answer from the person who actually signs off on the file.',
   },
   {
     icon: 'Laptop',

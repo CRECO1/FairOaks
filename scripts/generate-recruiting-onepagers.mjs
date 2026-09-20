@@ -52,7 +52,7 @@ const BRANDS = [
       'Fair Oaks Realty Group is a Hill Country residential brokerage led hands-on by Zachary A. Stovall. Small by choice: you get a broker who answers, technology built for this office, and lead flow you inherit on day one.',
     props: [
       ['You work directly with the broker',
-       'Zachary Stovall is a hands-on broker/owner, not a name on the wall. Bring him a deal question, get an answer the same day — from the person who signs off on the file.'],
+       'Zachary Stovall is a hands-on broker/owner, not a name on the wall. Bring him a deal question and get an answer from the person who signs off on the file.'],
       ['A CRM built for this brokerage',
        'Not a bolt-on you pay for separately. Contacts, action plans and campaigns, with e-signature built in so you send a document for signature and track it without leaving the system.'],
       ['Lead generation you inherit on day one',

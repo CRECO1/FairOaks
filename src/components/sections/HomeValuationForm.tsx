@@ -6,7 +6,12 @@ import { Home, ArrowRight } from 'lucide-react';
 import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 
-export function HomeValuationForm() {
+export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 'dark' | 'light'; surface?: string }) {
+  // One form, two grounds: the homepage band is dark, the landing page is light.
+  const field = tone === 'dark'
+    ? 'rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold'
+    : 'rounded-lg border border-border bg-white px-4 py-3 text-sm text-primary placeholder-foreground-muted/70 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold';
+  const foot = tone === 'dark' ? 'text-white/40' : 'text-foreground-muted';
   const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', phone: '', address: '' });
   const [loading, setLoading] = useState(false);
@@ -35,6 +40,8 @@ export function HomeValuationForm() {
           phone: form.phone,
           message: `Home valuation request for: ${form.address}`,
           source: 'valuation',
+          property_interest: form.address,
+          valuation_surface: surface,
           business_unit: 'residential',
         }),
       });
@@ -56,7 +63,7 @@ export function HomeValuationForm() {
         value={form.name}
         onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
         required
-        className="rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+        className={field}
       />
       <input
         type="text"
@@ -64,7 +71,7 @@ export function HomeValuationForm() {
         value={form.address}
         onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
         required
-        className="rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+        className={field}
       />
       <div className="flex gap-3">
         <input
@@ -73,7 +80,7 @@ export function HomeValuationForm() {
           value={form.email}
           onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
           required
-          className="flex-1 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+          className={`flex-1 ${field}`}
         />
         <input
           type="tel"
@@ -81,7 +88,7 @@ export function HomeValuationForm() {
           value={form.phone}
           onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
           required
-          className="flex-1 rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold"
+          className={`flex-1 ${field}`}
         />
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}
@@ -90,9 +97,9 @@ export function HomeValuationForm() {
         disabled={loading}
         className="mt-1 flex items-center justify-center gap-2 rounded-lg bg-gold px-6 py-3.5 text-sm font-bold text-primary transition-opacity hover:opacity-90 disabled:opacity-60"
       >
-        {loading ? 'Sending…' : <><Home className="h-4 w-4" /> Get My Free Valuation <ArrowRight className="h-4 w-4" /></>}
+        {loading ? 'Sending…' : <><Home className="h-4 w-4" /> Request my home valuation <ArrowRight className="h-4 w-4" /></>}
       </button>
-      <p className="text-center text-xs text-white/40">No obligation · Response within 1 business day · We never share your info</p>
+      <p className={`text-center text-xs ${foot}`}>No obligation · Prepared by a person, not an algorithm · We never share your details</p>
     </form>
   );
 }

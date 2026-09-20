@@ -74,7 +74,6 @@ import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
 import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';
-import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
 import { CommercialCallout } from '@/components/sections/CommercialCallout';
 import { jsonLdScript } from '@/lib/json-ld';
 
@@ -400,13 +399,13 @@ export default async function HomePage() {
                 What&rsquo;s Your Home Worth?
               </h2>
               <p className="mb-6 text-body-lg text-white/70">
-                Get a personalized home valuation from our local experts. We&rsquo;ll analyze recent sales, current market trends, and your home&rsquo;s unique features — and get back to you within 1 business day.
+                Not an automated guess from a site that has never seen your house. A real valuation prepared personally by Zachary A. Stovall, using recent sales in your neighbourhood and what your home actually offers.
               </p>
               <ul className="space-y-3 mb-8">
                 {[
-                  'Hyper-local market analysis',
-                  'No cost, no commitment',
-                  'Response within 1 business day',
+                  'Recent comparable sales near you',
+                  'No cost, no commitment to list',
+                  'Prepared by a person, not an algorithm',
                 ].map(item => (
                   <li key={item} className="flex items-center gap-3 text-body text-white/80">
                     <span className="h-5 w-5 rounded-full bg-gold flex items-center justify-center shrink-0">
@@ -420,8 +419,19 @@ export default async function HomePage() {
               </ul>
             </RevealOnScroll>
             <RevealOnScroll direction="right">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm">
-                <HomeValuationForm />
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center backdrop-blur-sm">
+                <p className="mb-6 text-body text-white/70">
+                  Four details is all it takes. Zack handles the rest himself.
+                </p>
+                <Link
+                  href="/home-valuation?from=home"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-gold px-7 py-3.5 text-body-sm font-bold text-primary transition-colors hover:bg-gold-dark"
+                >
+                  Request my home valuation <ArrowRight className="h-4 w-4" />
+                </Link>
+                <p className="mt-4 text-caption text-white/50">
+                  Free · No obligation · Prepared by a person, not an algorithm
+                </p>
               </div>
             </RevealOnScroll>
           </div>
