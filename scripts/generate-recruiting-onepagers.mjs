@@ -222,9 +222,11 @@ async function buildBrand(brand) {
   // ── Apply strip ──
   // Pinned just above the footer rather than left to flow, so the sheet ends
   // on the call to action instead of a band of dead white space.
-  const APPLY_Y = 126;
   const contentBottom = boxTop - boxH;
-  if (contentBottom < APPLY_Y + 24) {
+  // Sits just under the compensation band, but never low enough to crowd the
+  // footer — so the sheet reads as one block rather than trailing off.
+  const APPLY_Y = Math.max(112, contentBottom - 44);
+  if (contentBottom < 112 + 24) {
     throw new Error(
       `${brand.name}: content runs into the apply strip (bottom ${contentBottom.toFixed(0)}pt). Trim a value prop.`,
     );
