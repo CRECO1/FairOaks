@@ -265,8 +265,7 @@ export default function CareersPage() {
                   {[
                     ['License required?', 'Yes — or currently pursuing'],
                     ['Experience required?', 'Not always — new agents welcome'],
-                    ['Commission split', '[commission split — confirm]'],
-                    ['Desk / monthly fees', '[desk / monthly fees — confirm]'],
+                    ['Commission & terms', 'Discussed directly with candidates'],
                     ['Residential + commercial?', 'Yes — both brokerages, one owner'],
                     ['Who reviews it', 'Zachary A. Stovall, broker/owner'],
                   ].map(([q, a]) => (

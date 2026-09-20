@@ -6,10 +6,9 @@
  * broker/owner, the in-house CRM with e-signature and automation, the lead
  * generation we run, the search presence, and the two-brokerage referral path.
  *
- * Anything only the broker can decide — splits, caps, desk fees, perks — is
- * printed as a visible [confirm] placeholder in a boxed "To be confirmed"
- * section. That is deliberate: a blank the broker fills in by hand is honest,
- * a number this script guessed would be a promise nobody agreed to.
+ * Economics are deliberately absent. The broker has settled the terms, but
+ * these sheets circulate, so they carry one neutral line and no figures — no
+ * split percentage, cap, fee or contractor classification. See TERMS_LINE.
  *
  * Brand separation is absolute — each sheet carries only its own logo, colour,
  * suite number and business line. Fair Oaks is Suite 102 / (210) 390-9997;
@@ -96,14 +95,19 @@ const BRANDS = [
   },
 ];
 
-// Only the broker can fill these in. Printed as blanks, never guessed.
-const TO_CONFIRM = [
-  'Commission split',
-  'Cap / post-cap structure',
-  'Desk or monthly fees',
-  'Transaction / admin fee',
-  'Benefits & perks',
-];
+/**
+ * Economics line for the handout.
+ *
+ * The broker has settled the actual terms, but these sheets circulate — they
+ * get emailed on, forwarded and left on desks — so they are treated as public.
+ * No split percentage, cap, fee figure or contractor classification is printed
+ * here. The real terms are recorded only in
+ * /Users/creco/Documents/CRECO/Marketing/recruiting/INTERNAL-recruiting-terms.md.
+ *
+ * If a private candidate version carrying the numbers is ever wanted, it
+ * should be a separate, clearly-marked output — never this file.
+ */
+const TERMS_LINE = 'Compensation & terms reviewed privately with you.';
 
 // ── Layout helpers ──────────────────────────────────────────────────────────
 
@@ -198,29 +202,21 @@ async function buildBrand(brand) {
     y -= 10;
   }
 
-  // ── To be confirmed box ──
+  // ── Compensation band ──
+  // One neutral line, no figures: these sheets circulate — emailed on,
+  // forwarded, left on desks — so they are treated as public.
   y -= 2;
   const boxTop = y;
-  const boxH = 26 + TO_CONFIRM.length * 15 + 14;
+  const boxH = 46;
   page.drawRectangle({
     x: M, y: boxTop - boxH, width: CONTENT_W, height: boxH,
     color: brand.wash, borderColor: brand.accent, borderWidth: 0.9,
   });
-  page.drawText('THE NUMBERS — TO CONFIRM WITH ZACK', {
-    x: M + 14, y: boxTop - 18, size: 8.5, font: bold, color: brand.ink,
+  page.drawText(TERMS_LINE, {
+    x: M + 16, y: boxTop - 21, size: 10.5, font: bold, color: brand.ink,
   });
-  let ly = boxTop - 34;
-  for (const label of TO_CONFIRM) {
-    page.drawText(`${label}:`, { x: M + 14, y: ly, size: 9, font: reg, color: brand.ink });
-    // A real blank rule to write on, rather than an invented figure.
-    page.drawLine({
-      start: { x: M + 150, y: ly - 2 }, end: { x: PAGE.w - M - 14, y: ly - 2 },
-      thickness: 0.6, color: rule,
-    });
-    ly -= 15;
-  }
-  page.drawText('Zack sets these with you directly — ask on the first call.', {
-    x: M + 14, y: ly - 1, size: 8, font: italic, color: grey,
+  page.drawText('Bring your questions to the first call — Zack answers them himself.', {
+    x: M + 16, y: boxTop - 35, size: 8.5, font: italic, color: grey,
   });
 
   // ── Apply strip ──

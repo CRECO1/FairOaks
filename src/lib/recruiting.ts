@@ -1,34 +1,36 @@
 /**
  * Recruiting copy — the single source of truth for what we tell agents.
  *
- * Every claim in here is one the broker has confirmed. Nothing about
- * economics (splits, caps, desk fees, benefits) is stated as fact, because
- * none of it has been set yet: those read as CONFIRM_* placeholders so an
- * unfinished number is obvious on the page instead of quietly becoming a
- * promise we can't keep. Replace a placeholder only with a figure the broker
- * has actually given you.
+ * Every claim in here is one the broker has confirmed. Economics are the
+ * exception: the terms ARE settled, but the broker does not want them public,
+ * so no split percentage, cap, fee figure or contractor classification may
+ * appear in this file or anything it feeds. See PRIVATE_TERMS below.
  *
  * Shared by /join and /careers and by the printed one-pagers, so the pitch
  * can't drift between the website and what Zack hands someone in person.
  */
 
-/** Marks a number only the broker can supply. Renders visibly unfinished on purpose. */
-export const CONFIRM = {
-  split: '[commission split — confirm]',
-  cap: '[annual cap — confirm]',
-  fees: '[desk / monthly fees — confirm]',
-  transactionFee: '[per-transaction fee — confirm]',
-  benefits: '[benefits & perks — confirm]',
-  capPlan: '[cap / post-cap structure — confirm]',
-} as const;
+/**
+ * How economics are described in PUBLIC copy.
+ *
+ * The broker has settled the actual terms, but they are deliberately not
+ * published: no split percentage, no cap, no fee figure, and no contractor
+ * classification appears on any page this module feeds. Those are discussed
+ * with a candidate directly.
+ *
+ * The real terms are recorded off the web surface entirely, in
+ * /Users/creco/Documents/CRECO/Marketing/recruiting/INTERNAL-recruiting-terms.md.
+ * Do not import them here, and do not "helpfully" put a number in this string —
+ * anything in this file renders on a public page.
+ */
+export const PRIVATE_TERMS =
+  'Competitive commission structure and terms discussed directly with qualified candidates.';
 
 export interface ValueProp {
   /** lucide-react icon name, resolved by the page. */
   icon: 'UserCheck' | 'Laptop' | 'Megaphone' | 'Search' | 'Network' | 'DollarSign';
   title: string;
   body: string;
-  /** True when the copy contains a placeholder the broker still has to fill. */
-  needsConfirm?: boolean;
 }
 
 /**
@@ -70,8 +72,7 @@ export const FAIR_OAKS_VALUE_PROPS: ValueProp[] = [
     icon: 'DollarSign',
     title: 'Straightforward economics',
     body:
-      `Commission split ${CONFIRM.split}, ${CONFIRM.fees}. Ask Zack directly — he'll tell you the exact structure before you ever fill out a form.`,
-    needsConfirm: true,
+      `${PRIVATE_TERMS} Zack walks you through the whole structure himself — you will know exactly where you stand well before you commit to anything.`,
   },
 ];
 
@@ -114,8 +115,7 @@ export const CRECO_VALUE_PROPS: ValueProp[] = [
     icon: 'DollarSign',
     title: 'Economics worth a conversation',
     body:
-      `Split ${CONFIRM.split}, ${CONFIRM.capPlan}, ${CONFIRM.fees}. Zack sets these directly with you — no committee, no sliding scale you have to decode.`,
-    needsConfirm: true,
+      `${PRIVATE_TERMS} Zack sets them directly with you — no committee, and no sliding scale to decode.`,
   },
 ];
 
