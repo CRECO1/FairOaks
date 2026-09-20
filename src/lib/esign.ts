@@ -354,6 +354,52 @@ export interface FinalizeSigner {
   signed_at: string | null; ip: string | null; signature_path: string | null; typed_name: string | null;
   initials_path?: string | null;
 }
+/**
+ * File an executed onboarding document against the agent's recruiting contact.
+ *
+ * Envelopes carry a deal, not a contact, and recruiting deliberately does not
+ * use deals — an agent being hired is not a transaction. The link that does
+ * exist is the signer's email address, which is the same address the applicant
+ * used, so the executed copy is filed by matching it.
+ *
+ * Scoped to contacts tagged `Recruiting`, so a client who signs a lease is
+ * never touched by this. Best-effort in every sense: the envelope is already
+ * completed and stored before this runs, and any failure is logged and
+ * swallowed rather than failing the signing.
+ */
+async function fileToRecruitingContact(
+  admin: SupabaseClient,
+  env: { id: string; title: string },
+  signers: FinalizeSigner[],
+  executedPath: string,
+): Promise<void> {
+  try {
+    const emails = signers.map(s => (s.email || '').toLowerCase().trim()).filter(Boolean);
+    if (!emails.length) return;
+
+    const { data: contacts } = await admin
+      .from('crm_clients')
+      .select('id, agent_id, first_name, last_name, tags')
+      .in('email', emails)
+      .contains('tags', ['Recruiting']);
+    if (!contacts?.length) return;
+
+    for (const c of contacts) {
+      await admin.from('crm_activity').insert([{
+        client_id: c.id,
+        agent_id: c.agent_id,
+        type: 'email',
+        notes:
+          `Signed: ${env.title}. Executed copy stored at ${executedPath} ` +
+          `(envelope ${env.id}). Filed automatically on completion.`,
+      }]);
+      await admin.from('crm_clients').update({ last_touched_at: new Date().toISOString() }).eq('id', c.id);
+    }
+  } catch (err) {
+    console.error('[esign] could not file executed doc to a recruiting contact:', err);
+  }
+}
+
 export async function finalizeEnvelope(
   admin: SupabaseClient,
   env: { id: string; title: string; business_unit: string; source_path: string | null; submission_id: string | null; created_by: string | null },
@@ -400,6 +446,7 @@ export async function finalizeEnvelope(
     const nowIso = new Date().toISOString();
     await admin.from('crm_envelopes').update({ status: 'completed', executed_path: execPath, executed_clean_path: cleanErr ? null : cleanPath, completed_at: nowIso, updated_at: nowIso }).eq('id', env.id);
     await logEvent(admin, env.id, null, 'completed', { actor: 'system' });
+    await fileToRecruitingContact(admin, env, signers, cleanErr ? execPath : cleanPath);
 
     // Email the executed copy to every signer + the broker (best-effort; the doc is
     // already stored + marked completed, so a mail failure never blocks completion).
