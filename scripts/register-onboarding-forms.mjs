@@ -25,11 +25,16 @@
  *   signer_role 'broker'  → ZACK signs it (add himself as a signer, role
  *                           "broker", when composing the envelope)
  *
- * Deliberately NOT pre-filled: the "a Texas ____" entity-type blank and the
- * broker's legal entity name. The documents on file disagree — the real IABS
- * prints "Commercial Real Estate Brokerage, LLC" while other documents say
- * "CRECO LLC" — and guessing the entity type on an executed contract is not
- * something a script should do. Left blank for Zack.
+ * Broker blanks are filled from the brokerage's IABS on file, which prints the
+ * legal firm name "Commercial Real Estate Brokerage, LLC" against TREC License
+ * No. 9014367 — so the entity type is a Texas limited liability company. Zack
+ * directed this on 2026-09-19: "copy what we have in the iabs for the legal
+ * name." The strings are read off that PDF rather than retyped.
+ *
+ * NOT touched: the agreement's own party-name sentence, which names the party
+ * "CRECO, Commercial Real Estate Company" — that is body text, not a blank, and
+ * rewriting a party name in an executed contract is for the broker and his
+ * attorney to decide, not this script.
  *
  * Idempotent: re-running replaces the forms' fields and re-uploads the PDFs.
  * Sends nothing.
@@ -83,7 +88,12 @@ async function upload(localPath, storagePath) {
 const ICA_FIELDS = [
   { i: 0,  key: 'effective_date',        label: 'Effective date',                 type: 'text',        role: null },
   { i: 1,  key: 'effective_year',        label: 'Effective year (20__)',          type: 'text',        role: null },
-  { i: 2,  key: 'broker_entity_type',    label: 'Broker entity type — CONFIRM WITH ZACK (left blank on purpose)', type: 'text', role: null },
+  // "a Texas ____" → the entity type, per Zack on 2026-09-19: "copy what we
+  // have in the iabs for the legal name." The brokerage's real IABS on file
+  // prints the legal firm name "Commercial Real Estate Brokerage, LLC" against
+  // License No. 9014367, so the entity type is a Texas limited liability
+  // company. Taken from that document, not retyped from memory.
+  { i: 2,  key: 'broker_entity_type',    label: 'Broker entity type (IABS legal name: Commercial Real Estate Brokerage, LLC)', type: 'text', role: null, value: 'limited liability company' },
   { i: 3,  key: 'broker_trec_license',   label: 'Broker — TREC License No.',      type: 'text',        role: null, value: '9014367' },
   { i: 4,  key: 'associate_name',        label: 'Associate — full name',          type: 'text',        role: 'client' },
   { i: 5,  key: 'associate_trec_license',label: 'Associate — TREC License No.',   type: 'text',        role: 'client' },
