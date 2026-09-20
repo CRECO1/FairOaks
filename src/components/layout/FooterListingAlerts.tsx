@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { useCaptureSubmit } from '@/lib/use-capture-submit';
 
 /**
  * Compact listing-alert signup for the footer, so every page has one way to
@@ -12,26 +12,14 @@ import { getRecaptchaToken } from '@/lib/recaptcha-client';
  */
 export function FooterListingAlerts() {
   const [email, setEmail] = useState('');
-  const [state, setState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  const { submitting, submitted, error, submit } = useCaptureSubmit({
+    endpoint: '/api/listing-alerts',
+    recaptchaAction: 'listing_alerts',
+    buildPayload: ({ recaptchaToken }) => ({ email: email.trim(), recaptchaToken }),
+    onSuccess: () => setEmail(''),
+  });
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setState('sending');
-    try {
-      const res = await fetch('/api/listing-alerts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), recaptchaToken: await getRecaptchaToken('listing_alerts') }),
-      });
-      setState(res.ok ? 'done' : 'error');
-      if (res.ok) setEmail('');
-    } catch {
-      setState('error');
-    }
-  }
-
-  if (state === 'done') {
+  if (submitted) {
     return (
       <p className="text-body-sm text-gold" role="status">
         You&rsquo;re on the list — we&rsquo;ll email you when a matching home hits the market.
@@ -57,13 +45,13 @@ export function FooterListingAlerts() {
         />
         <button
           type="submit"
-          disabled={state === 'sending'}
+          disabled={submitting}
           className="shrink-0 rounded-lg bg-gold px-4 py-2.5 text-body-sm font-semibold text-primary transition-colors hover:bg-gold/90 disabled:opacity-60"
         >
-          {state === 'sending' ? '…' : 'Notify me'}
+          {submitting ? '…' : 'Notify me'}
         </button>
       </div>
-      {state === 'error' && (
+      {error && (
         <p className="mt-2 text-caption text-red-300" role="alert">That didn&rsquo;t go through. Please try again or call us.</p>
       )}
     </form>

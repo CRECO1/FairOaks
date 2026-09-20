@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Bell, X, CheckCircle } from 'lucide-react';
-import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { useCaptureSubmit } from '@/lib/use-capture-submit';
 
 interface Props {
   cities: string[];
@@ -17,9 +17,25 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState('');
+  // Client-side validation stays here — the shared engine owns the request,
+  // not what counts as a usable name and address on this form.
+  const [validationError, setValidationError] = useState('');
+  const { submitting: loading, submitted, error: submitError, submit } = useCaptureSubmit({
+    endpoint: '/api/listing-alerts',
+    recaptchaAction: 'listing_alerts',
+    buildPayload: ({ recaptchaToken }) => ({
+      recaptchaToken,
+      name,
+      email,
+      cities,
+      min_price: minPrice,
+      max_price: maxPrice,
+      min_beds: minBeds,
+      min_baths: minBaths,
+      search: search ?? null,
+    }),
+  });
+  const error = validationError || submitError;
 
   // Build a human-readable summary of the current filters
   const filterSummary = [
@@ -31,37 +47,12 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
     minBaths ? `${minBaths}+ baths` : null,
   ].filter(Boolean).join(' · ');
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError('');
-    if (!name.trim() || !email.trim()) { setError('Name and email are required.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Please enter a valid email.'); return; }
-
-    setLoading(true);
-    try {
-      const res = await fetch('/api/listing-alerts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recaptchaToken: await getRecaptchaToken('listing_alerts'),
-          name,
-          email,
-          cities,
-          min_price: minPrice,
-          max_price: maxPrice,
-          min_beds: minBeds,
-          min_baths: minBaths,
-          search: search ?? null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed');
-      setSubmitted(true);
-    } catch (err: any) {
-      setError(err.message ?? 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    setValidationError('');
+    if (!name.trim() || !email.trim()) { setValidationError('Name and email are required.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setValidationError('Please enter a valid email.'); return; }
+    await submit(e);
   }
 
   return (
