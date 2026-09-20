@@ -629,13 +629,23 @@ export async function POST(req: import('next/server').NextRequest) {
             }]);
           }
 
-          // Auto-enroll into any matching 'new_contact' action plans and fire Step 1
-          await autoEnrollNewContact(supabase, {
-            clientId,
-            agentId,
-            business_unit,
-            property: parsed.property ?? subject,
-          });
+          // Auto-enroll into any matching 'new_contact' action plans and fire Step 1.
+          // OFF unless LEAD_AUTOENROLL_UNITS names this business unit — the broker
+          // enrolls people himself until he switches automated nurture on. This is
+          // the same switch the website lead paths use (lib/lead-autoenroll.ts), so
+          // one variable controls every automatic enrollment.
+          const autoEnrollUnits = (process.env.LEAD_AUTOENROLL_UNITS ?? '')
+            .split(',').map(u => u.trim().toLowerCase()).filter(Boolean);
+          if (autoEnrollUnits.includes(business_unit)) {
+            await autoEnrollNewContact(supabase, {
+              clientId,
+              agentId,
+              business_unit,
+              property: parsed.property ?? subject,
+            });
+          } else {
+            console.log(`[email-leads] auto-enroll skipped for ${clientId} (LEAD_AUTOENROLL_UNITS does not include ${business_unit})`);
+          }
         }
 
         // Record the import
