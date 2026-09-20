@@ -111,14 +111,14 @@ export function ListingsMap({ listings, center = { lat: 29.7385, lng: -98.6327 }
         pin.className = 'map-price-pin';
         pin.innerHTML = `<span>${formatPrice(listing.price).replace('$', '$').replace(',000', 'k')}</span>`;
         pin.style.cssText = `
-          background: #1a1a2e; color: #fff; padding: 5px 10px;
+          background: #1A1A1A; color: #fff; padding: 5px 10px;
           border-radius: 20px; font-size: 12px; font-weight: 700;
-          cursor: pointer; white-space: nowrap; border: 2px solid #c9922c;
+          cursor: pointer; white-space: nowrap; border: 2px solid #C9A962;
           box-shadow: 0 2px 8px rgba(0,0,0,.3); transition: all .15s;
           font-family: 'DM Sans', sans-serif;
         `;
-        pin.onmouseenter = () => { pin.style.background = '#c9922c'; pin.style.transform = 'scale(1.08)'; };
-        pin.onmouseleave = () => { pin.style.background = '#1a1a2e'; pin.style.transform = 'scale(1)'; };
+        pin.onmouseenter = () => { pin.style.background = '#C9A962'; pin.style.transform = 'scale(1.08)'; };
+        pin.onmouseleave = () => { pin.style.background = '#1A1A1A'; pin.style.transform = 'scale(1)'; };
 
         const marker = new google.maps.marker.AdvancedMarkerElement({
           map: googleMapRef.current,

@@ -9,7 +9,7 @@ import {
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
-import { HomeValuationForm } from '@/components/sections/HomeValuationForm';
+import { ValuationCta } from '@/components/sections/ValuationCta';
 import { jsonLdScript } from '@/lib/json-ld';
 
 const BASE_URL = 'https://www.fairoaksrealtygroup.com';
@@ -294,11 +294,7 @@ export default function BulverdeTxPage() {
                   <p className="mt-2 text-caption font-semibold text-primary">— The Martínez Family · Bulverde, TX</p>
                 </div>
               </div>
-              <div className="rounded-2xl border border-border bg-white p-6 sm:p-8 shadow-card">
-                <h3 className="font-heading text-heading-sm font-bold text-primary mb-1">Get a Free Home Valuation</h3>
-                <p className="text-body-sm text-foreground-muted mb-5">Selling in Bulverde? Find out what your home is worth today.</p>
-                <HomeValuationForm />
-              </div>
+              <ValuationCta variant="inline" surface="homes-for-sale-bulverde-tx" />
             </div>
           </Container>
         </section>

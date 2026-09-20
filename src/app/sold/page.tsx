@@ -33,6 +33,7 @@ export const metadata: Metadata = {
 import Image from 'next/image';
 import { CheckCircle, Home, TrendingUp, Clock } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { ValuationCta } from '@/components/sections/ValuationCta';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
@@ -111,27 +112,8 @@ export default async function SoldPage() {
           </Container>
         </section>
 
-        {/* Sell CTA */}
-        <section className="section-compact bg-primary text-white">
-          <Container>
-            <div className="text-center max-w-2xl mx-auto">
-              <h2 className="font-heading text-display-sm font-bold text-white mb-4">
-                Ready to See What Your Home Is Worth?
-              </h2>
-              <p className="text-body text-white/60 mb-8">
-                Get a free, no-obligation home valuation from our expert team. We know this market inside and out.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button size="lg" asChild>
-                  <Link href="/sell">Get My Home Value</Link>
-                </Button>
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
-                  <Link href="/contact">Talk to an Agent</Link>
-                </Button>
-              </div>
-            </div>
-          </Container>
-        </section>
+        <ValuationCta surface="sold" />
+
       </main>
       <Footer />
     </>

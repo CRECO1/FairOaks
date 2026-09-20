@@ -71,6 +71,7 @@ import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
+import { ValuationCta } from '@/components/sections/ValuationCta';
 import { getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
 import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';
@@ -419,20 +420,7 @@ export default async function HomePage() {
               </ul>
             </RevealOnScroll>
             <RevealOnScroll direction="right">
-              <div className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center backdrop-blur-sm">
-                <p className="mb-6 text-body text-white/70">
-                  Four details is all it takes. Zack handles the rest himself.
-                </p>
-                <Link
-                  href="/home-valuation?from=home"
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-gold px-7 py-3.5 text-body-sm font-bold text-primary transition-colors hover:bg-gold-dark"
-                >
-                  Request my home valuation <ArrowRight className="h-4 w-4" />
-                </Link>
-                <p className="mt-4 text-caption text-white/50">
-                  Free · No obligation · Prepared by a person, not an algorithm
-                </p>
-              </div>
+              <ValuationCta variant="inline" surface="home" />
             </RevealOnScroll>
           </div>
         </Container>

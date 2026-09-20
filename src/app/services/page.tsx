@@ -8,6 +8,7 @@ import {
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
+import { VALUATION_CTA } from '@/lib/valuation-copy';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 
 const SERVICES = [
@@ -43,7 +44,7 @@ const SERVICES = [
       'Skilled negotiation to maximize your net proceeds',
       'No upfront marketing costs — you pay nothing unless we sell',
     ],
-    cta: { label: 'Get a Free Home Valuation', href: '/sell' },
+    cta: { label: VALUATION_CTA.action, href: '/home-valuation' },
   },
   {
     id: 'military',
