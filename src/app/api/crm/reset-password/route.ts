@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
+import { getCrmAdmin, getCrmSuperAdmin, forbidden } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
@@ -38,6 +38,26 @@ export async function POST(req: NextRequest) {
 
     if (!serviceRoleKey || !anonKey || !resendKey) {
       return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
+    }
+
+    // Resetting an admin or super_admin is super-admin-only. /crm/delete-agent
+    // already draws this line ("stops an admin from deleting the super admin
+    // to seize control"); this route did not, so any admin could post the
+    // super admin's address and have a recovery link sent. The link lands in
+    // the target's own inbox rather than the caller's, so it is not a direct
+    // takeover — but info@fairoaksrealtygroup.com is a shared brokerage
+    // mailbox, and anyone who can read it could complete the reset. Same rule,
+    // same reasoning, applied to the second door into the same account.
+    const roleRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/crm_profiles?email=eq.${encodeURIComponent(email)}&select=role`,
+      { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
+    );
+    const roleRows = await roleRes.json().catch(() => []);
+    const targetRole: string | undefined = Array.isArray(roleRows) ? roleRows[0]?.role : undefined;
+    if (targetRole === 'admin' || targetRole === 'super_admin') {
+      if (!(await getCrmSuperAdmin(req))) {
+        return forbidden('Only a super admin can reset an admin’s password.');
+      }
     }
 
     // Generate a password reset link via Supabase admin API (does NOT send email)

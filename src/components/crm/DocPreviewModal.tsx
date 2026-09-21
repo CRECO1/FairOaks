@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import PdfViewer from './PdfViewer';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 // In-app document preview: renders a PDF (to <canvas> via PdfViewer), an image, or a
 // spreadsheet (parsed client-side with SheetJS) inline so the user can VIEW + PRINT
@@ -53,7 +54,14 @@ function SpreadsheetView({ url, onReady }: { url: string; onReady: () => void })
           ))}
         </div>
       )}
-      <div style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sheets[active]?.html || '' }} />
+      {/* Sanitized: SheetJS escapes cell TEXT but passes two things through
+          verbatim — a cell's hyperlink target (so a crafted .xlsx can carry
+          href="javascript:...") and a cell's `h` HTML property (which emits
+          raw markup, script tags included). An uploaded workbook is attacker
+          -controlled input, so this is stored XSS in the CRM origin unless it
+          is cleaned. DOMPurify keeps every table/row/cell, so the sheet still
+          renders exactly as before. */}
+      <div style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: sanitizeHtml(sheets[active]?.html || '') }} />
     </div>
   );
 }
@@ -96,7 +104,9 @@ function DocxView({ url, onReady }: { url: string; onReady: () => void }) {
         .docxview img{max-width:100%;height:auto}
         .docxview ul,.docxview ol{margin:0 0 10px 22px}
         .docxview a{color:#2563eb}`}</style>
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+      {/* Same treatment as the spreadsheet view above: mammoth turns an
+          uploaded .docx into HTML, and that document came from a user. */}
+      <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} />
     </div>
   );
 }
