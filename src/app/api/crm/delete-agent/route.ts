@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmAdmin, getCrmSuperAdmin, forbidden } from '@/lib/crm-auth';
+import { getCrmSuperAdmin, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
 
+/**
+ * Removing an agent account is super-admin only.
+ *
+ * This route already refused to let an admin delete another admin. Removing a
+ * plain agent is the same kind of act one step down — it revokes someone's
+ * access to the brokerage's book — so it now sits behind the same gate as
+ * /crm/invite. The per-target check further down is left in place: it is
+ * unreachable while this guard holds, and it is the thing that keeps the rule
+ * true if this guard is ever widened again.
+ *
+ * To hand it back to an admin, swap getCrmSuperAdmin for getCrmAdmin below.
+ */
 export async function POST(req: NextRequest) {
-  const caller = await getCrmAdmin();
-  if (!caller) return forbidden();
+  const caller = await getCrmSuperAdmin(req);
+  if (!caller) return forbidden('Removing agents is restricted to the account owner.');
 
   try {
     const { userId } = await req.json();

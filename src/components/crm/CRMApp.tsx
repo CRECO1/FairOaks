@@ -2215,6 +2215,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Invite agent ─────────────────────────────────────────────────────────────
   async function inviteAgent() {
+    // Creating an account is super-admin-only, same as granting admin above.
+    // The route enforces it; this is so the answer arrives as a sentence
+    // rather than a 403.
+    if (!isSuperAdmin) { showToast('Only a super admin can invite agents.'); return; }
     if (!inv.email || !inv.first_name || !inv.last_name) { showToast('Email and name required.'); return; }
     setSaving(true);
     const res = await fetch('/api/crm/invite', {
@@ -2257,6 +2261,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function deleteAgent(userId: string, firstName: string, lastName: string) {
+    if (!isSuperAdmin) { showToast('Only a super admin can remove agents.'); return; }
     if (!confirm(`Remove ${firstName} ${lastName} from the CRM? This cannot be undone.`)) return;
     const res = await fetch('/api/crm/delete-agent', {
       method: 'POST',

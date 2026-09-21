@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmAdmin, forbidden } from '@/lib/crm-auth';
+import { getCrmSuperAdmin, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
 import { safeJson } from '@/lib/safe-json';
 
+/**
+ * Creating an agent account is super-admin only.
+ *
+ * An invite mints a new login into the brokerage's CRM, and whoever holds it
+ * inherits a seat at the contact database. Deciding who gets one is the
+ * account owner's call, not a delegated admin function. Pairs with
+ * /crm/delete-agent, which is gated the same way.
+ *
+ * To hand it back to an admin, swap getCrmSuperAdmin for getCrmAdmin below.
+ */
 export async function POST(req: NextRequest) {
-  const caller = await getCrmAdmin();
-  if (!caller) return forbidden();
+  const caller = await getCrmSuperAdmin(req);
+  if (!caller) return forbidden('Inviting agents is restricted to the account owner.');
 
   try {
     const { email, firstName, lastName, phone, license, business_unit } = await req.json();
