@@ -18,7 +18,15 @@ export type AuditAction =
   | 'update_profile'
   | 'update_commission'
   | 'delete_deal'
-  | 'export_contacts';
+  | 'export_contacts'
+  // Export-approval workflow: the request, the owner's answer, the blocked
+  // attempt, and the download itself are four separate facts. Logging them
+  // separately is what makes the trail answer "who asked, who said yes, and
+  // did anything actually leave" rather than only the last of those.
+  | 'export_requested'
+  | 'export_approved'
+  | 'export_denied'
+  | 'export_blocked';
 
 interface AuditParams {
   actorId: string;
