@@ -3,11 +3,23 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Sparkles } from 'lucide-react';
+import { Menu, X, Sparkles, Phone, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
-import { trackCTA } from '@/lib/analytics';
+import { trackCTA, trackPhoneClick } from '@/lib/analytics';
+
+/**
+ * The header carries the phone number on every page, at every width.
+ *
+ * It did not before: the only call affordance sitewide was StickyCTA, which
+ * stays hidden until the visitor has scrolled 400px. Anyone landing on a page
+ * and wanting to ring the office had to open the menu, go to Contact and find
+ * the number there — three taps for the single highest-intent action on a
+ * real-estate site. Now it is one, from the top of any page.
+ */
+const PHONE_DISPLAY = '210-390-9997';
+const PHONE_E164 = '+12103909997';
 
 const navLinks = [
   { href: '/listings', label: 'Listings' },
@@ -119,6 +131,37 @@ export function Header({ variant = 'default' }: HeaderProps) {
 
           {/* CTA Buttons */}
           <div className="flex items-center gap-2">
+            {/* Call — desktop. Shown on every variant, minimal included: a
+                stripped-down header is still a page someone might call from. */}
+            <a
+              href={`tel:${PHONE_E164}`}
+              onClick={() => trackPhoneClick('header')}
+              className={cn(
+                'hidden lg:inline-flex items-center gap-1.5 whitespace-nowrap text-body-sm font-semibold transition-colors',
+                isTransparent ? 'text-white hover:text-gold-light' : 'text-primary hover:text-gold'
+              )}
+              style={textShadowStyle}
+            >
+              <Phone className="h-4 w-4" />
+              {PHONE_DISPLAY}
+            </a>
+
+            {/* Call — mobile and tablet. Sits left of the menu toggle as a
+                44px tap target so the number is always one thumb away. */}
+            <a
+              href={`tel:${PHONE_E164}`}
+              onClick={() => trackPhoneClick('header_mobile')}
+              aria-label={`Call Fair Oaks Realty Group at ${PHONE_DISPLAY}`}
+              className={cn(
+                'inline-flex h-11 w-11 items-center justify-center rounded-full transition-colors lg:hidden',
+                isTransparent
+                  ? 'text-white hover:bg-white/15'
+                  : 'bg-gold/10 text-gold-dark hover:bg-gold hover:text-primary'
+              )}
+            >
+              <Phone className="h-5 w-5" />
+            </a>
+
             {/* Find My Home pill — desktop */}
             {variant !== 'minimal' && (
               <Link
@@ -208,6 +251,29 @@ export function Header({ variant = 'default' }: HeaderProps) {
                     Find My Perfect Home
                   </Link>
                 </Button>
+
+                {/* Call and text, side by side. Someone who opened the menu
+                    looking for a way to reach us should not have to go to
+                    /contact to find the number. */}
+                <div className="grid grid-cols-2 gap-3">
+                  <a
+                    href={`tel:${PHONE_E164}`}
+                    onClick={() => { setIsMenuOpen(false); trackPhoneClick('mobile_menu'); }}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3.5 text-body-sm font-semibold text-white"
+                  >
+                    <Phone className="h-4 w-4" />
+                    Call
+                  </a>
+                  <a
+                    href={`sms:${PHONE_E164}`}
+                    onClick={() => setIsMenuOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3.5 text-body-sm font-semibold text-primary"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Text
+                  </a>
+                </div>
+                <p className="text-center text-caption text-foreground-muted">{PHONE_DISPLAY}</p>
               </div>
             </nav>
           </Container>
