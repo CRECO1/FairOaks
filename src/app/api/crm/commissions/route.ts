@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { guardRead } from '@/lib/crm-read-guard';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+
+  const guard = await guardRead(req, ctx, 'commissions');
+  if (guard.blocked) return guard.blocked;
 
   const { searchParams } = req.nextUrl;
   // Non-admins are pinned to their own workspace; admins may pass ?business_unit= to view either.
@@ -23,12 +27,17 @@ export async function GET(req: NextRequest) {
     .order('close_date', { ascending: false, nullsFirst: false });
 
   if (dealId)  q = q.eq('deal_id', dealId);
-  if (agentId) q = q.eq('agent_id', agentId);
+  // An agent sees their OWN split and nobody else's: what each agent earns is the
+  // most sensitive per-row data in the CRM, and ?agent_id= was previously an open
+  // filter rather than a restriction. Admins may still filter to any agent.
+  if (!isAdminRole(ctx.role)) q = q.eq('agent_id', ctx.userId);
+  else if (agentId) q = q.eq('agent_id', agentId);
   if (status)  q = q.eq('status', status);
   if (year)    q = q.gte('close_date', `${year}-01-01`).lte('close_date', `${year}-12-31`);
 
   const { data, error } = await q;
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  await guard.recordRows((data ?? []).length);
   return NextResponse.json({ commissions: data ?? [] });
 }
 

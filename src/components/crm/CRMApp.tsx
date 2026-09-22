@@ -22,6 +22,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import EsignDashboard from '@/components/crm/EsignDashboard';
 import CallingLog from '@/components/crm/CallingLog';
+import Watermark from '@/components/crm/Watermark';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
@@ -3027,9 +3028,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
+      {/* Identity watermark over every CRM page. Can't stop a capture — makes any
+          capture point back at whoever was signed in when it was taken. */}
+      <Watermark
+        name={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || undefined}
+        email={profile?.email ?? session?.user?.email ?? undefined}
+        sessionRef={session?.user?.id ? session.user.id.slice(0, 8) : undefined}
+      />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
+        /* Printing a record page is a one-click way to get a clean, watermark-free
+           PDF of it. Suppress it: this is friction, not security — the same content
+           is still on screen and still capturable. Anything genuinely meant to leave
+           the CRM (flyers, generated documents) is produced as its own PDF, so this
+           takes nothing legitimate away. */
+        @media print {
+          body { display: none !important; }
+          html::after {
+            content: "Printing is disabled in the CRM. Use the document or flyer PDF instead.";
+            display: block; padding: 40px; font: 16px 'DM Sans', sans-serif; color: #111;
+          }
+        }
         .crm-input{padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:'DM Sans',sans-serif;width:100%;}
         .crm-input:focus{outline:none;border-color:#c9922c;}
         .crm-btn{padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;min-height:44px;}

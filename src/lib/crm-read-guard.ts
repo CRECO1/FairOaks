@@ -62,6 +62,9 @@ export const BUDGETS = {
 /** Row volume in an hour that gets the owner emailed, well before the hard cap. */
 const ROW_ALERT_THRESHOLD = 12000;
 
+/** A single response at or above this many rows is written to audit_logs. */
+const BULK_READ_AUDIT_ROWS = 250;
+
 /** Hard ceiling on any ?limit=/?take= a client may ask for. */
 export const MAX_PAGE_SIZE = 200;
 export const DEFAULT_PAGE_SIZE = 50;
@@ -247,6 +250,21 @@ export async function guardRead(req: NextRequest, ctx: CrmContext, resource: str
     blocked: null,
     recordRows: async (n: number) => {
       if (!n || n < 1) return;
+
+      // A durable line for any read big enough to be worth reconstructing later.
+      // Per-click reads aren't logged — that would be a row per page view and would
+      // bury the signal — but anything that pulls a meaningful slice of the book is,
+      // so a scrape leaves a trail in audit_logs even if it never trips a budget.
+      if (n >= BULK_READ_AUDIT_ROWS) {
+        try {
+          await adminClient().from('audit_logs').insert({
+            actor_id: ctx.userId, action: 'bulk_read_detected', target_type: resource, target_id: null,
+            metadata: { rows: n, resource, role: ctx.role, business_unit: ctx.businessUnit, kind: 'single_response' },
+            ip_address: getIp(req),
+          });
+        } catch (err) { console.error('[crm-read-guard] bulk read audit failed', err); }
+      }
+
       const rows = await bump(`u:${ctx.userId}:rows`, BUDGETS.userRowsHour.windowSec, n);
       if (rows === null) return;
       if (rows > BUDGETS.userRowsHour.limit || rows >= ROW_ALERT_THRESHOLD) {
