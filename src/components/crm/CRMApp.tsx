@@ -12,16 +12,14 @@ import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope a
 import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import DealDocUpload from '@/components/crm/DealDocUpload';
-import Watermark from '@/components/crm/Watermark';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import MentionTextarea, { parseMentionContactIds } from '@/components/crm/MentionTextarea';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
 // bundle — each loads its own chunk the first time its tab or modal opens
-// (ssr:false: the CRM is client-only). Always-mounted UI (Watermark,
-// AssistantPanel) and EsignPanel's directly-used SendView/ManageView stay
-// static above.
+// (ssr:false: the CRM is client-only). Always-mounted UI (AssistantPanel) and
+// EsignPanel's directly-used SendView/ManageView stay static above.
 const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
 const SocialMediaSection = dynamic(() => import('@/components/crm/SocialMediaSection'), { ssr: false });
 const PropertiesFloorPlan = dynamic(() => import('@/components/crm/PropertiesFloorPlan'), { ssr: false });
@@ -3034,13 +3032,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
-      {/* Identity watermark over every CRM page. Can't stop a capture — makes any
-          capture point back at whoever was signed in when it was taken. */}
-      <Watermark
-        name={`${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || undefined}
-        email={profile?.email ?? session?.user?.email ?? undefined}
-        sessionRef={session?.user?.id ? session.user.id.slice(0, 8) : undefined}
-      />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
