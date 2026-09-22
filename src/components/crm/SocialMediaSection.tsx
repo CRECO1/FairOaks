@@ -433,6 +433,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   const isMobile = windowWidth < 768;
+  // The Publisher is a fixed-460px composer beside a flexible queue. Below this width
+  // the queue (Drafts/Scheduled list) gets starved to a sliver — the sidebar + a 460px
+  // composer leave it well under ~250px and its own tab bar clips. Stack the two columns
+  // (composer above, full-width queue below) so the draft list is always fully visible.
+  const stackPublisher = windowWidth < 1240;
 
   // Media upload ref
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -933,11 +938,11 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
-        {/* ── Two-column layout ── */}
-        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
+        {/* ── Two-column layout (stacks below 1240px so the queue never gets starved) ── */}
+        <div style={{ display: 'flex', flexDirection: stackPublisher ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
 
           {/* ── LEFT: Composer ── */}
-          <div style={{ flex: isMobile ? 'none' : '0 0 460px', maxWidth: isMobile ? '100%' : 460, width: isMobile ? '100%' : undefined }}>
+          <div style={{ flex: stackPublisher ? 'none' : '0 0 460px', maxWidth: stackPublisher ? '100%' : 460, width: stackPublisher ? '100%' : undefined }}>
             <div style={{
               background: '#fff',
               borderRadius: 16,
@@ -1583,7 +1588,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
           </div>
 
           {/* ── RIGHT: Post Queue ── */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: stackPublisher ? 'none' : 1, width: stackPublisher ? '100%' : undefined, minWidth: 0 }}>
             <div style={{
               background: '#fff',
               borderRadius: 16,
@@ -1597,6 +1602,7 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
                 display: 'flex', gap: 6, padding: '16px 16px 0',
                 borderBottom: '1px solid #f0f0f0', paddingBottom: 16,
                 alignItems: 'center', justifyContent: 'space-between',
+                flexWrap: 'wrap', rowGap: 8,
               }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                 {tabConfig.map(({ key, label, icon }) => {
