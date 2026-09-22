@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, runTool, describeWrite, type AgentCtx } from '@/lib/crm-assistant-tools';
+import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, runTool, describeWrite, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 
 export const runtime = 'nodejs';
@@ -37,6 +37,10 @@ Leases & documents:
 - To start other transaction forms, use list_forms then start_form.
 
 Sending for signature (send_for_signature) emails real signers — it is outward-facing. The document must already be generated/saved. Always confirm with the agent the exact document AND every recipient's name and email before sending; look up a contact's email with get_contact/search_contacts rather than guessing it.
+
+Moving around the CRM:
+- You CAN drive the agent's screen. When they ask you to open, show, pull up or go to part of the CRM, call open_page — it switches what's in front of them straight away. Don't tell them you can't navigate the UI, and don't talk them through clicking it themselves.
+- open_page changes no data, so don't ask permission; open it, then say in one short line what you opened. If they asked a question AND asked to be taken somewhere, answer the question too.
 
 Records & documents:
 - create_contact / update_contact keep the contact book current. Always search_contacts first so you don't create a duplicate.
@@ -118,6 +122,8 @@ export async function POST(req: NextRequest) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages = [...incoming];
   const pendingWrites: { name: string; summary: string }[] = [];
+  // UI directives for the browser to apply when the response lands (navigation).
+  const clientActions: { type: 'navigate'; page: string; tab?: string; label: string }[] = [];
 
   try {
     for (let round = 0; round < 6; round++) {
@@ -132,7 +138,7 @@ export async function POST(req: NextRequest) {
 
       if (res.stop_reason !== 'tool_use') {
         const reply = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('\n').trim();
-        return NextResponse.json({ messages, reply, pendingWrites });
+        return NextResponse.json({ messages, reply, pendingWrites, clientActions });
       }
 
       // Execute each requested tool. Reads run immediately; writes run only when the
@@ -143,7 +149,21 @@ export async function POST(req: NextRequest) {
         if (block.type !== 'tool_use') continue;
         const input = (block.input ?? {}) as Record<string, any>;
         let content: string;
-        if (WRITE_TOOLS.has(block.name) && !allowWrites) {
+        if (CLIENT_TOOLS.has(block.name)) {
+          // Nothing to execute server-side — resolve the target, hand it to the
+          // client, and tell the model it's done so it can answer in the same turn.
+          // Deliberately NOT a WRITE: making someone confirm a tab switch would be
+          // absurd, and there is no data change to confirm.
+          const r = resolveNav(String(input.destination ?? ''), toolCtx);
+          if ('error' in r) {
+            content = JSON.stringify({ error: r.error });
+          } else {
+            const t: NavTarget = r.target;
+            clientActions.push({ type: 'navigate', page: t.page, tab: t.tab, label: t.label });
+            content = JSON.stringify({ ok: true, opened: t.label, note: 'The screen has switched. Say so in one short line.' });
+          }
+          await logToolCall(toolCtx, req, block.name, input, 'executed', content);
+        } else if (WRITE_TOOLS.has(block.name) && !allowWrites) {
           pendingWrites.push({ name: block.name, summary: describeWrite(block.name, input) });
           content = JSON.stringify({ status: 'NOT_EXECUTED', reason: 'Queued for the agent\'s one-click confirmation in the app. In one short line, restate what will happen. Do not ask a yes/no question and do not retry.' });
           await logToolCall(toolCtx, req, block.name, input, 'queued_for_confirmation');
@@ -156,7 +176,7 @@ export async function POST(req: NextRequest) {
       messages.push({ role: 'user', content: toolResults });
     }
     // Loop guard hit.
-    return NextResponse.json({ messages, reply: "I ran out of steps on that one — could you narrow it down a bit?", pendingWrites });
+    return NextResponse.json({ messages, reply: "I ran out of steps on that one — could you narrow it down a bit?", pendingWrites, clientActions });
   } catch (e) {
     console.error('[crm-assistant]', e);
     return NextResponse.json({ error: 'The assistant hit an error. Try again.' }, { status: 500 });

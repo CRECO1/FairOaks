@@ -76,6 +76,62 @@ function visibleListings(rows: any[] | null, ctx: AgentCtx): any[] {
   return (rows ?? []).filter(l => canSeeListing(l, ctx)).map(({ is_restricted, listing_agent_id, assigned_agent_ids, ...rest }) => rest);
 }
 
+/* ── UI navigation ────────────────────────────────────────────────────────────
+ * The copilot can move the agent around the CRM. This is the one tool family that
+ * does NOT run server-side: there is nothing to query or mutate, only React state
+ * to set in the browser, so the route intercepts these before runTool and hands the
+ * directive back to the client instead of executing anything.
+ *
+ * Destinations are a CLOSED set mapping to the app's real state, because the app's
+ * routing is not what a model would guess. "Property DB" is not a page — it is
+ * page='properties' with propertiesTab='propertydb', and a setPage('propertydb')
+ * would fail the VALID_PAGES guard and silently no-op while the copilot cheerfully
+ * reported success. An open string parameter here produces exactly that failure.
+ */
+export interface NavTarget { page: string; tab?: string; label: string; adminOnly?: boolean }
+
+export const NAV_DESTINATIONS: Record<string, NavTarget> = {
+  dashboard:        { page: 'dashboard',        label: 'Dashboard' },
+  deals:            { page: 'deals',            label: 'Deal Flow' },
+  contacts:         { page: 'contacts',         label: 'Contacts' },
+  tasks:            { page: 'tasks',            label: 'Tasks' },
+  calendar:         { page: 'calendar',         label: 'Calendar' },
+  campaigns:        { page: 'campaigns',        label: 'Marketing campaigns' },
+  action_plans:     { page: 'action-plans',     label: 'Action Plans' },
+  social:           { page: 'social',           label: 'Social' },
+  transaction_docs: { page: 'transaction-docs', label: 'Transaction Docs' },
+  esign:            { page: 'esign',            label: 'E-Sign' },
+  calls:            { page: 'calls',            label: 'Calls' },
+  activity:         { page: 'activity',         label: 'Activity' },
+  // Properties is a page with sub-tabs; each needs both setters.
+  properties:       { page: 'properties', tab: 'propertydb', label: 'Properties' },
+  property_db:      { page: 'properties', tab: 'propertydb', label: 'Property DB' },
+  listings:         { page: 'properties', tab: 'listings',   label: 'Listings' },
+  floor_plan:       { page: 'properties', tab: 'floorplan',  label: 'Floor Plan' },
+  matchmaker:       { page: 'properties', tab: 'matchmaker', label: 'Matchmaker' },
+  // Admin-only areas. The pages already gate their own content on isAdmin, so this
+  // is defence in depth rather than the only check — but it means an agent gets a
+  // straight "that's broker-level" instead of being dropped on a blank screen.
+  agents:           { page: 'agents',      label: 'Broker / Agents', adminOnly: true },
+  commissions:      { page: 'commissions', label: 'Commissions',     adminOnly: true },
+};
+
+/** Tools handled in the browser, not by runTool. */
+export const CLIENT_TOOLS = new Set(['open_page']);
+
+/**
+ * Resolve a requested destination for this agent. Returns the directive to send to
+ * the client, or an error string for the model.
+ */
+export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } | { error: string } {
+  const target = NAV_DESTINATIONS[dest];
+  if (!target) return { error: `Unknown destination. Valid options: ${Object.keys(NAV_DESTINATIONS).join(', ')}` };
+  if (target.adminOnly && !(ctx.role === 'admin' || ctx.role === 'super_admin')) {
+    return { error: `${target.label} is broker-level — it isn't available on this account.` };
+  }
+  return { target };
+}
+
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign']);
 
@@ -137,6 +193,8 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, listing_id: { type: 'string' } } } },
   { name: 'fill_document', description: "Fill in or edit fields on a contract/form document — e.g. dropping a contact's name, company, email and phone into the right blanks. Pass only the fields you're setting; everything else is left alone. Read it with read_document first. WRITE — confirm with the agent first. This edits the draft only; it does not send or sign anything.",
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, fields: { type: 'object', description: 'Field label or id → value, e.g. {"Tenant Name": "Acme LLC", "Email": "a@b.com"}' }, contact_id: { type: 'string', description: "Optional: pull this contact's name/company/email/phone in automatically, then apply `fields` on top." }, title: { type: 'string' } }, required: ['submission_id'] } },
+  { name: 'open_page', description: `Switch the agent's CRM screen to a section — use it when they ask you to open, show, go to or pull up part of the app. It changes what is on their screen immediately; it does not read or change any data, so just call it. Destinations: ${Object.keys(NAV_DESTINATIONS).join(', ')}.`,
+    input_schema: { type: 'object', properties: { destination: { type: 'string', enum: Object.keys(NAV_DESTINATIONS), description: 'Which section to open' } }, required: ['destination'] } },
   { name: 'draft_campaign', description: "Build a marketing campaign and save it as a DRAFT — name, subject and full email body. It is saved unsent and unscheduled; the agent reviews and sends it themselves from the Marketing tab. You cannot send campaigns. Write the real body, no placeholder text. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, email_subject: { type: 'string' }, email_body: { type: 'string', description: 'The complete email body — plain text or simple HTML. No placeholders.' } }, required: ['name', 'email_subject', 'email_body'] } },
 ];

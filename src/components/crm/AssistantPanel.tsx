@@ -7,6 +7,8 @@ import React, { useEffect, useRef, useState } from 'react';
 type Block = { type: string; text?: string; name?: string; input?: unknown };
 type Msg = { role: 'user' | 'assistant'; content: string | Block[] };
 type Pending = { name: string; summary: string };
+/** A UI directive the server asks the browser to apply — currently just navigation. */
+type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string };
 
 const GOLD = '#c9922c';
 
@@ -29,6 +31,7 @@ function toolsOf(content: string | Block[]): string[] {
 const TOOL_LABEL: Record<string, string> = {
   search_contacts: 'searched contacts', get_contact: 'looked up a contact', list_tasks: 'checked tasks',
   list_deals: 'checked deals', get_deal: 'looked up a deal', create_task: 'created a task',
+  open_page: 'opened a section',
   complete_task: 'completed a task', add_note: 'added a note', update_deal_stage: 'moved a deal',
   find_property: 'found a property', list_properties: 'checked properties', get_property: 'looked up a property',
   list_forms: 'listed forms', draft_lease: 'drafted a lease',
@@ -38,7 +41,12 @@ const TOOL_LABEL: Record<string, string> = {
   read_document: 'read a document', fill_document: 'filled in a document', draft_campaign: 'drafted a campaign',
 };
 
-export default function AssistantPanel({ token, onClose }: { token?: string; onClose: () => void }) {
+export default function AssistantPanel({ token, onClose, onNavigate }: {
+  token?: string;
+  onClose: () => void;
+  /** Applies a navigate directive: switches the CRM page (and sub-tab, where the destination has one). */
+  onNavigate?: (page: string, tab?: string) => void;
+}) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -61,7 +69,14 @@ export default function AssistantPanel({ token, onClose }: { token?: string; onC
       });
       const j = await res.json();
       if (!res.ok) { setError(j.error || 'Something went wrong.'); setMessages(messages); }
-      else { setMessages(j.messages); setPending(j.pendingWrites || []); }
+      else {
+        setMessages(j.messages); setPending(j.pendingWrites || []);
+        // Apply any UI directives the server returned. Navigation runs after the
+        // reply is in state so the agent sees what was said as the screen changes.
+        for (const a of (j.clientActions ?? []) as ClientAction[]) {
+          if (a.type === 'navigate') onNavigate?.(a.page, a.tab);
+        }
+      }
     } catch { setError('Network error — try again.'); setMessages(messages); }
     finally { setLoading(false); }
   }

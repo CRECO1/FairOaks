@@ -11295,7 +11295,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot" aria-label="Open CRECO Copilot"
           style={{ position: 'fixed', bottom: 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
       )}
-      {assistantOpen && <AssistantPanel token={session?.access_token} onClose={() => setAssistantOpen(false)} />}
+      {assistantOpen && (
+        <AssistantPanel
+          token={session?.access_token}
+          onClose={() => setAssistantOpen(false)}
+          onNavigate={(p, tab) => {
+            // The server sends destinations from a closed set, but this is client
+            // state being set from a network response — validate against the real
+            // page list rather than trusting the string.
+            if (!(VALID_PAGES as readonly string[]).includes(p)) return;
+            setPage(p as PageType);
+            setFilter('');
+            if (p === 'properties' && tab && ['propertydb', 'listings', 'floorplan', 'matchmaker'].includes(tab)) {
+              setPropertiesTab(tab as typeof propertiesTab);
+            }
+            // Sections that load on demand from their nav button rather than on mount.
+            if (p === 'agents') { loadProfiles(); loadActivityReport(activityReportDays); }
+            if (p === 'commissions') loadAllCommissions();
+            setMobileMenuOpen(false);
+          }}
+        />
+      )}
       {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} onClose={() => setCopilotActivityOpen(false)} />}
 
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
