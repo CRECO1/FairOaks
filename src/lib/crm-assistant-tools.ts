@@ -76,7 +76,11 @@ function visibleListings(rows: any[] | null, ctx: AgentCtx): any[] {
   return (rows ?? []).filter(l => canSeeListing(l, ctx)).map(({ is_restricted, listing_agent_id, assigned_agent_ids, ...rest }) => rest);
 }
 
-export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event']);
+export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
+  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign']);
+
+// Contact types the CRM actually uses — kept closed so the copilot can't invent one.
+const CONTACT_TYPES = ['Tenant', 'Buyer', 'Seller', 'Landlord/Investor', 'Broker', 'Agent'];
 
 export const TOOLS: Anthropic.Tool[] = [
   { name: 'search_contacts', description: 'Search the CRM for contacts (people/companies) by name, email, or business name. Returns up to 10 matches with their id, name, type, and email.',
@@ -121,9 +125,87 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { contact_id: { type: 'string', description: 'The contact to email (their email is looked up)' }, subject: { type: 'string' }, body: { type: 'string', description: 'The complete email body — write it in full, no placeholders. Plain text or simple HTML.' } }, required: ['contact_id', 'subject', 'body'] } },
   { name: 'schedule_event', description: "Add an event to the agent's Google Calendar on a given date (all-day). WRITE. Optionally tie it to a contact.",
     input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
+
+  // ── Records & documents (Layer 4) ─────────────────────────────────────────
+  { name: 'create_contact', description: `Add a new contact to the CRM. Search first with search_contacts so you don't create a duplicate. Type must be one of: ${CONTACT_TYPES.join(', ')}. WRITE — confirm the details with the agent first.`,
+    input_schema: { type: 'object', properties: { first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' }, notes: { type: 'string' }, lead_source: { type: 'string' } }, required: ['type'] } },
+  { name: 'update_contact', description: "Update an existing contact's details (name, business, email, phone, type, brokerage). Only the fields you pass are changed. To append to their notes use add_note instead. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' } }, required: ['contact_id'] } },
+  { name: 'create_property', description: 'Add a property/listing to the CRM. Check find_property first so you don\'t duplicate one. WRITE — confirm the details with the agent first.',
+    input_schema: { type: 'object', properties: { name: { type: 'string' }, address: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, zip: { type: 'string' }, type: { type: 'string', description: 'e.g. Industrial, Retail, Office, Land' }, status: { type: 'string', description: 'e.g. active, pending' }, asking_price: { type: 'number' }, sq_ft: { type: 'number' }, lot_size: { type: 'string' }, zoning: { type: 'string' }, description: { type: 'string' }, highlights: { type: 'string' } }, required: ['name'] } },
+  { name: 'read_document', description: 'Read a saved contract/form document (a form submission) — its title, status and the field values currently filled in. Use before fill_document so you edit against what is actually there. Pass deal_id or listing_id to list the documents on that deal/property.',
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, listing_id: { type: 'string' } } } },
+  { name: 'fill_document', description: "Fill in or edit fields on a contract/form document — e.g. dropping a contact's name, company, email and phone into the right blanks. Pass only the fields you're setting; everything else is left alone. Read it with read_document first. WRITE — confirm with the agent first. This edits the draft only; it does not send or sign anything.",
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, fields: { type: 'object', description: 'Field label or id → value, e.g. {"Tenant Name": "Acme LLC", "Email": "a@b.com"}' }, contact_id: { type: 'string', description: "Optional: pull this contact's name/company/email/phone in automatically, then apply `fields` on top." }, title: { type: 'string' } }, required: ['submission_id'] } },
+  { name: 'draft_campaign', description: "Build a marketing campaign and save it as a DRAFT — name, subject and full email body. It is saved unsent and unscheduled; the agent reviews and sends it themselves from the Marketing tab. You cannot send campaigns. Write the real body, no placeholder text. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, email_subject: { type: 'string' }, email_body: { type: 'string', description: 'The complete email body — plain text or simple HTML. No placeholders.' } }, required: ['name', 'email_subject', 'email_body'] } },
 ];
 
 const j = (o: unknown) => JSON.stringify(o);
+
+/* ── contract/form field helpers ──────────────────────────────────────────────
+ * crm_form_submissions.values is a flat overlay array of placed fields
+ * ({ id, type, value, label, fieldKey }), the same shape the document editor
+ * writes. A field that wraps across lines is stored as key_l0 / key_l1, so match
+ * on the base key and fill the first line. Signature/initial/date placeholders are
+ * stamped at signing and are never touched here.
+ */
+interface OverlayField { id?: string; type?: string; value?: string; label?: string; fieldKey?: string }
+
+const drop = (v: unknown) => v === undefined || v === null || v === '';
+const prune = (o: Record<string, unknown>): Record<string, string> =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => !drop(v)).map(([k, v]) => [k.toLowerCase(), String(v)]));
+
+const typedField = (f: OverlayField) => !f.type || f.type === 'text' || f.type === 'check';
+const fieldName = (f: OverlayField): string =>
+  (f.label || (f.fieldKey || '').replace(/_l\d+$/, '') || '').replace(/\s*[:#]$/, '').trim();
+const normName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** What's on a document right now, for read_document. */
+function summarizeFields(values: unknown): { name: string; value: string }[] {
+  const list = Array.isArray(values) ? (values as OverlayField[]) : [];
+  const seen = new Set<string>();
+  const out: { name: string; value: string }[] = [];
+  for (const f of list) {
+    if (!typedField(f)) continue;
+    const name = fieldName(f);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push({ name, value: (f.value ?? '').trim() });
+  }
+  return out.slice(0, 80);
+}
+
+/**
+ * Apply `wanted` (normalised field name → value) to the overlay, returning a new
+ * array plus what matched and what didn't. Exact name match first, then a
+ * contains match, so "Tenant Name" is reachable as "tenant". Each target field is
+ * written at most once.
+ */
+function applyFields(values: unknown, wanted: Record<string, string>)
+  : { values: OverlayField[]; applied: string[]; unmatched: string[] } {
+  const list: OverlayField[] = Array.isArray(values) ? (values as OverlayField[]).map(f => ({ ...f })) : [];
+  const applied: string[] = [], unmatched: string[] = [];
+  const used = new Set<number>();
+
+  for (const [rawKey, val] of Object.entries(wanted)) {
+    const key = normName(rawKey);
+    let idx = list.findIndex((f, i) => !used.has(i) && typedField(f) && normName(fieldName(f)) === key);
+    if (idx === -1) {
+      idx = list.findIndex((f, i) => {
+        if (used.has(i) || !typedField(f)) return false;
+        const n = normName(fieldName(f));
+        return !!n && (n.includes(key) || key.includes(n));
+      });
+    }
+    if (idx === -1) { unmatched.push(rawKey); continue; }
+    used.add(idx);
+    list[idx].value = val;
+    applied.push(`${fieldName(list[idx])} = ${val}`);
+  }
+  return { values: list, applied, unmatched };
+}
+
 
 export async function runTool(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
   const db = admin();
@@ -301,6 +383,117 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Scheduled “${input.title}” on ${input.date}`, input.contact_id);
         return j({ ok: true, scheduled: true, event: r.data });
       }
+
+      // ── Layer 4: records & documents ───────────────────────────────────────
+      case 'create_contact': {
+        if (!CONTACT_TYPES.includes(input.type)) return j({ error: `type must be one of: ${CONTACT_TYPES.join(', ')}` });
+        if (!input.first_name && !input.last_name && !input.business_name) return j({ error: 'Give the contact a name or a business name.' });
+        const row: Record<string, any> = {
+          type: input.type, business_unit: ctx.businessUnit ?? 'commercial', agent_id: ctx.userId,
+          last_touched_at: new Date().toISOString(),
+        };
+        for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'notes', 'lead_source']) {
+          if (input[f]) row[f] = String(input[f]).trim();
+        }
+        const { data, error } = await db.from('crm_clients').insert(row).select('id, first_name, last_name, business_name, email, type').single();
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Added contact “${data.business_name || `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim()}”`, data.id);
+        return j({ ok: true, created: data });
+      }
+      case 'update_contact': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_clients', input.contact_id, 'Contact'); if (bad) return bad;
+        const { data: c } = await db.from('crm_clients').select('agent_id, assigned_agent_ids').eq('id', input.contact_id).maybeSingle();
+        if (!c) return j({ error: 'Contact not found' });
+        if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That contact isn't assigned to you" });
+        if (input.type && !CONTACT_TYPES.includes(input.type)) return j({ error: `type must be one of: ${CONTACT_TYPES.join(', ')}` });
+        const patch: Record<string, any> = {};
+        for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'type']) {
+          if (input[f] !== undefined) patch[f] = input[f] === null ? null : String(input[f]).trim();
+        }
+        if (Object.keys(patch).length === 0) return j({ error: 'Nothing to update' });
+        patch.last_touched_at = new Date().toISOString();
+        const { data, error } = await db.from('crm_clients').update(patch).eq('id', input.contact_id).select('id, first_name, last_name, business_name, email, phone, type').single();
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Updated contact details (${Object.keys(patch).filter(k => k !== 'last_touched_at').join(', ')})`, input.contact_id);
+        return j({ ok: true, updated: data });
+      }
+      case 'create_property': {
+        const row: Record<string, any> = {
+          name: String(input.name).trim(), business_unit: ctx.businessUnit ?? 'commercial',
+          listing_agent_id: ctx.userId, status: input.status || 'active', flyer_type: 'sale',
+        };
+        for (const f of ['address', 'city', 'state', 'zip', 'type', 'lot_size', 'zoning', 'description', 'highlights']) {
+          if (input[f]) row[f] = String(input[f]).trim();
+        }
+        if (input.asking_price != null && input.asking_price !== '') row.asking_price = Number(input.asking_price);
+        if (input.sq_ft != null && input.sq_ft !== '') row.sq_ft = Number(input.sq_ft);
+        const { data, error } = await db.from('crm_listings').insert(row).select('id, name, address, city, state, type, status, asking_price, sq_ft').single();
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Added property “${data.name}”`);
+        return j({ ok: true, created: data });
+      }
+      case 'read_document': {
+        if (input.submission_id) {
+          const { data: sub } = await db.from('crm_form_submissions').select('id, title, status, values, deal_id, listing_id, client_id, business_unit, created_by').eq('id', input.submission_id).maybeSingle();
+          if (!sub) return j({ error: 'Document not found' });
+          if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+          return j({ id: sub.id, title: sub.title, status: sub.status, deal_id: sub.deal_id, listing_id: sub.listing_id, fields: summarizeFields(sub.values) });
+        }
+        let q = db.from('crm_form_submissions').select('id, title, status, deal_id, listing_id, updated_at').order('updated_at', { ascending: false }).limit(25);
+        q = scoped(q, ctx);
+        if (input.deal_id) q = q.eq('deal_id', input.deal_id);
+        if (input.listing_id) q = q.eq('listing_id', input.listing_id);
+        const { data, error } = await q;
+        return error ? j({ error: error.message }) : j(data ?? []);
+      }
+      case 'fill_document': {
+        const { data: sub } = await db.from('crm_form_submissions').select('id, title, values, business_unit, status').eq('id', input.submission_id).maybeSingle();
+        if (!sub) return j({ error: 'Document not found' });
+        if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+        // A document that has already been executed is a signed record, not a draft.
+        if (sub.status === 'executed' || sub.status === 'completed') return j({ error: 'That document is already executed — it can no longer be edited.' });
+
+        const wanted: Record<string, string> = {};
+        if (input.contact_id) {
+          const badC = await outOfWorkspace(db, ctx, 'crm_clients', input.contact_id, 'Contact'); if (badC) return badC;
+          const { data: c } = await db.from('crm_clients').select('first_name, last_name, business_name, email, phone, cell_phone, address, city, state, zip').eq('id', input.contact_id).maybeSingle();
+          if (c) {
+            const full = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
+            Object.assign(wanted, prune({
+              name: full || c.business_name, 'full name': full || c.business_name, tenant: c.business_name || full,
+              'tenant name': c.business_name || full, company: c.business_name, business: c.business_name,
+              email: c.email, phone: c.phone || c.cell_phone, address: c.address, city: c.city, state: c.state, zip: c.zip,
+            }));
+          }
+        }
+        for (const [k, v] of Object.entries((input.fields ?? {}) as Record<string, unknown>)) {
+          if (v != null && v !== '') wanted[String(k).trim().toLowerCase()] = String(v);
+        }
+        if (Object.keys(wanted).length === 0 && !input.title) return j({ error: 'Nothing to fill — pass fields, a contact_id, or a title.' });
+
+        const { values, applied, unmatched } = applyFields(sub.values, wanted);
+        const patch: Record<string, any> = { updated_at: new Date().toISOString() };
+        if (applied.length) patch.values = values;
+        if (input.title) patch.title = String(input.title).trim();
+        const { error } = await db.from('crm_form_submissions').update(patch).eq('id', input.submission_id);
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Filled ${applied.length} field${applied.length === 1 ? '' : 's'} on “${sub.title ?? 'a document'}”`);
+        return j({ ok: true, applied, unmatched, note: unmatched.length ? 'Those field names are not on this document — read_document lists the real ones.' : undefined });
+      }
+      case 'draft_campaign': {
+        // status is hard-coded 'draft'. The send cron only picks up 'active', so
+        // nothing the copilot creates can go out until a person activates it.
+        const { data, error } = await db.from('crm_campaigns').insert({
+          name: String(input.name).trim(), description: input.description ?? null,
+          type: 'email', frequency: 'one-time', status: 'draft',
+          email_subject: String(input.email_subject).trim(), email_body: String(input.email_body),
+          business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId, sender_agent_id: ctx.userId,
+        }).select('id, name, status, email_subject').single();
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Drafted campaign “${data.name}” (unsent draft)`);
+        return j({ ok: true, campaign: data, note: 'Saved as an unsent draft with no audience. Review and send it from the Marketing tab.' });
+      }
+
       default:
         return j({ error: `Unknown tool: ${name}` });
     }
@@ -321,6 +514,11 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => s.name || s.email).join(', ')} — this emails them the document`;
     case 'send_email': return `📧 Send the email “${input.subject}” from your Gmail — this emails the contact`;
     case 'schedule_event': return `📅 Add “${input.title}” to your calendar on ${input.date}`;
+    case 'create_contact': return `Add contact ${input.business_name || `${input.first_name ?? ''} ${input.last_name ?? ''}`.trim()} (${input.type})`;
+    case 'update_contact': return `Update this contact's ${Object.keys(input).filter(k => k !== 'contact_id').join(', ') || 'details'}`;
+    case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;
+    case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}`;
+    case 'draft_campaign': return `Save “${input.name}” as an UNSENT draft campaign — nothing is emailed`;
     default: return name;
   }
 }

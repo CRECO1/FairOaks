@@ -14,7 +14,8 @@ const SUGGESTIONS = [
   'What tasks do I have open?',
   'Show my deals in the LOI stage',
   'Create a task to follow up with…',
-  'Add a note to a contact',
+  'Add a new contact to the CRM',
+  'Fill this contract in from a contact',
 ];
 
 function textOf(content: string | Block[]): string {
@@ -33,6 +34,8 @@ const TOOL_LABEL: Record<string, string> = {
   list_forms: 'listed forms', draft_lease: 'drafted a lease',
   generate_lease: 'generated the lease', start_form: 'started a form', send_for_signature: 'sent for e-signature',
   send_email: 'sent an email', schedule_event: 'scheduled an event',
+  create_contact: 'added a contact', update_contact: 'updated a contact', create_property: 'added a property',
+  read_document: 'read a document', fill_document: 'filled in a document', draft_campaign: 'drafted a campaign',
 };
 
 export default function AssistantPanel({ token, onClose }: { token?: string; onClose: () => void }) {
