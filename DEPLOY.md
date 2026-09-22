@@ -16,10 +16,19 @@ folder/branch. Follow this exactly. **Deploying wrong overwrites live work.**
 | **Canonical branch** | `consolidate/props-plus-calls` |
 
 ### Deploy procedure (the ONLY approved way)
+Commit your work first, then run the wrapper. It refuses to deploy unless you're
+on the canonical branch, the tree is clean, and the push to GitHub succeeded —
+which is what stops unpushed code from reaching prod (the 2026-09-21 failure,
+where CLI deploys shipped locally-committed-but-unpushed code).
 ```bash
 cd /Users/creco/Documents/CRECO/FairOaks-consolidate
-git add -A && git commit -m "…" && git push      # ALWAYS back up FIRST
-vercel --prod --yes                              # then deploy
+git add <your files> && git commit -m "…"   # commit first — stage specific files
+./deploy.sh                                  # push + verify local==origin + vercel --prod
+```
+Equivalent manual steps, only if you ever bypass the wrapper:
+```bash
+git push               # ALWAYS back up FIRST — skipping this is what broke us
+vercel --prod --yes    # then deploy
 ```
 
 ## ❌ DO NOT
