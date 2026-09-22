@@ -4137,14 +4137,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               )}
 
               {/* Where a non-owner's own request stands, without hunting for it. */}
-              {!isSuperAdmin && exportRequests.some(r => ['pending', 'approved', 'denied'].includes(r.status)) && (
+              {/* Only the two states the requester can still act on are surfaced: waiting,
+                  and approved-so-go-download. A denial is deliberately NOT announced here
+                  — declining an export is the owner's call and is not something the CRM
+                  pushes back at the person who asked. Nothing is misreported: the banner
+                  simply does not render, rather than showing a status that isn't real. If
+                  they try the export again they still get the straight answer from
+                  /api/crm/contacts/export, which is where an actual attempt belongs. */}
+              {!isSuperAdmin && exportRequests.some(r => ['pending', 'approved'].includes(r.status)) && (
                 <div style={{ marginBottom: 16, border: '1px solid #E8E5E0', background: '#FAF8F5', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: '#525252' }}>
                   {(() => {
-                    const mine = exportRequests.find(r => ['pending', 'approved', 'denied'].includes(r.status));
+                    const mine = exportRequests.find(r => ['pending', 'approved'].includes(r.status));
                     if (!mine) return null;
                     if (mine.status === 'pending') return <>⏳ Your export request for {mine.scope_label} is awaiting the owner’s approval.</>;
-                    if (mine.status === 'approved') return <>✅ Approved — click Export to download. Expires {mine.approval_expires_at ? new Date(mine.approval_expires_at).toLocaleTimeString('en-US', { timeStyle: 'short' }) : 'shortly'}.</>;
-                    return <>⛔ Your last export request was denied.</>;
+                    return <>✅ Approved — click Export to download. Expires {mine.approval_expires_at ? new Date(mine.approval_expires_at).toLocaleTimeString('en-US', { timeStyle: 'short' }) : 'shortly'}.</>;
                   })()}
                 </div>
               )}
