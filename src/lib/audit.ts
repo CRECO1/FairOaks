@@ -26,7 +26,13 @@ export type AuditAction =
   | 'export_requested'
   | 'export_approved'
   | 'export_denied'
-  | 'export_blocked';
+  | 'export_blocked'
+  // Copilot oversight: one row per tool the assistant ran, so "what did Brian ask
+  // the copilot to do" is answerable. Tool CALLS only — never the chat text; free-text
+  // arguments are recorded as field names and lengths, not content.
+  | 'copilot_tool'
+  // Anti-scrape: read volume past the alert threshold.
+  | 'bulk_read_detected';
 
 interface AuditParams {
   actorId: string;

@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { guardRead, capLimit } from '@/lib/crm-read-guard';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  const guard = await guardRead(req, ctx, 'listings');
+  if (guard.blocked) return guard.blocked;
+  const { limit, tooLarge } = capLimit(req.nextUrl.searchParams.get('limit'), { max: 200, def: 200 });
+  if (tooLarge) return NextResponse.json({ error: 'limit may not exceed 200' }, { status: 400 });
   // Non-admins are pinned to their own workspace; only admins may pass ?business_unit=.
   const unit = isAdminRole(ctx.role) ? (req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
@@ -12,13 +17,15 @@ export async function GET(req: NextRequest) {
     .from('crm_listings')
     .select('*')
     .eq('business_unit', unit)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(limit);
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
   // Restricted folders are visible only to admins, the owner, and assigned teammates.
   const admin = isAdminRole(ctx.role);
   const visible = (data ?? []).filter((l: Record<string, unknown>) =>
     admin || !l.is_restricted || l.listing_agent_id === ctx.userId
     || (Array.isArray(l.assigned_agent_ids) && (l.assigned_agent_ids as string[]).includes(ctx.userId)));
+  await guard.recordRows(visible.length);
   return NextResponse.json({ listings: visible });
 }
 

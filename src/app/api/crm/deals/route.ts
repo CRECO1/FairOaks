@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
+import { guardRead, capLimit } from '@/lib/crm-read-guard';
 
 // Deals (crm_deals) for the property-workspace "Deals" tab: list the deals at a
 // listing, create a deal pre-linked to a property, and link/unlink an existing
@@ -13,9 +14,13 @@ const DEAL_COLS =
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  const guard = await guardRead(req, ctx, 'deals');
+  if (guard.blocked) return guard.blocked;
+  const { limit, tooLarge } = capLimit(req.nextUrl.searchParams.get('limit'), { max: 200, def: 200 });
+  if (tooLarge) return NextResponse.json({ error: 'limit may not exceed 200' }, { status: 400 });
   const listingId = req.nextUrl.searchParams.get('listing_id');
   const supabase = adminClient();
-  let q = supabase.from('crm_deals').select(DEAL_COLS).order('last_touch', { ascending: false });
+  let q = supabase.from('crm_deals').select(DEAL_COLS).order('last_touch', { ascending: false }).limit(limit);
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   if (listingId) {
     if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
@@ -23,6 +28,7 @@ export async function GET(req: NextRequest) {
   }
   const { data, error } = await q;
   if (error) { console.error('[api/deals] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
+  await guard.recordRows((data ?? []).length);
   return NextResponse.json({ deals: data ?? [] });
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { guardRead, capLimit } from '@/lib/crm-read-guard';
 
 // Master contact list = crm_clients. This route powers contact pickers (e.g. the
 // Add-Property "Listing Broker" field) so contacts are LINKED, never duplicated.
@@ -19,14 +20,19 @@ function scopedUnit(req: NextRequest, ctx: { role: string | null; businessUnit: 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  const guard = await guardRead(req, ctx, 'contacts');
+  if (guard.blocked) return guard.blocked;
+
   const q = (req.nextUrl.searchParams.get('q') ?? '').trim();
-  const limit = Math.min(50, Number(req.nextUrl.searchParams.get('limit') ?? 20) || 20);
+  const { limit, tooLarge } = capLimit(req.nextUrl.searchParams.get('limit'), { max: 50, def: 20 });
+  if (tooLarge) return NextResponse.json({ error: 'limit may not exceed 50' }, { status: 400 });
 
   // One contact by id, full row — used to open a card from a place the list isn't loaded yet.
   const id = req.nextUrl.searchParams.get('id');
   if (id) {
     const { data, error } = await adminClient().from('crm_clients').select('*').eq('id', id).eq('business_unit', scopedUnit(req, ctx)).maybeSingle();
     if (error) return dbError('api/crm/contacts GET id', error);
+    await guard.recordRows(data ? 1 : 0);
     return NextResponse.json({ contacts: data ? [data] : [] });
   }
 
@@ -42,6 +48,7 @@ export async function GET(req: NextRequest) {
     .order('last_touched_at', { ascending: false, nullsFirst: false })
     .limit(limit);
   if (error) return dbError('api/crm/contacts GET', error);
+  await guard.recordRows((data ?? []).length);
   return NextResponse.json({ contacts: data ?? [] });
 }
 

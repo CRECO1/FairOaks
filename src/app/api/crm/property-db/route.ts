@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, dbError, assertOwnsResource } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { normalizeAddress } from '@/lib/broker-ingest/upsert';
+import { guardRead } from '@/lib/crm-read-guard';
 
 // Read-side for the broker-ingested Property DB (crm_prospective_properties).
 // The write-side is src/lib/broker-ingest/* (the 4x/day Gmail → CRM pipeline).
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  // The single largest read in the CRM: the whole prospective-property table with
+  // contact and owner PII joined in. Guarded and charged to the row budget in full.
+  const guard = await guardRead(req, ctx, 'property-db');
+  if (guard.blocked) return guard.blocked;
   const unit = isAdminRole(ctx.role) ? (req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
   // PostgREST caps a single response at 1000 rows, so page through until the
@@ -33,6 +38,7 @@ export async function GET(req: NextRequest) {
     all.push(...data);
     if (data.length < PAGE) break;
   }
+  await guard.recordRows(all.length);
   return NextResponse.json({ properties: all });
 }
 
