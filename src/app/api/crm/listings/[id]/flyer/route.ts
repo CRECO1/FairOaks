@@ -14,6 +14,34 @@ function money(n: unknown): string {
   return Number.isFinite(v) && v > 0 ? '$' + v.toLocaleString('en-US') : '';
 }
 
+// ── Public-safe filter ──────────────────────────────────────────────────────
+// A flyer is a buyer-facing document. Internal research notes sometimes get pasted
+// into a listing's description/highlights — negotiation strategy (target/floor
+// prices), "UNCONFIRMED" / "[… CONFIRM]" placeholders, appraisal-district parcel IDs
+// and source disclaimers (Bexar CAD, GeoId, PropertyId, parcel, NCB), owner-of-record
+// / owner-entity notes, county assessed values, and "owner photo" credits. None of
+// that may ever print on a flyer, so it is stripped here regardless of what was typed.
+const INTERNAL_RE = /(target \$|floor \$|[-–]\s*target\b|[-–]\s*floor\b|\bUNCONFIRMED\b|\[[^\]]*CONFIRM[^\]]*\]|bexar\s*cad|\bgeo\s?id\b|\bproperty\s?id\b|\bparcel\b|CAD account|\bNCB\b|\bpid \d|appraisal district|\bAPN\b|owner of record|signing entity|NOT Stovall|Stovall Management|county value|combined assessed|that is an assessment|owner photo|photo from owner|photo courtesy|Source:\s*Bexar)/i;
+
+function stripInlineTags(s: string): string {
+  return String(s || '')
+    .replace(/\s*[-–]\s*owner photo\b/gi, '')
+    .replace(/\s*\[[^\]]*CONFIRM[^\]]*\]/gi, '')
+    .replace(/\s*[-–]\s*target\b[^\n]*?(?=\s*[-–]\s*floor)/gi, '')
+    .replace(/\s*[-–]\s*floor\b[^\n;]*/gi, '')
+    .replace(/\s*Source:\s*Bexar\s*CAD[^\n.]*\.?/gi, '')
+    .replace(/\s{2,}/g, ' ').trim();
+}
+// Free text (description): strip inline tags, then drop any whole sentence that is internal.
+function publicSafeText(text: string): string {
+  const cleaned = stripInlineTags(text);
+  return cleaned.split(/(?<=[.!?])\s+/).filter(s => !INTERNAL_RE.test(s)).join(' ').replace(/\s{2,}/g, ' ').trim();
+}
+// Bullets: clean each, then drop any that is still internal or now empty.
+function publicSafeHighlights(arr: string[]): string[] {
+  return arr.map(stripInlineTags).filter(h => h && !INTERNAL_RE.test(h));
+}
+
 // Map tiles. The account's public Google key is referrer-restricted (unusable from a
 // server) and Maps Static isn't enabled, so we render the map ourselves from OSM
 // tiles. If a genuine server-side Google key is ever added, prefer it.
@@ -126,7 +154,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     : isRate ? `$${ap.toFixed(2)} /SF/YR` : `${money(ap)} /YR`;
   const statSize = L.sq_ft ? `${Number(L.sq_ft).toLocaleString()} SF` : (L.lot_size ? String(L.lot_size) : '—');
 
-  const address = [L.address, L.city, L.state, L.zip].filter(Boolean).join(', ') || L.name || 'Property';
+  const address = stripInlineTags([L.address, L.city, L.state, L.zip].filter(Boolean).join(', ') || L.name || 'Property');
   const residential = L.business_unit === 'residential';
   const unit = residential ? 'residential' : 'commercial';
   const web = residential ? 'fairoaksrealtygroup.com' : 'crecotx.com';
@@ -183,8 +211,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const bytes = await renderFlyer({
     badge, address,
-    description: L.description || L.notes || '',
-    highlights: String(L.highlights || '').split('\n').map(s => s.trim()).filter(Boolean),
+    description: publicSafeText(L.description || L.notes || ''),
+    highlights: publicSafeHighlights(String(L.highlights || '').split('\n').map(s => s.trim()).filter(Boolean)),
     statPrice, statSize,
     agentNames,
     contacts,
