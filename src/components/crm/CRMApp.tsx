@@ -44,21 +44,6 @@ const supabase = createBrowserClient();
 type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 /** A contact-export request awaiting, or carrying, the owner's decision. */
-interface ExportRequest {
-  id: string;
-  requester_id: string;
-  requester_name: string;
-  requester_email: string | null;
-  business_unit: string;
-  scope_label: string;
-  row_count: number;
-  status: 'pending' | 'approved' | 'denied' | 'consumed' | 'expired';
-  created_at: string;
-  approved_at?: string | null;
-  approval_expires_at?: string | null;
-  denied_at?: string | null;
-  consumed_at?: string | null;
-}
 
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
@@ -575,10 +560,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const emailEditorRef = useRef<HTMLDivElement>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
-  // Export approval. `exportRequestState` drives the Export button's label for
-  // a non-owner; `exportRequests` is the queue the owner answers from.
-  const [exportRequestState, setExportRequestState] = useState<'idle' | 'working' | 'pending' | 'denied'>('idle');
-  const [exportRequests, setExportRequests] = useState<ExportRequest[]>([]);
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
   const [activeClient, setActiveClient] = useState<Client | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
@@ -969,7 +950,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // is both where the owner answers requests and where an agent finds out
   // whether theirs was answered.
   useEffect(() => {
-    if (page === 'contacts' && session) loadExportRequests();
   }, [page, session]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Responsive resize listener
@@ -2010,146 +1990,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     showToast(updated.includes(agentId) ? `${label} added to deal` : `${label} removed from deal`);
   }
 
-  // ── Export approval (non-owner path) ─────────────────────────────────────────
   /**
-   * Try the download first, and only ask if the server says we may not.
-   *
-   * That order matters: it means an approval the owner granted a minute ago is
-   * spent by simply clicking Export again, with no second round trip and no
-   * second request queued behind it.
+   * Owner-only CSV download. Export is the account owner's alone, so there is no
+   * request path to fall back to — a refusal here means someone reached a button
+   * that should not have rendered, and the endpoint has already logged it.
    */
-  async function requestOrDownloadExport(toExport: Client[]) {
-    const selected = selectedClientIds.size > 0;
-    const idsParam = selected ? `&ids=${[...selectedClientIds].join(',')}` : '';
-
-    setExportRequestState('working');
+  async function downloadCsv(url: string, filename: string, noun: string) {
+    if (!isSuperAdmin) { showToast('Exporting is limited to the account owner.'); return; }
     try {
-      const dl = await fetch(`/api/crm/contacts/export?unit=${encodeURIComponent(businessUnit)}${idsParam}`);
-
-      if (dl.ok) {
-        const csv = await dl.text();
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = `contacts-${today()}.csv`; a.click();
-        URL.revokeObjectURL(url);
-        setExportRequestState('idle');
-        showToast(`Exported ${toExport.length} contact${toExport.length !== 1 ? 's' : ''} — approval used.`);
-        loadExportRequests();
+      const res = await fetch(url);
+      if (!res.ok) {
+        const info = await res.json().catch(() => ({}));
+        showToast(info.error ?? 'Export refused.');
         return;
       }
-
-      const info = await dl.json().catch(() => ({}));
-
-      // Already queued, or answered in a way that asking again will not change.
-      if (info.status === 'pending') {
-        setExportRequestState('pending');
-        showToast('Your export request is awaiting owner approval.');
-        return;
-      }
-      if (info.status === 'denied') {
-        setExportRequestState('denied');
-        showToast('The owner denied this export request.');
-        return;
-      }
-
-      // No usable approval — ask for one.
-      const res = await fetch('/api/crm/export-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          business_unit: businessUnit,
-          ids: selected ? [...selectedClientIds] : null,
-        }),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) { setExportRequestState('idle'); showToast('Error: ' + (out.error ?? 'could not send request')); return; }
-
-      setExportRequestState('pending');
-      showToast(
-        out.alreadyPending
-          ? 'Already requested — awaiting owner approval.'
-          : `Export request sent to the owner for approval (${out.rowCount ?? toExport.length} contacts).`,
-      );
-      loadExportRequests();
-    } catch {
-      setExportRequestState('idle');
-      showToast('Could not reach the server. Try again.');
-    }
-  }
-
-  /**
-   * The same try-then-ask flow as the contact export, for any other dataset.
-   *
-   * The server is the gate — it will not return rows without a live approval —
-   * so this only decides what to say. The owner falls straight through because
-   * the endpoint lets him; nobody else does, admins included.
-   */
-  async function requestOrDownloadDataset(opts: {
-    dataset: 'commissions' | 'commissions_1099';
-    url: string;
-    filename: string;
-    body: Record<string, unknown>;
-    noun: string;
-  }) {
-    try {
-      const dl = await fetch(opts.url);
-      if (dl.ok) {
-        const csv = await dl.text();
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = opts.filename; a.click();
-        URL.revokeObjectURL(url);
-        showToast(isSuperAdmin ? `Exported ${opts.noun}.` : `Exported ${opts.noun} — approval used.`);
-        loadExportRequests();
-        return;
-      }
-      const info = await dl.json().catch(() => ({}));
-      if (dl.status === 403 && !info.needsApproval) { showToast(info.error ?? 'Not permitted.'); return; }
-      if (info.status === 'pending') { showToast('Your export request is awaiting owner approval.'); return; }
-      if (info.status === 'denied')  { showToast('The owner denied this export request.'); return; }
-
-      const res = await fetch('/api/crm/export-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataset: opts.dataset, business_unit: businessUnit, ...opts.body }),
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) { showToast('Error: ' + (out.error ?? 'could not send request')); return; }
-      showToast(out.alreadyPending
-        ? 'Already requested — awaiting owner approval.'
-        : 'Export request sent to the owner for approval.');
-      loadExportRequests();
+      const blob = new Blob([await res.text()], { type: 'text/csv;charset=utf-8;' });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href; a.download = filename; a.click();
+      URL.revokeObjectURL(href);
+      showToast(`Exported ${noun}.`);
     } catch {
       showToast('Could not reach the server. Try again.');
     }
-  }
-
-  /** Outstanding requests: the owner sees everyone's, an agent sees their own. */
-  async function loadExportRequests() {
-    try {
-      const res = await fetch('/api/crm/export-requests');
-      if (!res.ok) return;
-      const { requests } = await res.json();
-      setExportRequests(requests ?? []);
-    } catch { /* non-fatal */ }
-  }
-
-  /** Owner answers a request from inside the CRM. */
-  async function decideExportRequest(id: string, action: 'approve' | 'deny') {
-    if (!isSuperAdmin) { showToast('Only the account owner can approve an export.'); return; }
-    const res = await fetch(`/api/crm/export-requests/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action }),
-    });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast('Error: ' + (out.error ?? 'could not update')); loadExportRequests(); return; }
-    showToast(action === 'approve'
-      ? 'Approved — the requester has 30 minutes for one download.'
-      : 'Denied. Nothing was sent.');
-    loadExportRequests();
   }
 
   // ── Client Export / Import ────────────────────────────────────────────────────
@@ -2158,13 +2021,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       ? clients.filter(c => selectedClientIds.has(c.id))
       : clients;
 
-    // Anyone who is not the owner has to ask, every time. The server is the
-    // real gate — it will not return rows without a live approval — so this
-    // branch is about giving a clear answer, not about enforcement.
-    if (!isSuperAdmin) {
-      await requestOrDownloadExport(toExport);
-      return;
-    }
+    // Owner only. The button is not rendered for anyone else, and the endpoint
+    // refuses them anyway — this guard is the belt to that pair of braces.
+    if (!isSuperAdmin) { showToast('Exporting is limited to the account owner.'); return; }
 
     const headers = ['First Name', 'Last Name', 'Business Name', 'Type', 'Email', 'Phone', 'Cell Phone', 'Budget', 'Size Range', 'Asset Types', 'Address', 'City', 'State', 'ZIP', 'Brokerage', 'License', 'Notes', 'Date Added'];
     const rows = toExport.map(c => [
@@ -3677,26 +3536,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {selectedClientIds.size} selected
                 </span>
               )}
-              {/* The owner exports; everyone else asks. The button says which
-                  one is about to happen, and then says where the ask got to. */}
-              <button
-                className="crm-btn crm-btn-ghost crm-btn-sm"
-                onClick={exportClients}
-                disabled={exportRequestState === 'working' || exportRequestState === 'pending'}
-                title={
-                  isSuperAdmin
-                    ? (selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV')
-                    : 'Exports need the owner’s approval. This sends the request.'
-                }
-                style={{ fontSize: 13, opacity: exportRequestState === 'pending' ? 0.7 : 1 }}
-              >
-                {isSuperAdmin
-                  ? <>⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}</>
-                  : exportRequestState === 'working' ? '… Checking'
-                  : exportRequestState === 'pending' ? '⏳ Awaiting approval'
-                  : exportRequestState === 'denied' ? '⛔ Denied — request again'
-                  : <>🔒 Request export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ''}</>}
-              </button>
+              {/* Export is the owner's alone. Everyone else has no affordance at
+                  all — no button, no request flow — and the endpoint refuses
+                  them regardless. */}
+              {isSuperAdmin && (
+                <button
+                  className="crm-btn crm-btn-ghost crm-btn-sm"
+                  onClick={exportClients}
+                  title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'}
+                  style={{ fontSize: 13 }}
+                >
+                  ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
+                </button>
+              )}
               <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => importFileRef.current?.click()} title="Import from XLSX or CSV" style={{ fontSize: 13 }}>⬆ Import</button>
               <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add Client</button>
             </div>
@@ -3714,22 +3566,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </button>
                 ))}
               </div>
-              {commissionView === 'list' && (
-                /* Built server-side behind the export-approval gate. It used to be
-                   assembled here from allCommissions, which handed any admin every
-                   agent's splits in one click with no request and no audit row. */
+              {commissionView === 'list' && isSuperAdmin && (
+                /* Owner only, built server-side. It used to be assembled here from
+                   allCommissions behind nothing but isAdmin, which handed any admin
+                   every agent's splits in one unlogged click. */
                 <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 13 }} onClick={() => {
                   const qs = new URLSearchParams({ view: 'list', unit: businessUnit });
                   if (commissionFilterYear) qs.set('year', commissionFilterYear);
                   if (commissionFilterAgent) qs.set('agent_id', commissionFilterAgent);
                   if (commissionFilterStatus) qs.set('status', commissionFilterStatus);
-                  requestOrDownloadDataset({
-                    dataset: 'commissions',
-                    url: `/api/crm/commissions/export?${qs.toString()}`,
-                    filename: `commissions-${commissionFilterYear || 'all'}.csv`,
-                    body: { year: commissionFilterYear || undefined, agent_id: commissionFilterAgent || undefined, status: commissionFilterStatus || undefined },
-                    noun: 'the commission ledger',
-                  });
+                  downloadCsv(`/api/crm/commissions/export?${qs.toString()}`,
+                    `commissions-${commissionFilterYear || 'all'}.csv`, 'the commission ledger');
                 }}>⬇ Export CSV</button>
               )}
               {commissionView === '1099' && (
@@ -4147,51 +3994,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Prospects ── */}
           {page === 'contacts' && (
             <div>
-              {/* Export approvals — the owner's queue. Sits at the top of the
-                  contacts page because that is where he already is when
-                  someone asks, and an unanswered request blocks a colleague. */}
-              {isSuperAdmin && exportRequests.some(r => r.status === 'pending') && (
-                <div style={{ marginBottom: 16, border: '1px solid #C9A962', background: '#F5F0E6', borderRadius: 6, padding: '14px 16px' }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: 1.4, textTransform: 'uppercase', color: '#A68B4B', marginBottom: 10 }}>
-                    Export approval requested
-                  </div>
-                  {exportRequests.filter(r => r.status === 'pending').map(r => (
-                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '8px 0', borderTop: '1px solid #E8DCC4' }}>
-                      <div style={{ flex: 1, minWidth: 240 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#1A1A1A' }}>{r.requester_name}</div>
-                        <div style={{ fontSize: 13, color: '#6B6B6B' }}>
-                          wants {r.scope_label} · asked {new Date(r.created_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
-                        </div>
-                      </div>
-                      <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => decideExportRequest(r.id, 'approve')}>Approve</button>
-                      <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => decideExportRequest(r.id, 'deny')}>Deny</button>
-                    </div>
-                  ))}
-                  <div style={{ fontSize: 12, color: '#6B6B6B', marginTop: 8 }}>
-                    Approving opens one download for 30 minutes. The next export needs asking again.
-                  </div>
-                </div>
-              )}
-
-              {/* Where a non-owner's own request stands, without hunting for it. */}
-              {/* Only the two states the requester can still act on are surfaced: waiting,
-                  and approved-so-go-download. A denial is deliberately NOT announced here
-                  — declining an export is the owner's call and is not something the CRM
-                  pushes back at the person who asked. Nothing is misreported: the banner
-                  simply does not render, rather than showing a status that isn't real. If
-                  they try the export again they still get the straight answer from
-                  /api/crm/contacts/export, which is where an actual attempt belongs. */}
-              {!isSuperAdmin && exportRequests.some(r => ['pending', 'approved'].includes(r.status)) && (
-                <div style={{ marginBottom: 16, border: '1px solid #E8E5E0', background: '#FAF8F5', borderRadius: 6, padding: '10px 14px', fontSize: 13, color: '#525252' }}>
-                  {(() => {
-                    const mine = exportRequests.find(r => ['pending', 'approved'].includes(r.status));
-                    if (!mine) return null;
-                    if (mine.status === 'pending') return <>⏳ Your export request for {mine.scope_label} is awaiting the owner’s approval.</>;
-                    return <>✅ Approved — click Export to download. Expires {mine.approval_expires_at ? new Date(mine.approval_expires_at).toLocaleTimeString('en-US', { timeStyle: 'short' }) : 'shortly'}.</>;
-                  })()}
-                </div>
-              )}
-
               {/* Smart Filter Bar */}
               {clients.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
@@ -5687,20 +5489,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </select>
                       </div>
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                        {needsFiling.length > 0 && (
+                        {needsFiling.length > 0 && isSuperAdmin && (
                           <button style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
                             onClick={() => {
-                              // Server-side behind the same approval gate: this is
-                              // every contractor's tax total, and it used to be one
-                              // unlogged click for any admin.
+                              // Owner only: every contractor's tax total in one file.
                               const qs = new URLSearchParams({ view: '1099', unit: businessUnit, year: String(commission1099Year) });
-                              requestOrDownloadDataset({
-                                dataset: 'commissions_1099',
-                                url: `/api/crm/commissions/export?${qs.toString()}`,
-                                filename: `1099-nec-${commission1099Year}.csv`,
-                                body: { year: String(commission1099Year) },
-                                noun: `the ${commission1099Year} 1099-NEC summary`,
-                              });
+                              downloadCsv(`/api/crm/commissions/export?${qs.toString()}`,
+                                `1099-nec-${commission1099Year}.csv`, `the ${commission1099Year} 1099-NEC summary`);
                             }}>
                             ⬇ Export CSV
                           </button>

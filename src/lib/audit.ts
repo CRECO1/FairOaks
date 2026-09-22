@@ -19,13 +19,16 @@ export type AuditAction =
   | 'update_commission'
   | 'delete_deal'
   | 'export_contacts'
-  // Export-approval workflow: the request, the owner's answer, the blocked
-  // attempt, and the download itself are four separate facts. Logging them
-  // separately is what makes the trail answer "who asked, who said yes, and
-  // did anything actually leave" rather than only the last of those.
+  // Retired with the export-approval workflow (2026-09-22): export is now the
+  // account owner's alone, so nothing asks and nothing is approved. Kept in the
+  // union because historical rows carry these actions and the trail should stay
+  // readable — nothing emits them any more.
   | 'export_requested'
   | 'export_approved'
   | 'export_denied'
+  // Still emitted, and now more interesting than it was: a non-owner reaching an
+  // export endpoint has no button that leads there, so this is someone calling
+  // the API directly.
   | 'export_blocked'
   // Copilot oversight: one row per tool the assistant ran, so "what did Brian ask
   // the copilot to do" is answerable. Tool CALLS only — never the chat text; free-text

@@ -3,7 +3,7 @@
  *
  * The threat is not an anonymous crawler — it is a logged-in agent pointing an AI
  * browser agent or a script at the CRM and pulling the book out through the same
- * endpoints the UI uses, which walks straight around the export-approval workflow.
+ * endpoints the UI uses, at volume, without ever touching the export feature.
  *
  * Four things here, in the order they matter:
  *   1. VOLUME BUDGETS. A person reads a few hundred records an hour; a scraper reads
@@ -149,6 +149,8 @@ function getIp(req: NextRequest): string {
 
 /* ── alerting ─────────────────────────────────────────────────────────────── */
 
+// Named for the retired approval workflow; kept as-is because it is set in Vercel
+// and this is still the same person and the same inbox.
 const ALERT_EMAIL = process.env.EXPORT_APPROVER_EMAIL ?? 'zack@crecotx.com';
 const SITE = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com').replace(/\/$/, '');
 

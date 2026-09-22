@@ -1,62 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, getCrmSuperAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, getCrmSuperAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
-import { scopeKey, findRedeemableApproval, type ExportScope } from '@/lib/export-approval';
 
 /**
  * Bulk export of the contact database — the one route that hands the book over.
  *
- * The owner exports directly; he is the approver. Everyone else needs a live
- * approval for this exact scope, granted by the owner, unexpired and not yet
- * spent. That check happens here rather than in the UI on purpose: this is
- * where the data actually leaves, so this is where the gate has to be.
+ * Owner only. Zack decided nobody but the account owner exports, ever, so there
+ * is no approval path any more: this is a flat super_admin check. The gate lives
+ * here rather than in the UI on purpose — this is where the data actually
+ * leaves, so hiding the button is presentation, not enforcement.
  *
- * Approval is never standing. Redeeming one marks it consumed, and the next
- * export starts the conversation again.
+ * A non-owner reaching this endpoint is by definition someone calling the API
+ * directly, since they have no export affordance in the app at all. That is
+ * worth knowing about, so the refusal is logged as export_blocked rather than
+ * being answered silently.
  *
  * Honest limit: an agent signed into the CRM already has the contacts they can
  * see loaded in their browser to display them. This governs the export feature
- * and makes every use of it visible and answerable — it is not a control
- * against someone copying what is already on their own screen.
+ * — it is not a control against someone copying what is on their own screen.
  */
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  const isOwner = !!(await getCrmSuperAdmin(req));
+  if (!(await getCrmSuperAdmin(req))) {
+    await writeAuditLog({
+      actorId: ctx.userId,
+      action: 'export_blocked',
+      targetType: 'crm_clients',
+      metadata: { reason: 'not_owner', role: ctx.role, business_unit: ctx.businessUnit, path: 'contacts' },
+      req,
+    });
+    return forbidden('Exporting contacts is limited to the account owner.');
+  }
 
   const idsParam = req.nextUrl.searchParams.get('ids');
   const ids = idsParam ? idsParam.split(',').map(s => s.trim()).filter(Boolean) : null;
-
-  // An agent exports their own unit whatever they ask for; the owner may pick.
-  const requestedUnit = req.nextUrl.searchParams.get('unit') ?? ctx.businessUnit ?? 'commercial';
-  const unit = isOwner ? requestedUnit : (ctx.businessUnit ?? requestedUnit);
-
-  const scope: ExportScope = { businessUnit: unit, ids: ids && ids.length ? ids : null };
-  const key = scopeKey(scope);
-
-  let redeemedId: string | null = null;
-
-  if (!isOwner) {
-    const check = await findRedeemableApproval(ctx.userId, key);
-    if (!check.ok) {
-      // 403 with the reason spelled out — "awaiting approval" and "denied" are
-      // different answers and the requester should not have to guess which.
-      await writeAuditLog({
-        actorId: ctx.userId,
-        action: 'export_blocked',
-        targetType: 'crm_clients',
-        metadata: { unit, scope_key: key, status: check.status ?? 'none' },
-        req,
-      });
-      return NextResponse.json(
-        { error: check.reason, status: check.status ?? 'none', needsApproval: true },
-        { status: 403 },
-      );
-    }
-    redeemedId = check.requestId!;
-  }
+  const unit = req.nextUrl.searchParams.get('unit') ?? ctx.businessUnit ?? 'commercial';
+  const scope = { ids: ids && ids.length ? ids : null };
 
   const db = adminClient();
   let q = db.from('crm_clients')
@@ -68,24 +50,17 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q;
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
 
-  // Spend the approval only once the rows are actually in hand, so a failed
-  // query does not burn the requester's permission.
-  if (redeemedId) {
-    await db.from('crm_export_requests')
-      .update({ status: 'consumed', consumed_at: new Date().toISOString() })
-      .eq('id', redeemedId).eq('status', 'approved');
-  }
-
+  // Every export the owner takes is still recorded — who, which unit, how many
+  // rows, when. Removing the approval workflow does not remove the trail.
   await writeAuditLog({
     actorId: ctx.userId,
     action: 'export_contacts',
     targetType: 'crm_clients',
-    targetId: redeemedId ?? undefined,
     metadata: {
       unit,
       count: data?.length ?? 0,
-      scope_key: key,
-      via: isOwner ? 'owner_direct' : 'approved_request',
+      selection: scope.ids ? `${scope.ids.length} selected` : 'all',
+      via: 'owner_direct',
     },
     req,
   });

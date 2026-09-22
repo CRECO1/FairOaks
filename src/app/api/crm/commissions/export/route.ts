@@ -2,25 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, getCrmSuperAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
-import { scopeKey, findRedeemableApproval, type ExportScope, type ExportDataset } from '@/lib/export-approval';
 
 /**
  * Bulk export of the commission ledger and the 1099-NEC summary.
  *
- * These used to be built in the browser from data the commissions page had
- * already loaded, behind nothing but an isAdmin check on the button — so an
- * admin could take every agent's splits, or every contractor's tax totals,
- * with no request, no approval and no audit row. Per row this is more
+ * Owner only, like every other export. These used to be built in the browser
+ * from data the commissions page had already loaded, behind nothing but an
+ * isAdmin check on the button — so an admin could take every agent's splits, or
+ * every contractor's tax totals, with no record at all. Per row this is more
  * sensitive than the contact book.
  *
- * Now it works exactly like the contact export: the owner (super_admin) is the
- * approver and exports directly; everyone else, admins included, needs a live
- * approval for this exact scope. The gate lives here, where the data actually
- * leaves, rather than on the button.
- *
- * Honest limit, same as the contact export: this governs the export feature.
- * An admin looking at the commissions page can already read what is on their
- * screen. What this removes is the one-click, whole-ledger file.
+ * Admins still SEE the ledger in the app; that is broker-level work. What they
+ * cannot do is turn it into a file. A non-owner reaching this endpoint has no
+ * button that leads here, so the refusal is logged rather than answered quietly.
  */
 
 const LIST_HEADERS = ['Deal','Property','Agent','Deal Type','Sale Price','Rate %','Gross GCI','Agent Split %','Agent Net','Brokerage Net','Referral Fee','Referral To','Tx Fee','Status','Close Date','Paid Date','Notes'];
@@ -33,43 +27,22 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
-  // The commissions ledger is broker-level data; agents have no view of it at
-  // all, approval or not. This route is about gating the people who CAN see it.
-  const isOwner = !!(await getCrmSuperAdmin(req));
-  const isAdmin = ctx.role === 'admin' || ctx.role === 'super_admin';
-  if (!isAdmin) return forbidden('The commission ledger is broker-level.');
+  if (!(await getCrmSuperAdmin(req))) {
+    await writeAuditLog({
+      actorId: ctx.userId, action: 'export_blocked', targetType: 'crm_commissions',
+      metadata: { reason: 'not_owner', role: ctx.role, business_unit: ctx.businessUnit, path: 'commissions' }, req,
+    });
+    return forbidden('Exporting the commission ledger is limited to the account owner.');
+  }
 
   const sp = req.nextUrl.searchParams;
   const view = sp.get('view') === '1099' ? '1099' : 'list';
-  const dataset: ExportDataset = view === '1099' ? 'commissions_1099' : 'commissions';
-  const unit = isOwner ? (sp.get('unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
-
+  const unit = sp.get('unit') ?? ctx.businessUnit ?? 'commercial';
   const str = (v: string | null) => (v && v.trim() ? v.trim() : undefined);
   const filters = { year: str(sp.get('year')), agent: str(sp.get('agent_id')), status: str(sp.get('status')) };
-  // The 1099 view is a per-agent aggregate for one tax year; the other filters
-  // do not apply to it, and letting them into the key would let an approval for
-  // a narrow slice be redeemed for the whole year.
+  // The 1099 view is an annual per-agent aggregate; the other filters don't apply.
   const effective: Record<string, string | undefined> =
     view === '1099' ? { year: filters.year } : filters;
-
-  const scope: ExportScope = { dataset, businessUnit: unit, ids: null, filters: effective };
-  const key = scopeKey(scope);
-
-  let redeemedId: string | null = null;
-  if (!isOwner) {
-    const check = await findRedeemableApproval(ctx.userId, key);
-    if (!check.ok) {
-      await writeAuditLog({
-        actorId: ctx.userId, action: 'export_blocked', targetType: 'crm_commissions',
-        metadata: { unit, dataset, scope_key: key, status: check.status ?? 'none' }, req,
-      });
-      return NextResponse.json(
-        { error: check.reason, status: check.status ?? 'none', needsApproval: true },
-        { status: 403 },
-      );
-    }
-    redeemedId = check.requestId!;
-  }
 
   const db = adminClient();
   let q = db.from('crm_commissions')
@@ -113,18 +86,10 @@ export async function GET(req: NextRequest) {
     ]))].join('\n');
   }
 
-  // Spend the approval only once the rows are in hand, so a failed query does
-  // not burn the requester's permission.
-  if (redeemedId) {
-    await db.from('crm_export_requests')
-      .update({ status: 'consumed', consumed_at: new Date().toISOString() })
-      .eq('id', redeemedId).eq('status', 'approved');
-  }
-
+  // The owner's own exports are still recorded: who, which view, how many rows.
   await writeAuditLog({
     actorId: ctx.userId, action: 'export_contacts', targetType: 'crm_commissions',
-    targetId: redeemedId ?? undefined,
-    metadata: { unit, dataset, count, scope_key: key, via: isOwner ? 'owner_direct' : 'approved_request' },
+    metadata: { unit, view, count, filters: effective, via: 'owner_direct' },
     req,
   });
 
