@@ -6,7 +6,7 @@
 // header font (via fontkit) + Helvetica body. All raster inputs (hero, maps, floor
 // plan, logo) are passed in as bytes so this stays pure + unit-testable.
 // ─────────────────────────────────────────────────────────────────────────────
-import { PDFDocument, StandardFonts, rgb, PDFFont, PDFImage, PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, degrees, PDFFont, PDFImage, PDFPage } from 'pdf-lib';
 import type { RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { drawnWidth } from '@/lib/rich-text';
@@ -36,6 +36,9 @@ export interface FlyerInput {
   galleryPhotos?: Array<{ bytes: Uint8Array; png: boolean }>;   // page-2 gallery (pre-cropped ~4:3)
   mapBytes?: Uint8Array | null;        // page-1 location map (PNG)
   aerialBytes?: Uint8Array | null;     // page-2 aerial map (PNG)
+  // Street names to draw over the aerial (USGS imagery has none). Image pixels from the
+  // top-left + the PDF rotation that lays each name along its road — see roadLabels().
+  aerialLabels?: Array<{ text: string; x: number; y: number; angle: number }> | null;
   floorPlan?: { bytes: Uint8Array; png: boolean } | null;
   // Optional page-2 trade-area panel — a dark stat strip (demographics). When present
   // it takes the aerial map's slot, since the location is already mapped on page 1 and
@@ -86,6 +89,28 @@ function drawContain(page: PDFPage, img: PDFImage, x: number, y: number, w: numb
   const ix = x + (w - iw) / 2, iy = y + (h - ih) / 2;
   page.drawImage(img, { x: ix, y: iy, width: iw, height: ih });
   return { x: ix, y: iy, w: iw, h: ih };
+}
+// Street names over the aerial. Labels arrive in image pixels; the image was drawn
+// contained (one uniform scale), so a single factor maps them onto the page. White
+// text over a dark halo reads on any imagery — pdf-lib has no text stroke, so the
+// halo is the same text drawn eight times, nudged around, in black.
+function drawMapLabels(page: PDFPage, r: Rect, img: PDFImage, labels: FlyerInput['aerialLabels'], font: PDFFont) {
+  if (!labels?.length || r.w <= 0) return;
+  // Text is sized to the map as drawn, not to the image: a full-width map can carry
+  // 9.5pt names, a map sharing the page with a gallery drops to 7.5pt.
+  const s = r.w / img.width, fs = Math.max(7.5, Math.min(9.5, r.w / 60)), capH = fs * 0.72;
+  for (const l of labels) {
+    const text = sanitize(l.text); if (!text) continue;
+    const cx = r.x + l.x * s, cy = r.y + r.h - l.y * s;
+    const th = (l.angle * Math.PI) / 180, cos = Math.cos(th), sin = Math.sin(th);
+    const tw = font.widthOfTextAtSize(text, fs);
+    // drawText rotates about its baseline-left origin; back that origin off so the
+    // text ends up centred on the road point.
+    const ox = cx - (tw / 2) * cos + (capH / 2) * sin, oy = cy - (tw / 2) * sin - (capH / 2) * cos;
+    for (const [dx, dy] of [[-0.6, 0], [0.6, 0], [0, -0.6], [0, 0.6], [-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]])
+      page.drawText(text, { x: ox + dx, y: oy + dy, size: fs, font, color: BLACK, opacity: 0.8, rotate: degrees(l.angle) });
+    page.drawText(text, { x: ox, y: oy, size: fs, font, color: WHITE, rotate: degrees(l.angle) });
+  }
 }
 // How tall a photo grid wants to be at width w — blocks ask first so they only
 // reserve what the grid will really use.
@@ -165,6 +190,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const osw = await pdf.embedFont(input.fontBold, { subset: true });   // condensed header font
   const body = await pdf.embedFont(StandardFonts.Helvetica);
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
+  const labelFont = await pdf.embedFont(StandardFonts.HelveticaBold);   // map street names
   const logo = await pdf.embedPng(input.logoPng).catch(() => null);
 
   const embed = async (a?: { bytes: Uint8Array; png: boolean } | null): Promise<PDFImage | null> => {
@@ -352,7 +378,11 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
       natural: () => 60 + (ta.caption ? 17 : 0),
       draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body),
     });
-  } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => drawContain(p2!, aerial!, x, y, w, h) });
+  } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
+    const r = drawContain(p2!, aerial!, x, y, w, h);
+    drawMapLabels(p2!, r, aerial!, input.aerialLabels, labelFont);
+    return r;
+  } });
 
   if (p2blocks.length) {
     p2 = pdf.addPage([W, H]);

@@ -5,7 +5,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { renderFlyer } from '@/lib/flyer-doc';
 import { OSWALD_BOLD_B64, CRECO_LOGO_PNG_B64 } from '@/lib/flyer-assets';
 import sharp from 'sharp';
-import { geocode, osmStaticMap } from '@/lib/static-map';
+import { geocode, osmStaticMap, roadLabels } from '@/lib/static-map';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,11 +174,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .update({ latitude: g.lat, longitude: g.lon, geocoded_at: new Date().toISOString() }).eq('id', id);
     }
   }
-  const [mapBytes, aerialBytes] = await Promise.all([
+  const [mapBytes, aerialBytes, aerialLabels] = await Promise.all([
     googleStaticMap({ center: address, zoom: '13', size: '272x214', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
       .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: 428 }) : null)),
     googleStaticMap({ center: address, zoom: '16', size: '576x444', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
       .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }) : null)),
+    // Google's satellite tiles come labelled; the USGS ones don't, so name the roads
+    // ourselves — same window as the aerial above, so the names land on their roads.
+    (process.env.GOOGLE_MAPS_SERVER_KEY || !pt) ? Promise.resolve([]) : roadLabels({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }),
   ]);
 
   // IABS (required in TX). The disclosure names the licence holder, so the agent's
@@ -216,7 +219,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     statPrice, statSize,
     agentNames,
     contacts,
-    hero, galleryPhotos, mapBytes, aerialBytes, floorPlan, iabsPdf,
+    hero, galleryPhotos, mapBytes, aerialBytes, aerialLabels, floorPlan, iabsPdf,
     fontBold: new Uint8Array(Buffer.from(OSWALD_BOLD_B64, 'base64')),
     logoPng: new Uint8Array(Buffer.from(CRECO_LOGO_PNG_B64, 'base64')),
   });
