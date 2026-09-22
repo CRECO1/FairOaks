@@ -105,6 +105,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('send_time' in patchPayload && (patchPayload.send_time === '' || patchPayload.send_time === undefined)) {
     patchPayload.send_time = null;
   }
+  // UUID columns: the editor keeps "no sender" / "no project" as '' in its form state and
+  // sends it as-is, and Postgres rejects '' for uuid (22P02) — which surfaced to the
+  // agent as "Internal error" with the whole edit lost. Empty means null here.
+  const uuidFields = patchPayload as Record<string, unknown>;
+  for (const key of ['sender_agent_id', 'project_id', 'created_by']) {
+    if (key in uuidFields && (uuidFields[key] === '' || uuidFields[key] === undefined)) uuidFields[key] = null;
+  }
 
   const { data, error } = await supabase
     .from('crm_campaigns')
