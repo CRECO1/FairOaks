@@ -56,6 +56,26 @@ async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, 
 // LIKE wildcards) so a search term can't inject extra filter clauses.
 const safeTerm = (v: unknown) => `%${String(v ?? '').replace(/[%_,()*]/g, ' ').trim()}%`;
 
+// Columns the copilot may read off a listing. Deliberately excludes nothing sensitive
+// on its own, but rent-roll/suite tables are NOT reachable from any copilot tool.
+const LISTING_COLS = 'id, name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, zoning, business_unit, listing_agent_id, assigned_agent_ids, is_restricted, created_at';
+
+// Mirrors assertCanAccessListing() in lib/listing-files-access: admins see the
+// workspace; everyone else must additionally be the listing agent or an assigned
+// agent on any listing flagged Restricted. The copilot runs on the service-role key,
+// which bypasses RLS, so this check has to happen here or the Restricted flag would
+// simply not apply to anything the copilot reads.
+function canSeeListing(l: Record<string, any>, ctx: AgentCtx): boolean {
+  if (isAdminCtx(ctx)) return true;
+  if (!l.is_restricted) return true;
+  const assigned = Array.isArray(l.assigned_agent_ids) && (l.assigned_agent_ids as string[]).includes(ctx.userId);
+  return l.listing_agent_id === ctx.userId || assigned;
+}
+const isAdminCtx = (ctx: AgentCtx) => ctx.role === 'admin' || ctx.role === 'super_admin';
+function visibleListings(rows: any[] | null, ctx: AgentCtx): any[] {
+  return (rows ?? []).filter(l => canSeeListing(l, ctx)).map(({ is_restricted, listing_agent_id, assigned_agent_ids, ...rest }) => rest);
+}
+
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event']);
 
 export const TOOLS: Anthropic.Tool[] = [
@@ -79,8 +99,12 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, stage: { type: 'string', enum: DEAL_STAGES } }, required: ['deal_id', 'stage'] } },
 
   // ── Leases, forms & e-sign (Layer 2) ──────────────────────────────────────
-  { name: 'find_property', description: 'Find a property/listing by name or address. Returns id, name, address. Needed before drafting a lease (use the id as listing_id).',
-    input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+  { name: 'find_property', description: "Find a property/listing in the CRM by name or address. Returns id, name, address, type, status, asking price and size. Listings are SEPARATE from deals — a property the brokerage is marketing (with an asking price) lives here, not in the deals pipeline, so search here too whenever the agent asks about a property, an address, or a dollar figure you couldn't find in deals. Also the first step before drafting a lease (use the id as listing_id).",
+    input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Property name or street address' } }, required: ['query'] } },
+  { name: 'list_properties', description: 'List the properties/listings in the agent\'s workspace, newest first — id, name, address, type, status, asking price, size. Use this for "what listings/properties do I have", or to find one by price when you don\'t know its name.',
+    input_schema: { type: 'object', properties: { status: { type: 'string', description: 'Optional status filter, e.g. "active"' } } } },
+  { name: 'get_property', description: 'Get a property/listing\'s full details by id — including asking price, size, zoning, description and highlights.',
+    input_schema: { type: 'object', properties: { listing_id: { type: 'string' } }, required: ['listing_id'] } },
   { name: 'list_forms', description: 'List the available transaction-doc form templates (leases, contracts, addenda, etc.) — name, form_code, category.',
     input_schema: { type: 'object', properties: {} } },
   { name: 'draft_lease', description: "Draft lease values from a plain-English description of the deal, using the property's rent roll (e.g. '24 months for Acme in suite 3101, $808/mo, no deposit'). Returns proposed values + notes to review. This DRAFTS only — it creates nothing.",
@@ -199,10 +223,24 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       // ── Layer 2: leases, forms & e-sign ────────────────────────────────────
       case 'find_property': {
         const term = safeTerm(input.query);
-        let q = db.from('crm_listings').select('id, name, address, city, state, type, status').or(`name.ilike.${term},address.ilike.${term}`).limit(10);
+        let q = db.from('crm_listings').select(LISTING_COLS).or(`name.ilike.${term},address.ilike.${term}`).limit(10);
         q = scoped(q, ctx);
         const { data, error } = await q;
-        return error ? j({ error: error.message }) : j(data ?? []);
+        return error ? j({ error: error.message }) : j(visibleListings(data, ctx));
+      }
+      case 'list_properties': {
+        let q = db.from('crm_listings').select(LISTING_COLS).order('created_at', { ascending: false }).limit(30);
+        q = scoped(q, ctx);
+        if (input.status) q = q.eq('status', input.status);
+        const { data, error } = await q;
+        return error ? j({ error: error.message }) : j(visibleListings(data, ctx));
+      }
+      case 'get_property': {
+        const { data: l } = await db.from('crm_listings').select('*').eq('id', input.listing_id).maybeSingle();
+        if (!l) return j({ error: 'Property not found' });
+        if (ctx.businessUnit && l.business_unit !== ctx.businessUnit) return j({ error: 'Property is in a different workspace' });
+        if (!canSeeListing(l, ctx)) return j({ error: 'Property not found' });
+        return j(l);
       }
       case 'list_forms': {
         let q = db.from('crm_forms').select('id, name, form_code, category').order('category', { ascending: true }).limit(60);
