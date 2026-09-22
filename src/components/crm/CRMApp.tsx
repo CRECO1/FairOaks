@@ -5,31 +5,37 @@ import { useRouter } from 'next/navigation';
 import { Session } from '@supabase/supabase-js';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
-import SocialMediaSection from '@/components/crm/SocialMediaSection';
-import PropertiesFloorPlan from '@/components/crm/PropertiesFloorPlan';
-import PropertyDBSection from '@/components/crm/PropertyDBSection';
-import TransactionDocsSection from '@/components/crm/TransactionDocsSection';
 import dynamic from 'next/dynamic';
-
-const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
-import ListingsSection from '@/components/crm/ListingsSection';
-import TasksSection from '@/components/crm/TasksSection';
 import DealMeetings from '@/components/crm/DealMeetings';
 import ContactComms from '@/components/crm/ContactComms';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
-import EsignComposer, { type ComposerDoc } from '@/components/crm/EsignComposer';
+import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import DealDocUpload from '@/components/crm/DealDocUpload';
-import EsignDashboard from '@/components/crm/EsignDashboard';
-import CallingLog from '@/components/crm/CallingLog';
 import Watermark from '@/components/crm/Watermark';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
-import LeaseExpirationsSection from '@/components/crm/LeaseExpirationsSection';
-import MatchmakerSection from '@/components/crm/MatchmakerSection';
-import ActivitySection from '@/components/crm/ActivitySection';
 import MentionTextarea, { parseMentionContactIds } from '@/components/crm/MentionTextarea';
-import LoiBuilder from '@/components/crm/LoiBuilder';
+
+// Heavy CRM sections are code-split so /crm no longer ships them all in one
+// bundle — each loads its own chunk the first time its tab or modal opens
+// (ssr:false: the CRM is client-only). Always-mounted UI (Watermark,
+// AssistantPanel) and EsignPanel's directly-used SendView/ManageView stay
+// static above.
+const TransactionDocEditor = dynamic(() => import('@/components/crm/TransactionDocEditor'), { ssr: false });
+const SocialMediaSection = dynamic(() => import('@/components/crm/SocialMediaSection'), { ssr: false });
+const PropertiesFloorPlan = dynamic(() => import('@/components/crm/PropertiesFloorPlan'), { ssr: false });
+const PropertyDBSection = dynamic(() => import('@/components/crm/PropertyDBSection'), { ssr: false });
+const TransactionDocsSection = dynamic(() => import('@/components/crm/TransactionDocsSection'), { ssr: false });
+const ListingsSection = dynamic(() => import('@/components/crm/ListingsSection'), { ssr: false });
+const TasksSection = dynamic(() => import('@/components/crm/TasksSection'), { ssr: false });
+const EsignComposer = dynamic(() => import('@/components/crm/EsignComposer'), { ssr: false });
+const EsignDashboard = dynamic(() => import('@/components/crm/EsignDashboard'), { ssr: false });
+const CallingLog = dynamic(() => import('@/components/crm/CallingLog'), { ssr: false });
+const LeaseExpirationsSection = dynamic(() => import('@/components/crm/LeaseExpirationsSection'), { ssr: false });
+const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSection'), { ssr: false });
+const ActivitySection = dynamic(() => import('@/components/crm/ActivitySection'), { ssr: false });
+const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: false });
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 
 // Use the SSR browser client so the session is stored in cookies,
