@@ -1,0 +1,9 @@
+{
+  "name": "Compensation Agreement Between Brokers",
+  "form_code": "TXR-2402",
+  "category": "Compensation",
+  "business_unit": "commercial",
+  "pdf": "txr2402_blank.pdf",
+  "fields": "txr2402.fields.json",
+  "storage_path": "commercial/clean/txr2402_compensation_agreement_between_brokers.pdf"
+}

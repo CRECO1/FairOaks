@@ -1,0 +1,263 @@
+[
+  {
+    "page": 1,
+    "fx": 0.25980392156862747,
+    "fy": 0.1933080808080808,
+    "fw": 0.6815359477124183,
+    "type": "text",
+    "field_key": "listing_broker_name",
+    "label": "Listing/Principal Broker"
+  },
+  {
+    "page": 1,
+    "fx": 0.21748366013071896,
+    "fy": 0.2077020202020202,
+    "fw": 0.7238562091503268,
+    "type": "text",
+    "field_key": "listing_broker_address",
+    "label": "Listing/Principal Broker — full address"
+  },
+  {
+    "page": 1,
+    "fx": 0.16944444444444445,
+    "fy": 0.22234848484848485,
+    "fw": 0.24232026143790852,
+    "type": "text",
+    "field_key": "listing_broker_phone",
+    "label": "Listing/Principal Broker — phone"
+  },
+  {
+    "page": 1,
+    "fx": 0.4990196078431372,
+    "fy": 0.22234848484848485,
+    "fw": 0.4421568627450981,
+    "type": "text",
+    "field_key": "listing_broker_email",
+    "label": "Listing/Principal Broker — e-mail/fax"
+  },
+  {
+    "page": 1,
+    "fx": 0.23905228758169936,
+    "fy": 0.2455808080808081,
+    "fw": 0.7022875816993465,
+    "type": "text",
+    "field_key": "coop_broker_name",
+    "label": "Cooperating Broker"
+  },
+  {
+    "page": 1,
+    "fx": 0.21748366013071896,
+    "fy": 0.25997474747474747,
+    "fw": 0.7238562091503268,
+    "type": "text",
+    "field_key": "coop_broker_address",
+    "label": "Cooperating Broker — full address"
+  },
+  {
+    "page": 1,
+    "fx": 0.16944444444444445,
+    "fy": 0.2746212121212121,
+    "fw": 0.24232026143790852,
+    "type": "text",
+    "field_key": "coop_broker_phone",
+    "label": "Cooperating Broker — phone"
+  },
+  {
+    "page": 1,
+    "fx": 0.4990196078431372,
+    "fy": 0.2746212121212121,
+    "fw": 0.4421568627450981,
+    "type": "text",
+    "field_key": "coop_broker_email",
+    "label": "Cooperating Broker — e-mail/fax"
+  },
+  {
+    "page": 1,
+    "fx": 0.29330065359477125,
+    "fy": 0.3210858585858586,
+    "fw": 0.5892156862745098,
+    "type": "text",
+    "field_key": "property_address",
+    "label": "Property — full address or description"
+  },
+  {
+    "page": 1,
+    "fx": 0.08823529411764706,
+    "fy": 0.3368686868686869,
+    "fw": 0.01454248366013072,
+    "type": "check",
+    "field_key": "exhibit_attached",
+    "label": "or as described in an attached exhibit"
+  },
+  {
+    "page": 1,
+    "fx": 0.4351307189542484,
+    "fy": 0.35883838383838385,
+    "fw": 0.5062091503267974,
+    "type": "text",
+    "field_key": "client_name",
+    "label": "Client registered by Cooperating Broker"
+  },
+  {
+    "page": 1,
+    "fx": 0.08823529411764706,
+    "fy": 0.37335858585858583,
+    "fw": 0.5589869281045752,
+    "type": "text",
+    "field_key": "client_name_2",
+    "label": "Client registered by Cooperating Broker (cont.)"
+  },
+  {
+    "page": 1,
+    "fx": 0.33986928104575165,
+    "fy": 0.41111111111111115,
+    "fw": 0.1895424836601307,
+    "type": "text",
+    "field_key": "term_begin_date",
+    "label": "Term begins on"
+  },
+  {
+    "page": 1,
+    "fx": 0.719281045751634,
+    "fy": 0.41111111111111115,
+    "fw": 0.22205882352941178,
+    "type": "text",
+    "field_key": "term_end_date",
+    "label": "Term ends at 11:59 pm on"
+  },
+  {
+    "page": 1,
+    "fx": 0.19019607843137257,
+    "fy": 0.47209595959595957,
+    "fw": 0.10392156862745099,
+    "type": "text",
+    "field_key": "sale_fee_pct",
+    "label": "(1) Sale — % of the sales price"
+  },
+  {
+    "page": 1,
+    "fx": 0.5547385620915033,
+    "fy": 0.47209595959595957,
+    "fw": 0.1511437908496732,
+    "type": "text",
+    "field_key": "sale_flat_fee",
+    "label": "(1) Sale — or a flat fee of $"
+  },
+  {
+    "page": 1,
+    "fx": 0.1977124183006536,
+    "fy": 0.4866161616161616,
+    "fw": 0.09640522875816994,
+    "type": "text",
+    "field_key": "lease_fee_pct",
+    "label": "(2) Lease — % of one full month's rent"
+  },
+  {
+    "page": 1,
+    "fx": 0.8112745098039216,
+    "fy": 0.4866161616161616,
+    "fw": 0.13006535947712417,
+    "type": "text",
+    "field_key": "lease_flat_fee",
+    "label": "(2) Lease — or $"
+  },
+  {
+    "page": 1,
+    "fx": 0.14215686274509803,
+    "fy": 0.5011363636363636,
+    "fw": 0.7991830065359478,
+    "type": "text",
+    "field_key": "other_fee",
+    "label": "(3) Other fee terms"
+  },
+  {
+    "page": 1,
+    "fx": 0.04411764705882353,
+    "fy": 0.8119949494949495,
+    "fw": 0.3449346405228758,
+    "type": "text",
+    "field_key": "listing_broker_printed_name",
+    "label": "Listing/Principal Broker's Printed Name"
+  },
+  {
+    "page": 1,
+    "fx": 0.3923202614379085,
+    "fy": 0.8119949494949495,
+    "fw": 0.0784313725490196,
+    "type": "text",
+    "field_key": "listing_broker_license",
+    "label": "Listing/Principal Broker — License No."
+  },
+  {
+    "page": 1,
+    "fx": 0.5295751633986928,
+    "fy": 0.8119949494949495,
+    "fw": 0.322875816993464,
+    "type": "text",
+    "field_key": "coop_broker_printed_name",
+    "label": "Cooperating Broker's Printed Name"
+  },
+  {
+    "page": 1,
+    "fx": 0.8557189542483661,
+    "fy": 0.8119949494949495,
+    "fw": 0.08562091503267974,
+    "type": "text",
+    "field_key": "coop_broker_license",
+    "label": "Cooperating Broker — License No."
+  },
+  {
+    "page": 1,
+    "fx": 0.049019607843137254,
+    "fy": 0.8785353535353535,
+    "fw": 0.013071895424836602,
+    "type": "check",
+    "field_key": "listing_broker_associate_signs",
+    "label": "Listing/Principal Broker's Associate (signs instead of broker)"
+  },
+  {
+    "page": 1,
+    "fx": 0.5344771241830065,
+    "fy": 0.8785353535353535,
+    "fw": 0.013071895424836602,
+    "type": "check",
+    "field_key": "coop_broker_associate_signs",
+    "label": "Cooperating Broker's Associate (signs instead of broker)"
+  },
+  {
+    "page": 1,
+    "fx": 0.04411764705882353,
+    "fy": 0.9035353535353535,
+    "fw": 0.3449346405228758,
+    "type": "text",
+    "field_key": "listing_broker_associate_name",
+    "label": "Listing/Principal Broker's Associate's Printed Name"
+  },
+  {
+    "page": 1,
+    "fx": 0.3923202614379085,
+    "fy": 0.9035353535353535,
+    "fw": 0.0784313725490196,
+    "type": "text",
+    "field_key": "listing_broker_associate_license",
+    "label": "Listing/Principal Broker's Associate — License No."
+  },
+  {
+    "page": 1,
+    "fx": 0.5295751633986928,
+    "fy": 0.9035353535353535,
+    "fw": 0.322875816993464,
+    "type": "text",
+    "field_key": "coop_broker_associate_name",
+    "label": "Cooperating Broker's Associate's Printed Name"
+  },
+  {
+    "page": 1,
+    "fx": 0.8557189542483661,
+    "fy": 0.9035353535353535,
+    "fw": 0.08562091503267974,
+    "type": "text",
+    "field_key": "coop_broker_associate_license",
+    "label": "Cooperating Broker's Associate — License No."
+  }
+]

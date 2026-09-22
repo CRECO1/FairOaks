@@ -1,0 +1,2 @@
+# TXR form PDFs are Texas REALTORS members-only material — keep them out of git.
+*.pdf
