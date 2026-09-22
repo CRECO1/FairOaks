@@ -107,6 +107,20 @@ const contactLabel = (c: CrmContact) => personName(c) || c.business_name || c.em
 const contactCompany = (c: CrmContact) => c.business_name || c.brokerage || '';
 const contactPhone = (c: CrmContact) => c.phone || c.cell_phone || '';
 
+// County-appraisal data surfaced on the card face. Owner comes from the linked owner
+// contact when present, else the CAD owner_name text. The appraised value is parsed
+// out of the "[County Appraisal … Market $X]" block we write into notes.
+const ownerLabel = (p: Property): string | null => {
+  const linked = (p as { owner?: CrmContact | null }).owner;
+  if (linked) return contactLabel(linked);
+  return typeof p.owner_name === 'string' && p.owner_name.trim() ? p.owner_name : null;
+};
+const cadValue = (notes?: string | null): string | null => {
+  if (!notes) return null;
+  const m = notes.match(/\[County Appraisal[^\]]*\][^\n]*?Market \$([\d,]+)/);
+  return m ? `$${m[1]}` : null;
+};
+
 /**
  * Shrink an oversized image flyer client-side before upload — a big photo blows
  * past the vision model's ~5 MB per-image limit, which would look identical to the
@@ -285,7 +299,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         if (listingFilter === 'sale'  && !(lt.includes('sale')  || lt.includes('both'))) return false;
       }
       if (!q) return true;
-      return [p.name, p.address, p.city, p.submarket, p.listing_company, p.listing_agent_name]
+      return [p.name, p.address, p.city, p.submarket, p.listing_company, p.listing_agent_name, p.owner_name, p.parcel_apn]
         .filter(Boolean).join(' ').toLowerCase().includes(q);
     });
   }, [properties, search, assetFilter, statusFilter, sourceFilter, listingFilter]);
@@ -452,8 +466,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                     {avail ? <span style={{ fontSize: 12, color: '#9ca3af' }}>{fmtSf(avail)} avail</span> : null}
                     <span style={{ marginLeft: 'auto' }}><UpdatedChip p={p} compact /></span>
                   </div>
-                  {(p.submarket || p.county || p.listing_company || p.listing_agent_name) && (
+                  {(p.submarket || p.county || p.listing_company || p.listing_agent_name || ownerLabel(p) || cadValue(p.notes)) && (
                     <div style={{ marginTop: 10, paddingTop: 9, borderTop: '1px solid #f3f4f6', fontSize: 12, color: '#9ca3af', display: 'flex', flexWrap: 'wrap', gap: '3px 12px' }}>
+                      {ownerLabel(p) && <span style={{ color: '#6b7280' }}>🏛 {ownerLabel(p)}</span>}
+                      {cadValue(p.notes) && <span style={{ color: '#15803d', fontWeight: 600 }}>Appraised {cadValue(p.notes)}</span>}
                       {p.submarket && <span>📍 {p.submarket}{p.county ? ` · ${p.county} Co.` : ''}</span>}
                       {(p.listing_agent_name || p.listing_company) && <span>🏷 {[p.listing_agent_name, p.listing_company].filter(Boolean).join(' · ')}</span>}
                     </div>
@@ -512,6 +528,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ ...ell, fontWeight: 600, color: '#1a1a1a', fontSize: 14 }} title={p.name || p.address || ''}>{p.name || p.address || '—'}</div>
                           <div style={{ ...ell, color: '#9ca3af', fontSize: 12.5, marginTop: 2 }} title={loc}>{loc || '—'}</div>
+                          {ownerLabel(p) && <div style={{ ...ell, color: '#6b7280', fontSize: 11.5, marginTop: 2 }} title={`Owner: ${ownerLabel(p)}`}>🏛 {ownerLabel(p)}</div>}
                         </div>
                       </div>
                     </td>
@@ -526,7 +543,10 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                       <div style={{ color: '#374151', fontSize: 13.5, whiteSpace: 'nowrap' }}>{fmtSf(p.size_sf) || muted}</div>
                       {avail && <div style={{ color: '#9ca3af', fontSize: 11.5, marginTop: 1, whiteSpace: 'nowrap' }}>{fmtSf(avail)} avail</div>}
                     </td>
-                    <td style={{ padding: '12px 10px', textAlign: 'right', fontWeight: 700, color: price ? '#b07d1f' : '#d1d5db', fontSize: 13, ...ell, verticalAlign: 'top' }} title={String(price || '')}>{price || '—'}</td>
+                    <td style={{ padding: '12px 10px', textAlign: 'right', verticalAlign: 'top' }}>
+                      <div style={{ fontWeight: 700, color: price ? '#b07d1f' : '#d1d5db', fontSize: 13, ...ell }} title={String(price || '')}>{price || '—'}</div>
+                      {cadValue(p.notes) && <div style={{ color: '#15803d', fontSize: 11, marginTop: 1, whiteSpace: 'nowrap' }} title="County appraised value">CAD {cadValue(p.notes)}</div>}
+                    </td>
                     <td style={{ padding: '12px 12px', verticalAlign: 'top' }}>
                       <div style={{ ...ell, color: '#374151', fontSize: 13 }} title={p.listing_company || ''}>{p.listing_company || muted}</div>
                       {p.listing_agent_name && <div style={{ ...ell, color: '#9ca3af', fontSize: 12, marginTop: 1 }} title={p.listing_agent_name}>{p.listing_agent_name}</div>}
@@ -594,6 +614,12 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
                   <UpdatedChip p={p} compact />
                   {price ? <span style={{ marginLeft: 'auto', fontSize: 14, fontWeight: 700, color: '#c9922c' }}>{price}</span> : null}
                 </div>
+                {(ownerLabel(p) || cadValue(p.notes)) && (
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    {ownerLabel(p) && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '58%' }} title={`Owner: ${ownerLabel(p)}`}>🏛 {ownerLabel(p)}</span>}
+                    {cadValue(p.notes) && <span style={{ fontWeight: 700, color: '#15803d', marginLeft: 'auto' }} title="County appraised value">Appraised {cadValue(p.notes)}</span>}
+                  </div>
+                )}
                 {(p.listing_company || p.listing_agent_name) && (
                   <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 10, borderTop: '1px solid #f3f4f6', paddingTop: 8 }}>
                     {p.listing_agent_name}{p.listing_agent_name && p.listing_company ? ' · ' : ''}{p.listing_company}
