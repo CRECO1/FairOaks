@@ -2078,6 +2078,54 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
+  /**
+   * The same try-then-ask flow as the contact export, for any other dataset.
+   *
+   * The server is the gate — it will not return rows without a live approval —
+   * so this only decides what to say. The owner falls straight through because
+   * the endpoint lets him; nobody else does, admins included.
+   */
+  async function requestOrDownloadDataset(opts: {
+    dataset: 'commissions' | 'commissions_1099';
+    url: string;
+    filename: string;
+    body: Record<string, unknown>;
+    noun: string;
+  }) {
+    try {
+      const dl = await fetch(opts.url);
+      if (dl.ok) {
+        const csv = await dl.text();
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = opts.filename; a.click();
+        URL.revokeObjectURL(url);
+        showToast(isSuperAdmin ? `Exported ${opts.noun}.` : `Exported ${opts.noun} — approval used.`);
+        loadExportRequests();
+        return;
+      }
+      const info = await dl.json().catch(() => ({}));
+      if (dl.status === 403 && !info.needsApproval) { showToast(info.error ?? 'Not permitted.'); return; }
+      if (info.status === 'pending') { showToast('Your export request is awaiting owner approval.'); return; }
+      if (info.status === 'denied')  { showToast('The owner denied this export request.'); return; }
+
+      const res = await fetch('/api/crm/export-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataset: opts.dataset, business_unit: businessUnit, ...opts.body }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast('Error: ' + (out.error ?? 'could not send request')); return; }
+      showToast(out.alreadyPending
+        ? 'Already requested — awaiting owner approval.'
+        : 'Export request sent to the owner for approval.');
+      loadExportRequests();
+    } catch {
+      showToast('Could not reach the server. Try again.');
+    }
+  }
+
   /** Outstanding requests: the owner sees everyone's, an agent sees their own. */
   async function loadExportRequests() {
     try {
@@ -3667,29 +3715,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ))}
               </div>
               {commissionView === 'list' && (
+                /* Built server-side behind the export-approval gate. It used to be
+                   assembled here from allCommissions, which handed any admin every
+                   agent's splits in one click with no request and no audit row. */
                 <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 13 }} onClick={() => {
-                  const filtered = allCommissions.filter(c =>
-                    (!commissionFilterYear || c.close_date?.startsWith(commissionFilterYear)) &&
-                    (!commissionFilterAgent || c.agent_id === commissionFilterAgent) &&
-                    (!commissionFilterStatus || c.status === commissionFilterStatus)
-                  );
-                  const rows = [
-                    ['Deal', 'Property', 'Agent', 'Deal Type', 'Sale Price', 'Rate %', 'Gross GCI', 'Agent Split %', 'Agent Net', 'Brokerage Net', 'Referral Fee', 'Referral To', 'Tx Fee', 'Status', 'Close Date', 'Paid Date', 'Notes'],
-                    ...filtered.map(c => [
-                      c.deal?.client ?? '', c.deal?.property ?? '',
-                      c.agent ? `${c.agent.first_name} ${c.agent.last_name}` : '',
-                      c.deal_type ?? '', c.sale_price, c.commission_rate,
-                      c.gross_commission, c.agent_split, c.agent_net, c.brokerage_net,
-                      c.referral_fee, c.referral_to ?? '', c.transaction_fee,
-                      c.status, c.close_date ?? '', c.paid_date ?? '', c.notes ?? '',
-                    ]),
-                  ];
-                  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-                  const blob = new Blob([csv], { type: 'text/csv' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a'); a.href = url;
-                  a.download = `commissions-${commissionFilterYear || 'all'}.csv`; a.click();
-                  URL.revokeObjectURL(url);
+                  const qs = new URLSearchParams({ view: 'list', unit: businessUnit });
+                  if (commissionFilterYear) qs.set('year', commissionFilterYear);
+                  if (commissionFilterAgent) qs.set('agent_id', commissionFilterAgent);
+                  if (commissionFilterStatus) qs.set('status', commissionFilterStatus);
+                  requestOrDownloadDataset({
+                    dataset: 'commissions',
+                    url: `/api/crm/commissions/export?${qs.toString()}`,
+                    filename: `commissions-${commissionFilterYear || 'all'}.csv`,
+                    body: { year: commissionFilterYear || undefined, agent_id: commissionFilterAgent || undefined, status: commissionFilterStatus || undefined },
+                    noun: 'the commission ledger',
+                  });
                 }}>⬇ Export CSV</button>
               )}
               {commissionView === '1099' && (
@@ -5650,24 +5690,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {needsFiling.length > 0 && (
                           <button style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
                             onClick={() => {
-                              const rows = [
-                                ['Recipient Name', 'Email', 'Phone', 'License #', `Box 1 NEC (${commission1099Year})`, 'Deal Count', 'Filing Required'],
-                                ...agentTotals.map(r => [
-                                  `${r.profile.first_name} ${r.profile.last_name}`,
-                                  r.profile.email,
-                                  r.profile.phone ?? '',
-                                  r.profile.license ?? '',
-                                  r.total.toFixed(2),
-                                  r.deals.length,
-                                  r.total >= 600 ? 'YES' : 'No',
-                                ]),
-                              ];
-                              const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-                              const blob = new Blob([csv], { type: 'text/csv' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a'); a.href = url;
-                              a.download = `1099-nec-${commission1099Year}.csv`; a.click();
-                              URL.revokeObjectURL(url);
+                              // Server-side behind the same approval gate: this is
+                              // every contractor's tax total, and it used to be one
+                              // unlogged click for any admin.
+                              const qs = new URLSearchParams({ view: '1099', unit: businessUnit, year: String(commission1099Year) });
+                              requestOrDownloadDataset({
+                                dataset: 'commissions_1099',
+                                url: `/api/crm/commissions/export?${qs.toString()}`,
+                                filename: `1099-nec-${commission1099Year}.csv`,
+                                body: { year: String(commission1099Year) },
+                                noun: `the ${commission1099Year} 1099-NEC summary`,
+                              });
                             }}>
                             ⬇ Export CSV
                           </button>

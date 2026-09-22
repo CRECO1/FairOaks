@@ -11,8 +11,10 @@ import { adminClient } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
 import {
   mintToken, scopeKey, scopeLabel, sendApprovalRequestEmail,
-  TOKEN_TTL_MS, type ExportScope,
+  TOKEN_TTL_MS, type ExportScope, type ExportDataset,
 } from '@/lib/export-approval';
+
+const DATASETS: ExportDataset[] = ['contacts', 'commissions', 'commissions_1099'];
 
 const COLS = 'id, requester_id, requester_name, requester_email, business_unit, scope_label, row_count, status, created_at, approved_at, approval_expires_at, denied_at, consumed_at';
 
@@ -28,6 +30,42 @@ export async function GET(req: NextRequest) {
   const { data, error } = await q;
   if (error) return dbError('export-requests:list', error);
   return NextResponse.json({ requests: data ?? [], isOwner });
+}
+
+/**
+ * How many rows this request would actually hand over, counted server-side so the
+ * approval email cannot understate the size of what is being asked for.
+ *
+ * The 1099 view aggregates commissions per agent, so its "rows" are recipients,
+ * not commission records — counted as distinct agents in that year.
+ */
+async function countScope(
+  db: ReturnType<typeof adminClient>,
+  dataset: ExportDataset,
+  unit: string,
+  ids: string[] | null,
+  filters?: Record<string, string | undefined>,
+): Promise<number> {
+  if (dataset === 'contacts') {
+    let q = db.from('crm_clients').select('id', { count: 'exact', head: true }).eq('business_unit', unit);
+    if (ids) q = q.in('id', ids);
+    const { count } = await q;
+    return count ?? 0;
+  }
+
+  if (dataset === 'commissions_1099') {
+    let q = db.from('crm_commissions').select('agent_id').eq('business_unit', unit);
+    if (filters?.year) q = q.gte('close_date', `${filters.year}-01-01`).lte('close_date', `${filters.year}-12-31`);
+    const { data } = await q;
+    return new Set((data ?? []).map(r => r.agent_id).filter(Boolean)).size;
+  }
+
+  let q = db.from('crm_commissions').select('id', { count: 'exact', head: true }).eq('business_unit', unit);
+  if (filters?.year) q = q.gte('close_date', `${filters.year}-01-01`).lte('close_date', `${filters.year}-12-31`);
+  if (filters?.agent) q = q.eq('agent_id', filters.agent);
+  if (filters?.status) q = q.eq('status', filters.status);
+  const { count } = await q;
+  return count ?? 0;
 }
 
 export async function POST(req: NextRequest) {
@@ -61,15 +99,20 @@ export async function POST(req: NextRequest) {
     ? body.ids.filter((v: unknown): v is string => typeof v === 'string')
     : null;
 
-  const scope: ExportScope = { businessUnit: unit, ids };
+  // Which body of data. Unrecognised values fall back to contacts rather than
+  // being trusted — the dataset decides what gets counted and handed over.
+  const dataset: ExportDataset = DATASETS.includes(body.dataset) ? body.dataset : 'contacts';
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+  const filters = dataset === 'contacts'
+    ? undefined
+    : { year: str(body.year), agent: str(body.agent_id), status: str(body.status) };
+
+  const scope: ExportScope = { dataset, businessUnit: unit, ids, filters };
   const key = scopeKey(scope);
 
   // Count server-side. A client-supplied count would make the approval email
   // lie about the size of what is being handed over.
-  let countQ = db.from('crm_clients').select('id', { count: 'exact', head: true }).eq('business_unit', unit);
-  if (ids) countQ = countQ.in('id', ids);
-  const { count } = await countQ;
-  const rowCount = count ?? 0;
+  const rowCount = await countScope(db, dataset, unit, ids, filters);
 
   // An identical pending ask is the same ask. Re-sending would just let anyone
   // fill the owner's inbox by clicking twice.

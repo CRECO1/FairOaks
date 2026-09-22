@@ -32,10 +32,34 @@ const SITE = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygro
 
 export type ExportStatus = 'pending' | 'approved' | 'denied' | 'consumed' | 'expired';
 
+/**
+ * Which body of data is being handed over. The approval is bound to this, so a
+ * "yes" to the contact list can never be redeemed as a commissions export — the
+ * datasets would otherwise collide on an identical scope_key.
+ */
+export type ExportDataset = 'contacts' | 'commissions' | 'commissions_1099';
+
 export interface ExportScope {
+  /** Defaults to 'contacts', which keeps the original key format byte-for-byte. */
+  dataset?: ExportDataset;
   businessUnit: string;
   /** Explicit contact ids when the requester selected a subset; null means "everything in the unit". */
   ids: string[] | null;
+  /** Dataset filters that narrow what is handed over (year, agent, status). */
+  filters?: Record<string, string | undefined>;
+}
+
+const DATASET_NOUN: Record<ExportDataset, { one: string; many: string; what: string }> = {
+  contacts:           { one: 'contact',            many: 'contacts',            what: 'contact list' },
+  commissions:        { one: 'commission record',  many: 'commission records',  what: 'commission ledger' },
+  commissions_1099:   { one: '1099 recipient',     many: '1099 recipients',     what: '1099-NEC summary' },
+};
+
+/** Stable, readable rendering of the filters that narrowed an export. */
+function filterPart(filters?: Record<string, string | undefined>): string {
+  const live = Object.entries(filters ?? {}).filter(([, v]) => v != null && v !== '') as [string, string][];
+  if (!live.length) return '';
+  return live.sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}:${v}`).join('|');
 }
 
 /* ── token ──────────────────────────────────────────────────────────────── */
@@ -61,16 +85,28 @@ export function hashToken(raw: string): string {
  * is what stops an approval being reused for a bigger export.
  */
 export function scopeKey(scope: ExportScope): string {
-  if (!scope.ids || scope.ids.length === 0) return `unit:${scope.businessUnit}|all`;
+  const dataset = scope.dataset ?? 'contacts';
+  // 'contacts' keeps the original format so approvals issued before datasets
+  // existed still match. Everything else is namespaced, which is also what stops
+  // an approval for one dataset being redeemed against another.
+  const base = dataset === 'contacts' ? '' : `ds:${dataset}|`;
+  const filters = filterPart(scope.filters);
+  const tail = filters ? `|${filters}` : '';
+  if (!scope.ids || scope.ids.length === 0) return `${base}unit:${scope.businessUnit}|all${tail}`;
   const digest = crypto.createHash('sha256').update([...scope.ids].sort().join(',')).digest('hex').slice(0, 32);
-  return `unit:${scope.businessUnit}|ids:${scope.ids.length}:${digest}`;
+  return `${base}unit:${scope.businessUnit}|ids:${scope.ids.length}:${digest}${tail}`;
 }
 
 export function scopeLabel(scope: ExportScope, rowCount: number): string {
   const unit = scope.businessUnit === 'commercial' ? 'Commercial' : 'Residential';
-  return scope.ids && scope.ids.length > 0
-    ? `${rowCount} selected contact${rowCount === 1 ? '' : 's'} (${unit})`
-    : `the full ${unit} contact list — ${rowCount} contact${rowCount === 1 ? '' : 's'}`;
+  const noun = DATASET_NOUN[scope.dataset ?? 'contacts'];
+  const n = `${rowCount} ${rowCount === 1 ? noun.one : noun.many}`;
+  // Say what narrowed it, so the owner is approving a described thing rather
+  // than a number — "2026, unpaid" reads very differently from "everything".
+  const live = Object.entries(scope.filters ?? {}).filter(([, v]) => v != null && v !== '') as [string, string][];
+  const narrowed = live.length ? ` (${live.sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k} ${v}`).join(', ')})` : '';
+  if (scope.ids && scope.ids.length > 0) return `${n} selected (${unit})${narrowed}`;
+  return `the full ${unit} ${noun.what} — ${n}${narrowed}`;
 }
 
 /* ── redemption ─────────────────────────────────────────────────────────── */
