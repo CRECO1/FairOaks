@@ -200,9 +200,12 @@ const LEAD_SOURCES: { domain: string; source: string; business_unit: string; own
   { domain: 'zillow.com',               source: 'Zillow',      business_unit: 'residential'  },
   { domain: 'realtor.com',              source: 'Realtor.com', business_unit: 'residential'  },
   { domain: 'move.com',                 source: 'Realtor.com', business_unit: 'residential'  },
-  // Own website contact forms — sender is noreply@crecotx.com / noreply@fairoaksrealtygroup.com
-  { domain: 'crecotx.com',             source: 'Website',     business_unit: 'commercial',  ownWebsite: true },
-  { domain: 'fairoaksrealtygroup.com',  source: 'Website',     business_unit: 'residential', ownWebsite: true },
+  // Own website contact forms — the automated notifier sends from noreply@<domain>. Match ONLY
+  // that exact sender, never the bare domain: `from:crecotx.com` also matches every internal
+  // @crecotx.com email (agents' own mail, CRM e-sign notices, call summaries, forwards, thread
+  // replies), and all of it was being ingested as "leads" and flooding the Prospect pipeline.
+  { domain: 'noreply@crecotx.com',             source: 'Website',     business_unit: 'commercial',  ownWebsite: true },
+  { domain: 'noreply@fairoaksrealtygroup.com',  source: 'Website',     business_unit: 'residential', ownWebsite: true },
 ];
 
 function detectSource(from: string): typeof LEAD_SOURCES[0] | null {
@@ -239,6 +242,16 @@ const NON_LEAD_PATTERNS = [
   /\bproperties?\s+matching\s+your\s+search\b/i,
   /\bsaved\s+search\s+(alert|results)\b/i,
   /\bview\s+all\s+search\s+results\b/i,
+  // Reply/forward threads are never a fresh lead
+  /^\s*(re|fwd?)\s*:/i,
+  // Alert / subscriber / lead-magnet signups are contacts at most, not pipeline deals
+  /\bsubscriber\b/i,
+  /property[\s-]?alerts?/i,
+  /\bmagnet\b/i,
+  // Call-log / voicemail notification emails (external call system, not a lead)
+  /📞|silent call|unknown caller|voicemail|missed call/i,
+  // E-signature workflow notifications
+  /please sign|signed lease|docusign/i,
 ];
 
 // Our own internal domains — parsed lead emails from these should be skipped
@@ -247,6 +260,9 @@ const INTERNAL_DOMAINS = ['crecotx.com', 'fairoaksrealtygroup.com'];
 function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string, parsedEmail?: string, ownWebsite?: boolean): boolean {
   // Reject known non-lead patterns in subject
   if (NON_LEAD_PATTERNS.some(re => re.test(subject))) return false;
+  // Test-suite / audit fixtures must never become real pipeline records
+  if (/@example\.com/i.test(fromAddress) || (parsedEmail && /@example\.com/i.test(parsedEmail))) return false;
+  if (/\bzz(test|aud)/i.test(subject)) return false;
   // Own website contact form emails: sender IS our domain — that's expected, don't reject them.
   // Only apply the sender-domain filter for third-party platforms.
   if (!ownWebsite) {
