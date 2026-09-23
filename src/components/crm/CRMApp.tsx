@@ -680,6 +680,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Campaigns
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  // contact id -> campaigns they're enrolled in, for the Campaigns column on the contacts list.
+  const [enrollmentsByClient, setEnrollmentsByClient] = useState<Record<string, { campaign_name: string; active: boolean; campaign_status?: string }[]>>({});
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
   const [campaignView, setCampaignView] = useState<'list' | 'builder' | 'detail'>('list');
   const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'preview' | 'settings'>('enrolled');
@@ -1477,6 +1479,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setContactsTotal(total);
     setContactsPage(0);
   }, [profile, businessUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load campaign enrollments for the Campaigns column whenever the contacts page is shown.
+  useEffect(() => {
+    if (page === 'contacts') loadAllEnrollments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, businessUnit]);
 
 
   const loadCalendarEvents = useCallback(async (days = 30) => {
@@ -2685,6 +2693,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (res.ok) { const j = await res.json(); setSmartLists(j.smart_lists ?? j.smartLists ?? []); }
   }
 
+  // Every campaign enrollment in the current workspace, grouped by contact — one query that
+  // powers the Campaigns column on the contacts list (rather than a query per row).
+  async function loadAllEnrollments() {
+    const { data } = await supabase
+      .from('crm_campaign_enrollments')
+      .select('client_id, active, campaign:crm_campaigns!inner(name, status, business_unit)')
+      .eq('campaign.business_unit', businessUnit);
+    const map: Record<string, { campaign_name: string; active: boolean; campaign_status?: string }[]> = {};
+    for (const e of (data ?? []) as any[]) {
+      if (!e.client_id) continue;
+      (map[e.client_id] ??= []).push({ campaign_name: e.campaign?.name ?? 'Campaign', active: e.active, campaign_status: e.campaign?.status });
+    }
+    setEnrollmentsByClient(map);
+  }
+
   async function saveSmartList() {
     if (!newListName.trim()) { showToast('Enter a list name'); return; }
     const filters: Record<string, any> = {};
@@ -3078,7 +3101,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table col.col-tags{width:160px;}
         .contacts-table col.col-email{width:190px;}
         .contacts-table col.col-phone{width:135px;}
-        .contacts-table col.col-deals{width:auto;min-width:140px;}
+        .contacts-table col.col-deals{width:160px;}
+        .contacts-table col.col-campaigns{width:auto;min-width:170px;}
         .contacts-table col.col-owner{width:110px;}
         .contacts-table col.col-added{width:90px;}
         .contacts-table col.col-touch{width:95px;}
@@ -4355,6 +4379,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <col className="col-check" />
                       <col className="col-name" />
                       <col className="col-deals" />
+                      <col className="col-campaigns" />
                       {isAdmin && <col className="col-owner" />}
                       <col className="col-touch" />
                       <col className="col-actions" />
@@ -4379,13 +4404,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             Both are still searchable and still in the export. */}
                         <th>Contact</th>
                         <th>Deals</th>
+                        <th>Campaigns</th>
                         {isAdmin && <th>Owner</th>}
                         <th>Last Touch</th>
                         <th style={{ width: 130 }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredContacts.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
+                      {filteredContacts.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
                       {filteredContacts.map(c => {
                         const clientDeals = deals.filter(d => d.client_id === c.id);
                         const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
@@ -4497,6 +4523,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               )}
                             </td>
 
+                            {/* Campaigns — which marketing campaigns this contact is enrolled in */}
+                            <td style={{ fontSize: 13 }}>
+                              {(() => {
+                                const enrolls = enrollmentsByClient[c.id] ?? [];
+                                if (enrolls.length === 0) return <span style={{ color: '#d1d5db' }}>—</span>;
+                                return (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                                    {enrolls.slice(0, 2).map((en, i) => (
+                                      <span key={i} title={en.campaign_name} style={{ display: 'inline-block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle', background: en.active !== false ? '#f0f7ff' : '#f3f4f6', color: en.active !== false ? '#1e40af' : '#9ca3af', border: `1px solid ${en.active !== false ? '#cfe3fb' : '#e5e7eb'}`, borderRadius: 8, padding: '1px 7px', fontSize: 11.5, fontWeight: 600 }}>
+                                        {en.campaign_name}
+                                      </span>
+                                    ))}
+                                    {enrolls.length > 2 && (
+                                      <span title={enrolls.slice(2).map(en => en.campaign_name).join(', ')} style={{ color: '#9ca3af', fontSize: 11.5, fontWeight: 700 }}>+{enrolls.length - 2}</span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
 
                             {/* Owner agent (admin only) — click to reassign */}
                             {isAdmin && (
