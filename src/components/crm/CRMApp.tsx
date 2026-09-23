@@ -5955,14 +5955,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {campaignView === 'list' && (
                 <div>
                   {/* Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <div>
-                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Email campaigns</h2>
-                      <p style={{ fontSize: 14, color: '#6b7280' }}>Organized by project — campaigns auto-send to enrolled contacts</p>
+                  <div style={{ display: 'flex', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', gap: isMobile ? 14 : 12, flexDirection: isMobile ? 'column' : 'row', marginBottom: 20 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 24 : 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>Email campaigns</h2>
+                      <p style={{ fontSize: isMobile ? 13 : 14, color: '#6b7280' }}>Organized by project — campaigns auto-send to enrolled contacts</p>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setShowAddProject(true)} style={{ fontSize: 13 }}>📁 New Project</button>}
-                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: '' }); setCampaignView('builder'); }}>+ New Campaign</button>
+                    {/* On a phone these sit on their own row at full width rather than
+                        being crushed against the title. */}
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0, ...(isMobile ? { width: '100%' } : {}) }}>
+                      {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setShowAddProject(true)} style={{ fontSize: 13, whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, minHeight: 44 } : {}) }}>📁 New Project</button>}
+                      <button className="crm-btn crm-btn-gold" onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: '' }); setCampaignView('builder'); }} style={isMobile ? { flex: 1, minHeight: 44, whiteSpace: 'nowrap' } : undefined}>+ New Campaign</button>
                     </div>
                   </div>
 
@@ -6025,8 +6027,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             so the metric columns wrap onto a second line instead of
                             squeezing the campaign name down to a few characters. */}
                         <div style={{ flex: isMobile ? '1 1 calc(100% - 50px)' : 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3 }}>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{camp.name}</span>
+                          <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 7, marginBottom: 3, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                            {/* These names differ only in their tail ("… Medical A2",
+                                "… A3"), so ellipsing on a phone hides the one part that
+                                tells them apart. Wrap instead. */}
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111', minWidth: 0, ...(isMobile ? { lineHeight: 1.35, overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{camp.name}</span>
                             <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
                           <div style={{ fontSize: 12, color: '#9ca3af' }}>
@@ -6035,12 +6040,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         </div>
                         {/* Enrolled column */}
-                        <div style={{ width: 66, textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ width: isMobile ? 'auto' : 66, textAlign: isMobile ? 'left' : 'right', flexShrink: 0, ...(isMobile ? { paddingLeft: 48 } : {}) }}>
                           <div style={{ fontSize: 14, color: '#374151', fontWeight: 600 }}>{camp.enrollment_count ?? 0}</div>
                           <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
                         </div>
                         {/* Performance column */}
-                        <div style={{ width: 116, flexShrink: 0 }}>
+                        <div style={{ width: isMobile ? 'auto' : 116, flexShrink: 0, ...(isMobile ? { marginLeft: 'auto' } : {}) }}>
                           {sent > 0 && camp.open_rate != null ? (
                             <div>
                               <div style={{ fontSize: 13, fontWeight: 700, color: rateColor, textAlign: 'right' }}>{camp.open_rate}% open</div>
@@ -6059,17 +6064,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             value={camp.project_id ?? ''}
                             onChange={e => assignCampaignToProject(camp.id, e.target.value || null)}
                             title="Move to project"
-                            style={{ fontSize: 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', maxWidth: 120, flexShrink: 0 }}
+                            style={{ fontSize: isMobile ? 13 : 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: isMobile ? '10px 8px' : '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', flexShrink: 0, ...(isMobile ? { width: '100%', minHeight: 44 } : { maxWidth: 120 }) }}
                           >
                             <option value="">No project</option>
                             {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                           </select>
                         )}
-                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(camp)} title="Preview email">👁 Preview</button>
-                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }}>Manage</button>
-                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>}
-                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
+                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, ...(isMobile ? { width: '100%' } : {}) }}>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(camp)} title="Preview email" style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>👁 Preview</button>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>Manage</button>
+                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); }} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>Edit</button>}
+                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="Delete campaign" style={{ color: '#ef4444', borderColor: '#fecaca', ...(isMobile ? { width: 52, minHeight: 44, fontSize: 15, flexShrink: 0 } : {}) }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
                         </div>
                       </div>
                     );
@@ -6089,10 +6094,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     return (
                       <div>
                         {/* Filter pills + summary */}
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: isMobile ? 7 : 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
                           {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
                             <button key={f} onClick={() => setCampaignFilter(f)}
-                              style={{ padding: '4px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize' }}>
+                              style={{ padding: isMobile ? '8px 14px' : '4px 14px', minHeight: isMobile ? 38 : undefined, borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
                               {f === 'all' ? `All (${allFiltered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${allFiltered.filter(c => c.status === f).length})`}
                             </button>
                           ))}
@@ -6100,7 +6105,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
                             if (!rated.length) return null;
                             const avg = Math.round(rated.reduce((s, c) => s + (c.open_rate ?? 0), 0) / rated.length);
-                            return <span style={{ marginLeft: 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif" }}>Avg open rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
+                            return <span style={{ marginLeft: isMobile ? 0 : 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>Avg open rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
                           })()}
                           {(campaignProjects.length > 0 || visibleCampaigns.some(c => !c.project_id)) && (() => {
                             const allKeys = [...campaignProjects.map(p => p.id), '__ungrouped__'];
@@ -6110,7 +6115,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             const hasAvg = allFiltered.some(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
                             return (
                               <button onClick={() => setExpandedProjects(anyOpen ? new Set() : new Set(allKeys))}
-                                style={{ marginLeft: hasAvg ? 12 : 'auto', background: 'none', border: 'none', fontSize: 12.5, color: '#9ca3af', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '2px 4px' }}>
+                                style={{ marginLeft: isMobile ? 'auto' : (hasAvg ? 12 : 'auto'), background: 'none', border: 'none', fontSize: 12.5, color: '#9ca3af', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: isMobile ? '8px 4px' : '2px 4px', minHeight: isMobile ? 38 : undefined, whiteSpace: 'nowrap' }}>
                                 {anyOpen ? '▴ Collapse all' : '▾ Expand all'}
                               </button>
                             );
@@ -6125,30 +6130,50 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             return (
                               <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
                                 {/* Project header */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                {/* On a phone this was one nowrap row carrying the name,
+                                    the count, the whole description, the sent status, three
+                                    2px-padded buttons and the chevron. The name column got
+                                    squeezed to ~130px and wrapped a word per line, turning
+                                    one project into a ~500px-tall ribbon with unhittable
+                                    controls. Narrow widths now stack it into rows. */}
+                                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 8 : 10, padding: isMobile ? '14px 14px' : '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
                                   onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has(project.id) ? n.delete(project.id) : n.add(project.id); return n; })}>
-                                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flex: 1 }}>
-                                    {project.name}
-                                    <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
-                                    {project.description && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>· {project.description}</span>}
+
+                                  {/* Line 1 — dot, name (wraps), chevron pinned right */}
+                                  <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, flex: isMobile ? undefined : 1, minWidth: 0 }}>
+                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0, marginTop: isMobile ? 5 : 0 }} />
+                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flex: 1, minWidth: 0, ...(isMobile ? { lineHeight: 1.4 } : {}) }}>
+                                      {project.name}
+                                      <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8, whiteSpace: 'nowrap' }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
+                                      {/* Desktop keeps the description inline; on a phone it
+                                          gets its own line below so it can't crush the name. */}
+                                      {project.description && !isMobile && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>· {project.description}</span>}
+                                    </div>
+                                    {isMobile && <span style={{ fontSize: 15, color: '#9ca3af', flexShrink: 0, padding: '0 2px' }}>{isExpanded ? '▾' : '▸'}</span>}
                                   </div>
+
+                                  {isMobile && project.description && (
+                                    <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.5, paddingLeft: 20 }}>{project.description}</div>
+                                  )}
+
                                   {(() => {
                                     const sent = projectCampaigns.map(c => c.last_sent_at).filter(Boolean) as string[];
                                     const label = sent.length
                                       ? `Last sent ${new Date([...sent].sort().slice(-1)[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
                                       : projectCampaigns.length ? 'Not sent yet' : 'No campaigns';
-                                    return <span style={{ fontSize: 12, color: '#9ca3af', marginRight: 6, flexShrink: 0 }}>{label}</span>;
+                                    return <span style={{ fontSize: 12, color: '#9ca3af', marginRight: isMobile ? 0 : 6, flexShrink: 0, ...(isMobile ? { paddingLeft: 20 } : {}) }}>{label}</span>;
                                   })()}
+
                                   {isAdmin && (
-                                    <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }}
+                                    <div style={{ display: 'flex', gap: isMobile ? 8 : 4, ...(isMobile ? { paddingLeft: 20, paddingTop: 2 } : {}) }} onClick={e => e.stopPropagation()}>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={isMobile ? { flex: 1, minHeight: 44, fontSize: 13 } : { fontSize: 11, padding: '2px 8px' }}
                                         onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: project.id }); setCampaignView('builder'); }}>+ Campaign</button>
-                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setEditingProject(project)}>Edit</button>
-                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 11, padding: '2px 8px', color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaignProject(project.id)}>🗑</button>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={isMobile ? { flex: 1, minHeight: 44, fontSize: 13 } : { fontSize: 11, padding: '2px 8px' }} onClick={() => setEditingProject(project)}>Edit</button>
+                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="Delete project" style={isMobile ? { width: 52, minHeight: 44, fontSize: 15, color: '#ef4444', borderColor: '#fecaca', flexShrink: 0 } : { fontSize: 11, padding: '2px 8px', color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaignProject(project.id)}>🗑</button>
                                     </div>
                                   )}
-                                  <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 4 }}>{isExpanded ? '▾' : '▸'}</span>
+
+                                  {!isMobile && <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 4 }}>{isExpanded ? '▾' : '▸'}</span>}
                                 </div>
                                 {/* Campaigns inside project */}
                                 {isExpanded && (
