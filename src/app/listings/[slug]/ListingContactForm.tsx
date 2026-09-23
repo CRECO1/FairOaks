@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { Honeypot } from '@/components/Honeypot';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -39,6 +40,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
           property_interest: listingTitle,
           source: 'listing',
           business_unit: 'residential',
+          website: (data.get('website') as string) || undefined,
         }),
       });
       if (!res.ok) {
@@ -66,6 +68,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <Honeypot />
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
       )}

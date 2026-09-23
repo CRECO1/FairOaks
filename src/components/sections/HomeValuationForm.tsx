@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Home, ArrowRight } from 'lucide-react';
 import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { Honeypot } from '@/components/Honeypot';
 
 export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 'dark' | 'light'; surface?: string }) {
   // One form, two grounds: the homepage band is dark, the landing page is light.
@@ -17,9 +18,10 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
+    const website = new FormData(e.currentTarget).get('website');
 
     if (!form.name.trim() || !form.email.trim() || !form.address.trim() || !form.phone.trim()) {
       setError('Please fill in your name, email, phone, and property address.');
@@ -43,6 +45,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
           property_interest: form.address,
           valuation_surface: surface,
           business_unit: 'residential',
+          website: (website as string) || undefined,
         }),
       });
       if (!res.ok) throw new Error();
@@ -57,6 +60,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <Honeypot />
       <input
         type="text"
         placeholder="Your name"

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { Honeypot } from '@/components/Honeypot';
 
 const STEPS = [
   { number: '01', title: 'Free Home Valuation', description: 'We analyze recent sales, market trends, and your home\'s unique features to establish the ideal listing price.' },
@@ -37,6 +38,7 @@ export default function SellPage() {
         message: `Address: ${data.get('address')}\nTimeline: ${data.get('timeline')}\nAdditional info: ${data.get('notes')}`,
         source: 'valuation',
         business_unit: 'residential',
+        website: (data.get('website') as string) || undefined,
       }),
     }).catch(() => {});
     setLoading(false);
@@ -144,6 +146,7 @@ export default function SellPage() {
                       <h3 className="mb-2 font-heading text-heading-xl font-bold text-primary">Get Your Free Home Valuation</h3>
                       <p className="mb-6 text-body-sm text-foreground-muted">No obligations. We&apos;ll prepare a detailed market analysis of your home.</p>
                       <form onSubmit={handleSubmit} className="space-y-4">
+                        <Honeypot />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <input name="name" required placeholder="Your Name" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
                           <input name="phone" type="tel" placeholder="Phone Number" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />

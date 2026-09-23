@@ -9,6 +9,7 @@ import { trackLead, trackPhoneClick, trackEmailClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { Honeypot } from '@/components/Honeypot';
 
 const CONTACT_REASONS = [
   'Schedule a Showing',
@@ -40,6 +41,7 @@ export default function ContactPage() {
           message: `Reason: ${data.get('reason')}\n\n${data.get('message')}`,
           source: 'contact',
           business_unit: 'residential',
+          website: (data.get('website') as string) || undefined,
         }),
       });
       if (!res.ok) throw new Error('Server error');
@@ -156,6 +158,7 @@ export default function ContactPage() {
                       <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
                       <p className="mb-6 text-body-sm text-foreground-muted">We read every message ourselves and reply personally.</p>
                       <form onSubmit={handleSubmit} className="space-y-5">
+                        <Honeypot />
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                           <div>
                             <label className="label-readable">Full Name *</label>

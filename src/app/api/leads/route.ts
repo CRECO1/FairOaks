@@ -23,6 +23,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
 
+    // Honeypot — `website` is an invisible field on our forms; a filled value is
+    // almost certainly a bot. Return 200 so it thinks it succeeded and doesn't
+    // retry with a different strategy. Nothing is stored. Works even while
+    // reCAPTCHA is unconfigured (the check below is a no-op without a secret key).
+    if (typeof body.website === 'string' && body.website.length > 0) {
+      return NextResponse.json({ success: true, message: 'Lead received' });
+    }
+
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
     const captcha = await verifyRecaptcha(
       body.recaptchaToken,
