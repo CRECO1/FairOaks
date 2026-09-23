@@ -45,7 +45,7 @@ const securityHeaders = [
       // builds do not require it. It is appended for `next dev` only (see devScriptSrc
       // above), because HMR evaluates modules through eval(). Do not add it here
       // unconditionally; if a dependency needs it in production, justify it explicitly.
-      `script-src 'self' 'unsafe-inline'${devScriptSrc} https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com`,
+      `script-src 'self' 'unsafe-inline'${devScriptSrc} https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com https://www.recaptcha.net https://www.gstatic.com https://recaptcha.google.com`,
       // Styles: self + inline (Tailwind/CSS-in-JS) + Google Fonts
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Images: allow any https source + data URIs (listing photos, Supabase storage) +
@@ -57,8 +57,8 @@ const securityHeaders = [
       "font-src 'self' https://fonts.gstatic.com",
       // Connect: self + Supabase + Google APIs + Resend + ATTOM + Analytics
       "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://www.googleapis.com https://gmail.googleapis.com https://oauth2.googleapis.com https://api.attomdata.com https://resend.com https://maps.googleapis.com https://maps.gstatic.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://www.googletagmanager.com https://*.clarity.ms https://api-sabor.connectmls.com https://api.resend.com https://graph.facebook.com https://api.linkedin.com https://api.twitter.com https://accounts.google.com",
-      // Frames: same origin only (CRM embeds)
-      "frame-src 'self'",
+      // Frames: same origin only (CRM embeds) + reCAPTCHA v3 challenge/badge iframe
+      "frame-src 'self' https://www.recaptcha.net https://www.google.com https://recaptcha.google.com",
       // Forms: self only
       "form-action 'self'",
       // Objects: none
