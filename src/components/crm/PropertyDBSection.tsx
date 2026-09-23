@@ -402,6 +402,26 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
         {loading ? 'Loading…' : `${filtered.length}${filtered.length !== properties.length ? ` of ${properties.length}` : ''} propert${filtered.length === 1 ? 'y' : 'ies'} in the Property DB`}
       </div>
 
+      {/* The Property DB is ~2,400 rows joined with contact and owner records, so
+          the fetch takes a visible beat. A bare "Loading…" in the header above an
+          empty page reads as "there's nothing here"; placeholder rows show the
+          shape of what's coming and that something is actually happening. */}
+      {loading && (
+        <div aria-busy="true" aria-label="Loading properties" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <style>{`@keyframes crmPulse{0%,100%{opacity:.55}50%{opacity:.9}}`}</style>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '14px 16px', border: '1px solid #eef0f2', borderRadius: 10, background: '#fff', animation: `crmPulse 1.4s ease-in-out ${i * 0.08}s infinite` }}>
+              <div style={{ width: 52, height: 40, borderRadius: 6, background: '#eef0f2', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ height: 11, width: `${52 + ((i * 11) % 26)}%`, background: '#eef0f2', borderRadius: 4 }} />
+                <div style={{ height: 9, width: `${32 + ((i * 7) % 20)}%`, background: '#f3f5f7', borderRadius: 4, marginTop: 7 }} />
+              </div>
+              <div style={{ width: 74, height: 11, background: '#eef0f2', borderRadius: 4, flexShrink: 0 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Grid */}
       {!loading && filtered.length === 0 && (
         <div style={{ textAlign: 'center', color: '#9ca3af', padding: '60px 20px' }}>

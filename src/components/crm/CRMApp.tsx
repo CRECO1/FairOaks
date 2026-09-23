@@ -288,11 +288,21 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
           );
         })}
         {deals.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af', fontSize: 14 }}>No deals yet</div>
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9ca3af', fontSize: 14, lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 600, color: '#6b7280' }}>No deals yet</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>Add your first deal to start the pipeline.</div>
+            {onAddDeal && (
+              <button onClick={onAddDeal} style={{ marginTop: 12, fontSize: 13, color: '#c9922c', background: 'none', border: '1px dashed #fde68a', borderRadius: 6, padding: '8px 18px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>
+                + Add Deal
+              </button>
+            )}
+          </div>
         )}
       </div>
     );
   }
+
+  const boardEmpty = deals.length === 0;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, minmax(236px, 1fr))`, gap: 14, overflowX: 'auto', paddingBottom: 8, alignItems: 'start' }}>
@@ -377,8 +387,20 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
               {stageDeals.length === 0 && (isDragOver ? (
                 <div style={{ textAlign: 'center', padding: '26px 12px', color: col.dot, fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}>Drop to move here</div>
               ) : (
-                <div style={{ textAlign: 'center', padding: '22px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: '#cbd5e1', fontStyle: 'italic' }}>Nothing here</div>
+                /* A bare "Nothing here" in every empty column made a healthy board
+                   look broken — an empty LOI column next to 86 Prospects reads as
+                   "the pipeline is gone". Say WHICH is empty and why: an empty
+                   column on a populated board is normal and just needs a card
+                   dragged in; an empty BOARD is the case that wants a first deal. */
+                <div style={{ textAlign: 'center', padding: '20px 12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7 }}>
+                  <div style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600 }}>
+                    {boardEmpty ? 'No deals yet' : `Nothing in ${stage}`}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.45, maxWidth: 190 }}>
+                    {boardEmpty
+                      ? 'Add your first deal to start the pipeline.'
+                      : `Drag a card here when it reaches ${stage.toLowerCase()}.`}
+                  </div>
                   {onAddDeal && (
                     <button onClick={onAddDeal} style={{ fontSize: 12, color: '#c9922c', background: 'none', border: '1px dashed #fde68a', borderRadius: 6, padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontWeight: 600 }}>
                       + Add Deal
@@ -1043,8 +1065,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const authLastSignIn = session.user.last_sign_in_at ?? new Date().toISOString();
     const { data } = await supabase.from('crm_profiles').select('*').eq('id', session.user.id).single();
     if (data) {
-      // Update last_sign_in_at on every authenticated page load
-      await supabase.from('crm_profiles').update({ last_sign_in_at: authLastSignIn }).eq('id', session.user.id);
+      // Only write when it actually changed. This fired on EVERY authenticated
+      // page load — 9,154 writes in the window pg_stat_statements covers — while
+      // the value being written, session.user.last_sign_in_at, only changes when
+      // someone genuinely signs in. So all but a handful were the row being
+      // rewritten with the value it already held.
+      if (data.last_sign_in_at !== authLastSignIn) {
+        await supabase.from('crm_profiles').update({ last_sign_in_at: authLastSignIn }).eq('id', session.user.id);
+      }
       const updated = { ...data, last_sign_in_at: authLastSignIn } as Profile;
 
       // Access control: non-admins are locked to their assigned business_unit
@@ -1645,6 +1673,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     else showToast('Error enrolling contacts');
   }
 
+  /**
+   * Snap a typed tag to the spelling already in the book.
+   *
+   * The autocomplete suggests existing tags, but nothing stopped someone typing
+   * past it: the de-dupe was case-sensitive, so "property owner" was accepted
+   * alongside "Property Owner" as a second tag. Campaign and action-plan
+   * audiences then matched only one of them. Reusing the established casing
+   * means the vocabulary stops fragmenting at the point of entry rather than
+   * being cleaned up afterwards.
+   */
+  function canonicalTag(raw: string): string {
+    const t = raw.trim().replace(/,$/, '').trim();
+    if (!t) return t;
+    const existing = clients.flatMap(c => c.tags ?? []);
+    return existing.find(e => e.toLowerCase() === t.toLowerCase()) ?? t;
+  }
+
   async function bulkTagContacts(mode: 'add' | 'remove') {
     // Tag as typed. This used to force .toLowerCase() while single-contact
     // tagging kept the case, so bulk-tagging "Property Owner" quietly created a
@@ -1652,7 +1697,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // filters match exactly, so those contacts then fell out of the very
     // campaigns they had just been tagged for. Matching below is
     // case-insensitive so the variants already in the book still line up.
-    const tag = bulkTagValue.trim();
+    const tag = canonicalTag(bulkTagValue);
     if (!tag || selectedClientIds.size === 0) return;
     const toUpdate = clients.filter(c => selectedClientIds.has(c.id));
     const nextTags = (current: string[]) => mode === 'add'
@@ -9043,7 +9088,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           onChange={e => setTagInput(e.target.value)}
                           onFocus={() => setTagFocused(true)}
                           onBlur={() => setTimeout(() => setTagFocused(false), 150)}
-                          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!nc.tags.includes(tag)) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
+                          onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = canonicalTag(tagInput); if (tag && !nc.tags.some(t => t.toLowerCase() === tag.toLowerCase())) setNc({ ...nc, tags: [...nc.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && nc.tags.length) setNc({ ...nc, tags: nc.tags.slice(0, -1) }); }}
                           style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
                       </div>
                       {(() => {
@@ -10556,7 +10601,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         onChange={e => setTagInput(e.target.value)}
                         onFocus={() => setTagFocused(true)}
                         onBlur={() => setTimeout(() => setTagFocused(false), 150)}
-                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = tagInput.trim().replace(/,$/, ''); if (!ec.tags.includes(tag)) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
+                        onKeyDown={e => { if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) { e.preventDefault(); const tag = canonicalTag(tagInput); if (tag && !ec.tags.some(t => t.toLowerCase() === tag.toLowerCase())) setEc({ ...ec, tags: [...ec.tags, tag] }); setTagInput(''); } if (e.key === 'Backspace' && !tagInput && ec.tags.length) setEc({ ...ec, tags: ec.tags.slice(0, -1) }); }}
                         style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 80, flex: 1 }} />
                     </div>
                     {(() => {

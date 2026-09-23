@@ -354,6 +354,23 @@ export default function SignPage() {
     : f), [data, labels]);
   const inputFields = useMemo(() => fields.filter(f => isInput(f.type)), [fields]);
   const isDone = useCallback((f: SignField) => isInput(f.type) ? !!(values[f.id] ?? '').trim() : !!filled[f.id], [values, filled]);
+  // Where this person sits in the signing order, and who it moves to after them.
+  // The page already tracks FIELD progress ("3 / 7 spots"); what a signer on a
+  // multi-party document can't tell is whether they're the last one holding it up.
+  const ordered = useMemo(
+    () => [...(data?.parties ?? [])].sort((a, b) => a.order - b.order),
+    [data?.parties],
+  );
+  const myPos = useMemo(() => {
+    const i = ordered.findIndex(p => p.name === data?.signer?.name && p.role === data?.signer?.role);
+    return i >= 0 ? i + 1 : null;
+  }, [ordered, data?.signer?.name, data?.signer?.role]);
+  /** The next party still to sign after this one — null when they're the last. */
+  const nextParty = useMemo(() => {
+    if (myPos == null) return null;
+    return ordered.slice(myPos).find(p => p.status !== 'signed') ?? null;
+  }, [ordered, myPos]);
+
   const remaining = useMemo(() => fields.filter(f => !isDone(f)), [fields, isDone]);
   const nextField = remaining[0] ?? null;
   const allDone = fields.length > 0 && remaining.length === 0;
@@ -647,7 +664,17 @@ export default function SignPage() {
   if (view === 'waiting') return msg('⏱️', 'Waiting on a previous signer', 'It’s not your turn yet. We’ll email you the moment the document is ready for your signature.');
   if (view === 'done') return msg('✅', 'You’ve already signed', 'Your signature is on file. You’ll receive the fully executed copy once everyone has signed.');
   if (view === 'completed') return msg('🎉', 'Fully executed', `“${data?.title ? displayTitle(data.title) : 'This document'}” has been signed by all parties. A copy has been emailed to you.`);
-  if (view === 'signed') return msg(finalStatus === 'completed' ? '🎉' : '✅', 'Signature recorded — thank you!', finalStatus === 'completed' ? 'All parties have now signed. The fully executed copy is on its way to your inbox.' : 'Your signature has been recorded. We’ll route the document to the next party and email you the final copy when it’s complete.');
+  if (view === 'signed') return msg(
+    finalStatus === 'completed' ? '🎉' : '✅',
+    'Signature recorded — thank you!',
+    finalStatus === 'completed'
+      ? 'All parties have now signed. The fully executed copy is on its way to your inbox.'
+      : nextParty
+        // Naming the next party answers the question people actually have when
+        // they hand a document on: who has it now, and what am I waiting for.
+        ? `Your signature has been recorded. It goes to ${nextParty.name} (${nextParty.role}) next${ordered.length > 2 ? `, then the remaining ${ordered.length - (myPos ?? 0) - 1} ${ordered.length - (myPos ?? 0) - 1 === 1 ? 'party' : 'parties'}` : ''}. You’ll be emailed the fully executed copy once everyone has signed — nothing more is needed from you.`
+        : 'Your signature has been recorded. We’ll route the document to the next party and email you the final copy when it’s complete.',
+  );
 
   // view === 'ready'
   const tab = (k: 'pick' | 'draw', label: string) => (
@@ -664,7 +691,10 @@ export default function SignPage() {
       <div style={{ padding: narrow ? '16px 12px' : '20px 16px' }}>
         <div style={{ maxWidth: 960, margin: '0 auto 14px', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
           <h1 style={{ fontSize: narrow ? 20 : 22, margin: 0, overflowWrap: 'anywhere' }}>{displayTitle(data?.title)}</h1>
-          <span style={{ fontSize: 13, color: '#6b7280' }}>for {data?.signer?.name} · signing as <strong style={{ textTransform: 'capitalize' }}>{data?.signer?.role}</strong></span>
+          <span style={{ fontSize: 13, color: '#6b7280' }}>
+            for {data?.signer?.name} · signing as <strong style={{ textTransform: 'capitalize' }}>{data?.signer?.role}</strong>
+            {myPos != null && ordered.length > 1 && <> · signer <strong>{myPos} of {ordered.length}</strong></>}
+          </span>
         </div>
 
         {/* The device was handed over by the agent, so the person now holding it
