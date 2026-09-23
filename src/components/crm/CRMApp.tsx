@@ -901,6 +901,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [activityLoading, setActivityLoading] = useState(false);
   const [newActivity, setNewActivity] = useState<{ type: CRMActivity['type']; note: string }>({ type: 'call', note: '' });
   const [clientCampaignSends, setClientCampaignSends] = useState<(CampaignSend & { campaign_name?: string })[]>([]);
+  // Which email campaigns this contact is currently enrolled in (subscription view).
+  const [clientEnrollments, setClientEnrollments] = useState<{ id: string; campaign_id: string; active: boolean; campaign_name: string; campaign_status?: string; campaign_frequency?: string; campaign_type?: string }[]>([]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -912,6 +914,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (activeClient) {
       loadClientActivities(activeClient.id);
       loadClientCampaignSends(activeClient.id);
+      loadClientCampaignEnrollments(activeClient.id);
       loadContactEmails(activeClient.id);
       loadClientTasks(activeClient.id);
       loadClientDocs(activeClient.id);
@@ -924,6 +927,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     } else {
       setClientActivities([]);
       setClientCampaignSends([]);
+      setClientEnrollments([]);
       setContactEmails([]);
       setClientCardTasks([]);
     }
@@ -1951,6 +1955,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .limit(50);
     setClientCampaignSends(
       (data ?? []).map((s: any) => ({ ...s, campaign_name: s.campaign?.name ?? 'Campaign' }))
+    );
+  }
+
+  // The campaigns a contact is currently enrolled in — so you can tell at a glance
+  // whether they're on our email marketing (vs. the send history in the timeline).
+  async function loadClientCampaignEnrollments(clientId: string) {
+    const { data } = await supabase
+      .from('crm_campaign_enrollments')
+      .select('id, campaign_id, active, enrolled_at, campaign:crm_campaigns(name, status, frequency, type)')
+      .eq('client_id', clientId)
+      .order('enrolled_at', { ascending: false });
+    setClientEnrollments(
+      (data ?? []).map((e: any) => ({
+        id: e.id,
+        campaign_id: e.campaign_id,
+        active: e.active,
+        campaign_name: e.campaign?.name ?? 'Campaign',
+        campaign_status: e.campaign?.status,
+        campaign_frequency: e.campaign?.frequency,
+        campaign_type: e.campaign?.type,
+      }))
     );
   }
 
@@ -3047,13 +3072,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .contacts-table th{color:#94a3b8!important;font-size:11.5px!important;letter-spacing:.9px!important;padding:12px 14px!important;border-bottom:1px solid #e8edf2!important;font-weight:600!important;}
         .contacts-table td{padding:12px 14px!important;font-size:14px!important;border-bottom:1px solid #f1f5f9!important;vertical-align:middle!important;overflow:hidden!important;text-overflow:ellipsis!important;}
         .contacts-table col.col-check{width:36px;}
-        .contacts-table col.col-name{width:190px;}
+        .contacts-table col.col-name{width:auto;}
         .contacts-table col.col-asset{width:130px;}
         .contacts-table col.col-source{width:100px;}
         .contacts-table col.col-tags{width:160px;}
         .contacts-table col.col-email{width:190px;}
         .contacts-table col.col-phone{width:135px;}
-        .contacts-table col.col-deals{width:105px;}
+        .contacts-table col.col-deals{width:auto;min-width:140px;}
         .contacts-table col.col-owner{width:110px;}
         .contacts-table col.col-added{width:90px;}
         .contacts-table col.col-touch{width:95px;}
@@ -4310,15 +4335,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
                 <div style={{ overflowX: 'auto' }}>
                   <table className="contacts-table">
+                    {/* One <col> per rendered cell. Email/phone/source columns were moved to
+                        the contact card, so their <col>s are gone too — leaving them here left
+                        orphan fixed-width columns that reserved ~425px of dead space on the
+                        right and mis-sized the rest. name + deals flex to fill the width. */}
                     <colgroup>
                       <col className="col-check" />
                       <col className="col-name" />
-                      <col className="col-email" />
-                      <col className="col-phone" />
                       <col className="col-deals" />
                       {isAdmin && <col className="col-owner" />}
                       <col className="col-touch" />
-                      <col className="col-source" />
                       <col className="col-actions" />
                     </colgroup>
                     <thead>
@@ -9452,6 +9478,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   </div>
                 )}
+
+                {/* Email Campaigns — which marketing campaigns this contact is enrolled in,
+                    so you can tell at a glance whether they're on our email marketing. The
+                    activity timeline above shows the individual sends. */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>
+                    Email Campaigns{clientEnrollments.length ? ` (${clientEnrollments.filter(e => e.active !== false).length} active)` : ''}
+                  </div>
+                  {clientEnrollments.length === 0 ? (
+                    <div style={{ fontSize: 13, color: '#d1d5db' }}>Not on any campaigns. Tick this contact on the Contacts list, then use &ldquo;📣 Enroll in Campaign.&rdquo;</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {clientEnrollments.map(e => {
+                        const off = e.active === false || ['paused', 'completed', 'draft'].includes(e.campaign_status ?? '');
+                        const label = e.active === false ? 'Unsubscribed' : (e.campaign_status && e.campaign_status !== 'active') ? e.campaign_status : 'Active';
+                        return (
+                          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: off ? '#f9fafb' : '#f0f7ff', border: `1px solid ${off ? '#e5e7eb' : '#cfe3fb'}`, borderRadius: 8, padding: '9px 12px' }}>
+                            <span style={{ fontSize: 16, flexShrink: 0 }}>{e.campaign_type === 'sms' ? '💬' : '📣'}</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.campaign_name}</div>
+                              {(e.campaign_frequency || e.campaign_status) && <div style={{ fontSize: 11.5, color: '#9ca3af', textTransform: 'capitalize' }}>{[e.campaign_frequency, e.campaign_status].filter(Boolean).join(' · ')}</div>}
+                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, flexShrink: 0, textTransform: 'capitalize', background: off ? '#f3f4f6' : '#dcfce7', color: off ? '#6b7280' : '#166534' }}>{label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {/* Documents — leases and forms tied to this person, whether they were
                     filed on the contact or on one of their deals. */}
