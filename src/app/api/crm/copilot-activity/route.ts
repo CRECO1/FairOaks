@@ -34,19 +34,74 @@ import { adminClient } from '@/lib/supabase-admin';
  * Tool CALLS only: chat text is never stored, and free-text arguments arrive
  * already reduced to field names and lengths by the assistant route.
  */
+/**
+ * Which actors a requester is allowed to see, BEFORE the owner-exclusion floor.
+ *
+ * `null` means "no restriction by actor" and is reachable only by the owner.
+ * Everyone else gets an explicit list, which today is just themselves.
+ *
+ * FUTURE — a manager role. When one exists, this is the single place it hooks
+ * in: return the manager's team ids here and the rest of the route needs no
+ * change, because hiddenActorIds() is applied on top of whatever this returns.
+ * A manager would therefore see their team MINUS the owner, automatically,
+ * without anyone having to remember the rule.
+ *
+ * Rolling one out needs three things that do not exist yet, and none of them
+ * should be faked in the meantime: 'manager' added to the crm_profiles role
+ * CHECK constraint (today it permits only admin/agent/super_admin), a
+ * manager→agents assignment (a manager_id column on crm_profiles, or a teams
+ * table), and a decision on whether a manager sees peer managers. Until then
+ * every non-owner is correctly confined to themselves.
+ */
+function visibleActorIds(ctx: { userId: string; role: string | null }): string[] | null {
+  if (isSuperAdminRole(ctx.role)) return null;          // the owner sees everyone
+  // if (isManagerRole(ctx.role)) return await teamOf(ctx.userId);   // ← future
+  return [ctx.userId];                                   // everyone else: themselves
+}
+
+/**
+ * The permanent floor: actor ids that must never appear in anyone else's feed.
+ *
+ * The owner's activity is visible to the owner alone — this carries their export
+ * history and every anti-scrape alert. Keyed on whether the REQUESTER is that
+ * person, never on the requester's role, so promoting someone to admin, manager
+ * or anything invented later cannot widen it. Applied to the queries themselves,
+ * so it holds for a direct API call exactly as it does in the app.
+ *
+ * Other super_admins are excluded too, should a second one ever exist: each
+ * owner sees their own rows and no other owner's.
+ */
+async function hiddenActorIds(db: ReturnType<typeof adminClient>, requesterId: string): Promise<string[]> {
+  const { data } = await db.from('crm_profiles').select('id').eq('role', 'super_admin');
+  return (data ?? []).map(r => r.id as string).filter(id => id !== requesterId);
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
   const url = new URL(req.url);
   const isOwner = isSuperAdminRole(ctx.role);
-  // Everyone but the owner is pinned to their own rows, whatever agent_id they
-  // pass — an admin asking for someone else's activity gets their own.
-  const requested = url.searchParams.get('agent_id');
-  const agentFilter = isOwner ? (requested || null) : ctx.userId;
   const copilotOnly = url.searchParams.get('view') === 'copilot';
 
   const db = adminClient();
+
+  // Allowed set, then the floor subtracted from it.
+  const allowed = visibleActorIds(ctx);
+  const hidden = await hiddenActorIds(db, ctx.userId);
+  const hiddenList = `(${hidden.join(',')})`;
+
+  // A requester may narrow to one agent, but only within what they can already
+  // see — asking for someone outside the allowed set gets their own rows, not a
+  // refusal, so the endpoint never confirms whose activity exists.
+  const requested = url.searchParams.get('agent_id');
+  const agentFilter =
+    allowed === null
+      // Owner: may narrow to anyone, except a hidden actor (another owner).
+      ? (requested && !hidden.includes(requested) ? requested : null)
+      // Everyone else: narrowing is honoured only inside their allowed set;
+      // anything else silently falls back to their own rows.
+      : (requested && allowed.includes(requested) ? requested : allowed[0]);
 
   let q = db.from('crm_activity')
     .select('id, agent_id, notes, business_unit, created_at, client_id')
@@ -54,12 +109,14 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(300);
   if (agentFilter) q = q.eq('agent_id', agentFilter);
+  if (hidden.length) q = q.not('agent_id', 'in', hiddenList);
 
   let tq = db.from('audit_logs')
     .select('id, actor_id, action, target_type, target_id, metadata, created_at')
     .order('created_at', { ascending: false })
     .limit(300);
   if (copilotOnly) tq = tq.eq('action', 'copilot_tool');
+  if (hidden.length) tq = tq.not('actor_id', 'in', hiddenList);
   if (agentFilter) tq = tq.eq('actor_id', agentFilter);
 
   const [{ data, error }, { data: toolData, error: toolError }] = await Promise.all([q, tq]);
