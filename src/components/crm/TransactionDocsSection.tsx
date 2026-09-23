@@ -87,7 +87,6 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
       </div>
 
       {(() => {
-        const catColor = (c?: string) => c === 'Purchase' ? { bg: '#f3e8ff', color: '#7e22ce' } : { bg: '#e0f2fe', color: '#0369a1' };
         const cats = Array.from(new Set(filtered.map(f => f.category || 'Other')));
         return (
           <div style={{ position: 'relative', maxWidth: isMobile ? '100%' : 560 }}>
@@ -116,26 +115,22 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                       return (
                         <div key={cat} style={{ marginBottom: 4 }}>
                           <div style={{ fontSize: 10.5, letterSpacing: .7, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700, padding: '8px 10px 4px' }}>{cat}</div>
-                          {items.map(f => {
-                            const cc = catColor(f.category);
-                            return (
-                              <div key={f.id} onClick={() => openForm(f)}
-                                style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
-                                onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                                <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  {/* Wraps rather than ellipsing: the TREC names run to ~95 characters
-                                      ("Subdivision Information, Including Resale Certificate for Property
-                                      Subject to Mandatory Membership in a POA"), and one clamped line hid
-                                      exactly the part that tells two similar addenda apart. */}
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</div>
-                                  <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
-                                </div>
-                                {f.category && !isMobile && <span style={{ fontSize: 10.5, fontWeight: 600, color: cc.color, background: cc.bg, padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
-                                <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>Fill ›</span>
+                          {items.map(f => (
+                            <div key={f.id} onClick={() => openForm(f)}
+                              style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
+                              onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                              <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {/* Wraps rather than ellipsing: the TREC names run to ~95 characters
+                                    ("Subdivision Information, Including Resale Certificate for Property
+                                    Subject to Mandatory Membership in a POA"), and one clamped line hid
+                                    exactly the part that tells two similar addenda apart. */}
+                                <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</div>
+                                <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
                               </div>
-                            );
-                          })}
+                              <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>Fill ›</span>
+                            </div>
+                          ))}
                         </div>
                       );
                     })}
