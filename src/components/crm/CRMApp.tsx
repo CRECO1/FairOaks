@@ -4402,7 +4402,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {/* Email and phone live on the contact's card, not here — the
                             list is for finding somebody, the card is for reaching them.
                             Both are still searchable and still in the export. */}
-                        <th>Contact</th>
+                        <th>Contact <span style={{ fontWeight: 700, color: '#475569', background: '#eef2f7', borderRadius: 8, padding: '0 6px', letterSpacing: 0, marginLeft: 2 }}>{filteredContacts.length.toLocaleString()}</span></th>
                         <th>Deals</th>
                         <th>Campaigns</th>
                         {isAdmin && <th>Owner</th>}
