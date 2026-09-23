@@ -1646,26 +1646,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function bulkTagContacts(mode: 'add' | 'remove') {
-    const tag = bulkTagValue.trim().toLowerCase();
+    // Tag as typed. This used to force .toLowerCase() while single-contact
+    // tagging kept the case, so bulk-tagging "Property Owner" quietly created a
+    // SECOND tag "property owner" — and the campaign and action-plan audience
+    // filters match exactly, so those contacts then fell out of the very
+    // campaigns they had just been tagged for. Matching below is
+    // case-insensitive so the variants already in the book still line up.
+    const tag = bulkTagValue.trim();
     if (!tag || selectedClientIds.size === 0) return;
     const toUpdate = clients.filter(c => selectedClientIds.has(c.id));
-    // Update each contact's tags array
+    const nextTags = (current: string[]) => mode === 'add'
+      ? (current.some(t => t.toLowerCase() === tag.toLowerCase()) ? current : [...current, tag])
+      : current.filter(t => t.toLowerCase() !== tag.toLowerCase());
+
+    // One round trip per contact; fine for a hand-made selection, and it keeps
+    // each row's own tag list intact rather than overwriting with a shared array.
     for (const c of toUpdate) {
-      const current = c.tags ?? [];
-      const updated = mode === 'add'
-        ? [...new Set([...current, tag])]
-        : current.filter(t => t !== tag);
-      await supabase.from('crm_clients').update({ tags: updated }).eq('id', c.id);
+      await supabase.from('crm_clients').update({ tags: nextTags(c.tags ?? []) }).eq('id', c.id);
     }
-    // Reflect in local state immediately
-    setClients(prev => prev.map(c => {
-      if (!selectedClientIds.has(c.id)) return c;
-      const current = c.tags ?? [];
-      const updated = mode === 'add'
-        ? [...new Set([...current, tag])]
-        : current.filter(t => t !== tag);
-      return { ...c, tags: updated };
-    }));
+    setClients(prev => prev.map(c =>
+      selectedClientIds.has(c.id) ? { ...c, tags: nextTags(c.tags ?? []) } : c));
     showToast(`Tag "${tag}" ${mode === 'add' ? 'added to' : 'removed from'} ${toUpdate.length} contact${toUpdate.length !== 1 ? 's' : ''}`);
     setShowBulkTag(false);
     setBulkTagValue('');
@@ -6225,7 +6225,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             if (enrolled) return false;
                             if (enrollTypeFilter && c.type !== enrollTypeFilter) return false;
                             if (enrollAssetFilter && !(c.asset_types ?? []).includes(enrollAssetFilter)) return false;
-                            if (enrollTagFilter && !(c.tags ?? []).includes(enrollTagFilter)) return false;
+                            // Case-insensitive: the book contains variants like "Louis Pasteur" and "louis Pasteur".
+                            if (enrollTagFilter && !(c.tags ?? []).some(t => t.toLowerCase() === enrollTagFilter.toLowerCase())) return false;
                             if (q && !`${c.first_name} ${c.last_name}`.toLowerCase().includes(q) && !c.email?.toLowerCase().includes(q)) return false;
                             return true;
                           });
@@ -7107,7 +7108,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             if (enrolled) return false;
                             if (planEnrollTypeFilter && c.type !== planEnrollTypeFilter) return false;
                             if (planEnrollAssetFilter && !(c.asset_types ?? []).includes(planEnrollAssetFilter)) return false;
-                            if (planEnrollTagFilter && !(c.tags ?? []).includes(planEnrollTagFilter)) return false;
+                            if (planEnrollTagFilter && !(c.tags ?? []).some(t => t.toLowerCase() === planEnrollTagFilter.toLowerCase())) return false;
                             if (planEnrollSearch && !`${c.first_name} ${c.last_name} ${c.email}`.toLowerCase().includes(planEnrollSearch.toLowerCase())) return false;
                             return true;
                           });
