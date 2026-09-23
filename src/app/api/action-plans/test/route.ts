@@ -11,7 +11,6 @@ export async function POST(req: NextRequest) {
   if (!plan_id || !agent_id) return NextResponse.json({ error: 'plan_id and agent_id required' }, { status: 400 });
 
   const supabase = adminClient();
-  const resend = new Resend(process.env.RESEND_API_KEY!);
 
   // Fetch plan + first step
   const { data: plan } = await supabase
@@ -39,6 +38,9 @@ export async function POST(req: NextRequest) {
   const agentPhone = isCommercial ? '210-817-3443' : (agent.phone || '210-390-9997');
   const brokerage  = isCommercial ? 'CRECO Commercial Real Estate Company' : 'Fair Oaks Realty Group';
   const fromAddr   = isCommercial ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
+  // Commercial test-sends go from crecotx.com — use the commercial Resend key (the
+  // account with that domain verified), matching the real send path.
+  const resend = new Resend(((isCommercial ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) ?? '').replace(/[\r\n\s]+$/, ''));
 
   function fill(template: string) {
     return template

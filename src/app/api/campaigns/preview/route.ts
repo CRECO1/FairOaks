@@ -16,8 +16,13 @@ import { Resend } from 'resend';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-// Lazy init so build doesn't fail when RESEND_API_KEY isn't set at compile time
-const getResend = () => new Resend(process.env.RESEND_API_KEY);
+// Lazy init so build doesn't fail when RESEND_API_KEY isn't set at compile time.
+// Commercial (CRECO) mail must use the commercial key — that's the Resend account
+// with crecotx.com verified. The real send path (cron/campaigns) already keys off
+// business_unit this way; the preview must match or the CRECO test-send 403s on
+// an unverified domain while real sends succeed.
+const getResend = (commercial: boolean) =>
+  new Resend(((commercial ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) ?? '').replace(/[\r\n\s]+$/, ''));
 
 function applyMergeFields(template: string, agentFirstName: string, agentLastName: string, agentEmail: string, agentPhone: string, brokerage: string): string {
   return template
@@ -93,7 +98,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await getResend().emails.send({
+    await getResend(isCommercial).emails.send({
       from:     isCommercial ? 'CRECO <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
       to:       toEmail,
       subject:  `[TEST] ${renderedSubject}`,
