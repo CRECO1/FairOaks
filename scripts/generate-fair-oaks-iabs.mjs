@@ -29,6 +29,22 @@
  *   IABS-CRECO.pdf                   (served by crecotx.com from its own repo)
  *
  * Usage: node scripts/generate-fair-oaks-iabs.mjs
+ *        python3 scripts/subset-pdf-fonts.py <out.pdf> <out.pdf>   <-- REQUIRED
+ *
+ * ⚠️ The subset step is not optional. TREC's blank embeds twelve FULL TrueType
+ * faces (~4.2 MB of font data, sub=no) and pdf-lib copies them through verbatim,
+ * so the raw output is ~1.48 MB. Those files rendered as boxes in Chrome's PDF
+ * viewer (PDFium) while rendering fine in poppler and the ChromeOS Gallery app.
+ * The text is Identity-H, meaning the content stream holds raw GLYPH IDS — so if
+ * a viewer fails to load the embedded face for any reason and substitutes a
+ * system font, every code point maps to .notdef and the whole page becomes tofu.
+ * That is the failure mode, and the fix is to make the embedded fonts small and
+ * properly tagged rather than 4 MB and indistinguishable from full faces.
+ *
+ * subset-pdf-fonts.py keeps only the glyphs actually drawn, with retain_gids so
+ * the GIDs the content stream references stay valid, and tags each BaseFont
+ * "ABCDEF+Name" per PDF 32000-1 §9.6.4. Output drops to ~143 KB and renders
+ * pixel-identically — verified by comparing rasterisations before and after.
  */
 import fs from 'node:fs';
 import path from 'node:path';
