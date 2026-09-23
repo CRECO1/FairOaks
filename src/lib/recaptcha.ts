@@ -37,7 +37,11 @@ export async function verifyRecaptcha(
   const secret = process.env.RECAPTCHA_SECRET_KEY;
   if (!secret) return { ok: true, skipped: true };
 
-  if (!token) return { ok: false, skipped: false, reason: 'missing_token' };
+  // No token arrived — usually a real visitor whose ad-blocker / privacy extension / network
+  // blocked the reCAPTCHA script, not a bot. Fail OPEN rather than 403 a genuine lead: the
+  // honeypot + rate limit still guard this path, and the score is only enforced (below) when a
+  // token IS present.
+  if (!token) return { ok: true, skipped: true, reason: 'missing_token' };
 
   try {
     const body = new URLSearchParams({ secret, response: token });
