@@ -19,10 +19,15 @@ interface Props {
 }
 
 export function Honeypot({ name = 'website' }: Props) {
+  // Visually hidden with the sr-only clip pattern — zero layout footprint and NO
+  // off-screen positioning. `left:-9999px` is a common honeypot style but iOS
+  // Safari doesn't reliably clip it under body{overflow-x:hidden}, so it makes
+  // the page pannable / "not scaling" on iPhones. This stays in the DOM (bots
+  // still fill it) while never affecting the viewport.
   return (
     <div
       aria-hidden="true"
-      style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden', opacity: 0, pointerEvents: 'none' }}
+      style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}
     >
       <label htmlFor={`hp-${name}`}>Don&apos;t fill this in if you&apos;re human:</label>
       <input type="text" id={`hp-${name}`} name={name} tabIndex={-1} autoComplete="off" />
