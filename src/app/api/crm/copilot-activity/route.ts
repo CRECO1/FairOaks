@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, isSuperAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 /**
  * Agent activity feed — Copilot actions and account actions.
  *
- * SCOPE. The broker (admin or super_admin) sees every agent's activity and can
- * filter to one of them. An agent sees only their own. This used to be
- * super_admin-only, which meant a broker-level admin could not review their own
- * team at all.
+ * SCOPE. The account OWNER (super_admin) alone sees every agent's activity and
+ * can filter to one of them. Everyone else — including an `admin` — sees only
+ * their own rows, and cannot reach anyone else's by passing an agent_id.
+ *
+ * Deliberately narrower than admin. This feed carries the owner's own export
+ * activity and the anti-scrape alerts, so letting a broker-level admin read it
+ * would hand them oversight of the owner rather than of their team. Reviewing
+ * the team is the owner's job here; an admin gets their own trail like anyone
+ * else. Enforced here rather than by hiding the control, so calling the endpoint
+ * directly gets the same answer as using the app.
  *
  * WHAT IT SHOWS. Two sources, merged newest-first:
  *   - audit_logs — one row per recorded action. action='copilot_tool' is a Copilot
@@ -33,11 +39,11 @@ export async function GET(req: NextRequest) {
   if (!ctx) return unauthorized();
 
   const url = new URL(req.url);
-  const isBroker = isAdminRole(ctx.role);
-  // An agent is pinned to themselves whatever they ask for; only a broker may
-  // filter to someone else, or leave it open to see the whole team.
+  const isOwner = isSuperAdminRole(ctx.role);
+  // Everyone but the owner is pinned to their own rows, whatever agent_id they
+  // pass — an admin asking for someone else's activity gets their own.
   const requested = url.searchParams.get('agent_id');
-  const agentFilter = isBroker ? (requested || null) : ctx.userId;
+  const agentFilter = isOwner ? (requested || null) : ctx.userId;
   const copilotOnly = url.searchParams.get('view') === 'copilot';
 
   const db = adminClient();
