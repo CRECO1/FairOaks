@@ -52,7 +52,7 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
@@ -379,6 +379,14 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                       <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>${Number(deal.earned_commission).toLocaleString()} billable</span>
                     )}
                   </div>
+                  {(deal.tags ?? []).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                      {(deal.tags ?? []).slice(0, 3).map(t => (
+                        <span key={t} style={{ background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontSize: 10.5, fontWeight: 600 }}>{t}</span>
+                      ))}
+                      {(deal.tags ?? []).length > 3 && <span style={{ fontSize: 10.5, color: '#9ca3af', fontWeight: 600 }}>+{(deal.tags ?? []).length - 3}</span>}
+                    </div>
+                  )}
                   {isAdmin && (
                     <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>👤 {agentName(deal.agent_id)}</div>
                   )}
@@ -704,6 +712,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [smartLists, setSmartLists] = useState<SmartList[]>([]);
   const [contactTypeFilter, setContactTypeFilter] = useState('');
   const [contactTagFilter, setContactTagFilter] = useState('');
+  const [dealTagFilter, setDealTagFilter] = useState('');
   const [contactSourceFilter, setContactSourceFilter] = useState('');
   const [contactSpecFilter, setContactSpecFilter] = useState('');
   const [contactOwnerFilter, setContactOwnerFilter] = useState('');
@@ -1686,7 +1695,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   function canonicalTag(raw: string): string {
     const t = raw.trim().replace(/,$/, '').trim();
     if (!t) return t;
-    const existing = clients.flatMap(c => c.tags ?? []);
+    const existing = [...clients.flatMap(c => c.tags ?? []), ...deals.flatMap(d => d.tags ?? [])];
     return existing.find(e => e.toLowerCase() === t.toLowerCase()) ?? t;
   }
 
@@ -2942,9 +2951,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Filtered deals ────────────────────────────────────────────────────────────
   const filteredDeals = deals.filter(d => {
     if (filter && d.type !== filter) return false;
+    // Case-insensitive substring, matching how contacts filter by tag — the book
+    // contains variants and nobody should have to remember which casing won.
+    if (dealTagFilter && !(d.tags ?? []).some(t => t.toLowerCase().includes(dealTagFilter.toLowerCase()))) return false;
     if (search && !d.client.toLowerCase().includes(search.toLowerCase()) && !d.property?.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  /** Every tag in use across contacts AND deals — one shared vocabulary. */
+  const allKnownTags = useMemo(
+    () => [...new Set([...clients.flatMap(c => c.tags ?? []), ...deals.flatMap(d => d.tags ?? [])])].sort(),
+    [clients, deals],
+  );
 
   function getDefaultEmailBody(): string {
     // Each brand's own office: Fair Oaks Realty Group is Suite 102, CRECO is Suite 100.
@@ -4030,8 +4048,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {t || 'All'}
                   </button>
                 ))}
-                <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ width: isMobile ? '100%' : 200, ...(isMobile ? {} : { marginLeft: 'auto' }) }} />
+                <input className="crm-input" list="crm-deal-tags" placeholder="🏷  Tag…" value={dealTagFilter} onChange={e => setDealTagFilter(e.target.value)}
+                  style={{ width: isMobile ? '100%' : 150, ...(isMobile ? {} : { marginLeft: 'auto' }) }} />
+                <datalist id="crm-deal-tags">{allKnownTags.map(t => <option key={t} value={t} />)}</datalist>
+                <input className="crm-input" placeholder="🔍  Search…" value={search} onChange={e => setSearch(e.target.value)} style={{ width: isMobile ? '100%' : 200 }} />
               </div>
+              {dealTagFilter && (
+                <div style={{ marginBottom: 10, fontSize: 12.5, color: '#6b7280' }}>
+                  Showing deals tagged “{dealTagFilter}” — {filteredDeals.length} of {deals.length}
+                  <button onClick={() => setDealTagFilter('')} style={{ marginLeft: 8, background: 'none', border: 'none', color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontSize: 12.5 }}>clear</button>
+                </div>
+              )}
               <KanbanBoard deals={filteredDeals} isAdmin={isAdmin} agentName={agentName} draggedDealId={draggedDealId} dragOverStage={dragOverStage} setDraggedDealId={setDraggedDealId} setDragOverStage={setDragOverStage} handleDrop={handleDrop} openDeal={openDeal} isMobile={isMobile} onAddDeal={() => setShowAddDeal(true)} />
             </div>
           )}
@@ -7734,6 +7761,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 13 }}>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Property</label><input className="crm-input" style={{ marginTop: 4 }} defaultValue={activeDeal.property} onBlur={e => updateDeal(activeDeal.id, { property: e.target.value })} /></div>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Gross Lease Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.value} onBlur={e => updateDeal(activeDeal.id, { value: +e.target.value })} /></div>
+                    {/* Deal tags. Same free-text vocabulary as contacts — the datalist
+                        offers every tag already in use across both, and entries snap to
+                        the existing casing, so segmenting stays consistent. */}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Tags</label>
+                      <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 8px', minHeight: 38, background: '#fff' }}>
+                        {(activeDeal.tags ?? []).map(t => (
+                          <span key={t} style={{ background: '#fef3c7', color: '#92400e', padding: '2px 7px', borderRadius: 8, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {t}
+                            <button aria-label={`Remove tag ${t}`} title="Remove tag"
+                              onClick={() => updateDeal(activeDeal.id, { tags: (activeDeal.tags ?? []).filter(x => x !== t) })}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#b45309', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+                          </span>
+                        ))}
+                        <input list="crm-deal-tags" placeholder={(activeDeal.tags ?? []).length ? '' : 'Add tags…'}
+                          style={{ border: 'none', outline: 'none', fontSize: 13, fontFamily: "'DM Sans',sans-serif", minWidth: 90, flex: 1 }}
+                          onKeyDown={e => {
+                            const el = e.currentTarget;
+                            if ((e.key === 'Enter' || e.key === ',') && el.value.trim()) {
+                              e.preventDefault();
+                              const tag = canonicalTag(el.value);
+                              const current = activeDeal.tags ?? [];
+                              if (tag && !current.some(x => x.toLowerCase() === tag.toLowerCase())) {
+                                updateDeal(activeDeal.id, { tags: [...current, tag] });
+                              }
+                              el.value = '';
+                            }
+                          }} />
+                      </div>
+                    </div>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Billable Value ($)</label><input className="crm-input" type="number" style={{ marginTop: 4 }} defaultValue={activeDeal.earned_commission ?? ''} placeholder="e.g. 15000" onBlur={e => { const v = e.target.value !== '' ? +e.target.value : null; updateDeal(activeDeal.id, { earned_commission: v }); setActiveDeal(prev => prev ? { ...prev, earned_commission: v } : prev); if (!dealCommission) setCommissionForm(prev => ({ ...prev, sale_price: v != null ? String(v) : '' })); }} /></div>
                     <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Stage</label>
                       <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.stage} onChange={e => setStage(activeDeal, e.target.value)}>
