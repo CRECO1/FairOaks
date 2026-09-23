@@ -244,8 +244,8 @@ export default function MarketReportsPage() {
             </RevealOnScroll>
 
             <RevealOnScroll>
-              <div className="overflow-hidden rounded-2xl border border-border shadow-card">
-                <table className="w-full text-left">
+              <div className="overflow-x-auto rounded-2xl border border-border shadow-card">
+                <table className="w-full min-w-[34rem] text-left">
                   <thead>
                     <tr className="bg-primary text-white">
                       <th className="px-5 py-4 font-semibold text-body-sm">Neighborhood</th>

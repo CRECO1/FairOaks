@@ -9,8 +9,8 @@ import { getRecaptchaToken } from '@/lib/recaptcha-client';
 export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 'dark' | 'light'; surface?: string }) {
   // One form, two grounds: the homepage band is dark, the landing page is light.
   const field = tone === 'dark'
-    ? 'rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold'
-    : 'rounded-lg border border-border bg-white px-4 py-3 text-sm text-primary placeholder-foreground-muted/70 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold';
+    ? 'rounded-lg border border-white/20 bg-white/10 px-4 py-3 text-base text-white placeholder-white/50 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold'
+    : 'rounded-lg border border-border bg-white px-4 py-3 text-base text-primary placeholder-foreground-muted/70 focus:border-gold focus:outline-none focus:ring-1 focus:ring-gold';
   const foot = tone === 'dark' ? 'text-white/40' : 'text-foreground-muted';
   const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', phone: '', address: '' });
@@ -73,14 +73,14 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
         required
         className={field}
       />
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
         <input
           type="email"
           placeholder="Email address"
           value={form.email}
           onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
           required
-          className={`flex-1 ${field}`}
+          className={`flex-1 min-w-0 ${field}`}
         />
         <input
           type="tel"
@@ -88,7 +88,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
           value={form.phone}
           onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
           required
-          className={`flex-1 ${field}`}
+          className={`flex-1 min-w-0 ${field}`}
         />
       </div>
       {error && <p className="text-sm text-red-300">{error}</p>}
