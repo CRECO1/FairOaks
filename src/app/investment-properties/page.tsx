@@ -192,7 +192,7 @@ export default function InvestmentPropertiesPage() {
                 smart investors are putting capital to work.
               </p>
               <div className="flex flex-col sm:flex-row gap-3">
-                <Button size="lg" asChild>
+                <Button size="lg" className="w-full sm:w-auto whitespace-normal text-center" asChild>
                   <Link href="/contact?service=investment">Schedule Investment Consultation</Link>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
@@ -358,7 +358,7 @@ export default function InvestmentPropertiesPage() {
                     </li>
                   ))}
                 </ul>
-                <Button size="lg" asChild>
+                <Button size="lg" className="w-full sm:w-auto whitespace-normal text-center" asChild>
                   <Link href="/contact?service=investment">
                     Schedule Investment Consultation <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>

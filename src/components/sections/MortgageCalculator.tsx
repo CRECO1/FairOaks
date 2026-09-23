@@ -70,14 +70,14 @@ export function MortgageCalculator({ listingPrice }: Props) {
             <div className="relative">
               <input type="number" min={1} max={15} step={0.05} value={rate}
                 onChange={e => setRate(Number(e.target.value))}
-                className="w-full rounded-lg border border-border px-3 py-2 pr-7 text-sm text-primary focus:border-gold focus:outline-none" />
+                className="w-full rounded-lg border border-border px-3 py-2 pr-7 text-base text-primary focus:border-gold focus:outline-none" />
               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-caption text-foreground-muted">%</span>
             </div>
           </div>
           <div className="flex-1">
             <label className="text-caption text-foreground-muted block mb-1">Loan Term</label>
             <select value={term} onChange={e => setTerm(Number(e.target.value))}
-              className="w-full rounded-lg border border-border px-3 py-2 text-sm text-primary focus:border-gold focus:outline-none">
+              className="w-full rounded-lg border border-border px-3 py-2 text-base text-primary focus:border-gold focus:outline-none">
               <option value={30}>30 yr</option>
               <option value={20}>20 yr</option>
               <option value={15}>15 yr</option>
