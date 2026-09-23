@@ -120,11 +120,15 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                             const cc = catColor(f.category);
                             return (
                               <div key={f.id} onClick={() => openForm(f)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
+                                style={{ display: 'flex', alignItems: 'flex-start', gap: 11, padding: isMobile ? '12px 10px' : '9px 10px', minHeight: isMobile ? 48 : undefined, borderRadius: 8, cursor: 'pointer' }}
                                 onMouseEnter={e => (e.currentTarget.style.background = '#fbf8f1')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                                 <span style={{ fontSize: 18, flexShrink: 0 }}>📄</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
+                                  {/* Wraps rather than ellipsing: the TREC names run to ~95 characters
+                                      ("Subdivision Information, Including Resale Certificate for Property
+                                      Subject to Mandatory Membership in a POA"), and one clamped line hid
+                                      exactly the part that tells two similar addenda apart. */}
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</div>
                                   <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
                                 </div>
                                 {f.category && !isMobile && <span style={{ fontSize: 10.5, fontWeight: 600, color: cc.color, background: cc.bg, padding: '2px 8px', borderRadius: 20, flexShrink: 0 }}>{f.category}</span>}
