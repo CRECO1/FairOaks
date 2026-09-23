@@ -76,7 +76,7 @@ export default function MarketReportsPage() {
   return (
     <>
       <Header />
-      <main className="min-h-screen pt-20">
+      <main className="min-h-screen pt-20 overflow-x-clip">
 
         {/* ── Hero ──────────────────────────────────────────────────── */}
         <section className="bg-primary text-white py-20 md:py-28 lg:py-32">
