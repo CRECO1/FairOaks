@@ -10,12 +10,17 @@ type FormRow = { id: string; name: string; form_code: string | null; category: s
 const CACHE = new Map<string, { forms: FormRow[]; at: number }>();
 const TTL_MS = 45_000;
 // Folder order, deliberately following the arc of a deal rather than the alphabet.
-// Folders appear in the order of their first form, so this list is what actually
-// orders them; anything not named here falls in after, in name order. The
-// residential (TREC) folders sit last — they live in the CRECO (commercial)
-// workspace but are seldom used there.
+// Folders appear in the order of their first form, so these lists are what
+// actually order them.
 // The folders themselves are set by scripts/forms/ingest/organize_categories.mjs.
-const CATEGORY_ORDER = [
+//
+// CRECO is a commercial brokerage: commercial folders come FIRST, always. The
+// residential (TREC) forms live in this workspace too, but they are one-offs for
+// commercial agents, so they sink below every commercial folder — including any
+// folder added later. That is why this is two lists and a tier, not one list:
+// with a single list, a new folder nobody remembered to add would rank as
+// "unknown" and land at the very bottom, UNDER the residential forms.
+const COMMERCIAL_ORDER = [
   'Listing Agreements',
   'Letters of Intent',
   'Leasing',
@@ -26,11 +31,14 @@ const CATEGORY_ORDER = [
   'Disclosures',
   '8000 Fair Oaks Plaza',
   'Agent Onboarding',
+];
+const RESIDENTIAL_ORDER = [
   'Residential Contracts',
   'Residential Addenda',
   'Residential Notices & Disclosures',
   'Residential Temporary Leases',
 ];
+const RESIDENTIAL_TIER = 1000;
 
 // List the transaction-doc form templates (crm_forms) for a business unit.
 export async function GET(req: NextRequest) {
@@ -61,9 +69,17 @@ export async function GET(req: NextRequest) {
   // CATEGORY_ORDER, then pinned forms first inside each folder, then by name.
   // A pinned form leads its folder — that is how One to Four Family (TREC 20-19)
   // sits at the top of Residential Contracts instead of under "O".
+  // Residential only sinks in the CRECO (commercial) workspace — it is the
+  // residential brokerage's bread and butter, so never demote it over there.
+  const sinkResidential = unit === 'commercial';
   const rank = (f: { category: string | null }) => {
-    const i = CATEGORY_ORDER.indexOf(f.category ?? '');
-    return i === -1 ? CATEGORY_ORDER.length : i;
+    const c = f.category ?? '';
+    const res = RESIDENTIAL_ORDER.indexOf(c);
+    if (res !== -1 && sinkResidential) return RESIDENTIAL_TIER + res;
+    const i = COMMERCIAL_ORDER.indexOf(c);
+    // An unlisted folder sorts after the known commercial ones but still ABOVE
+    // residential, so adding a folder without touching this file stays sane.
+    return i === -1 ? COMMERCIAL_ORDER.length : i;
   };
   const forms: FormRow[] = (data ?? []).map(f => ({ ...f, url: null as string | null }))
     .sort((a, b) => rank(a) - rank(b) || Number(!!b.pinned) - Number(!!a.pinned));   // stable: name order is kept within each group
