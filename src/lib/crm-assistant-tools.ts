@@ -56,6 +56,25 @@ async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, 
 // LIKE wildcards) so a search term can't inject extra filter clauses.
 const safeTerm = (v: unknown) => `%${String(v ?? '').replace(/[%_,()*]/g, ' ').trim()}%`;
 
+// Typo-tolerant name matching without a DB extension: trigram (Dice) similarity, used as a
+// fallback when the exact/substring search finds nothing so a misspelled or near name — the
+// common case when an agent guesses a spelling — still surfaces. Kept in-process because
+// PostgREST can't run pg_trgm and a workspace fits in a few paged reads (low thousands of rows).
+function trigramSet(s: string): Set<string> {
+  const t = ` ${String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+  const out = new Set<string>();
+  for (let i = 0; i < t.length - 2; i++) out.add(t.slice(i, i + 3));
+  return out;
+}
+function trigramSim(a: string, b: string): number {
+  if (!a || !b) return 0;
+  const A = trigramSet(a), B = trigramSet(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const g of A) if (B.has(g)) inter++;
+  return (2 * inter) / (A.size + B.size);
+}
+
 // Columns the copilot may read off a listing. Deliberately excludes nothing sensitive
 // on its own, but rent-roll/suite tables are NOT reachable from any copilot tool.
 const LISTING_COLS = 'id, name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, zoning, business_unit, listing_agent_id, assigned_agent_ids, is_restricted, created_at';
@@ -285,7 +304,42 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`); // agents: own contacts only
         const { data, error } = await q;
         if (error) return j({ error: error.message });
-        return j((data ?? []).map(c => ({ id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name, business: c.business_name, email: c.email, type: c.type })));
+
+        let rows: Array<Record<string, any>> = data ?? [];
+        // Typo rescue: when the exact/substring search finds nothing, fall back to fuzzy
+        // trigram matching over the (paged) workspace so a misspelled or near name still
+        // surfaces — the model can then confirm "did you mean…". Only fires on a miss, so a
+        // correctly spelled search is unaffected.
+        const raw = String(input.query ?? '').trim();
+        if (rows.length === 0 && raw.length >= 3) {
+          const cand: Array<Record<string, any>> = [];
+          for (let page = 0; page < 4; page++) { // PostgREST caps a page at 1000 rows
+            let cq = db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').order('created_at', { ascending: false }).range(page * 1000, page * 1000 + 999);
+            cq = scoped(cq, ctx);
+            if (ctx.role === 'agent') cq = cq.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
+            const { data: pageData } = await cq;
+            if (!pageData?.length) break;
+            cand.push(...pageData);
+            if (pageData.length < 1000) break;
+          }
+          rows = cand
+            .map(c => ({
+              c,
+              score: Math.max(
+                trigramSim(raw, `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim()),
+                trigramSim(raw, `${c.last_name ?? ''} ${c.first_name ?? ''}`.trim()),
+                trigramSim(raw, c.first_name ?? ''),
+                trigramSim(raw, c.last_name ?? ''),
+                trigramSim(raw, c.business_name ?? ''),
+                trigramSim(raw, String(c.email ?? '').split('@')[0]),
+              ),
+            }))
+            .filter(x => x.score >= 0.34)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 8)
+            .map(x => x.c);
+        }
+        return j(rows.map(c => ({ id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name, business: c.business_name, email: c.email, type: c.type })));
       }
       case 'get_contact': {
         const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, tags, notes, lead_source, business_unit, lease_expiration_date, agent_id, assigned_agent_ids').eq('id', input.contact_id).single();
