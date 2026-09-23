@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const ALLOWED = new Set([
@@ -52,7 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .eq('id', id)
     .select()
     .single();
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/commissions/[id]', error);
   return NextResponse.json({ commission: data });
 }
 
@@ -66,6 +66,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const supabase = adminClient();
   const { error } = await supabase.from('crm_commissions').delete().eq('id', id);
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/commissions/[id]', error);
   return NextResponse.json({ success: true });
 }

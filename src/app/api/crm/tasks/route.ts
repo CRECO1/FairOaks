@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const VALID_UNITS = ['residential', 'commercial'] as const;
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   if (assignedTo) q = q.eq('assigned_to', assignedTo);
   if (clientId)   q = q.eq('client_id', clientId);
   const { data, error } = await q;
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/tasks', error);
   return NextResponse.json({ tasks: data ?? [] });
 }
 
@@ -50,6 +50,6 @@ export async function POST(req: NextRequest) {
     business_unit: isAdminRole(ctx.role) ? toUnit(business_unit ?? null, toUnit(ctx.businessUnit)) : toUnit(ctx.businessUnit),
     created_by: ctx.userId,
   }).select().single();
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/tasks', error);
   return NextResponse.json({ task: data });
 }

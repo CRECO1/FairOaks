@@ -68,12 +68,42 @@ export function forbidden(msg = 'Forbidden — admin only') {
 }
 
 /**
- * Logs a database/server error internally and returns a safe generic 500 response.
- * Never expose raw Supabase or database error messages to clients.
+ * Map a Postgres/PostgREST failure to something the person who hit it can act on.
+ *
+ * Every one of these used to answer "An internal server error occurred." while the
+ * real cause went to the server log. That is safe, but it left an agent staring at
+ * a failed save with nothing to report and no idea whether to retry, change a
+ * field, or call someone — and it left us unable to diagnose from what they told
+ * us. These messages name the KIND of problem without leaking column names,
+ * constraint names or SQL: the raw error still goes to the log.
  */
-export function dbError(context: string, err: { message?: string } | null | unknown, status = 500) {
+function friendlyDbMessage(err: unknown): { message: string; status: number } {
+  const code = (err as { code?: string } | null)?.code;
+  switch (code) {
+    case '23505': return { message: 'That already exists — check for a duplicate and try again.', status: 409 };
+    case '23503': return { message: 'Something this record links to no longer exists. Reload the page and try again.', status: 409 };
+    case '23514': return { message: "One of the values isn't allowed here. Check the dates, numbers and status fields.", status: 400 };
+    case '23502': return { message: 'A required field is missing.', status: 400 };
+    case '22P02': return { message: "One of the fields has an invalid value — usually a date, number or selection left half-filled.", status: 400 };
+    case '22001': return { message: 'One of the fields is too long.', status: 400 };
+    // Undefined column/table means the app and the database disagree about the
+    // schema. The agent can't fix that, but they CAN stop retrying, and saying so
+    // gets it reported instead of silently repeated.
+    case '42703':
+    case '42P01': return { message: 'This page is out of date with the server. Reload and try again — if it keeps happening, report it.', status: 500 };
+    case '42501': return { message: "You don't have permission to change this record.", status: 403 };
+    default:      return { message: 'The save did not go through. Nothing was changed — try again in a moment.', status: 500 };
+  }
+}
+
+/**
+ * Logs a database/server error internally and returns a safe, specific response.
+ * Never exposes raw Supabase or database error text to clients.
+ */
+export function dbError(context: string, err: { message?: string } | null | unknown, status?: number) {
   console.error(`[${context}]`, err);
-  return NextResponse.json({ error: 'An internal server error occurred.' }, { status });
+  const friendly = friendlyDbMessage(err);
+  return NextResponse.json({ error: friendly.message }, { status: status ?? friendly.status });
 }
 
 /**

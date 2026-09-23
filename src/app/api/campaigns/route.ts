@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
@@ -83,10 +83,16 @@ export async function POST(req: NextRequest) {
   if (email_subject && email_subject.length > 500) {
     return NextResponse.json({ error: 'Subject must be under 500 characters' }, { status: 400 });
   }
-  if (send_day_of_month != null) {
+  // The builder keeps "no day set" as '' in its form state and posts it as-is.
+  // This read `!= null`, and '' != null is TRUE, so an empty box went on to
+  // parseInt('') → NaN → a 400 telling the agent the day had to be between 1 and
+  // 31 when they had not set one at all. Every campaign saved without a
+  // day-of-month failed to create. The PATCH route already excluded '' — the two
+  // routes had drifted apart.
+  if (send_day_of_month !== null && send_day_of_month !== undefined && send_day_of_month !== '') {
     const dom = parseInt(String(send_day_of_month), 10);
     if (isNaN(dom) || dom < 1 || dom > 31) {
-      return NextResponse.json({ error: 'send_day_of_month must be between 1 and 31' }, { status: 400 });
+      return NextResponse.json({ error: 'Day of month must be between 1 and 31.' }, { status: 400 });
     }
   }
 
@@ -95,7 +101,7 @@ export async function POST(req: NextRequest) {
     name, description, type, frequency,
     send_date: send_date || null,
     send_time: send_time || null,
-    send_day_of_month: send_day_of_month ? parseInt(send_day_of_month, 10) : null,
+    send_day_of_month: send_day_of_month !== null && send_day_of_month !== undefined && send_day_of_month !== '' ? parseInt(String(send_day_of_month), 10) : null,
     status: status ?? 'draft',
     email_subject: email_subject ?? null,
     email_body: email_body ?? null,
@@ -105,6 +111,6 @@ export async function POST(req: NextRequest) {
     business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),
   }]).select().single();
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/campaigns POST', error);
   return NextResponse.json({ campaign: data });
 }

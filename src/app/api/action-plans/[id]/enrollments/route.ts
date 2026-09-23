@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq('plan_id', id)
     .order('started_at', { ascending: false });
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/enrollments', error);
   return NextResponse.json({ enrollments: data ?? [] });
 }
 
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .upsert(rows, { onConflict: 'plan_id,client_id', ignoreDuplicates: false })
     .select();
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/enrollments', error);
   return NextResponse.json({ enrolled: data?.length ?? 0 });
 }
 
@@ -78,6 +78,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     .eq('plan_id', id)
     .eq('client_id', client_id);
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/enrollments', error);
   return NextResponse.json({ success: true });
 }

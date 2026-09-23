@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -40,6 +40,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .select()
     .single();
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/profiles/[id]', error);
   return NextResponse.json({ profile: data });
 }

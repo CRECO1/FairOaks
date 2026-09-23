@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Fields an agent is allowed to set on a campaign (prevents mass-assignment)
@@ -119,7 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .eq('id', id)
     .select()
     .single();
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/campaigns PATCH', error);
 
   // Reschedule enrollments when:
   // (a) campaign just became active, OR

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const VALID_TYPES = ['email', 'sms', 'task', 'note'] as const;
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq('plan_id', id)
     .order('step_order', { ascending: true });
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/steps', error);
   return NextResponse.json({ steps: data ?? [] });
 }
 
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .select()
     .single();
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/steps', error);
   return NextResponse.json({ step: data }, { status: 201 });
 }
 
@@ -112,7 +112,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .insert(rows)
     .select();
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/steps', error);
 
   // Return steps sorted by step_order
   const sorted = (data ?? []).sort((a, b) => (a.step_order as number) - (b.step_order as number));
@@ -139,6 +139,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     .eq('id', stepId)
     .eq('plan_id', id);
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans/[id]/steps', error);
   return NextResponse.json({ success: true });
 }

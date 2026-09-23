@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -16,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   for (const k of allowed) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_tasks').update(update).eq('id', id).select().single();
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/tasks/[id]', error);
   return NextResponse.json({ task: data });
 }
 
@@ -28,6 +28,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const supabase = adminClient();
   const { error } = await supabase.from('crm_tasks').delete().eq('id', id);
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/crm/tasks/[id]', error);
   return NextResponse.json({ deleted: true });
 }

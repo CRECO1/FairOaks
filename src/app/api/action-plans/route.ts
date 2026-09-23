@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await query;
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans', error);
 
   const plans = (data ?? []).map((p: any) => ({
     ...p,
@@ -90,6 +90,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  if (error) return dbError('api/action-plans', error);
   return NextResponse.json({ plan: data }, { status: 201 });
 }
