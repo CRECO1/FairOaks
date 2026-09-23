@@ -4098,13 +4098,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {smartLists.length > 0 && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
                       <span style={{ fontSize: 11.5, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1 }}>Saved lists</span>
-                      {smartLists.map(sl => (
+                      {smartLists.map(sl => {
+                        // Count members with the SAME predicate applySmartList uses (type +
+                        // lead_source exact, tag = case-insensitive substring). clients holds
+                        // every contact, so the count is accurate, not just the loaded page.
+                        const f = sl.filters || {};
+                        const count = clients.filter(c =>
+                          (!f.type || c.type === f.type) &&
+                          (!f.lead_source || c.lead_source === f.lead_source) &&
+                          (!f.tag || (c.tags ?? []).some(t => t.toLowerCase().includes(String(f.tag).toLowerCase())))
+                        ).length;
+                        return (
                         <button key={sl.id} onClick={() => applySmartList(sl)}
                           style={{ padding: '4px 10px', borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif", display: 'inline-flex', alignItems: 'center', gap: 5, fontWeight: 500, transition: 'border-color .15s' }}>
                           <span style={{ fontSize: 12 }}>📋</span> {sl.name}
+                          <span style={{ background: '#f1f5f9', color: '#475569', fontSize: 11, fontWeight: 700, padding: '0 6px', borderRadius: 9, lineHeight: '16px', minWidth: 16, textAlign: 'center' }}>{count}</span>
                           <span onClick={e => { e.stopPropagation(); deleteSmartList(sl.id); }} style={{ color: '#94a3b8', fontSize: 12, cursor: 'pointer', lineHeight: 1 }}>✕</span>
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {/* Filter row */}
