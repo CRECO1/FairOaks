@@ -3216,7 +3216,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => setPage('transaction-docs')}>📄 &nbsp;Transaction Docs</button>
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}>✍️ &nbsp;E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}>📞 &nbsp;Calling Log</button>
-          {isSuperAdmin && <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}>👁 &nbsp;Copilot Activity</button>}
+          <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}>👁 &nbsp;{isAdmin ? 'Agent Activity' : 'My Activity'}</button>
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -3386,7 +3386,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'transaction-docs' ? ' active' : ''}`} onClick={() => { setPage('transaction-docs'); setMobileMenuOpen(false); }}>📄 &nbsp;Transaction Docs</button>
                 <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}>✍️ &nbsp;E-Sign</button>
                 <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
-                {isSuperAdmin && <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}>👁 &nbsp;Copilot Activity</button>}
+                <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}>👁 &nbsp;{isAdmin ? 'Agent Activity' : 'My Activity'}</button>
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -11247,7 +11247,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           }}
         />
       )}
-      {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} onClose={() => setCopilotActivityOpen(false)} />}
+      {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} isBroker={isAdmin} onClose={() => setCopilotActivityOpen(false)} />}
 
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
       {esignModal && activeDeal && (

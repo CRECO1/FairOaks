@@ -1,26 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
-// Super-admin-only oversight feed for the CRECO Copilot. Agents never see it.
-//
-// Two sources, merged newest-first:
-//   - audit_logs action='copilot_tool' — one row per TOOL CALL, reads included, plus
-//     the ones that errored or are still waiting on the agent's confirmation. This is
-//     the complete record of what an agent had the copilot do.
-//   - crm_activity type='copilot' — the older write-only trail, kept so history from
-//     before per-tool logging existed doesn't disappear from the feed.
-//
-// Tool CALLS only: chat text is never stored, and free-text arguments arrive here
-// already reduced to field names and lengths by the assistant route.
+/**
+ * Agent activity feed — Copilot actions and account actions.
+ *
+ * SCOPE. The broker (admin or super_admin) sees every agent's activity and can
+ * filter to one of them. An agent sees only their own. This used to be
+ * super_admin-only, which meant a broker-level admin could not review their own
+ * team at all.
+ *
+ * WHAT IT SHOWS. Two sources, merged newest-first:
+ *   - audit_logs — one row per recorded action. action='copilot_tool' is a Copilot
+ *     tool call (reads included, plus ones that errored or are awaiting the
+ *     agent's confirmation); the rest are account actions: export requests and
+ *     refusals, approvals and denials, completed exports, password resets, and
+ *     bulk-read alerts from the anti-scrape guard.
+ *   - crm_activity type='copilot' — the older write-only Copilot trail, kept so
+ *     earlier history doesn't vanish from the feed.
+ *
+ * Why the default widened: the feed used to filter to action='copilot_tool'
+ * alone. Zack asked why he only ever saw his own name — the answer was that he
+ * is the only person who has used the Copilot so far, AND the actions where
+ * other agents DO appear (Brian's export request and its refusal) were being
+ * filtered out. `?view=copilot` keeps the narrow Copilot-only feed.
+ *
+ * Tool CALLS only: chat text is never stored, and free-text arguments arrive
+ * already reduced to field names and lengths by the assistant route.
+ */
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  if (ctx.role !== 'super_admin') return forbidden('Super admin only');
+
+  const url = new URL(req.url);
+  const isBroker = isAdminRole(ctx.role);
+  // An agent is pinned to themselves whatever they ask for; only a broker may
+  // filter to someone else, or leave it open to see the whole team.
+  const requested = url.searchParams.get('agent_id');
+  const agentFilter = isBroker ? (requested || null) : ctx.userId;
+  const copilotOnly = url.searchParams.get('view') === 'copilot';
 
   const db = adminClient();
-  const url = new URL(req.url);
-  const agentFilter = url.searchParams.get('agent_id');
 
   let q = db.from('crm_activity')
     .select('id, agent_id, notes, business_unit, created_at, client_id')
@@ -30,10 +50,10 @@ export async function GET(req: NextRequest) {
   if (agentFilter) q = q.eq('agent_id', agentFilter);
 
   let tq = db.from('audit_logs')
-    .select('id, actor_id, target_type, target_id, metadata, created_at')
-    .eq('action', 'copilot_tool')
+    .select('id, actor_id, action, target_type, target_id, metadata, created_at')
     .order('created_at', { ascending: false })
     .limit(300);
+  if (copilotOnly) tq = tq.eq('action', 'copilot_tool');
   if (agentFilter) tq = tq.eq('actor_id', agentFilter);
 
   const [{ data, error }, { data: toolData, error: toolError }] = await Promise.all([q, tq]);
@@ -58,11 +78,12 @@ export async function GET(req: NextRequest) {
       return {
         id: r.id,
         agent: r.actor_id ? (agentMap[r.actor_id] ?? 'Unknown') : 'Unknown',
-        action: describeTool(r.target_type, m),
+        action: r.action === 'copilot_tool' ? describeTool(r.target_type, m) : describeAccountAction(r.action, m),
+        kind: r.action === 'copilot_tool' ? 'copilot' : 'account',
         contact: contactId ? (clientMap[contactId] ?? '') : '',
-        business_unit: (m.business_unit as string) ?? null,
+        business_unit: (m.business_unit as string) ?? m.unit ?? null,
         when: r.created_at,
-        tool: r.target_type,
+        tool: r.action === 'copilot_tool' ? r.target_type : r.action,
         outcome: m.outcome as string | undefined,
         write: !!m.write,
         ok: m.ok as boolean | undefined,
@@ -74,6 +95,7 @@ export async function GET(req: NextRequest) {
       id: r.id,
       agent: r.agent_id ? (agentMap[r.agent_id] ?? 'Unknown') : 'Unknown',
       action: (r.notes ?? '').replace(/^\[Copilot\]\s*/, ''),
+      kind: 'copilot' as const,
       contact: r.client_id ? (clientMap[r.client_id] ?? '') : '',
       business_unit: r.business_unit,
       when: r.created_at,
@@ -111,4 +133,25 @@ function describeTool(tool: string | null, m: Record<string, any>): string {
   const state = m.outcome === 'queued_for_confirmation' ? ' (awaiting confirmation)'
     : m.ok === false ? ` (failed: ${m.error ?? 'error'})` : '';
   return `${base}${detail}${state}`;
+}
+
+/** One readable line for the non-Copilot actions recorded in audit_logs. */
+function describeAccountAction(action: string | null, m: Record<string, any>): string {
+  const who = m.requester ? ` — ${m.requester}` : '';
+  const scope = m.scope_label ? ` (${m.scope_label})` : '';
+  switch (action) {
+    case 'export_requested':   return `Asked to export${scope}`;
+    case 'export_approved':    return `Export approved${who}${scope}`;
+    case 'export_denied':      return `Export denied${who}${scope}`;
+    case 'export_blocked':     return `Export refused — ${m.reason === 'not_owner' ? 'not the account owner' : (m.status ?? 'no approval')}`;
+    case 'export_contacts':    return `Exported ${m.count ?? '?'} record${m.count === 1 ? '' : 's'}${m.unit ? ` (${m.unit})` : ''}`;
+    case 'bulk_read_detected': return `Unusual read volume — ${m.rows ?? m.rows_this_hour ?? '?'} records from ${m.resource ?? 'the CRM'}`;
+    case 'invite_agent':       return 'Invited an agent';
+    case 'delete_agent':       return 'Removed an agent';
+    case 'reset_password':     return 'Reset a password';
+    case 'update_profile':     return 'Updated a profile';
+    case 'update_commission':  return 'Updated a commission';
+    case 'delete_deal':        return 'Deleted a deal';
+    default:                   return (action ?? 'activity').replace(/_/g, ' ');
+  }
 }
