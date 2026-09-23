@@ -270,8 +270,17 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
   try {
     switch (name) {
       case 'search_contacts': {
-        const term = safeTerm(input.query);
-        let q = db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').or(`first_name.ilike.${term},last_name.ilike.${term},business_name.ilike.${term},email.ilike.${term}`).limit(10);
+        // Split the query on whitespace and require every token to appear in some searchable
+        // field: OR across fields, AND across tokens (chained .or() calls are ANDed by
+        // PostgREST). Without this a natural "First Last" query can't match a row whose name is
+        // split across first_name/last_name — e.g. %Chris Maxwell% matches neither column, so
+        // the contact looks missing even though searching just "Maxwell" would find it.
+        const tokens = String(input.query ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+        let q = db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').limit(10);
+        for (const tok of (tokens.length ? tokens : [''])) {
+          const t = safeTerm(tok);
+          q = q.or(`first_name.ilike.${t},last_name.ilike.${t},business_name.ilike.${t},email.ilike.${t}`);
+        }
         q = scoped(q, ctx);
         if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`); // agents: own contacts only
         const { data, error } = await q;
@@ -362,8 +371,15 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
 
       // ── Layer 2: leases, forms & e-sign ────────────────────────────────────
       case 'find_property': {
-        const term = safeTerm(input.query);
-        let q = db.from('crm_listings').select(LISTING_COLS).or(`name.ilike.${term},address.ilike.${term}`).limit(10);
+        // Same whitespace-tokenised match as search_contacts: every token must appear in the
+        // name or address, so "1742 Paradise Parkway" matches regardless of word order or an
+        // extra word. (Abbreviations like Pkwy vs Parkway are still a separate miss.)
+        const tokens = String(input.query ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
+        let q = db.from('crm_listings').select(LISTING_COLS).limit(10);
+        for (const tok of (tokens.length ? tokens : [''])) {
+          const t = safeTerm(tok);
+          q = q.or(`name.ilike.${t},address.ilike.${t}`);
+        }
         q = scoped(q, ctx);
         const { data, error } = await q;
         return error ? j({ error: error.message }) : j(visibleListings(data, ctx));
