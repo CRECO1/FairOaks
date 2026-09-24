@@ -42,6 +42,10 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
   const [pick, setPick] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(false);
+  // Freshly-signed document URL, refreshed when this panel opens. The `doc.url` handed in
+  // from the list can be over an hour old, and signed URLs expire after 1h — a stale one
+  // blanks the pre-send preview. Prefer this when present.
+  const [freshUrl, setFreshUrl] = useState<string | null>(null);
   // Placed signature fields on this document, grouped by their ORIGINAL role, so the
   // agent can drop any that don't apply (e.g. a 2nd seller block on a single-seller
   // sale) OR reassign a block to a different party (`role` = editable target).
@@ -53,6 +57,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
       .then(r => r.json())
       .then(j => {
         if (!alive) return;
+        setFreshUrl(j.filledUrl ?? null);
         const vals: Array<Record<string, unknown>> = Array.isArray(j.submission?.values) ? j.submission.values : [];
         setDocValues(vals);
         const sig = vals.filter(x => ['signature', 'initial', 'date'].includes(String(x.type)));
@@ -193,14 +198,14 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
             // Opens the review — the send itself lives there, so nothing goes out unseen.
             // A doc with no file can't be previewed OR signed — stop here with a
             // clear reason instead of firing a blank envelope at the signer.
-            if (doc.url) setPreview(true); else showToast?.('This document has no file yet — import the PDF, or open the form and Save, before sending');
+            if (freshUrl ?? doc.url) setPreview(true); else showToast?.('This document has no file yet — import the PDF, or open the form and Save, before sending');
           }}
           disabled={busy}
           style={{ flex: 2, padding: '10px 0', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>
-          {busy ? 'Sending…' : (doc.url ? '✒ Create Signatures →' : '📤 Send for signature')}
+          {busy ? 'Sending…' : ((freshUrl ?? doc.url) ? '✒ Create Signatures →' : '📤 Send for signature')}
         </button>
       </div>
-      {preview && doc.url && (() => {
+      {preview && (freshUrl ?? doc.url) && (() => {
         // Show the fields as they WILL be sent (removed dropped, reassigned remapped) —
         // including the text / checkbox inputs the signer will have to fill in.
         const SIG = ['signature', 'initial', 'date', 'text', 'check'];
@@ -211,7 +216,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
           return [{ page: Number(v.page) || 1, fx: Number(v.fx), fy: Number(v.fy), fw: Number(v.fw), type: String(v.type), signerRole: role }];
         });
         const label = (role: string) => { const s = signers.find(x => x.role === role && x.name.trim()); return s ? s.name : roleLabel(role) + ' (no signer yet)'; };
-        return <SignPreviewModal url={doc.url!} fields={effective} signerLabel={label} busy={busy}
+        return <SignPreviewModal url={(freshUrl ?? doc.url)!} fields={effective} signerLabel={label} busy={busy}
           onClose={() => setPreview(false)}
           onConfirm={async () => { await send(); setPreview(false); }}
           confirmLabel="📤 Send for signature" />;
