@@ -111,6 +111,39 @@ function timeAgo(dateStr: string | undefined | null): { label: string; color: st
   return { label: `${days}d ago`, color: '#dc2626', bg: '#fee2e2' };
 }
 
+/**
+ * Exact timestamp for activity-feed entries. `timeAgo` answers "how stale is this
+ * contact", which is the right readout for the staleness badges, but on the activity
+ * feed an agent needs the clock time the work actually happened — "1d ago" cannot tell
+ * you whether a call was placed at 9am or 7pm. Day context is kept as a prefix so the
+ * feed still scans at a glance. Rendered client-side only, so it uses the viewer's
+ * local timezone and locale.
+ */
+function activityStamp(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return `Today ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  const datePart = d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${datePart}, ${time}`;
+}
+
+/** Full date+time for the hover tooltip on activity-feed timestamps. */
+function activityStampFull(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
+}
+
 function activityIcon(type: CRMActivity['type']): string {
   return type === 'call' ? '📞' : type === 'email' ? '✉️' : type === 'meeting' ? '🤝' : type === 'note' ? '📝' : '🔄';
 }
@@ -7859,6 +7892,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
                         {allItems.map((item, i) => {
                           const ta = timeAgo(item.date);
+                          const stamp = activityStamp(item.date);
+                          const stampFull = activityStampFull(item.date);
                           const isLast = i === allItems.length - 1;
 
                           if (item.kind === 'activity') {
@@ -7875,7 +7910,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'capitalize' }}>{act.type.replace('_', ' ')}</span>
                                     <span style={{ fontSize: 11, color: '#9ca3af' }}>by {agentLabel}</span>
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                    <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   {act.note && (
                                     <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5, background: '#f9fafb', borderRadius: 6, padding: '6px 8px' }}>{act.note}</div>
@@ -7897,7 +7932,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Campaign Email</span>
                                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: statusColor.bg, color: statusColor.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.status}</span>
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                    <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 2 }}>{s.campaign_name}</div>
                                   {s.subject && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>Subject: {s.subject}</div>}
