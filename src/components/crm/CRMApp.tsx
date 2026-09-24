@@ -1658,6 +1658,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Scan the loaded contacts for duplicates (same email, or same first+last name) and open
   // the merge review. Works off `clients` (which holds every contact), so it's accurate.
   function openMergeDuplicates() {
+    // Don't scan a half-loaded list — that would wrongly report "no duplicates."
+    if (clients.length === 0 || (contactsTotal > 0 && clients.length < contactsTotal)) {
+      showToast(`Contacts are still loading (${clients.length}${contactsTotal ? ` of ${contactsTotal}` : ''}) — give it a moment and try again.`);
+      return;
+    }
     const emailNorm = (e: unknown) => String(e ?? '').toLowerCase().trim().replace(/,+$/, '');
     const emailsOf = (c: Client) => [c.email, ...(c.extra_emails ?? [])].map(emailNorm).filter(e => e && e.includes('@'));
     const nameKey = (c: Client) => {
