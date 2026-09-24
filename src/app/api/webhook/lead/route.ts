@@ -95,8 +95,11 @@ export async function POST(req: NextRequest) {
     last_name = parts.slice(1).join(' ');
   }
 
-  if (!first_name || !email) {
-    return NextResponse.json({ error: 'first_name (or name) and email are required' }, { status: 400 });
+  // A lead needs a NAME and at least one way to reach them. Requiring an email
+  // specifically used to drop every phone-only capture on the floor — the site's
+  // one-field CTA invites "email or phone", so both must be accepted here.
+  if (!first_name || (!email && !phone)) {
+    return NextResponse.json({ error: 'first_name (or name) and an email or phone are required' }, { status: 400 });
   }
 
   // Validate type
@@ -125,8 +128,13 @@ export async function POST(req: NextRequest) {
   }
   if (!adminId) return NextResponse.json({ error: 'No admin found to assign lead to' }, { status: 500 });
 
-  // ── Deduplicate by email ──────────────────────────────────────────────────
-  const { data: existing } = await supabase.from('crm_clients').select('id, tags, lead_source').eq('email', email).maybeSingle();
+  // ── Deduplicate by email, or by phone when that is all we have ────────────
+  // Matching on an undefined email would either error or collide with every
+  // other email-less row, so the key has to follow whichever field we got.
+  const dedupeCol = email ? 'email' : 'phone';
+  const dedupeVal = email ?? phone!;
+  const { data: existing } = await supabase.from('crm_clients')
+    .select('id, tags, lead_source').eq(dedupeCol, dedupeVal).maybeSingle();
 
   let clientId: string;
   let isNew = false;
@@ -150,7 +158,7 @@ export async function POST(req: NextRequest) {
     const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
       first_name,
       last_name,
-      email,
+      email: email ?? '',
       phone: phone ?? '',
       type: clientType,
       notes: noteLines,
@@ -193,7 +201,7 @@ export async function POST(req: NextRequest) {
           <p style="color:#666">${isNew ? '✅ Added as new CRM contact' : '⚠️ Contact already existed — tags updated'}</p>
           <table style="border-collapse:collapse;width:100%">
             <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Name</td><td style="padding:8px 12px;border:1px solid #eee">${esc(first_name)} ${esc(last_name)}</td></tr>
-            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Email</td><td style="padding:8px 12px;border:1px solid #eee"><a href="mailto:${esc(email)}">${esc(email)}</a></td></tr>
+            <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Email</td><td style="padding:8px 12px;border:1px solid #eee">${email ? `<a href="mailto:${esc(email)}">${esc(email)}</a>` : '—'}</td></tr>
             <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Phone</td><td style="padding:8px 12px;border:1px solid #eee">${esc(phone) || '—'}</td></tr>
             <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Source</td><td style="padding:8px 12px;border:1px solid #eee">${esc(source)}</td></tr>
             <tr><td style="padding:8px 12px;font-weight:bold;background:#f9f9f9;border:1px solid #eee">Type</td><td style="padding:8px 12px;border:1px solid #eee">${esc(clientType)}</td></tr>
