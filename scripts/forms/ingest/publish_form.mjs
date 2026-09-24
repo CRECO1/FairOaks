@@ -15,6 +15,7 @@
 // require() here dies with "require is not defined in ES module scope".
 import fs from 'node:fs';
 import path from 'node:path';
+import { analysePdf, describePages } from './lib/verify_pdf.mjs';
 
 const URL_BASE = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,7 +38,54 @@ async function rest(p, init = {}) {
 try {
   const pdf = fs.readFileSync(rel(cfg.pdf));
   const fields = JSON.parse(fs.readFileSync(rel(cfg.fields), 'utf8'));
-  const pageCount = Math.max(...fields.map((f) => f.page));
+  const fieldPages = Math.max(...fields.map((f) => f.page));
+
+  // ── Gate: nothing reaches the bucket unverified ────────────────────────────
+  // Every form is published through here, so this catches a stripped form whatever
+  // produced it — a wrong --keep, a truncated download, a future tool — not just the
+  // one failure mode clean_pdf.mjs now guards. A form was once published as its own
+  // e-sign overlay with the blank deleted out of it, and stayed that way, because
+  // nothing between the cleaner and the bucket ever asked whether a form was still in
+  // the file. Now something does.
+  const check = await analysePdf(pdf);
+  if (check.status === 'ERROR') {
+    throw new Error(`Refusing to publish: ${rel(cfg.pdf)} could not be read as a PDF — ${check.detail}`);
+  }
+  if (check.status === 'DAMAGED') {
+    throw new Error(
+      `Refusing to publish: page(s) ${check.flagged.join(', ')} of ${cfg.pdf} draw almost no text but carry
+` +
+      `white-filled rectangles — an e-sign overlay whose blank form has been stripped.
+${describePages(check.pages)}
+` +
+      `Re-clean from the original with an explicit --keep (see README), or pass --allow-suspect if this is genuinely correct.`
+    );
+  }
+  if (check.status === 'REVIEW' && !process.argv.includes('--allow-suspect')) {
+    throw new Error(
+      `Refusing to publish: page(s) ${check.flagged.join(', ')} of ${cfg.pdf} draw very little text.
+${describePages(check.pages)}
+` +
+      `That is normal for a signature page or an exhibit. Confirm it renders, then re-run with --allow-suspect.`
+    );
+  }
+
+  // page_count was derived from the FIELD MAP, so it recorded what the fields expected
+  // and never what the PDF actually had. A field mapped to a page the PDF does not
+  // contain cannot be stamped, and one mapped onto the wrong page stamps a value in the
+  // wrong place on a legal document — which looks plausible and is worse than a blank.
+  if (fieldPages > check.pageCount) {
+    throw new Error(
+      `Refusing to publish: the field map references page ${fieldPages}, but ${cfg.pdf} has ` +
+      `${check.pageCount} page(s). Fields would stamp onto pages that do not exist.`
+    );
+  }
+  if (fieldPages < check.pageCount) {
+    console.warn(`⚠ ${cfg.pdf} has ${check.pageCount} pages; the field map only reaches page ${fieldPages}.`);
+  }
+  // Record the PDF's real page count, not the field map's high-water mark.
+  const pageCount = check.pageCount;
+  console.log(`✓ verified: ${check.pageCount} page(s), ${check.pages.map((x) => x.textChars).join('/')} chars per page`);
 
   const up = await fetch(`${URL_BASE}/storage/v1/object/${BUCKET}/${cfg.storage_path}`, {
     method: 'POST', headers: h({ 'Content-Type': 'application/pdf', 'x-upsert': 'true' }), body: pdf,
