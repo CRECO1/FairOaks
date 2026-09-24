@@ -35,6 +35,18 @@ const pdf = await PDFDocument.load(readFileSync(inPath), { updateMetadata: false
 const page = pdf.getPages()[0];
 const node = page.node;
 
+// Only page 1 is processed. /Contents, /Annots and /XObject are per-page, so on a
+// multi-page form every later page keeps BOTH its flattening overlay AND its
+// signature widgets — the catalog-level deletions below do not reach them. That
+// leaves the signer's trail in the file the header claims to remove it from.
+if (pdf.getPageCount() > 1) {
+  console.warn(
+    `⚠ ${pdf.getPageCount()} pages, but only page 1 is cleaned.\n` +
+    `  Pages 2-${pdf.getPageCount()} keep their overlay and their /Annots (signature widgets,\n` +
+    `  verification links). Check them before publishing this form.`
+  );
+}
+
 // /Contents is either one stream or an array of them.
 const contents = node.get(PDFName.of('Contents'));
 const refs = contents instanceof PDFArray ? contents.asArray() : [node.get(PDFName.of('Contents'))];
@@ -49,9 +61,44 @@ if (inspect) {
   process.exit(0);
 }
 
+// How much text a stream draws, in BOTH of PDF's string forms. TREC forms are
+// CID-encoded and draw hex strings — <03ED> — so counting only parenthesised
+// strings scores a full form at zero.
+const glyphCount = (text) => {
+  let n = 0;
+  for (const m of text.matchAll(/\((?:\\.|[^\\()])*\)/g)) n += Math.max(m[0].length - 2, 0);
+  for (const m of text.matchAll(/<([0-9A-Fa-f\s]+)>/g)) n += Math.floor(m[1].replace(/\s/g, '').length / 2);
+  return n;
+};
+
+const weights = refs.map((r) => glyphCount(decode(pdf.context.lookup(r))));
+
 const keep = keepArg ? keepArg.split(',').map(Number) : refs.map((_, i) => i).slice(0, -1);
 const kept = refs.filter((_, i) => keep.includes(i));
 if (!kept.length) throw new Error('--keep selected no streams');
+
+// The default ("all but the last") assumes the blank form comes first and the
+// overlay last. That is not universal — the README's own worked example is
+// `--keep 1`, the SECOND of two — and when the order is reversed the default
+// keeps the overlay and deletes the form. The output still opens, still carries
+// the letterhead, logos and the flattened values with their underlines, and is
+// simply missing the form. Nothing downstream noticed, so a form was published
+// blank and stayed that way.
+//
+// So: never silently keep less text than is thrown away.
+const keptGlyphs = weights.filter((_, i) => keep.includes(i)).reduce((a, b) => a + b, 0);
+const dropGlyphs = weights.filter((_, i) => !keep.includes(i)).reduce((a, b) => a + b, 0);
+if (dropGlyphs > keptGlyphs) {
+  const detail = weights.map((w, i) => `  /Contents[${i}] ${w} glyphs ${keep.includes(i) ? '(KEEP)' : '(drop)'}`).join('\n');
+  throw new Error(
+    `Refusing to write: the dropped streams draw MORE text (${dropGlyphs}) than the kept ones (${keptGlyphs}).\n` +
+    `This is what stripping the form instead of the overlay looks like.\n${detail}\n` +
+    `Run with --inspect, then pass --keep with the stream holding the blank form.`
+  );
+}
+if (!keepArg) {
+  console.warn(`⚠ No --keep given; defaulted to [${keep.join(',')}] of ${refs.length} stream(s). Verify against --inspect.`);
+}
 
 const keptText = kept.map((r) => decode(pdf.context.lookup(r))).join('\n');
 const keptArray = PDFArray.withContext(pdf.context);
