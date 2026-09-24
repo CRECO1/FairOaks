@@ -91,3 +91,42 @@ instance, so a new form can take a minute to show up.
 After replacing a PDF already in storage, an immediate re-download returns the
 **old** bytes from cache. Re-read a moment later before concluding the write
 failed.
+
+## 4. Audit what is already published
+
+```bash
+node --env-file=.env.local scripts/forms/ingest/audit_forms.mjs          # the whole bucket
+node scripts/forms/ingest/audit_forms.mjs --dir ./some/pdfs              # local files
+node --env-file=.env.local scripts/forms/ingest/audit_forms.mjs --json   # for CI
+```
+
+Reads every row in `crm_forms`, pulls its PDF from the `transaction-forms`
+bucket and reports what each page actually draws. It exits non-zero when
+anything is `DAMAGED`, so it can gate CI.
+
+`DAMAGED` means a page draws almost no text **and** carries white-filled
+rectangles: that is a flattening overlay with the blank form deleted out from
+under it — step 1 kept the wrong stream. The file still opens, still shows the
+letterhead, logos and the old values with their underlines, and is simply
+missing the form. **Re-ingest those from the original PDF; the stored copy
+cannot be repaired**, because the form is not in it any more.
+
+`REVIEW` means a sparse page with no white fills — usually a genuine signature
+page or exhibit. Look, don't assume.
+
+### Why this is worth running
+
+The `--keep` default in step 1 is *all streams but the last*, which assumes the
+blank form comes first. It does not always: the worked example above is
+`--keep 1`, the **second** of two. Run without `--keep` on such a form and the
+overlay is kept and the form thrown away.
+
+`clean_pdf.mjs` now refuses to write when the dropped streams draw more text
+than the kept ones, and warns when no `--keep` was given. That stops new
+damage; the audit finds forms published before the guard existed.
+
+> **Multi-page forms:** `clean_pdf.mjs` only processes page 1. On a multi-page
+> form every later page keeps both its overlay *and* its `/Annots` — signature
+> widgets and verification links — because those are per-page and the
+> catalog-level deletions do not reach them. The script warns; check those
+> pages before publishing.
