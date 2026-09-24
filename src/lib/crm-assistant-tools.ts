@@ -351,12 +351,23 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       }
       case 'list_tasks': {
         const status = input.status ?? 'open';
-        let q = db.from('crm_tasks').select('id, title, due_date, status, priority, client_id, deal_id, assigned_to').order('due_date', { ascending: true, nullsFirst: false }).limit(30);
+        let q = db.from('crm_tasks').select('id, title, due_date, status, priority, client_id, deal_id, assigned_to, agent_id, completed_at').order('due_date', { ascending: true, nullsFirst: false }).limit(30);
         q = scoped(q, ctx);
-        if (status !== 'all') q = q.eq('status', status === 'completed' ? 'completed' : 'open');
-        // Agents see only their own tasks; admins can widen with scope="all".
-        if (ctx.role === 'agent') q = q.or(`assigned_to.eq.${ctx.userId},agent_id.eq.${ctx.userId}`);
-        else if ((input.scope ?? 'mine') === 'mine') q = q.eq('assigned_to', ctx.userId);
+        // "Open" is completed_at IS NULL, matching how the Tasks page itself
+        // decides. Filtering on status='open' silently hid in_progress tasks, and
+        // status='completed' matched nothing at all because the column holds
+        // 'done' — asking for completed tasks always returned an empty list.
+        if (status === 'open') q = q.is('completed_at', null);
+        else if (status === 'completed') q = q.not('completed_at', 'is', null);
+
+        // Ownership is agent_id OR assigned_to OR created_by, for EVERY role.
+        // This used to filter admins on assigned_to alone, which is null on 52 of
+        // the 70 tasks in the book — so the copilot told an admin holding 34 open
+        // tasks that he had none. Telling someone their queue is empty when it
+        // isn't is worse than any other failure this tool can have.
+        if ((input.scope ?? 'mine') === 'mine' || ctx.role === 'agent') {
+          q = q.or(`agent_id.eq.${ctx.userId},assigned_to.eq.${ctx.userId},created_by.eq.${ctx.userId}`);
+        }
         const { data, error } = await q;
         if (error) return j({ error: error.message });
         return j(data ?? []);
@@ -370,7 +381,15 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         else if (input.scope === 'mine') q = q.eq('agent_id', ctx.userId);
         const { data, error } = await q;
         if (error) return j({ error: error.message });
-        return j(data ?? []);
+        // The deals/listings split is the single thing this copilot gets wrong
+        // most often: asked "which deal is at 1.9M" it lists deals, finds nothing
+        // and says so — when the 1.9M is a LISTING. A rule in the system prompt
+        // was not enough; the reminder has to arrive at the moment of the
+        // decision, in the result the model is reading.
+        return j({
+          deals: data ?? [],
+          note: 'These are pipeline DEALS only. Properties/listings are a separate record type with their own asking prices. If you are looking for an address, a property name or a dollar figure and it is not in this list, call list_properties or find_property before telling the agent it does not exist.',
+        });
       }
       case 'get_deal': {
         const { data: d } = await db.from('crm_deals').select('*').eq('id', input.deal_id).single();
