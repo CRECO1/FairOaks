@@ -85,7 +85,27 @@ node --env-file=.env.local scripts/forms/ingest/publish_form.mjs <config.json>
 
 Upserts the PDF into the `transaction-forms` bucket, upserts the `crm_forms` row
 (matched on `business_unit` + `name`) and replaces its `crm_form_fields`.
-Idempotent. No app deploy is needed — but the forms list caches for ~45s per
+Idempotent.
+
+**The publisher verifies before it uploads, and refuses on failure.** Every form
+reaches the bucket through this script, so the gate catches a stripped form
+whatever caused it — a wrong `--keep`, a truncated download, a future tool — not
+only the one case `clean_pdf.mjs` now guards. It rejects:
+
+- a file that will not parse as a PDF;
+- any page drawing almost no text while carrying white-filled rectangles, i.e.
+  an e-sign overlay whose blank form was stripped out from under it;
+- a page drawing very little text with no white fills — normal for a signature
+  page or an exhibit, so re-run with `--allow-suspect` once you have confirmed
+  it renders;
+- a field map referencing a page the PDF does not have.
+
+`page_count` is now taken from the PDF itself. It used to be
+`max(field.page)` — the field map's high-water mark — so it recorded what the
+fields expected and never what the file actually contained. A field mapped onto
+a page that isn't there cannot stamp at all, and one mapped onto the wrong page
+stamps a value in the wrong place on a legal document, which looks plausible and
+is worse than a blank page. No app deploy is needed — but the forms list caches for ~45s per
 instance, so a new form can take a minute to show up.
 
 After replacing a PDF already in storage, an immediate re-download returns the
