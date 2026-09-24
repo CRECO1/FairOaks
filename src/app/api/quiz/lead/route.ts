@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
+import { ADMIN_ROLES } from '@/lib/crm-auth';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
@@ -57,8 +58,19 @@ export async function POST(req: NextRequest) {
     if (supabaseUrl && serviceKey) {
       try {
         const supabaseAdmin = createClient(supabaseUrl, serviceKey);
-        const { data: adminProfile } = await supabaseAdmin.from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+        const { data: adminProfile } = await supabaseAdmin
+          .from('crm_profiles')
+          .select('id, role')
+          .in('role', [...ADMIN_ROLES])
+          .order('role', { ascending: true }) // 'admin' sorts before 'super_admin'
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
         const adminId = adminProfile?.id;
+        // Previously this matched `role = 'admin'` only, so a workspace whose admin tier is
+        // all super_admins silently skipped CRM creation — the form still returned success
+        // and the lead was never recorded anywhere. Log it so the gap is never silent again.
+        if (!adminId) console.error('[quiz/lead] no admin-tier profile found; CRM contact not created for', email);
         if (adminId) {
           const { data: existing } = await supabaseAdmin.from('crm_clients').select('id').eq('email', email).maybeSingle();
           if (!existing) {

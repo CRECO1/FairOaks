@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
+import { ADMIN_ROLES } from '@/lib/crm-auth';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
@@ -73,9 +74,18 @@ export async function POST(req: NextRequest) {
 
         // Find admin to assign as default owner
         const { data: adminProfile } = await supabaseAdmin
-          .from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+          .from('crm_profiles')
+          .select('id, role')
+          .in('role', [...ADMIN_ROLES])
+          .order('role', { ascending: true }) // 'admin' sorts before 'super_admin'
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
         const adminId = adminProfile?.id;
 
+        // See quiz/lead: matching `role = 'admin'` only meant an all-super_admin workspace
+        // dropped the lead without any error surfacing to the caller.
+        if (!adminId) console.error('[leads] no admin-tier profile found; CRM contact not created for', email);
         if (adminId) {
           // Skip duplicate — if a client with this email already exists don't double-create
           const { data: existing } = await supabaseAdmin

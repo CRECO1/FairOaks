@@ -29,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
+import { ADMIN_ROLES } from '@/lib/crm-auth';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -97,7 +98,19 @@ export async function POST(req: NextRequest) {
   const supabase = adminClient();
 
   // ── Find admin to assign lead to ──────────────────────────────────────────
-  const { data: adminProfile } = await supabase.from('crm_profiles').select('id').eq('role', 'admin').limit(1).maybeSingle();
+  // Accepts both admin tiers. Prefer a plain `admin`, then fall back to
+  // `super_admin` — matching the rbac-super-admin fix already applied in
+  // lib/crm-auth.ts, where an `eq('role','admin')` check locked super_admins out.
+  // Without the fallback, a workspace whose only admin-tier user is a
+  // super_admin 500s here and the lead is never created.
+  const { data: adminProfile } = await supabase
+    .from('crm_profiles')
+    .select('id, role')
+    .in('role', [...ADMIN_ROLES])
+    .order('role', { ascending: true }) // 'admin' sorts before 'super_admin'
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
   const adminId = adminProfile?.id;
   if (!adminId) return NextResponse.json({ error: 'No admin found to assign lead to' }, { status: 500 });
 

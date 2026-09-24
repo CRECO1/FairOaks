@@ -14,6 +14,16 @@ const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'super_admin' | 'admin' | 'agent';
+
+/**
+ * Admin-tier check. Mirrors isAdminRole() in lib/crm-auth.ts, duplicated because that
+ * module is server-only (it pulls in next/headers) and cannot be imported into a client
+ * component. `super_admin` is a strict superset of `admin`, so every admin-tier gate must
+ * accept both — testing `role === 'admin'` silently excludes the highest tier.
+ */
+function isAdminTier(role: Role | string | null | undefined): boolean {
+  return role === 'admin' || role === 'super_admin';
+}
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
@@ -109,6 +119,39 @@ function timeAgo(dateStr: string | undefined | null): { label: string; color: st
   if (days < 60) return { label: `${days}d ago`, color: '#a16207', bg: '#fef9c3' };
   if (days < 90) return { label: `${days}d ago`, color: '#c2410c', bg: '#fed7aa' };
   return { label: `${days}d ago`, color: '#dc2626', bg: '#fee2e2' };
+}
+
+/**
+ * Exact timestamp for activity-feed entries. `timeAgo` answers "how stale is this
+ * contact", which is the right readout for the staleness badges, but on the activity
+ * feed an agent needs the clock time the work actually happened — "1d ago" cannot tell
+ * you whether a call was placed at 9am or 7pm. Day context is kept as a prefix so the
+ * feed still scans at a glance. Rendered client-side only, so it uses the viewer's
+ * local timezone and locale.
+ */
+function activityStamp(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return `Today ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  const datePart = d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${datePart}, ${time}`;
+}
+
+/** Full date+time for the hover tooltip on activity-feed timestamps. */
+function activityStampFull(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
 }
 
 function activityIcon(type: CRMActivity['type']): string {
@@ -785,7 +828,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const updated = { ...data, last_sign_in_at: authLastSignIn } as Profile;
 
       // Access control: non-admins are locked to their assigned business_unit
-      if (updated.role !== 'admin' && updated.business_unit && updated.business_unit !== businessUnit) {
+      if (!isAdminTier(updated.role) && updated.business_unit && updated.business_unit !== businessUnit) {
         router.replace(`/crm/${updated.business_unit}`);
         return;
       }
@@ -800,14 +843,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
-      const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
-        session.user.user_metadata?.role === 'admin';
+      const metaRole = session.user.user_metadata?.role;
+      const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' || isAdminTier(metaRole);
       const newProfile: Profile = {
         id: session.user.id,
         email: session.user.email!,
         first_name: session.user.user_metadata?.firstName ?? session.user.email!.split('@')[0],
         last_name: session.user.user_metadata?.lastName ?? '',
-        role: isAdmin ? 'admin' : 'agent',
+        role: metaRole === 'super_admin' ? 'super_admin' : isAdmin ? 'admin' : 'agent',
         last_sign_in_at: authLastSignIn,
         business_unit: businessUnit,
       };
@@ -4297,7 +4340,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>
                           {isEditing ? `${editAgentForm.first_name} ${editAgentForm.last_name}`.trim() || 'Editing…' : `${a.first_name} ${a.last_name}`}
-                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: a.role === 'admin' ? '#92400e' : '#0369a1' }}>{a.role}</span>
+                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: isAdminTier(a.role) ? '#fef3c7' : '#e0f2fe', color: isAdminTier(a.role) ? '#92400e' : '#0369a1' }}>{a.role}</span>
                         </div>
                         <div style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{isEditing ? editAgentForm.email : a.email}</div>
                       </div>
@@ -4375,8 +4418,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* Role toggle — only for other users */}
-                      {a.id !== profile.id && (
+                      {/* Role toggle — only for other users, and never for super_admins:
+                          updateAgentRole is typed 'admin' | 'agent', so a super_admin row
+                          rendered "⬆️ Make Admin" and wrote role='admin' — a silent demotion
+                          with no way to restore the tier from this UI. */}
+                      {a.id !== profile.id && a.role !== 'super_admin' && (
                         <button
                           onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
                           style={{ width: '100%', padding: '7px 0', fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#f0fdf4', color: a.role === 'admin' ? '#92400e' : '#166534', border: `1px solid ${a.role === 'admin' ? '#fde68a' : '#bbf7d0'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -4389,7 +4435,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ flex: 1, padding: '7px 0', fontSize: 13, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           🔑 Reset Password
                         </button>
-                        {a.id !== profile.id && a.role !== 'admin' && (
+                        {a.id !== profile.id && !isAdminTier(a.role) && (
                           <button
                             onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
                             style={{ padding: '7px 10px', fontSize: 13, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -7859,6 +7905,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
                         {allItems.map((item, i) => {
                           const ta = timeAgo(item.date);
+                          const stamp = activityStamp(item.date);
+                          const stampFull = activityStampFull(item.date);
                           const isLast = i === allItems.length - 1;
 
                           if (item.kind === 'activity') {
@@ -7875,7 +7923,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'capitalize' }}>{act.type.replace('_', ' ')}</span>
                                     <span style={{ fontSize: 11, color: '#9ca3af' }}>by {agentLabel}</span>
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                    <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   {act.note && (
                                     <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5, background: '#f9fafb', borderRadius: 6, padding: '6px 8px' }}>{act.note}</div>
@@ -7897,7 +7945,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Campaign Email</span>
                                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: statusColor.bg, color: statusColor.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.status}</span>
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                    <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 2 }}>{s.campaign_name}</div>
                                   {s.subject && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 3 }}>Subject: {s.subject}</div>}
