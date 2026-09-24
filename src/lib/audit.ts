@@ -34,6 +34,8 @@ export type AuditAction =
   // the copilot to do" is answerable. Tool CALLS only — never the chat text; free-text
   // arguments are recorded as field names and lengths, not content.
   | 'copilot_tool'
+  // Merging duplicate contacts destroys records, so it's on the audited trail.
+  | 'merge_contacts'
   // Anti-scrape: read volume past the alert threshold.
   | 'bulk_read_detected';
 

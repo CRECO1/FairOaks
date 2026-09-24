@@ -630,6 +630,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [toast, setToast] = useState('');
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [showAddClient, setShowAddClient] = useState(false);
+  // Merge-duplicates tool: clusters detected from the loaded contacts + which survives.
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeClusters, setMergeClusters] = useState<{ key: string; kind: 'email' | 'name'; members: Client[]; survivorId: string }[]>([]);
+  const [mergeBusy, setMergeBusy] = useState<string | null>(null);
   const [showInvite, setShowInvite] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [ec, setEc] = useState({ first_name: '', last_name: '', business_name: '', email: '', extra_emails: [] as string[], phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [] as string[], type: 'Buyer' as Client['type'], tags: [] as string[], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null as number | null, birthday: '' });
@@ -1649,6 +1653,72 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setClients(prev => prev.filter(c => !ids.includes(c.id)));
     setSelectedClientIds(new Set());
     showToast(`${count} contact${count !== 1 ? 's' : ''} deleted.`);
+  }
+
+  // Scan the loaded contacts for duplicates (same email, or same first+last name) and open
+  // the merge review. Works off `clients` (which holds every contact), so it's accurate.
+  function openMergeDuplicates() {
+    const emailNorm = (e: unknown) => String(e ?? '').toLowerCase().trim().replace(/,+$/, '');
+    const emailsOf = (c: Client) => [c.email, ...(c.extra_emails ?? [])].map(emailNorm).filter(e => e && e.includes('@'));
+    const nameKey = (c: Client) => {
+      const fn = (c.first_name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const ln = (c.last_name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      return fn && ln && (fn + ln).length > 4 ? `${fn}|${ln}` : '';
+    };
+    const score = (c: Client) => (emailsOf(c).length ? 100 : 0)
+      + ['phone', 'cell_phone', 'business_name', 'address', 'notes'].filter(f => String((c as unknown as Record<string, unknown>)[f] ?? '').trim()).length
+      + (c.tags?.length ?? 0) * 0.1 + (c.last_touched_at ? 5 : 0);
+    const byEmail: Record<string, Client[]> = {};
+    const byName: Record<string, Client[]> = {};
+    for (const c of clients) {
+      for (const e of emailsOf(c)) (byEmail[e] ??= []).push(c);
+      const k = nameKey(c);
+      if (k) (byName[k] ??= []).push(c);
+    }
+    const out: typeof mergeClusters = [];
+    const seen = new Set<string>();
+    const add = (members: Client[], kind: 'email' | 'name') => {
+      const ids = [...new Set(members.map(m => m.id))];
+      if (ids.length < 2) return;
+      const key = ids.slice().sort().join(',');
+      if (seen.has(key)) return;
+      seen.add(key);
+      const uniqueMembers = ids.map(id => members.find(m => m.id === id)!);
+      const nm = `${uniqueMembers[0].first_name} ${uniqueMembers[0].last_name}`;
+      if (/^\s*(not available|unknown|n\/a)\s*$/i.test(nm.trim())) return;
+      const survivor = [...uniqueMembers].sort((a, b) => score(b) - score(a))[0];
+      out.push({ key, kind, members: uniqueMembers, survivorId: survivor.id });
+    };
+    for (const arr of Object.values(byEmail)) add(arr, 'email');
+    for (const arr of Object.values(byName)) add(arr, 'name');
+    out.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'email' ? -1 : 1));
+    setMergeClusters(out);
+    setShowMergeModal(true);
+  }
+
+  async function mergeCluster(cluster: (typeof mergeClusters)[number]) {
+    const dupIds = cluster.members.map(m => m.id).filter(id => id !== cluster.survivorId);
+    if (dupIds.length === 0) return;
+    setMergeBusy(cluster.key);
+    try {
+      const res = await fetch('/api/crm/merge-contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ primaryId: cluster.survivorId, dupIds }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(j.error ?? 'Merge failed'); setMergeBusy(null); return; }
+      const keptName = `${cluster.members.find(m => m.id === cluster.survivorId)?.first_name ?? ''} ${cluster.members.find(m => m.id === cluster.survivorId)?.last_name ?? ''}`.trim();
+      setClients(prev => prev
+        .filter(c => !dupIds.includes(c.id))
+        .map(c => (c.id === cluster.survivorId && j.primary ? { ...c, ...j.primary } : c)));
+      setContactsTotal(t => Math.max(0, t - dupIds.length));
+      setMergeClusters(prev => prev.filter(cl => cl.key !== cluster.key));
+      showToast(`Merged ${dupIds.length + 1} records into ${keptName || 'the survivor'} ✓`);
+    } catch {
+      showToast('Network error during merge');
+    }
+    setMergeBusy(null);
   }
 
   function openEditClient(c: Client) {
@@ -3736,6 +3806,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
                 </button>
               )}
+              {isSuperAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={openMergeDuplicates} title="Find and merge duplicate contacts" style={{ fontSize: 13 }}>⧉ Merge dupes</button>}
               <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => importFileRef.current?.click()} title="Import from XLSX or CSV" style={{ fontSize: 13 }}>⬆ Import</button>
               <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add Client</button>
             </div>
@@ -11423,6 +11494,71 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       })()}
 
       {/* Bulk Enroll in Campaign Modal */}
+      {/* ── Merge Duplicates Modal ── */}
+      {showMergeModal && (
+        <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowMergeModal(false); }}>
+          <div className="modal" style={{ maxWidth: 660, width: '94vw', maxHeight: '86vh', display: 'flex', flexDirection: 'column', padding: 0 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', background: '#111', color: '#fff', borderRadius: '12px 12px 0 0' }}>
+              <div>
+                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700 }}>Merge duplicate contacts</div>
+                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.6)', marginTop: 2 }}>{mergeClusters.length} group{mergeClusters.length === 1 ? '' : 's'} found</div>
+              </div>
+              <button onClick={() => setShowMergeModal(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: 20, flex: 1 }}>
+              {mergeClusters.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6b7280' }}>
+                  <div style={{ fontSize: 40, marginBottom: 10 }}>✨</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: '#111' }}>No duplicates found</div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>Every contact looks unique by email and name.</div>
+                </div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 16 }}>
+                    Pick the record to keep in each group. The others merge into it — emails, phones, tags, notes, and any deals, tasks &amp; campaign enrollments all move over — then the duplicates are deleted. Not a real duplicate? Just skip it.
+                  </p>
+                  {mergeClusters.map(cl => (
+                    <div key={cl.key} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 12, background: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#111', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`${cl.members[0].first_name ?? ''} ${cl.members[0].last_name ?? ''}`.trim() || cl.members[0].business_name}</span>
+                          <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, padding: '2px 7px', borderRadius: 8, background: cl.kind === 'email' ? '#dcfce7' : '#eef2f7', color: cl.kind === 'email' ? '#166534' : '#475569' }}>{cl.kind === 'email' ? 'same email' : 'same name'}</span>
+                        </div>
+                        <button className="crm-btn crm-btn-gold crm-btn-sm" disabled={mergeBusy === cl.key} onClick={() => mergeCluster(cl)} style={{ flexShrink: 0, opacity: mergeBusy === cl.key ? 0.6 : 1 }}>
+                          {mergeBusy === cl.key ? 'Merging…' : `Merge ${cl.members.length} →`}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {cl.members.map(m => {
+                          const keep = cl.survivorId === m.id;
+                          return (
+                            <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 9px', borderRadius: 8, cursor: 'pointer', background: keep ? '#fffbf2' : '#f9fafb', border: `1px solid ${keep ? '#f0d9a8' : '#f1f5f9'}` }}>
+                              <input type="radio" name={`survivor-${cl.key}`} checked={keep} onChange={() => setMergeClusters(prev => prev.map(x => x.key === cl.key ? { ...x, survivorId: m.id } : x))} style={{ accentColor: '#c9922c', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13.5, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {`${m.first_name ?? ''} ${m.last_name ?? ''}`.trim() || m.business_name || '(no name)'}{m.business_name && `${`${m.first_name ?? ''} ${m.last_name ?? ''}`.trim() ? ` · ${m.business_name}` : ''}`}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {m.email || 'no email'} · {m.type}{m.tags?.length ? ` · ${m.tags.length} tag${m.tags.length === 1 ? '' : 's'}` : ''}
+                                </div>
+                              </div>
+                              {keep && <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', color: '#92400e', background: '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>keep</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+            <div style={{ padding: '12px 20px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="crm-btn crm-btn-ghost" onClick={() => setShowMergeModal(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showBulkEnrollModal && (
         <div className="overlay" onClick={e => { if (e.target === e.currentTarget) setShowBulkEnrollModal(false); }}>
           <div className="modal" style={{ padding: 28, maxWidth: 480 }}>
