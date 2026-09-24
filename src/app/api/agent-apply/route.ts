@@ -5,7 +5,14 @@ import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { createRecruitContact } from '@/lib/recruiting-crm';
 
-const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
+// Agent applications are recruiting mail, not sales mail, so they get their own
+// recipient. Set RECRUITING_NOTIFICATION_EMAIL to a leadership-only address to keep
+// applications out of the shared leads inbox. Falls back to the leads address when
+// unset, which preserves the previous behavior.
+const NOTIFICATION_EMAIL =
+  process.env.RECRUITING_NOTIFICATION_EMAIL ??
+  process.env.LEAD_NOTIFICATION_EMAIL ??
+  'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
 
 function esc(s: string | null | undefined): string {

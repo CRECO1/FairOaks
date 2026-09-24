@@ -200,6 +200,39 @@ function cleanEmailBody(raw: string): string {
   return result.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/**
+ * Exact timestamp for activity-feed entries. `timeAgo` answers "how stale is this
+ * contact", which is the right readout for the staleness badges, but on the activity
+ * feed an agent needs the clock time the work actually happened — "1d ago" cannot tell
+ * you whether a call was placed at 9am or 7pm. Day context is kept as a prefix so the
+ * feed still scans at a glance. Rendered client-side only, so it uses the viewer's
+ * local timezone and locale.
+ */
+function activityStamp(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return `Today ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  const datePart = d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${datePart}, ${time}`;
+}
+
+/** Full date+time for the hover tooltip on activity-feed timestamps. */
+function activityStampFull(dateStr: string | undefined | null): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString();
+}
+
 function timeAgo(dateStr: string | undefined | null): { label: string; color: string; bg: string } {
   if (!dateStr) return { label: 'Never', color: '#dc2626', bg: '#fee2e2' };
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -523,6 +556,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showContactCompose, setShowContactCompose] = useState(false);
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
+  const [docsError, setDocsError] = useState<string | null>(null);
   const [dealForms, setDealForms] = useState<{ id: string; form_id?: string; deal_id?: string | null; title?: string; filled_path?: string; status?: string; updated_at?: string; url?: string | null; crm_forms?: { name?: string; form_code?: string } }[]>([]);
   const [crmForms, setCrmForms] = useState<{ id: string; name: string; form_code?: string; url?: string | null; pinned?: boolean }[]>([]);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string; type?: string | null } | null>(null);
@@ -1187,9 +1221,50 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, []);
 
   const loadDealDocs = useCallback(async (dealId: string) => {
-    const res = await fetch(`/api/crm/docs?dealId=${dealId}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
-    const json = await res.json().catch(() => ({}));
-    setDealDocs((json.docs ?? []) as DealDoc[]);
+    // A failed fetch used to fall through to `json.docs ?? []`, so an auth or server
+    // error rendered as "No documents uploaded yet" — indistinguishable from a deal
+    // that genuinely has none.
+    try {
+      const res = await fetch(`/api/crm/docs?dealId=${dealId}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+      const json = await res.json().catch(() => ({} as { docs?: DealDoc[]; error?: string }));
+      if (!res.ok) {
+        console.error('[crm] loadDealDocs failed:', res.status, json?.error);
+        setDocsError(json?.error ?? `Could not load documents (${res.status}).`);
+        setDealDocs([]);
+        return;
+      }
+      setDocsError(null);
+      setDealDocs((json.docs ?? []) as DealDoc[]);
+    } catch (err) {
+      console.error('[crm] loadDealDocs error:', err);
+      setDocsError('Could not load documents.');
+      setDealDocs([]);
+    }
+  }, [session?.access_token]);
+
+  /**
+   * A signed URL for `doc`, minted now.
+   *
+   * The list-time URL expires an hour after the deal modal opens, and the modal routinely
+   * stays open far longer. A stale link opens a blank tab, because the browser renders the
+   * storage error as an empty document; the Sign path fails the same way when it fetches
+   * the bytes. Re-signing at the moment of use keeps the token seconds old.
+   */
+  const freshDocUrl = useCallback(async (docId: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`/api/crm/docs?docId=${docId}`, {
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
+      const json = await res.json().catch(() => ({} as { url?: string; error?: string }));
+      if (!res.ok || !json.url) {
+        console.error('[crm] freshDocUrl failed:', res.status, json?.error);
+        return null;
+      }
+      return json.url;
+    } catch (err) {
+      console.error('[crm] freshDocUrl error:', err);
+      return null;
+    }
   }, [session?.access_token]);
 
   // Bridge an already-uploaded attachment (a deal "Uploaded File" or a property file)
@@ -7856,7 +7931,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Tabs */}
               <div className="crm-tabs-scroll" style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
                 {(['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const).map(t => (
-                  <button key={t} onClick={() => setDealTab(t)}
+                  <button key={t} onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}
                     style={{ padding: isMobile ? '11px 14px' : '8px 18px', minHeight: isMobile ? 44 : undefined, whiteSpace: 'nowrap', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
                     {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length + dealForms.length > 0 ? ` (${dealDocs.length + dealForms.length})` : ''}` : t === 'esign' ? '✍️ E-Sign' : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
@@ -8567,7 +8642,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <DealDocUpload dealId={activeDeal.id} authToken={session?.access_token} showToast={showToast} onUploaded={() => loadDealDocs(activeDeal.id)} />
 
                   {/* Doc list */}
-                  {dealDocs.length === 0 ? (
+                  {docsError ? (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#b91c1c', fontSize: 14 }}>
+                      ⚠️ {docsError}{' '}
+                      <button onClick={() => loadDealDocs(activeDeal.id)}
+                        style={{ background: 'none', border: 'none', color: '#b91c1c', textDecoration: 'underline', cursor: 'pointer', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
+                        Retry
+                      </button>
+                    </div>
+                  ) : dealDocs.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 14 }}>📂 No documents uploaded yet</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -8587,16 +8670,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {size}{size ? ' · ' : ''}{doc.created_at?.slice(0, 10)}{uploaderName ? ` · ${uploaderName}` : ''}
                               </div>
                             </div>
-                            {isPdf && doc.url && (
-                              <button onClick={() => signUploadedFile(doc.url!, doc.name, { dealId: activeDeal.id })}
+                            {isPdf && (
+                              <button onClick={async () => {
+                                const url = await freshDocUrl(doc.id);
+                                if (!url) { showToast('Could not open document for signing.'); return; }
+                                signUploadedFile(url, doc.name, { dealId: activeDeal.id });
+                              }}
                                 title="Import this PDF into E-Sign and send it for signature"
                                 style={{ padding: '5px 12px', background: '#c9922c', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✍️ Sign</button>
                             )}
-                            {doc.url && (
-                              <a href={doc.url} target="_blank" rel="noreferrer"
-                                style={{ padding: '5px 12px', background: '#111', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
+                            {(
+                              <button onClick={async () => {
+                                // Opened synchronously: window.open() after an await is blocked as a popup.
+                                const win = window.open('', '_blank');
+                                if (win) win.opener = null;
+                                const url = await freshDocUrl(doc.id);
+                                if (!url) { win?.close(); showToast('Could not open document.'); return; }
+                                if (win) win.location.href = url; else window.location.href = url;
+                              }}
+                                style={{ padding: '5px 12px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
                                 ↓ Open
-                              </a>
+                              </button>
                             )}
                             {isAdmin && (
                               <button onClick={() => deleteDoc(doc, activeDeal.id)}
@@ -9945,6 +10039,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
                         {allItems.map((item, i) => {
                           const ta = timeAgo(item.date);
+                          const stamp = activityStamp(item.date);
+                          const stampFull = activityStampFull(item.date);
                           const isLast = i === allItems.length - 1;
 
                           if (item.kind === 'activity') {
@@ -9961,7 +10057,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151', textTransform: 'capitalize' }}>{act.type.replace('_', ' ')}</span>
                                     <span style={{ fontSize: 11, color: '#9ca3af' }}>by {agentLabel}</span>
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                    <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   {act.note && (
                                     <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5, background: '#f9fafb', borderRadius: 6, padding: '6px 8px' }}>{act.note}</div>
@@ -9983,7 +10079,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Campaign Email</span>
                                     <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 10, fontWeight: 700, background: statusColor.bg, color: statusColor.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.status}</span>
-                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: ta.color, fontWeight: 600 }}>{ta.label}</span>
+                                    <span title={`${stampFull} (${ta.label})`} style={{ marginLeft: 'auto', fontSize: 11, color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' }}>{stamp}</span>
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
                                     <div style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>{s.campaign_name}</div>
