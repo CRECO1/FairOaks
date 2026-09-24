@@ -1,34 +1,51 @@
 <!--
   Elkhorn Point — email hero header.
 
-  Replaces the solid black header block at the top of the campaign emails with the
-  development rendering as the background, headline reversed out over it.
+  Puts a rendering of the property behind the headline, in place of the solid
+  black header block the campaigns ship with today.
 
-  How it degrades:
-    • Modern clients (Gmail, Apple Mail, iOS, Outlook.com, Yahoo): rendering as the
-      hero background with a dark scrim over it so the type stays readable.
-    • Outlook desktop (Word engine — no background-image support): keeps the original
-      black header, and the rendering is shown full-width just under the gold band.
-    • Images off / blocked: falls back to #1A1A1A, i.e. exactly the old header.
+  THE ASSET (export this from the rendering and upload it before sending):
+
+    file        hero-elkhorn-point.jpg  →  https://elkhornpoint.com/hero-elkhorn-point.jpg
+    size        1200 × 630 px (drawn at 600 × 315 — 2× for retina)
+    crop        a single building at an angle, not the two-building split
+                composite. Ground line low in the frame, sky across the top.
+    shading     bake a dark gradient into the left ~55% and the bottom edge
+                (roughly black at 55% fading to clear by the middle). Outlook
+                draws this image through VML and ignores the CSS scrim, so the
+                type is only readable there if the shading is IN the file.
+    safe area   keep the left 55% clear of signage, poles and detail — the
+                eyebrow and headline sit there.
+    weight      under ~250 KB, progressive JPEG.
+
+  If you upload an asset WITHOUT the baked shading, run the script with
+  --mso-black so Outlook falls back to the black header instead.
 
   Swap {{EYEBROW}} and {{HEADLINE}} for the variant's own text. Paste in the
-  campaign editor's HTML mode — the rich-text mode strips conditional comments.
+  campaign editor's HTML mode — rich-text mode strips conditional comments.
 -->
 
 <!--[if mso]>
 <tr>
-  <td style="background:#1A1A1A;padding:28px 40px;">
-    <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9922C;font-weight:700;">{{EYEBROW}}</p>
-    <h1 style="margin:8px 0 0;font-size:22px;color:#ffffff;font-weight:700;line-height:1.3;">{{HEADLINE}}</h1>
+  <td style="padding:0;">
+    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;height:315px;">
+      <v:fill type="frame" src="https://elkhornpoint.com/hero-elkhorn-point.jpg" color="#1A1A1A" />
+      <v:textbox inset="40px,72px,40px,64px">
+        <div>
+          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E3B45A;font-weight:700;">{{EYEBROW}}</p>
+          <h1 style="margin:10px 0 0;font-size:25px;color:#ffffff;font-weight:700;line-height:1.3;">{{HEADLINE}}</h1>
+        </div>
+      </v:textbox>
+    </v:rect>
   </td>
 </tr>
 <![endif]-->
 <!--[if !mso]><!-->
 <tr>
-  <td background="https://elkhornpoint.com/rendering-split.jpg" style="padding:0;background-color:#1A1A1A;background-image:url('https://elkhornpoint.com/rendering-split.jpg');background-position:center center;background-size:cover;background-repeat:no-repeat;">
+  <td background="https://elkhornpoint.com/hero-elkhorn-point.jpg" style="padding:0;background-color:#1A1A1A;background-image:url('https://elkhornpoint.com/hero-elkhorn-point.jpg');background-position:center center;background-size:cover;background-repeat:no-repeat;">
     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
       <tr>
-        <td style="background-color:rgba(10,10,10,0.56);padding:76px 40px 68px;">
+        <td style="background-color:rgba(10,10,10,0.38);padding:72px 40px 64px;">
           <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E3B45A;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,0.75);">{{EYEBROW}}</p>
           <h1 style="margin:10px 0 0;font-size:25px;color:#ffffff;font-weight:700;line-height:1.3;text-shadow:0 2px 8px rgba(0,0,0,0.8);">{{HEADLINE}}</h1>
         </td>
