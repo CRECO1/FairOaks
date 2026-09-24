@@ -3,6 +3,9 @@ import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole 
 import { adminClient } from '@/lib/supabase-admin';
 
 const BUCKET = 'deal-docs';
+// Short-lived by design: the client re-signs at click time via the docId path below,
+// so a list-time URL never needs to outlive the page it was rendered on.
+const SIGNED_URL_TTL_SECONDS = 3600;
 
 // Files that could be executed or rendered as HTML/scripts are blocked
 const BLOCKED_MIME_PREFIXES = ['text/html', 'application/x-', 'application/javascript'];
@@ -18,14 +21,44 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
+  const supabase = adminClient();
+
+  // ── Single-doc mode: mint a fresh signed URL on demand ──────────────────────
+  // The list below signs every doc at list time, but the deal modal can sit open for
+  // hours, so those URLs go stale in place and the link opens a blank tab. The client
+  // calls this at click time instead, so the token is always seconds old.
+  const docId = req.nextUrl.searchParams.get('docId');
+  if (docId) {
+    const { data: doc, error: docErr } = await supabase
+      .from('crm_deal_docs')
+      .select('deal_id, storage_path')
+      .eq('id', docId)
+      .single();
+
+    if (docErr || !doc) return notFound('Document not found');
+
+    // Same workspace check as the list path — access comes from the parent deal.
+    if (!(await assertOwnsResource('crm_deals', doc.deal_id, ctx))) return notFound('Document not found');
+
+    const { data: signed, error: signErr } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(doc.storage_path, SIGNED_URL_TTL_SECONDS);
+
+    if (signErr || !signed?.signedUrl) {
+      console.error('[api/crm/docs] createSignedUrl failed for', doc.storage_path, signErr);
+      return NextResponse.json({ error: 'Could not generate a download link.' }, { status: 500 });
+    }
+
+    return NextResponse.json({ url: signed.signedUrl });
+  }
+
   const dealId = req.nextUrl.searchParams.get('dealId');
-  if (!dealId) return NextResponse.json({ error: 'dealId required' }, { status: 400 });
+  if (!dealId) return NextResponse.json({ error: 'dealId or docId required' }, { status: 400 });
 
   // crm_deal_docs has no business_unit — access comes from the parent deal. Without this
   // any authenticated user could list another workspace's docs *and* get signed URLs.
   if (!(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
 
-  const supabase = adminClient();
   const { data: docs, error } = await supabase
     .from('crm_deal_docs')
     .select('*')
@@ -34,12 +67,18 @@ export async function GET(req: NextRequest) {
 
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
 
-  // Generate a signed URL for each doc (1-hour expiry)
+  // Sign each doc for the list view. These are re-signed at click time via the docId
+  // path above, so staleness here is not user-visible.
   const withUrls = await Promise.all(
     (docs ?? []).map(async (doc) => {
-      const { data } = await supabase.storage
+      const { data, error: signErr } = await supabase.storage
         .from(BUCKET)
-        .createSignedUrl(doc.storage_path, 3600);
+        .createSignedUrl(doc.storage_path, SIGNED_URL_TTL_SECONDS);
+      // Previously discarded: a failure here silently dropped the Open button with no
+      // trace on either side, which reads to the user as a broken row.
+      if (signErr || !data?.signedUrl) {
+        console.error('[api/crm/docs] createSignedUrl failed for', doc.storage_path, signErr);
+      }
       return { ...doc, url: data?.signedUrl ?? null };
     })
   );
