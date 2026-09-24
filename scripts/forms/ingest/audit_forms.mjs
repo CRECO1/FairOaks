@@ -54,6 +54,105 @@ const decode = (stream) => {
   } catch { return ''; }
 };
 
+// Count the white boxes a content stream paints over the page.
+//
+// This was a regex — white fill colour, then `re`, then a fill operator — and it
+// missed the defect entirely. `re` is only one of two ways to state a rectangle;
+// plenty of producers (pdf-lib, which our own e-sign path uses, among them) emit
+// the same box as an explicit path: `0 0 m  0 40 l  500 40 l  500 0 l  h  f`. A
+// six-box overlay scored zero, so a damaged form came back REVIEW rather than
+// DAMAGED and the non-zero exit never fired. Nothing about that was visible from
+// reading the regex; it took drawing a real overlay and watching it pass.
+//
+// So walk the stream instead: track the fill colour through q/Q the way a viewer
+// does, accumulate each path's bounding box, and count the fills that are white
+// and big enough to hide something. Small white marks (anti-aliasing slivers,
+// punctuation knocked out of a glyph) are not overlays and are skipped.
+const FILL_OPS = new Set(['f', 'F', 'f*', 'b', 'b*', 'B', 'B*']);
+const PATH_END_OPS = new Set(['n', 'S', 's']);
+// A box has to be at least this big, in unscaled user units, to be hiding a form
+// line. A page is 612x792, so this is roughly a third of an inch by a sixteenth.
+const MIN_FILL_WIDTH = 20;
+const MIN_FILL_HEIGHT = 4;
+
+const allEqual = (nums, v) => nums.length > 0 && nums.every((n) => n === v);
+
+function countWhiteFills(text) {
+  const token = /\[[^\]]*\]|\((?:\\.|[^\\()])*\)|<[^>]*>|\/[^\s\/\[\]<>(){}]*|[-+]?[0-9.]+|[A-Za-z'"][A-Za-z0-9'"*]*/g;
+
+  let white = false;              // is the current fill colour white?
+  const stack = [];               // q/Q graphics state, fill colour only
+  let nums = [];                  // operands seen since the last operator
+  let box = null;                 // current path's bounding box
+  let count = 0;
+
+  const extend = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!box) box = { x0: x, y0: y, x1: x, y1: y };
+    else {
+      box.x0 = Math.min(box.x0, x); box.y0 = Math.min(box.y0, y);
+      box.x1 = Math.max(box.x1, x); box.y1 = Math.max(box.y1, y);
+    }
+  };
+
+  for (const m of text.matchAll(token)) {
+    const t = m[0];
+    const c = t[0];
+    if (c === '[' || c === '(' || c === '<' || c === '/') { nums = []; continue; }
+    if ((c >= '0' && c <= '9') || c === '-' || c === '+' || c === '.') {
+      const n = Number(t);
+      if (Number.isFinite(n)) nums.push(n);
+      continue;
+    }
+
+    switch (t) {
+      case 'q': stack.push(white); break;
+      case 'Q': white = stack.length ? stack.pop() : false; break;
+
+      // Fill colour. Grey 1, RGB 1 1 1 and CMYK 0 0 0 0 are all white.
+      case 'g': white = allEqual(nums, 1); break;
+      case 'rg': white = nums.length === 3 && allEqual(nums, 1); break;
+      case 'k': white = nums.length === 4 && allEqual(nums, 0); break;
+      case 'sc': case 'scn':
+        white = nums.length === 4 ? allEqual(nums, 0) : allEqual(nums, 1);
+        break;
+      // A colourspace change resets the colour to that space's default: black.
+      case 'cs': white = false; break;
+
+      // Path construction.
+      case 'm': case 'l':
+        if (nums.length >= 2) extend(nums[nums.length - 2], nums[nums.length - 1]);
+        break;
+      case 'c':
+        if (nums.length >= 6) for (let i = 0; i < 6; i += 2) extend(nums[i], nums[i + 1]);
+        break;
+      case 'v': case 'y':
+        if (nums.length >= 4) for (let i = 0; i < 4; i += 2) extend(nums[i], nums[i + 1]);
+        break;
+      case 're':
+        if (nums.length >= 4) {
+          const [x, y, w, h] = nums.slice(-4);
+          extend(x, y); extend(x + w, y + h);
+        }
+        break;
+      case 'h': break;
+
+      default:
+        if (FILL_OPS.has(t)) {
+          if (white && box &&
+              box.x1 - box.x0 >= MIN_FILL_WIDTH &&
+              box.y1 - box.y0 >= MIN_FILL_HEIGHT) count++;
+          box = null;
+        } else if (PATH_END_OPS.has(t)) {
+          box = null;
+        }
+        break;
+    }
+    nums = [];
+  }
+  return count;
+}
+
 /** What a single page actually draws. */
 function analysePage(pdf, page) {
   const node = page.node;
@@ -78,10 +177,7 @@ function analysePage(pdf, page) {
   const drawnStrings =
     (text.match(/\bTJ\b/g)?.length ?? 0) + (text.match(/\bTj\b/g)?.length ?? 0);
 
-  // White fill followed by a rectangle fill, i.e. painting over the blank.
-  let whiteFills = 0;
-  const whiteThenRect = /(?:1\s+1\s+1\s+rg|1\s+g)[\s\S]{0,200}?re\s*(?:f|F|f\*)\b/g;
-  for (const _ of text.matchAll(whiteThenRect)) whiteFills++;
+  const whiteFills = countWhiteFills(text);
 
   return { streams: refs.length, textChars, drawnStrings, whiteFills };
 }
@@ -142,6 +238,10 @@ async function listBucket() {
     name: `${f.name}${f.form_code ? ` (${f.form_code})` : ''}`,
     path: f.storage_path,
     load: async () => {
+      // Every writer sets storage_path and the app types it non-nullable, so a row
+      // without one is a broken row, not a missing PDF. Say that, rather than
+      // letting storage report a confusing error about an empty object name.
+      if (!f.storage_path) throw new Error('row has no storage_path');
       const { data, error: dlErr } = await db.storage.from(BUCKET).download(f.storage_path);
       if (dlErr) throw new Error(dlErr.message);
       return Buffer.from(await data.arrayBuffer());
@@ -150,7 +250,16 @@ async function listBucket() {
 }
 
 const dir = opt('--dir');
-const sources = dir ? await listLocal(dir) : await listBucket();
+// Setup problems here are ordinary operator errors — no credentials, no such
+// directory, crm_forms unreachable. Report them as a line of text; a stack trace
+// buries the one sentence that says what to do about it.
+let sources;
+try {
+  sources = dir ? await listLocal(dir) : await listBucket();
+} catch (err) {
+  console.error(err?.message ?? String(err));
+  process.exit(2);
+}
 
 if (!sources.length) {
   console.error(dir ? `No PDFs under ${dir}` : 'No rows in crm_forms.');
