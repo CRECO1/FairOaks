@@ -1,56 +1,35 @@
 <!--
-  Elkhorn Point — email hero header.
+  Elkhorn Point — email hero.
 
-  Puts a rendering of the property behind the headline, in place of the solid
-  black header block the campaigns ship with today.
+  The rendering goes in as a real <img> at the very top, with the headline on a
+  black band directly beneath it, above the gold NOW PRE-LEASING band.
+
+  An earlier version used the rendering as a CSS background with the type over
+  it. Gmail strips background-image on a <td> and fell back to a black box, so
+  the picture never appeared. A plain <img> renders everywhere — Gmail, Apple
+  Mail, Outlook desktop included — and needs no VML or conditional comments.
 
   THE ASSET (export this from the rendering and upload it before sending):
 
     file        hero-elkhorn-point.jpg  →  https://elkhornpoint.com/hero-elkhorn-point.jpg
-    size        1200 × 630 px (drawn at 600 × 315 — 2× for retina)
-    crop        a single building at an angle, not the two-building split
-                composite. Ground line low in the frame, sky across the top.
-    shading     bake a dark gradient into the left ~55% and the bottom edge
-                (roughly black at 55% fading to clear by the middle). Outlook
-                draws this image through VML and ignores the CSS scrim, so the
-                type is only readable there if the shading is IN the file.
-    safe area   keep the left 55% clear of signage, poles and detail — the
-                eyebrow and headline sit there.
-    weight      under ~250 KB, progressive JPEG.
+    size        1200 px wide (drawn at 600 — 2× for retina), 2:1 to 16:9
+    crop        the building rendering itself, framed as the landing page hero
+                frames it, not the two-building split composite
+    weight      under ~250 KB, progressive JPEG
 
-  If you upload an asset WITHOUT the baked shading, run the script with
-  --mso-black so Outlook falls back to the black header instead.
+  No baked shading needed now — no type sits on the image.
 
-  Swap {{EYEBROW}} and {{HEADLINE}} for the variant's own text. Paste in the
-  campaign editor's HTML mode — rich-text mode strips conditional comments.
+  Swap {{EYEBROW}} and {{HEADLINE}} for the variant's own text.
 -->
 
-<!--[if mso]>
 <tr>
-  <td style="padding:0;">
-    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;height:315px;">
-      <v:fill type="frame" src="https://elkhornpoint.com/hero-elkhorn-point.jpg" color="#1A1A1A" />
-      <v:textbox inset="40px,72px,40px,64px">
-        <div>
-          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E3B45A;font-weight:700;">{{EYEBROW}}</p>
-          <h1 style="margin:10px 0 0;font-size:25px;color:#ffffff;font-weight:700;line-height:1.3;">{{HEADLINE}}</h1>
-        </div>
-      </v:textbox>
-    </v:rect>
+  <td style="padding:0;background:#1A1A1A;line-height:0;font-size:0;">
+    <img src="https://elkhornpoint.com/hero-elkhorn-point.jpg" width="600" alt="Elkhorn Point — new neighborhood retail center on Dietz Elkhorn Road in Fair Oaks Ranch" style="display:block;width:100%;max-width:600px;height:auto;border:0;" />
   </td>
 </tr>
-<![endif]-->
-<!--[if !mso]><!-->
 <tr>
-  <td background="https://elkhornpoint.com/hero-elkhorn-point.jpg" style="padding:0;background-color:#1A1A1A;background-image:url('https://elkhornpoint.com/hero-elkhorn-point.jpg');background-position:center center;background-size:cover;background-repeat:no-repeat;">
-    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
-      <tr>
-        <td style="background-color:rgba(10,10,10,0.38);padding:72px 40px 64px;">
-          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E3B45A;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,0.75);">{{EYEBROW}}</p>
-          <h1 style="margin:10px 0 0;font-size:25px;color:#ffffff;font-weight:700;line-height:1.3;text-shadow:0 2px 8px rgba(0,0,0,0.8);">{{HEADLINE}}</h1>
-        </td>
-      </tr>
-    </table>
+  <td style="background:#1A1A1A;padding:26px 40px 30px;">
+    <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9922C;font-weight:700;">{{EYEBROW}}</p>
+    <h1 style="margin:9px 0 0;font-size:24px;color:#ffffff;font-weight:700;line-height:1.3;">{{HEADLINE}}</h1>
   </td>
 </tr>
-<!--<![endif]-->

@@ -9,12 +9,14 @@
  *   2. the standalone rendering <img> row under the gold band is dropped — the
  *      hero is the visual now, and the old row showed the same picture twice.
  *
+ * The rendering goes in as a real <img> at the very top, with the headline on a
+ * black band directly beneath it. An earlier pass used the image as a CSS
+ * background with the type over it; Gmail strips background-image on a <td> and
+ * fell back to a black box, so the picture never appeared. A plain <img> renders
+ * everywhere, Outlook included, and needs no VML or conditional comments.
+ *
  * The hero asset is a dedicated crop (see HERO_IMAGE below and the spec in
  * scripts/elkhorn-hero-block.html), not the split composite the templates used.
- * It must be exported with the shading baked in along the left/bottom, because
- * Outlook's Word engine draws the image through VML and ignores the CSS scrim.
- * If the asset you upload is NOT pre-shaded, pass --mso-black so Outlook keeps
- * the old black header instead of risking unreadable type over a bright sky.
  *
  * Usage:
  *   NEXT_PUBLIC_SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
@@ -35,12 +37,13 @@ import { join } from 'node:path';
 const HERO_IMAGE = 'https://elkhornpoint.com/hero-elkhorn-point.jpg';
 /** The split composite the templates currently carry — used to find them. */
 const SPLIT_RENDERING = 'https://elkhornpoint.com/rendering-split.jpg';
+/** Present only in a body that already carries the image-first hero. */
+const HERO_MARKER = 'padding:0;background:#1A1A1A;line-height:0;font-size:0;';
 const HERO_ALT =
   'Elkhorn Point — new neighborhood retail center on Dietz Elkhorn Road in Fair Oaks Ranch';
 
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
-const MSO_BLACK = args.includes('--mso-black');
 const ONLY_ID = args.find((a) => a.startsWith('--id='))?.slice(5) ?? null;
 const OUT_DIR = args.find((a) => a.startsWith('--out='))?.slice(6) ?? null;
 const IMAGE = args.find((a) => a.startsWith('--image='))?.slice(8) ?? HERO_IMAGE;
@@ -50,54 +53,18 @@ const HEADER_ROW = /<tr>\s*<td style="background:#1A1A1A;padding:28px 40px;">([\
 /** The full-width split rendering row that currently sits under the gold band. */
 const IMAGE_ROW = new RegExp(`<tr>\\s*<td[^>]*>\\s*<img src="${SPLIT_RENDERING}"[\\s\\S]*?<\\/td>\\s*<\\/tr>`, 'i');
 
-/**
- * Outlook desktop can't paint a CSS background image, so it gets the hero through
- * VML. --mso-black opts out and leaves Outlook on the original black header.
- */
-function msoHero(eyebrow, headline, image) {
-  if (MSO_BLACK) {
-    return `<!--[if mso]>
-        <tr>
-          <td style="background:#1A1A1A;padding:28px 40px;">
-            <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9922C;font-weight:700;">${eyebrow}</p>
-            <h1 style="margin:8px 0 0;font-size:22px;color:#ffffff;font-weight:700;line-height:1.3;">${headline}</h1>
-          </td>
-        </tr>
-        <![endif]-->`;
-  }
-  return `<!--[if mso]>
-        <tr>
-          <td style="padding:0;">
-            <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;height:315px;">
-              <v:fill type="frame" src="${image}" color="#1A1A1A" />
-              <v:textbox inset="40px,72px,40px,64px">
-                <div>
-                  <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E3B45A;font-weight:700;">${eyebrow}</p>
-                  <h1 style="margin:10px 0 0;font-size:25px;color:#ffffff;font-weight:700;line-height:1.3;">${headline}</h1>
-                </div>
-              </v:textbox>
-            </v:rect>
-          </td>
-        </tr>
-        <![endif]-->`;
-}
-
 function heroRows(eyebrow, headline, image) {
-  return `${msoHero(eyebrow, headline, image)}
-        <!--[if !mso]><!-->
-        <tr>
-          <td background="${image}" style="padding:0;background-color:#1A1A1A;background-image:url('${image}');background-position:center center;background-size:cover;background-repeat:no-repeat;">
-            <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
-              <tr>
-                <td style="background-color:rgba(10,10,10,0.38);padding:72px 40px 64px;">
-                  <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#E3B45A;font-weight:700;text-shadow:0 1px 3px rgba(0,0,0,0.75);">${eyebrow}</p>
-                  <h1 style="margin:10px 0 0;font-size:25px;color:#ffffff;font-weight:700;line-height:1.3;text-shadow:0 2px 8px rgba(0,0,0,0.8);">${headline}</h1>
-                </td>
-              </tr>
-            </table>
+  return `<tr>
+          <td style="padding:0;background:#1A1A1A;line-height:0;font-size:0;">
+            <img src="${image}" width="600" alt="${HERO_ALT}" style="display:block;width:100%;max-width:600px;height:auto;border:0;" />
           </td>
         </tr>
-        <!--<![endif]-->`;
+        <tr>
+          <td style="background:#1A1A1A;padding:26px 40px 30px;">
+            <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#C9922C;font-weight:700;">${eyebrow}</p>
+            <h1 style="margin:9px 0 0;font-size:24px;color:#ffffff;font-weight:700;line-height:1.3;">${headline}</h1>
+          </td>
+        </tr>`;
 }
 
 /**
@@ -106,7 +73,7 @@ function heroRows(eyebrow, headline, image) {
  */
 export function heroize(html, image = IMAGE) {
   if (!html) return { html, changed: false, reason: 'empty body' };
-  if (html.includes('background-size:cover')) return { html, changed: false, reason: 'already has the hero' };
+  if (html.includes(HERO_MARKER)) return { html, changed: false, reason: 'already has the hero' };
 
   const header = html.match(HEADER_ROW);
   if (!header) return { html, changed: false, reason: 'no black header row found' };
@@ -115,11 +82,14 @@ export function heroize(html, image = IMAGE) {
   const headline = header[1].match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.trim();
   if (!eyebrow || !headline) return { html, changed: false, reason: 'header row had no eyebrow/headline' };
 
-  let out = html.replace(HEADER_ROW, heroRows(eyebrow, headline, image));
-  // The rendering is the hero now — drop the duplicate below the gold band.
-  out = out.replace(IMAGE_ROW, '');
+  // Drop the old full-width rendering row FIRST. The hero we insert below carries
+  // an <img> of its own, and when --image is the same file the old row's pattern
+  // would match the new hero and delete it instead.
+  let out = html.replace(IMAGE_ROW, '');
+  // The rendering is the hero now, at the very top.
+  out = out.replace(HEADER_ROW, heroRows(eyebrow, headline, image));
 
-  return { html: out, changed: true, reason: `hero applied (${MSO_BLACK ? 'Outlook on black header' : 'Outlook on VML image'})` };
+  return { html: out, changed: true, reason: 'hero applied' };
 }
 
 async function main() {
