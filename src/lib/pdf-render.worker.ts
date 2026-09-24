@@ -23,7 +23,15 @@ self.onmessage = async (e: MessageEvent<Req>) => {
   try {
     // Most TAR/TREC forms don't embed Helvetica/Times; pdf.js draws them from these files.
     // A worker can't fall back to system fonts, so without them every label renders as □.
-    const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '', standardFontDataUrl: new URL('/pdfjs/standard_fonts/', self.location.origin).href }).promise;
+    // disableFontFace is not optional here. pdf.js installs a document's embedded fonts
+    // by injecting @font-face rules into the DOM — and a worker has no DOM. Without this
+    // every embedded font silently fails to load and its glyphs paint as empty boxes,
+    // while standard fonts (served from standardFontDataUrl) still draw. That is exactly
+    // what reached clients: TREC form bodies use embedded CID subsets, so the contract
+    // text came out as boxes, while the Helvetica values stamped over it read fine.
+    // Setting it makes pdf.js draw glyph outlines directly, which is what we want anyway
+    // since every page is rasterised to an image.
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '', disableFontFace: true, standardFontDataUrl: new URL('/pdfjs/standard_fonts/', self.location.origin).href }).promise;
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const base = page.getViewport({ scale: 1 });

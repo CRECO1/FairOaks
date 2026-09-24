@@ -113,7 +113,11 @@ async function renderOnMainThread(bytes: ArrayBuffer, targetWidth: number, quali
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   // '' unlocks owner-encrypted TAR/gov PDFs; the standard fonts draw non-embedded Helvetica/Times.
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '', standardFontDataUrl: new URL('/pdfjs/standard_fonts/', window.location.origin).href }).promise;
+  // Matches the worker: draw glyph outlines rather than installing @font-face rules. The
+  // DOM here could support font faces, but the output is a canvas rasterisation either
+  // way, and keeping both paths identical means a page can't render differently
+  // depending on which one happened to run.
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), password: '', disableFontFace: true, standardFontDataUrl: new URL('/pdfjs/standard_fonts/', window.location.origin).href }).promise;
   const out: RenderedPage[] = [];
   // toBlob is on the real <canvas>; don't reference OffscreenCanvas here — it's often
   // missing in exactly the browsers that land on this fallback.
