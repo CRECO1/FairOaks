@@ -411,6 +411,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [showContactCompose, setShowContactCompose] = useState(false);
   const [replyToContactEmail, setReplyToContactEmail] = useState<DealEmail | null>(null);
   const [dealDocs, setDealDocs] = useState<DealDoc[]>([]);
+  const [docsError, setDocsError] = useState<string | null>(null);
   const [docUploading, setDocUploading] = useState(false);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
@@ -910,9 +911,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, []);
 
   const loadDealDocs = useCallback(async (dealId: string) => {
-    const res = await fetch(`/api/crm/docs?dealId=${dealId}`);
-    const json = await res.json();
-    setDealDocs((json.docs ?? []) as DealDoc[]);
+    // A failed fetch used to fall through to `json.docs ?? []`, so an auth or server
+    // error rendered as "No documents uploaded yet" — indistinguishable from a deal
+    // that genuinely has none.
+    try {
+      const res = await fetch(`/api/crm/docs?dealId=${dealId}`);
+      const json = await res.json().catch(() => ({} as { docs?: DealDoc[]; error?: string }));
+      if (!res.ok) {
+        console.error('[crm] loadDealDocs failed:', res.status, json?.error);
+        setDocsError(json?.error ?? `Could not load documents (${res.status}).`);
+        setDealDocs([]);
+        return;
+      }
+      setDocsError(null);
+      setDealDocs((json.docs ?? []) as DealDoc[]);
+    } catch (err) {
+      console.error('[crm] loadDealDocs error:', err);
+      setDocsError('Could not load documents.');
+      setDealDocs([]);
+    }
   }, []);
 
   const loadDealCommission = useCallback(async (dealId: string) => {
@@ -984,6 +1001,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       });
       showToast('Commission saved ✓');
     } finally { setCommissionSaving(false); }
+  }
+
+  /**
+   * Opens a doc through a freshly minted signed URL.
+   *
+   * The list-time URL expires an hour after the deal modal is opened, and the modal
+   * routinely stays open far longer — clicking a stale link opened a blank tab, because
+   * the browser renders the storage error as an empty document. Signing at click time
+   * means the token is always seconds old.
+   */
+  async function openDoc(doc: DealDoc) {
+    // Opened synchronously: a window.open() after an await is treated as a popup and blocked.
+    const win = window.open('', '_blank');
+    if (win) win.opener = null;
+    try {
+      const res = await fetch(`/api/crm/docs?docId=${doc.id}`, {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      });
+      const json = await res.json().catch(() => ({} as { url?: string; error?: string }));
+      if (!res.ok || !json.url) {
+        win?.close();
+        showToast(json?.error ?? 'Could not open document.');
+        return;
+      }
+      if (win) win.location.href = json.url;
+      else window.location.href = json.url; // popup blocked — fall back to this tab
+    } catch (err) {
+      console.error('[crm] openDoc error:', err);
+      win?.close();
+      showToast('Could not open document.');
+    }
   }
 
   async function uploadDoc(deal: Deal, file: File) {
@@ -6327,7 +6375,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {/* Tabs */}
               <div style={{ display: 'flex', borderBottom: '2px solid #f0ebe0', marginBottom: 18 }}>
                 {(['overview', 'client', 'emails', 'docs', 'intel', 'commission'] as const).map(t => (
-                  <button key={t} onClick={() => setDealTab(t)}
+                  <button key={t} onClick={() => { setDealTab(t); if (t === 'docs' && activeDeal) loadDealDocs(activeDeal.id); }}
                     style={{ padding: '8px 18px', fontSize: 14, cursor: 'pointer', background: 'none', border: 'none', color: dealTab === t ? '#111' : '#6b7280', borderBottom: dealTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, fontFamily: "'DM Sans',sans-serif", fontWeight: dealTab === t ? 500 : 400, textTransform: 'capitalize' }}>
                     {t === 'emails' ? 'Email Log' : t === 'docs' ? `Docs${dealDocs.length > 0 ? ` (${dealDocs.length})` : ''}` : t === 'intel' ? '🏢 Property Intel' : t === 'commission' ? `💰 Commission${dealCommission ? ' ✓' : ''}` : t.charAt(0).toUpperCase() + t.slice(1)}
                   </button>
@@ -6841,7 +6889,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     onChange={e => { const file = e.target.files?.[0]; if (file) uploadDoc(activeDeal, file); e.target.value = ''; }} />
 
                   {/* Doc list */}
-                  {dealDocs.length === 0 ? (
+                  {docsError ? (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#b91c1c', fontSize: 14 }}>
+                      ⚠️ {docsError}{' '}
+                      <button onClick={() => loadDealDocs(activeDeal.id)}
+                        style={{ background: 'none', border: 'none', color: '#b91c1c', textDecoration: 'underline', cursor: 'pointer', fontSize: 14, fontFamily: "'DM Sans',sans-serif" }}>
+                        Retry
+                      </button>
+                    </div>
+                  ) : dealDocs.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 14 }}>📂 No documents uploaded yet</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -6861,12 +6917,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {size}{size ? ' · ' : ''}{doc.created_at?.slice(0, 10)}{uploaderName ? ` · ${uploaderName}` : ''}
                               </div>
                             </div>
-                            {doc.url && (
-                              <a href={doc.url} target="_blank" rel="noreferrer"
-                                style={{ padding: '5px 12px', background: '#111', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', flexShrink: 0 }}>
-                                ↓ Open
-                              </a>
-                            )}
+                            <button onClick={() => openDoc(doc)}
+                              style={{ padding: '5px 12px', background: '#111', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
+                              ↓ Open
+                            </button>
                             {isAdmin && (
                               <button onClick={() => deleteDoc(doc, activeDeal.id)}
                                 style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: 16, padding: '2px 4px', flexShrink: 0 }} title="Remove">🗑</button>
