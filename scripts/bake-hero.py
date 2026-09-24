@@ -28,7 +28,7 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 # 2x the 600px email width, so the hero stays sharp on retina.
-W, H = 1200, 630
+W, DEFAULT_H = 1200, 630
 GOLD = (201, 146, 44)
 GOLD_BRIGHT = (227, 180, 90)
 WHITE = (255, 255, 255)
@@ -78,7 +78,21 @@ def load_fonts(font_dir):
     )
 
 
-def cover(img):
+def scrim_bottom(img, W, H, strength=0.86, reach=0.52):
+    """
+    Darken bottom-up. Used when the picture is a site plan: a left-hand scrim
+    would sit over the plan itself, while the bottom strip is context.
+    """
+    overlay = Image.new("L", (1, H))
+    span = max(1, int(H * reach))
+    for y in range(H):
+        d = (y - (H - span)) / span
+        overlay.putpixel((0, y), int(255 * strength * max(0.0, d) ** 1.25) if d > 0 else 0)
+    mask = overlay.resize((W, H))
+    return Image.composite(Image.new("RGB", (W, H), (8, 8, 10)), img, mask)
+
+
+def cover(img, W, H):
     """Crop-to-fill the hero frame, keeping the centre of the image."""
     src_ratio, dst_ratio = img.width / img.height, W / H
     if src_ratio > dst_ratio:
@@ -90,7 +104,7 @@ def cover(img):
     return img.crop(box).resize((W, H), Image.LANCZOS)
 
 
-def scrim(img, strength=0.80, reach=0.68):
+def scrim(img, W, H, strength=0.80, reach=0.68):
     """
     Darken left-to-right so white type holds over any rendering. `reach` is the
     fraction of the width the shading spans; `strength` its opacity at x=0.
@@ -129,22 +143,22 @@ def wrap(draw, text, font, max_w):
     return lines
 
 
-def bake(source, eyebrow, headline, out_path, font_dir, quality=86):
+def bake(source, eyebrow, headline, out_path, font_dir, quality=86, H=DEFAULT_H, position="left"):
     f_eyebrow, f_headline = load_fonts(font_dir)
 
     if source:
-        base = cover(Image.open(source).convert("RGB"))
+        base = cover(Image.open(source).convert("RGB"), W, H)
     else:
         base = Image.new("RGB", (W, H), (44, 48, 54))  # placeholder for review
 
-    canvas = scrim(base)
+    canvas = scrim_bottom(base, W, H) if position == "bottom" else scrim(base, W, H)
     draw = ImageDraw.Draw(canvas)
 
     f_headline, h_size = fit_headline(draw, headline, font_dir, TEXT_MAX_W)
     lines = wrap(draw, headline, f_headline, TEXT_MAX_W)
     line_h = int(h_size * HEADLINE_LEADING)
     block_h = EYEBROW_SIZE + 22 + line_h * len(lines)
-    y = (H - block_h) // 2
+    y = H - block_h - 56 if position == "bottom" else (H - block_h) // 2
 
     draw_tracked(draw, (MARGIN_X, y), eyebrow.upper(), f_eyebrow, GOLD_BRIGHT, EYEBROW_TRACKING)
     y += EYEBROW_SIZE + 22
@@ -164,6 +178,10 @@ def main():
     ap.add_argument("--fonts", default="fonts", help="directory holding the DM Sans TTFs")
     ap.add_argument("--all", action="store_true", help="render every variant in VARIANTS")
     ap.add_argument("--name", default="hero")
+    ap.add_argument("--height", type=int, default=DEFAULT_H,
+                    help="hero height at 1200 wide; 800 keeps a 3:2 site plan whole")
+    ap.add_argument("--position", choices=("left", "bottom"), default="left",
+                    help="where the type sits: over the left of the frame, or in a bottom band")
     ap.add_argument("--eyebrow", default="CRECO Commercial Real Estate")
     ap.add_argument("--headline", default="A rare opportunity for your practice|in the heart of Fair Oaks Ranch!")
     args = ap.parse_args()
@@ -171,7 +189,8 @@ def main():
     jobs = VARIANTS if args.all else [(args.name, args.eyebrow, args.headline)]
     for name, eyebrow, headline in jobs:
         path, size = bake(args.source, eyebrow, headline,
-                          os.path.join(args.out, f"hero-{name}.jpg"), args.fonts)
+                          os.path.join(args.out, f"hero-{name}.jpg"), args.fonts,
+                          H=args.height, position=args.position)
         print(f"{path}  {size // 1024} KB")
     if not args.source:
         print("\nNo --source given: drawn on a flat placeholder, type only.")

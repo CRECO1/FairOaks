@@ -38,7 +38,7 @@ const HERO_IMAGE = 'https://elkhornpoint.com/hero-elkhorn-point.jpg';
 /** The split composite the templates currently carry — used to find them. */
 const SPLIT_RENDERING = 'https://elkhornpoint.com/rendering-split.jpg';
 /** Present only in a body that already carries the image-first hero. */
-const HERO_MARKER = 'padding:0;background:#1A1A1A;line-height:0;font-size:0;';
+const HERO_MARKER = 'padding:0;background-color:#1A1A1A;line-height:0;font-size:0;';
 const HERO_ALT =
   'Elkhorn Point — new neighborhood retail center on Dietz Elkhorn Road in Fair Oaks Ranch';
 
@@ -55,7 +55,7 @@ const IMAGE_ROW = new RegExp(`<tr>\\s*<td[^>]*>\\s*<img src="${SPLIT_RENDERING}"
 
 function heroRows(eyebrow, headline, image) {
   return `<tr>
-          <td style="padding:0;background:#1A1A1A;line-height:0;font-size:0;">
+          <td style="padding:0;background-color:#1A1A1A;line-height:0;font-size:0;">
             <img src="${image}" width="600" alt="${HERO_ALT}" style="display:block;width:100%;max-width:600px;height:auto;border:0;" />
           </td>
         </tr>
@@ -81,6 +81,11 @@ export function heroize(html, image = IMAGE) {
   const eyebrow = header[1].match(/<p[^>]*>([\s\S]*?)<\/p>/i)?.[1]?.trim();
   const headline = header[1].match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.trim();
   if (!eyebrow || !headline) return { html, changed: false, reason: 'header row had no eyebrow/headline' };
+
+  // Gmail drops the `background:` shorthand on a <td> but honours
+  // `background-color:`. The sample send showed it: the gold band and the dark
+  // rows came through white, and white headline text vanished against them.
+  html = html.replace(/background:(\s*)(#[0-9a-f]{3,8})/gi, 'background-color:$1$2');
 
   // Drop the old full-width rendering row FIRST. The hero we insert below carries
   // an <img> of its own, and when --image is the same file the old row's pattern
