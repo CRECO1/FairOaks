@@ -76,6 +76,10 @@ async function listBucket() {
     name: `${f.name}${f.form_code ? ` (${f.form_code})` : ''}`,
     path: f.storage_path,
     load: async () => {
+      // Every writer sets storage_path and the app types it non-nullable, so a row
+      // without one is a broken row, not a missing PDF. Say that, rather than
+      // letting storage report a confusing error about an empty object name.
+      if (!f.storage_path) throw new Error('row has no storage_path');
       const { data, error: dlErr } = await db.storage.from(BUCKET).download(f.storage_path);
       if (dlErr) throw new Error(dlErr.message);
       return Buffer.from(await data.arrayBuffer());
@@ -84,7 +88,16 @@ async function listBucket() {
 }
 
 const dir = opt('--dir');
-const sources = dir ? await listLocal(dir) : await listBucket();
+// Setup problems here are ordinary operator errors — no credentials, no such
+// directory, crm_forms unreachable. Report them as a line of text; a stack trace
+// buries the one sentence that says what to do about it.
+let sources;
+try {
+  sources = dir ? await listLocal(dir) : await listBucket();
+} catch (err) {
+  console.error(err?.message ?? String(err));
+  process.exit(2);
+}
 
 if (!sources.length) {
   console.error(dir ? `No PDFs under ${dir}` : 'No rows in crm_forms.');
