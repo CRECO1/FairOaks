@@ -30,84 +30,18 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, extname, basename } from 'node:path';
-import { inflateSync } from 'node:zlib';
-import { PDFDocument, PDFName, PDFArray, PDFRawStream } from 'pdf-lib';
+import { analysePdf } from './lib/verify_pdf.mjs';
 
 const BUCKET = 'transaction-forms';
-
-// A page drawing fewer characters than this is not a filled-out form page.
-const MIN_TEXT_CHARS = 350;
-// Enough white boxes to be an overlay hiding a form, not a stray design element.
-const MIN_WHITE_FILLS = 3;
 
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(name);
 const opt = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : null);
 const asJson = flag('--json');
 
-const decode = (stream) => {
-  if (!stream) return '';
-  try {
-    const bytes = stream instanceof PDFRawStream ? stream.asUint8Array() : stream.getContents();
-    try { return inflateSync(Buffer.from(bytes)).toString('latin1'); }
-    catch { return Buffer.from(bytes).toString('latin1'); }
-  } catch { return ''; }
-};
-
-/** What a single page actually draws. */
-function analysePage(pdf, page) {
-  const node = page.node;
-  const contents = node.get(PDFName.of('Contents'));
-  const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
-  const text = refs.map((r) => decode(r && pdf.context.lookup(r))).join('\n');
-
-  // Count every glyph the page draws, in BOTH of PDF's string forms. Real TREC
-  // forms are CID-encoded and draw hex strings — <03ED> — not parenthesised ones,
-  // so counting only (...) reports zero characters for a perfectly healthy form
-  // and flags it as damage. Both forms appear bare inside TJ arrays as well as
-  // before Tj/'/", so they are counted wherever they occur rather than only when
-  // anchored to an operator.
-  let textChars = 0;
-  for (const m of text.matchAll(/\((?:\\.|[^\\()])*\)/g)) {
-    textChars += Math.max(m[0].length - 2, 0);
-  }
-  for (const m of text.matchAll(/<([0-9A-Fa-f\s]+)>/g)) {
-    textChars += Math.floor(m[1].replace(/\s/g, '').length / 2);
-  }
-  // Text-showing operators, as a second signal independent of encoding.
-  const drawnStrings =
-    (text.match(/\bTJ\b/g)?.length ?? 0) + (text.match(/\bTj\b/g)?.length ?? 0);
-
-  // White fill followed by a rectangle fill, i.e. painting over the blank.
-  let whiteFills = 0;
-  const whiteThenRect = /(?:1\s+1\s+1\s+rg|1\s+g)[\s\S]{0,200}?re\s*(?:f|F|f\*)\b/g;
-  for (const _ of text.matchAll(whiteThenRect)) whiteFills++;
-
-  return { streams: refs.length, textChars, drawnStrings, whiteFills };
-}
-
-function verdictFor(pages) {
-  const bad = [];
-  const thin = [];
-  for (const [i, p] of pages.entries()) {
-    if (p.textChars < MIN_TEXT_CHARS && p.whiteFills >= MIN_WHITE_FILLS) bad.push(i + 1);
-    else if (p.textChars < MIN_TEXT_CHARS) thin.push(i + 1);
-  }
-  if (bad.length) return { status: 'DAMAGED', pages: bad };
-  if (thin.length) return { status: 'REVIEW', pages: thin };
-  return { status: 'OK', pages: [] };
-}
-
 async function auditBytes(name, bytes) {
-  try {
-    const pdf = await PDFDocument.load(bytes, { updateMetadata: false, ignoreEncryption: true });
-    const pages = pdf.getPages().map((p) => analysePage(pdf, p));
-    if (!pages.length) return { name, status: 'REVIEW', detail: 'no pages', pages: [] };
-    const v = verdictFor(pages);
-    return { name, status: v.status, flagged: v.pages, pageCount: pages.length, pages };
-  } catch (err) {
-    return { name, status: 'ERROR', detail: err?.message ?? String(err), pages: [] };
-  }
+  const r = await analysePdf(bytes);
+  return { name, ...r };
 }
 
 async function listLocal(dir) {
