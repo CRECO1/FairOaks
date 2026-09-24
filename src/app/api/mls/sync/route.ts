@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getCrmAdmin } from '@/lib/crm-auth';
+import { getCrmAdmin, isAdminRole } from '@/lib/crm-auth';
 import {
   searchPropertiesAll,
   getMediaBatch,
@@ -77,7 +77,8 @@ export async function POST(req: NextRequest) {
       const { data: { user } } = await verifier.auth.getUser(bearerToken);
       if (user) {
         const { data } = await verifier.from('crm_profiles').select('role').eq('id', user.id).single();
-        isAdmin = data?.role === 'admin';
+        // Accept both admin tiers, matching the getCrmAdmin() fallback path below.
+        isAdmin = isAdminRole(data?.role);
       }
     } else {
       // Fallback: cookie-based session

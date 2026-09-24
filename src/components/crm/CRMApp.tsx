@@ -14,6 +14,16 @@ const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'super_admin' | 'admin' | 'agent';
+
+/**
+ * Admin-tier check. Mirrors isAdminRole() in lib/crm-auth.ts, duplicated because that
+ * module is server-only (it pulls in next/headers) and cannot be imported into a client
+ * component. `super_admin` is a strict superset of `admin`, so every admin-tier gate must
+ * accept both — testing `role === 'admin'` silently excludes the highest tier.
+ */
+function isAdminTier(role: Role | string | null | undefined): boolean {
+  return role === 'admin' || role === 'super_admin';
+}
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
@@ -818,7 +828,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const updated = { ...data, last_sign_in_at: authLastSignIn } as Profile;
 
       // Access control: non-admins are locked to their assigned business_unit
-      if (updated.role !== 'admin' && updated.business_unit && updated.business_unit !== businessUnit) {
+      if (!isAdminTier(updated.role) && updated.business_unit && updated.business_unit !== businessUnit) {
         router.replace(`/crm/${updated.business_unit}`);
         return;
       }
@@ -833,14 +843,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
       // First login for admin — auto-create profile
-      const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' ||
-        session.user.user_metadata?.role === 'admin';
+      const metaRole = session.user.user_metadata?.role;
+      const isAdmin = session.user.email === 'info@fairoaksrealtygroup.com' || isAdminTier(metaRole);
       const newProfile: Profile = {
         id: session.user.id,
         email: session.user.email!,
         first_name: session.user.user_metadata?.firstName ?? session.user.email!.split('@')[0],
         last_name: session.user.user_metadata?.lastName ?? '',
-        role: isAdmin ? 'admin' : 'agent',
+        role: metaRole === 'super_admin' ? 'super_admin' : isAdmin ? 'admin' : 'agent',
         last_sign_in_at: authLastSignIn,
         business_unit: businessUnit,
       };
@@ -4330,7 +4340,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>
                           {isEditing ? `${editAgentForm.first_name} ${editAgentForm.last_name}`.trim() || 'Editing…' : `${a.first_name} ${a.last_name}`}
-                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#e0f2fe', color: a.role === 'admin' ? '#92400e' : '#0369a1' }}>{a.role}</span>
+                          {' '}<span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, fontWeight: 600, background: isAdminTier(a.role) ? '#fef3c7' : '#e0f2fe', color: isAdminTier(a.role) ? '#92400e' : '#0369a1' }}>{a.role}</span>
                         </div>
                         <div style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{isEditing ? editAgentForm.email : a.email}</div>
                       </div>
@@ -4408,8 +4418,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* Role toggle — only for other users */}
-                      {a.id !== profile.id && (
+                      {/* Role toggle — only for other users, and never for super_admins:
+                          updateAgentRole is typed 'admin' | 'agent', so a super_admin row
+                          rendered "⬆️ Make Admin" and wrote role='admin' — a silent demotion
+                          with no way to restore the tier from this UI. */}
+                      {a.id !== profile.id && a.role !== 'super_admin' && (
                         <button
                           onClick={() => updateAgentRole(a.id, a.first_name, a.role === 'admin' ? 'agent' : 'admin')}
                           style={{ width: '100%', padding: '7px 0', fontSize: 13, fontWeight: 600, background: a.role === 'admin' ? '#fef3c7' : '#f0fdf4', color: a.role === 'admin' ? '#92400e' : '#166534', border: `1px solid ${a.role === 'admin' ? '#fde68a' : '#bbf7d0'}`, borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -4422,7 +4435,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           style={{ flex: 1, padding: '7px 0', fontSize: 13, fontWeight: 600, background: '#f3f4f6', color: '#374151', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                           🔑 Reset Password
                         </button>
-                        {a.id !== profile.id && a.role !== 'admin' && (
+                        {a.id !== profile.id && !isAdminTier(a.role) && (
                           <button
                             onClick={() => deleteAgent(a.id, a.first_name, a.last_name)}
                             style={{ padding: '7px 10px', fontSize: 13, fontWeight: 600, background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
