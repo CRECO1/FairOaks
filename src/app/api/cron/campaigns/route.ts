@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { unsubscribeUrlFor } from '@/lib/email-tracking';
+import { agentTitle } from '@/lib/agent-title';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -10,7 +11,7 @@ function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; business_name?: string | null; email: string; type: string; unsubscribe_token: string };
-  agent: { first_name: string; last_name: string; email: string; phone?: string };
+  agent: { first_name: string; last_name: string; email: string; phone?: string; title?: string };
   brokerage: string;
   defaultPhone: string;
 }, businessUnit?: string, perRecipient?: Record<string, unknown> | null): string {
@@ -39,6 +40,7 @@ function applyMergeFields(template: string, ctx: {
     .replaceAll('{{email}}', ctx.client.email || '')
     .replaceAll('{{client_type}}', ctx.client.type || '')
     .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
+    .replaceAll('{{agent_title}}', ctx.agent.title || 'Associate')
     .replaceAll('{{agent_email}}', ctx.agent.email || '')
     .replaceAll('{{agent_phone}}', ctx.agent.phone || ctx.defaultPhone)
     .replaceAll('{{brokerage}}', ctx.brokerage)
@@ -146,7 +148,7 @@ export async function GET(req: NextRequest) {
   const clientAgentIds = [...new Set((enrollments as any[]).map((e: any) => e.client?.agent_id).filter(Boolean))];
   const senderAgentIds = [...new Set((enrollments as any[]).map((e: any) => e.campaign?.sender_agent_id).filter(Boolean))];
   const allAgentIds = [...new Set([...clientAgentIds, ...senderAgentIds])];
-  const { data: agents } = await supabase.from('crm_profiles').select('id, first_name, last_name, email, phone').in('id', allAgentIds);
+  const { data: agents } = await supabase.from('crm_profiles').select('id, first_name, last_name, email, phone, role').in('id', allAgentIds);
   const agentMap = Object.fromEntries((agents ?? []).map((a: any) => [a.id, a]));
 
   let sent = 0;
@@ -189,6 +191,8 @@ export async function GET(req: NextRequest) {
         last_name: agent.last_name,
         email: agent.email,
         phone: agent.phone,
+        // Title follows the resolved sender: owner → Broker, others → Associate.
+        title: agentTitle((rawAgent as { role?: string | null }).role),
       },
       brokerage: brokerageName,
       defaultPhone: fallbackAgentPhone,

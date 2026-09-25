@@ -823,7 +823,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/campaigns/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ subject: newCampaign.email_subject, body: newCampaign.email_body, campaignName: newCampaign.name }),
+        body: JSON.stringify({ subject: newCampaign.email_subject, body: newCampaign.email_body, campaignName: newCampaign.name, businessUnit, senderAgentId: newCampaign.sender_agent_id || null }),
       });
       const data = await res.json();
       if (res.ok) showToast(`✅ Test email sent to ${data.sentTo}`);
@@ -3168,7 +3168,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const officeAddress = businessUnit === 'residential'
       ? '8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015'
       : '8000 Fair Oaks Pkwy Suite 100, Fair Oaks Ranch, TX 78015';
-    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong><br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · ${officeAddress}</small></p>`;
+    return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong>, {{agent_title}}<br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · ${officeAddress}</small></p>`;
   }
 
   // ── Render guards ─────────────────────────────────────────────────────────────
@@ -7094,7 +7094,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               return <option key={a.id} value={a.id}>{a.first_name} {a.last_name} ({shownEmail})</option>;
                             })}
                           </select>
-                          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Override whose name &amp; reply-to appear on every email in this campaign.</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>Sets whose name, title, email &amp; reply-to fill the <code>{'{{agent_name}}'}</code>/<code>{'{{agent_title}}'}</code> signature on every email in this campaign.</div>
                         </div>
                       )}
                     </div>
