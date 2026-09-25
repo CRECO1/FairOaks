@@ -3207,6 +3207,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .replaceAll('{{property}}', 'your recent transaction');
   };
 
+  // Campaigns list ordering — newest activity first: the most recent of
+  // (last sent, last edited, created). Used to sort both the project sections and
+  // the campaigns inside them so the freshest work sits at the top.
+  const campaignRecency = (c: Campaign): number => {
+    const ts = (s?: string | null) => { const n = s ? Date.parse(s) : 0; return Number.isFinite(n) ? n : 0; };
+    return Math.max(ts(c.last_sent_at), ts(c.updated_at), ts(c.created_at));
+  };
+  const projectRecency = (projectId: string): number => {
+    const cs = campaigns.filter(c => c.project_id === projectId);
+    return cs.length ? Math.max(...cs.map(campaignRecency)) : 0;
+  };
+
   // ── Render guards ─────────────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', fontFamily: 'sans-serif', color: '#fff' }}>
@@ -6317,8 +6329,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                         {/* Project sections */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                          {campaignProjects.map(project => {
-                            const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id);
+                          {[...campaignProjects].sort((a, b) => projectRecency(b.id) - projectRecency(a.id)).map(project => {
+                            const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id).sort((a, b) => campaignRecency(b) - campaignRecency(a));
                             const isExpanded = expandedProjects.has(project.id);
                             return (
                               <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
@@ -6382,7 +6394,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           {/* Ungrouped campaigns */}
                           {(() => {
-                            const ungrouped = visibleCampaigns.filter(c => !c.project_id);
+                            const ungrouped = visibleCampaigns.filter(c => !c.project_id).sort((a, b) => campaignRecency(b) - campaignRecency(a));
                             if (ungrouped.length === 0 && campaignProjects.length > 0) return null;
                             const isExpanded = expandedProjects.has('__ungrouped__');
                             return (
@@ -6841,12 +6853,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 12, alignItems: 'baseline' }}>
                             <span style={{ fontSize: 12, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
                             <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
-                              {(activeCampaign.email_subject ?? '(no subject)')
-                                .replace(/\{\{first_name\}\}/g, 'Jane')
-                                .replace(/\{\{last_name\}\}/g, 'Smith')
-                                .replace(/\{\{full_name\}\}/g, 'Jane Smith')
-                                .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')}
+                              {previewMerge(activeCampaign.email_subject ?? '(no subject)', activeCampaign.sender_agent_id)}
                             </span>
                           </div>
 
@@ -6865,17 +6872,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <iframe
                                 sandbox="allow-same-origin"
                                 srcDoc={(() => {
-                                  const body = (activeCampaign.email_body ?? '')
-                                    .replace(/\{\{first_name\}\}/g, 'Jane')
-                                    .replace(/\{\{last_name\}\}/g, 'Smith')
-                                    .replace(/\{\{full_name\}\}/g, 'Jane Smith')
-                                    .replace(/\{\{email\}\}/g, 'jane@example.com')
-                                    .replace(/\{\{client_type\}\}/g, 'Buyer')
-                                    .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                    .replace(/\{\{agent_email\}\}/g, businessUnit === 'commercial' ? 'zack@crecotx.com' : (profile?.email ?? 'info@fairoaksrealtygroup.com'))
-                                    .replace(/\{\{agent_phone\}\}/g, businessUnit === 'commercial' ? '210-817-3443' : (profile?.phone ?? '210-390-9997'))
-                                    .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
-                                    .replace(/\{\{unsubscribe_url\}\}/g, '#preview');
+                                  const body = previewMerge(activeCampaign.email_body ?? '', activeCampaign.sender_agent_id);
                                   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;}</style></head><body>${body}</body></html>`;
                                 })()}
                                 style={{ width: '100%', border: 'none', minHeight: 500, display: 'block', background: '#fff' }}
@@ -11109,9 +11106,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', marginBottom: 2, letterSpacing: 1, textTransform: 'uppercase' }}>Email Preview</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>
-                  {newCampaign.email_subject
-                    .replace('{{first_name}}', 'Jane').replace('{{full_name}}', 'Jane Smith').replace('{{last_name}}', 'Smith')
-                    .replace('{{agent_name}}', `${profile?.first_name} ${profile?.last_name}`) || '(no subject)'}
+                  {previewMerge(newCampaign.email_subject, newCampaign.sender_agent_id) || '(no subject)'}
                 </div>
               </div>
               <button
@@ -11125,7 +11120,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Email meta bar */}
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 13, color: '#6b7280', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
               <span><strong>To:</strong> Jane Smith &lt;jane@example.com&gt;</span>
-              <span><strong>From:</strong> Fair Oaks Realty Group &lt;noreply@fairoaksrealtygroup.com&gt;</span>
+              <span><strong>From:</strong> {businessUnit === 'commercial' ? 'CRECO <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>'}</span>
               <span style={{ marginLeft: 'auto', color: '#9ca3af', fontStyle: 'italic' }}>Test sends to: {profile?.email ?? session?.user?.email}</span>
             </div>
             <div style={{ fontSize: 11, background: '#fef3c7', borderBottom: '1px solid #fde68a', padding: '6px 20px', color: '#92400e', fontWeight: 500 }}>
@@ -11134,15 +11129,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Rendered body */}
             <div style={{ flex: 1, overflowY: 'auto', background: '#fff', padding: 24 }}
               dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(newCampaign.email_body
-                  .replace(/\{\{first_name\}\}/g, 'Jane').replace(/\{\{last_name\}\}/g, 'Smith')
-                  .replace(/\{\{full_name\}\}/g, 'Jane Smith').replace(/\{\{email\}\}/g, 'jane@example.com')
-                  .replace(/\{\{client_type\}\}/g, 'Buyer')
-                  .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`)
-                  .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@fairoaksrealtygroup.com')
-                  .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                  .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
-                  .replace(/\{\{unsubscribe_url\}\}/g, '#unsubscribe-preview'))
+                __html: sanitizeHtml(previewMerge(newCampaign.email_body, newCampaign.sender_agent_id))
               }}
             />
           </div>
