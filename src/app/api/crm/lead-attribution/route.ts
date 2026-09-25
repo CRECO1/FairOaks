@@ -21,6 +21,11 @@ import { fetchGaReport } from '@/lib/ga4';
  * crm_clients in JS silently charted only the most recent month — it rendered
  * fine and was wrong.
  *
+ * ?site=<host> scopes every panel to one site; omitted or unrecognised means
+ * the combined view. The scoping happens in SQL because the panels are already
+ * aggregated there — the client has counts, not rows, so it could not filter
+ * them without showing all-sites numbers under a single-site heading.
+ *
  * GA is optional. With no GA4_* env configured the route still returns every
  * first-party panel plus `ga.status.connected === false`, so the dashboard
  * shows a "Connect Google Analytics" placeholder instead of an error.
@@ -40,9 +45,16 @@ export async function GET(req: NextRequest) {
 
   const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get('days') ?? 90) || 90, 7), 365);
 
+  // Site filter. Restricted to a known list rather than passed through: the
+  // value reaches a SQL function, and an allow-list means an unexpected string
+  // can never silently return an empty dashboard that looks like "no leads".
+  const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com'];
+  const raw = req.nextUrl.searchParams.get('site');
+  const site = raw && SITES.includes(raw) ? raw : null;   // null = all sites
+
   try {
     const db = adminClient();
-    const { data, error } = await db.rpc('lead_attribution_report', { window_days: days });
+    const { data, error } = await db.rpc('lead_attribution_report', { window_days: days, p_site: site });
     if (error) throw error;
 
     // GA never blocks the first-party payload: a missing key, a revoked

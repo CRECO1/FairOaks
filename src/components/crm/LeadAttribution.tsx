@@ -65,10 +65,14 @@ function Bars({ rows, isMobile, color = GOLD, suffix }: { rows: Row[]; isMobile:
   );
 }
 
-function ConnectGa({ detail, label }: { detail?: string; label?: string }) {
+function ConnectGa({ detail, label, viewing }: { detail?: string; label?: string; viewing?: string | null }) {
+  const covers = label ?? 'crecotx.com';
+  // If the dashboard is filtered to a site GA does not measure, say so plainly
+  // rather than showing a card that implies these panels would fill in.
+  const mismatch = viewing != null && viewing !== covers;
   return (
     <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, background: '#fffdf7' }}>
-      <div style={panelTitle}>📈 Connect Google Analytics — {label ?? 'crecotx.com'}</div>
+      <div style={panelTitle}>📈 Connect Google Analytics — {covers}</div>
       <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.7 }}>
         These panels show sessions by channel, top landing pages and conversion rate — the traffic
         that <em>didn&apos;t</em> become a lead, which is what a conversion rate needs. They stay dark
@@ -77,6 +81,7 @@ function ConnectGa({ detail, label }: { detail?: string; label?: string }) {
           Add <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>GA4_PROPERTY_ID</code> and{' '}
           <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>GA4_SERVICE_ACCOUNT_KEY</code> in Vercel, then redeploy.
         </div>
+        {mismatch && <div style={{ marginTop: 8, fontSize: 12.5, color: '#9a6e18' }}>You are viewing <strong>{viewing}</strong>; the connected GA property measures {covers}, so these panels will stay empty for this site.</div>}
         {detail && <div style={{ marginTop: 8, fontSize: 12.5, color: '#9a6e18' }}>Status: {detail}</div>}
       </div>
     </div>
@@ -88,12 +93,14 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [days, setDays] = useState(90);
+  const [site, setSite] = useState<string | null>(null);   // null = all sites
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (d: number) => {
+  const load = useCallback(async (d: number, siteFilter: string | null) => {
     setLoading(true); setErr(null);
     try {
-      const res = await fetch(`/api/crm/lead-attribution?days=${d}`, {
+      const qs = `days=${d}` + (siteFilter ? `&site=${encodeURIComponent(siteFilter)}` : '');
+      const res = await fetch(`/api/crm/lead-attribution?${qs}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (res.status === 403) { setErr('Lead attribution is limited to the account owner.'); setData(null); return; }
@@ -106,7 +113,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
     }
   }, [token]);
 
-  useEffect(() => { load(days); }, [load, days]);
+  useEffect(() => { load(days, site); }, [load, days, site]);
 
   if (loading && !data) return <div style={{ padding: 24, color: MUTE, fontSize: 14 }}>Loading lead attribution…</div>;
   if (err) return <div style={{ ...card, borderLeft: '4px solid #ef4444' }}><div style={{ fontSize: 14, color: '#374151' }}>{err}</div></div>;
@@ -118,6 +125,27 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
 
   return (
     <div>
+      {/* Site filter. Wraps rather than scrolls so all four pills stay reachable
+          on a phone; the active pill is filled gold to match the app's accents. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginRight: 2 }}>Site</span>
+        {([[null, 'All sites'], ['crecotx.com', 'crecotx.com'], ['fairoaksrealtygroup.com', 'Fair Oaks'], ['elkhornpoint.com', 'Elkhorn Point']] as [string | null, string][]).map(([val, label]) => {
+          const on = site === val;
+          return (
+            <button key={label} onClick={() => setSite(val)} aria-pressed={on}
+              style={{
+                border: `1px solid ${on ? GOLD : '#e0e0e0'}`, background: on ? GOLD : '#fff',
+                color: on ? '#fff' : '#374151', borderRadius: 999, padding: '6px 14px',
+                fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                whiteSpace: 'nowrap', lineHeight: 1.4,
+              }}>
+              {label}
+            </button>
+          );
+        })}
+        {loading && <span style={{ fontSize: 12, color: MUTE }}>updating…</span>}
+      </div>
+
       {/* Range selector */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600 }}>Window</span>
@@ -219,7 +247,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       </div>
 
       {/* ── GA-dependent panels ── */}
-      {!gaOn ? <ConnectGa detail={ga?.status?.detail} label={ga?.label} /> : (
+      {!gaOn ? <ConnectGa detail={ga?.status?.detail} label={ga?.label} viewing={site} /> : (
         <>
           {/* The first-party panels above cover all three sites; GA covers one.
               Say which, or these numbers read as the whole business. */}
@@ -301,7 +329,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       </div>
 
       <div style={{ fontSize: 11.5, color: '#9ca3af', textAlign: 'center', paddingBottom: 20 }}>
-        {data.counts.clients.toLocaleString()} contacts · {data.counts.imports.toLocaleString()} importer rows · {data.counts.leads.toLocaleString()} web leads (lead forms + webhook contacts, de-duplicated on email)
+        {site ? `${site} · ` : 'All sites · '}{data.counts.clients.toLocaleString()} contacts · {data.counts.imports.toLocaleString()} importer rows · {data.counts.leads.toLocaleString()} web leads (lead forms + webhook contacts, de-duplicated on email)
       </div>
     </div>
   );
