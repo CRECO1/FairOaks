@@ -35,7 +35,7 @@ interface Ga {
 interface Payload {
   windowDays: number;
   overTime: { month: string; inbound: number; imported: number }[];
-  channelMix: Row[]; bySite: Row[]; captureSurface: Row[]; byType: Row[]; byCity: Row[];
+  channelMix: Row[]; inboundFeed: Row[]; bySite: Row[]; captureSurface: Row[]; byType: Row[]; byCity: Row[];
   health: Health;
   recent: { name: string; date: string; source: string | null; site: string | null; channel: string | null; campaign: string | null; referrer: string | null; landing_page: string | null }[];
   counts: { clients: number; imports: number; leads: number };
@@ -190,12 +190,19 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
           <Bars rows={data.bySite ?? []} isMobile={isMobile} />
         </div>
         <div style={card}>
-          <div style={panelTitle}>🌐 Inbound channel mix</div>
+          <div style={panelTitle}>🌐 Acquisition channel</div>
           <Bars rows={data.channelMix} isMobile={isMobile} />
         </div>
         <div style={card}>
           <div style={panelTitle}>📝 Capture surface — which form</div>
           <Bars rows={data.captureSurface} isMobile={isMobile} color="#9A6E18" />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 14 }}>
+        <div style={card}>
+          <div style={panelTitle}>📥 Portal &amp; importer feed</div>
+          <Bars rows={data.inboundFeed ?? []} isMobile={isMobile} color="#0ea5e9" />
         </div>
       </div>
 
@@ -294,7 +301,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       </div>
 
       <div style={{ fontSize: 11.5, color: '#9ca3af', textAlign: 'center', paddingBottom: 20 }}>
-        {data.counts.clients.toLocaleString()} contacts · {data.counts.imports.toLocaleString()} inbound imports · {data.counts.leads.toLocaleString()} raw leads
+        {data.counts.clients.toLocaleString()} contacts · {data.counts.imports.toLocaleString()} importer rows · {data.counts.leads.toLocaleString()} web leads (lead forms + webhook contacts, de-duplicated on email)
       </div>
     </div>
   );
