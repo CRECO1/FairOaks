@@ -17,6 +17,15 @@
  *   GA4_SERVICE_ACCOUNT_KEY  the service-account JSON key, either raw JSON or
  *                            base64-encoded (Vercel env values are single-line,
  *                            so base64 is usually easier to paste)
+ *
+ * Optional:
+ *   GA4_PROPERTY_LABEL       which site this property measures, shown on the GA
+ *                            panels. Defaults to crecotx.com — the property we
+ *                            connect first. This label matters: the GA panels sit
+ *                            directly below first-party panels covering all three
+ *                            sites, and GA here covers exactly ONE, so an
+ *                            unlabelled "Sessions by channel" would read as the
+ *                            whole business.
  */
 
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
@@ -29,6 +38,8 @@ export interface GaRow { label: string; value: number; secondary?: number }
 
 export interface GaReport {
   status: GaStatus;
+  /** Which site this GA property measures, for the panel headers. */
+  label: string;
   range: { start: string; end: string };
   totals: { sessions: number; users: number; leads: number; conversionRate: number } | null;
   byChannel: GaRow[];
@@ -59,6 +70,12 @@ function readCredentials(): { client_email: string; private_key: string } | { er
   }
 }
 
+/** Which site the connected property measures. */
+export function gaLabel(): string {
+  const v = process.env.GA4_PROPERTY_LABEL?.trim();
+  return v && v.length ? v.slice(0, 60) : 'crecotx.com';
+}
+
 export function gaStatus(): GaStatus {
   const propertyId = process.env.GA4_PROPERTY_ID;
   if (!propertyId) return { connected: false, reason: 'missing_env', detail: 'GA4_PROPERTY_ID is not set' };
@@ -71,7 +88,7 @@ export function gaStatus(): GaStatus {
 }
 
 function emptyReport(status: GaStatus, start: string, end: string): GaReport {
-  return { status, range: { start, end }, totals: null, byChannel: [], bySourceMedium: [], landingPages: [], byCountryCity: [], byDevice: [] };
+  return { status, label: gaLabel(), range: { start, end }, totals: null, byChannel: [], bySourceMedium: [], landingPages: [], byCountryCity: [], byDevice: [] };
 }
 
 /**
@@ -139,6 +156,7 @@ export async function fetchGaReport(days = 30): Promise<GaReport> {
 
     return {
       status: { connected: true },
+      label: gaLabel(),
       range: { start, end },
       totals: { sessions, users, leads, conversionRate: sessions > 0 ? leads / sessions : 0 },
       byChannel: rows(channelRes),

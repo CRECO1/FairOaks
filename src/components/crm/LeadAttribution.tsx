@@ -28,6 +28,7 @@ interface Health { sites: { site: string; total: number; withAttribution: number
 interface GaStatus { connected: boolean; reason?: string; detail?: string }
 interface Ga {
   status: GaStatus;
+  label: string;
   totals: { sessions: number; users: number; leads: number; conversionRate: number } | null;
   byChannel: Row[]; bySourceMedium: Row[]; landingPages: Row[]; byCountryCity: Row[]; byDevice: Row[];
 }
@@ -64,10 +65,10 @@ function Bars({ rows, isMobile, color = GOLD, suffix }: { rows: Row[]; isMobile:
   );
 }
 
-function ConnectGa({ detail }: { detail?: string }) {
+function ConnectGa({ detail, label }: { detail?: string; label?: string }) {
   return (
     <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, background: '#fffdf7' }}>
-      <div style={panelTitle}>📈 Connect Google Analytics</div>
+      <div style={panelTitle}>📈 Connect Google Analytics — {label ?? 'crecotx.com'}</div>
       <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.7 }}>
         These panels show sessions by channel, top landing pages and conversion rate — the traffic
         that <em>didn&apos;t</em> become a lead, which is what a conversion rate needs. They stay dark
@@ -211,8 +212,16 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       </div>
 
       {/* ── GA-dependent panels ── */}
-      {!gaOn ? <ConnectGa detail={ga?.status?.detail} /> : (
+      {!gaOn ? <ConnectGa detail={ga?.status?.detail} label={ga?.label} /> : (
         <>
+          {/* The first-party panels above cover all three sites; GA covers one.
+              Say which, or these numbers read as the whole business. */}
+          <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, marginBottom: 14, padding: '12px 20px' }}>
+            <div style={{ fontSize: 12.5, color: '#374151' }}>
+              <strong>Google Analytics — {ga.label}</strong>
+              <span style={{ color: MUTE }}> · traffic for this site only. The panels above cover all three sites.</span>
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
             {[
               { label: 'Sessions', val: ga.totals?.sessions ?? 0, sub: 'GA4' },
@@ -228,13 +237,13 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
             ))}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 14 }}>
-            <div style={card}><div style={panelTitle}>🚦 Sessions by channel</div><Bars rows={ga.byChannel} isMobile={isMobile} /></div>
-            <div style={card}><div style={panelTitle}>🔗 Source / medium</div><Bars rows={ga.bySourceMedium} isMobile={isMobile} color="#9A6E18" /></div>
+            <div style={card}><div style={panelTitle}>🚦 Sessions by channel · {ga.label}</div><Bars rows={ga.byChannel} isMobile={isMobile} /></div>
+            <div style={card}><div style={panelTitle}>🔗 Source / medium · {ga.label}</div><Bars rows={ga.bySourceMedium} isMobile={isMobile} color="#9A6E18" /></div>
           </div>
-          <div style={card}><div style={panelTitle}>🛬 Top landing pages</div><Bars rows={ga.landingPages} isMobile={isMobile} color="#3b82f6" /></div>
+          <div style={card}><div style={panelTitle}>🛬 Top landing pages · {ga.label}</div><Bars rows={ga.landingPages} isMobile={isMobile} color="#3b82f6" /></div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 14 }}>
-            <div style={card}><div style={panelTitle}>🌎 Top cities</div><Bars rows={ga.byCountryCity} isMobile={isMobile} color="#22c55e" /></div>
-            <div style={card}><div style={panelTitle}>📱 Device</div><Bars rows={ga.byDevice} isMobile={isMobile} color="#a855f7" /></div>
+            <div style={card}><div style={panelTitle}>🌎 Top cities · {ga.label}</div><Bars rows={ga.byCountryCity} isMobile={isMobile} color="#22c55e" /></div>
+            <div style={card}><div style={panelTitle}>📱 Device · {ga.label}</div><Bars rows={ga.byDevice} isMobile={isMobile} color="#a855f7" /></div>
           </div>
         </>
       )}
