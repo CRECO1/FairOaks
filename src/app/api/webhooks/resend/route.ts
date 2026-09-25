@@ -39,6 +39,60 @@ const EVENT_MAP: Record<string, { status: string; log: string }> = {
 // not quietly overwrite it, so states only ever move forward.
 const RANK: Record<string, number> = { delayed: 1, delivered: 2, opened: 3, clicked: 4, complained: 5, bounced: 6, failed: 7 };
 
+/**
+ * Campaign opens/clicks → email_tracking_events.
+ *
+ * Matches the Resend message id against crm_campaign_sends.provider_id, which
+ * the cron already stores on every send, then logs the event against the
+ * campaign and contact so the CRM can show click-through rate.
+ *
+ * Deliberately does NOT touch crm_campaign_sends.opened_at / open_count: those
+ * belong to our own tracking pixel. Writing Resend's open there as well would
+ * count a single open twice and quietly inflate every open rate in the app.
+ *
+ * Idempotency rides on the table's UNIQUE(tracking_id). The key is
+ * "<send tracking_id>:<event>:<svix id>" — svix keeps the same id across its
+ * retries, so a redelivered event collides and is ignored rather than counted
+ * again. A genuinely new click carries a new svix id and lands as a new row.
+ */
+async function recordCampaignEvent(
+  supabase: ReturnType<typeof adminClient>,
+  payload: { created_at?: string; data?: { click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string } },
+  emailId: string,
+  status: string,
+  svixId: string,
+) {
+  // The table's CHECK allows only 'open' and 'click'; delivered/bounced/etc are
+  // e-sign-only states and must not be written here.
+  const eventType = status === 'clicked' ? 'click' : status === 'opened' ? 'open' : null;
+  if (!eventType) return NextResponse.json({ ok: true, ignored: 'not an open/click' });
+
+  const { data: send } = await supabase.from('crm_campaign_sends')
+    .select('id, campaign_id, client_id, tracking_id, org_id')
+    .eq('provider_id', emailId).maybeSingle();
+  if (!send) return NextResponse.json({ ok: true, ignored: 'no matching send' });
+
+  const key = `${send.tracking_id ?? send.id}:${eventType}:${svixId || emailId}`;
+  const { error } = await supabase.from('email_tracking_events').insert([{
+    tracking_id: key,
+    campaign_id: send.campaign_id,
+    client_id: send.client_id,
+    event_type: eventType,
+    url: payload.data?.click?.link ?? payload.data?.link ?? null,
+    occurred_at: payload.created_at ?? new Date().toISOString(),
+    ip: payload.data?.click?.ipAddress ?? null,
+    user_agent: payload.data?.click?.userAgent ?? null,
+    org_id: send.org_id ?? null,
+  }]);
+
+  // 23505 = unique violation = Resend redelivered an event we already have.
+  if (error && (error as { code?: string }).code !== '23505') {
+    console.error('[webhooks/resend] campaign event insert failed', error);
+    return NextResponse.json({ error: 'insert failed' }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true, campaign: send.campaign_id, event: eventType, duplicate: !!error });
+}
+
 export async function POST(req: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   const body = await req.text();
@@ -59,19 +113,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'not configured' }, { status: 503 });
   }
 
-  let payload: { type?: string; created_at?: string; data?: { email_id?: string; to?: string[] } };
+  let payload: {
+    type?: string; created_at?: string;
+    data?: {
+      email_id?: string; to?: string[];
+      // Resend nests click details; the shape has varied, so read defensively.
+      click?: { link?: string; ipAddress?: string; userAgent?: string; timestamp?: string };
+      link?: string;
+    };
+  };
   try { payload = JSON.parse(body); } catch { return NextResponse.json({ error: 'bad json' }, { status: 400 }); }
 
   const mapped = EVENT_MAP[payload.type ?? ''];
   const emailId = payload.data?.email_id;
-  // Anything else on the account (campaigns, action plans) is not ours to record.
   if (!mapped || !emailId) return NextResponse.json({ ok: true, ignored: true });
 
   const supabase = adminClient();
   const { data: signer } = await supabase.from('crm_envelope_signers')
     .select('id, envelope_id, email, email_status, email_opened_at')
     .eq('last_email_id', emailId).maybeSingle();
-  if (!signer) return NextResponse.json({ ok: true, ignored: true });
+
+  // Not an e-sign invite? It may be a campaign send. Falling through here is the
+  // whole point: campaign clicks used to hit this endpoint and be dropped, so
+  // click-through rate lived only in Resend's dashboard.
+  if (!signer) {
+    return await recordCampaignEvent(supabase, payload, emailId, mapped.status, req.headers.get('svix-id') ?? '');
+  }
 
   const patch: Record<string, unknown> = {};
   if ((RANK[mapped.status] ?? 0) >= (RANK[signer.email_status ?? ''] ?? 0)) patch.email_status = mapped.status;

@@ -20,12 +20,18 @@ export async function GET(req: NextRequest) {
     campaignQuery = campaignQuery.eq('business_unit', ctx.businessUnit);
   }
 
-  const [{ data, error }, { data: sends }] = await Promise.all([
+  const [{ data, error }, { data: sends }, { data: clickEvents }] = await Promise.all([
     campaignQuery,
     supabase
       .from('crm_campaign_sends')
       .select('campaign_id, sent_at, opened_at, tracking_id, status, type')
       .order('sent_at', { ascending: false }),
+    // Clicks come from Resend's webhook, not our pixel, so they live in their
+    // own table. client_id lets us count unique clickers rather than raw clicks.
+    supabase
+      .from('email_tracking_events')
+      .select('campaign_id, client_id')
+      .eq('event_type', 'click'),
   ]);
 
   if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
@@ -43,15 +49,32 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Unique clickers per campaign — one person clicking three links is one
+  // click-through, which is what a CTR is supposed to mean.
+  const clickers: Record<string, Set<string>> = {};
+  for (const e of (clickEvents ?? [])) {
+    if (!e.campaign_id) continue;
+    (clickers[e.campaign_id] ??= new Set()).add(e.client_id ?? 'unknown');
+  }
+  // If we have no click events at all, click tracking is not reaching us yet
+  // (Resend webhook not subscribed, or nothing clicked since it was). Reporting
+  // "0% CTR" then would read as "nobody clicked", which is a different and
+  // wrong claim — so the rate stays null and the UI says "no click data".
+  const clickTrackingLive = (clickEvents ?? []).length > 0;
+
   const campaigns = (data ?? []).map((c: any) => {
     const st = statsMap[c.id];
     const openRate = st && st.trackedCount > 0 ? Math.round((st.openedCount / st.trackedCount) * 100) : null;
+    const clickCount = clickers[c.id]?.size ?? 0;
+    const clickRate = clickTrackingLive && st && st.trackedCount > 0 ? Math.round((clickCount / st.trackedCount) * 100) : null;
     return {
       ...c,
       enrollment_count: c.enrollment_count?.[0]?.count ?? 0,
       last_sent_at: st?.lastSent ?? null,
       send_count: st?.sentCount ?? 0,
       open_rate: openRate,
+      click_count: clickCount,
+      click_rate: clickRate,
     };
   });
   return NextResponse.json({ campaigns });
