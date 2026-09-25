@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
+import UtmCapture from '@/components/analytics/UtmCapture';
 import StickyCTA from '@/components/ui/StickyCTA';
 import { FORG, CRECO, AFFILIATION, ORG_ID, areaServed, peopleNodes, trecCredential } from '@/lib/site-identity';
 import './globals.css';
@@ -115,6 +117,12 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <AnalyticsScripts />
+        {/* Attribution capture. Wrapped in Suspense because it reads
+            useSearchParams — without a boundary that would opt every page out
+            of static rendering. It renders nothing, so the fallback is null. */}
+        <Suspense fallback={null}>
+          <UtmCapture />
+        </Suspense>
         <StickyCTA />
         {/* JSON-LD Structured Data — LocalBusiness + RealEstateAgent */}
         <script

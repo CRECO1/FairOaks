@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { buildLeadContext } from '@/lib/lead-context';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
@@ -74,6 +75,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Source must be 100 characters or fewer' }, { status: 400 });
     }
 
+    // ── Attribution ─────────────────────────────────────────────────────────────
+    // The browser sends utm_*/referrer/landing_page (from the first-party
+    // attribution cookie) plus the page it was submitted from; the server adds
+    // coarse geo and a device label and derives a channel bucket. Every field is
+    // optional — a direct visit with no campaign still yields channel "Direct",
+    // which is a real answer rather than a null.
+    const attr = buildLeadContext(req, body as Record<string, unknown>);
+
     // ── Save lead to Supabase ───────────────────────────────────────────────────
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // must be service role — publishable key is blocked by RLS
@@ -92,6 +101,11 @@ export async function POST(req: NextRequest) {
         property_interest: property_interest ?? null,
         source: source ?? 'contact',
         status: 'new',
+        utm_source: attr.utm_source, utm_medium: attr.utm_medium, utm_campaign: attr.utm_campaign,
+        utm_term: attr.utm_term, utm_content: attr.utm_content,
+        referrer: attr.referrer, landing_page: attr.landing_page,
+        page_path: attr.page_path, page_url: attr.page_url, page_title: attr.page_title,
+        surface: attr.surface, geo: attr.geo, device: attr.device, channel: attr.channel,
       }]);
       if (leadsErr) console.error('[leads] leads table insert error:', leadsErr);
     }
@@ -159,6 +173,15 @@ export async function POST(req: NextRequest) {
                 ? ['New Lead', 'Website Lead', 'Valuation', 'Seller', 'Fair Oaks']
                 : unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
+              // Attribution travels with the contact, not just the raw lead row —
+              // crm_clients is what the Lead Attribution dashboard charts.
+              utm_source: attr.utm_source, utm_medium: attr.utm_medium, utm_campaign: attr.utm_campaign,
+              utm_term: attr.utm_term, utm_content: attr.utm_content,
+              referrer: attr.referrer, landing_page: attr.landing_page,
+              page_path: attr.page_path, page_title: attr.page_title,
+              surface: attr.surface, geo: attr.geo, device: attr.device,
+              channel: attr.channel,
+              lead_site: 'fairoaksrealtygroup.com',
             }]).select('id').single();
 
             if (crmInsertErr) {
@@ -180,6 +203,8 @@ export async function POST(req: NextRequest) {
                 parsed_phone:        phone ?? null,
                 parsed_property:     property_interest ?? null,
                 parsed_message:      message ?? null,
+                channel:             attr.channel,
+                lead_site:           'fairoaksrealtygroup.com',
               }]);
             }
           } else {

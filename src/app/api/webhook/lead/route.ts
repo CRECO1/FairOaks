@@ -30,6 +30,7 @@ import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { rateLimit } from '@/lib/ratelimit';
+import { channelFor } from '@/lib/lead-context';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -77,6 +78,29 @@ export async function POST(req: NextRequest) {
   const source = (body.source as string | undefined) ?? 'Unknown';
   const rawType = body.type as string | undefined;
   const message = body.message as string | undefined;
+
+  // ── Attribution passthrough ───────────────────────────────────────────────
+  // crecotx.com forwards the visitor's utm/referrer/landing page with the lead.
+  // Only non-empty strings are carried through, so a sender that omits them
+  // leaves the columns null rather than writing empty strings the dashboard
+  // would then have to treat as "recorded".
+  const attrStr = (v: unknown, max = 200): string | null => {
+    if (typeof v !== 'string') return null;
+    const t = v.trim();
+    return t ? t.slice(0, max) : null;
+  };
+  const attrFields: Record<string, string> = {};
+  for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+                   'referrer', 'landing_page', 'page_path', 'page_title', 'surface',
+                   'geo', 'device', 'channel', 'lead_site'] as const) {
+    const v = attrStr(body[k], k === 'referrer' || k === 'landing_page' || k === 'page_path' ? 300 : 200);
+    if (v) attrFields[k] = v;
+  }
+  // Derive the channel when the sender gave us signals but no bucket, so
+  // first-party numbers stay comparable across both sites.
+  if (!attrFields.channel && (attrFields.referrer || attrFields.utm_medium || attrFields.utm_source)) {
+    attrFields.channel = channelFor(attrFields.referrer ?? null, attrFields.utm_medium ?? null, attrFields.utm_source ?? null);
+  }
   const extraTags = (body.tags as string[] | undefined) ?? [];
   // Webhook leads are commercial by default (Crexi, LoopNet, CoStar); override with business_unit param
   const unit: 'residential' | 'commercial' = (body.business_unit as string | undefined) === 'residential' ? 'residential' : 'commercial';
@@ -134,7 +158,7 @@ export async function POST(req: NextRequest) {
   const dedupeCol = email ? 'email' : 'phone';
   const dedupeVal = email ?? phone!;
   const { data: existing } = await supabase.from('crm_clients')
-    .select('id, tags, lead_source').eq(dedupeCol, dedupeVal).maybeSingle();
+    .select('id, tags, lead_source, channel').eq(dedupeCol, dedupeVal).maybeSingle();
 
   let clientId: string;
   let isNew = false;
@@ -145,6 +169,11 @@ export async function POST(req: NextRequest) {
     await supabase.from('crm_clients').update({
       tags: mergedTags,
       lead_source: existing.lead_source || source,
+      // Backfill attribution only when the contact has none. A returning lead
+      // that arrives with a campaign shouldn't lose it just because we already
+      // knew the person — but a later direct visit must not overwrite the
+      // original acquisition source either.
+      ...(existing.channel ? {} : attrFields),
     }).eq('id', existing.id);
     clientId = existing.id;
   } else {
@@ -170,6 +199,10 @@ export async function POST(req: NextRequest) {
         ? ['New Lead', 'CRECO', ...extraTags]
         : ['New Lead', ...extraTags],
       unsubscribe_token,
+      // Attribution forwarded by the sending site (crecotx.com) or by
+      // Zapier/Make. Every field is optional: a webhook that sends none still
+      // creates the client exactly as before, just without a channel.
+      ...attrFields,
       ...(asset_types ? { asset_types } : {}),
       ...(budget ? { budget } : {}),
       ...(size_range ? { size_range } : {}),

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
+import { attributionPayload, trackEvent } from '@/lib/attribution';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,6 +34,8 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Attribution: what brought this lead (utm/referrer/page/device).
+          ...attributionPayload('listing-detail'),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name, email,
           phone: phone || undefined,
@@ -48,6 +51,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         setError(d.error ?? 'Something went wrong. Please try again.');
         return;
       }
+      trackEvent('listing_inquiry_submitted', { form: 'listing-detail' });
       setSubmitted(true);
       trackLead({ form_type: 'listing_inquiry' });
       form.reset();

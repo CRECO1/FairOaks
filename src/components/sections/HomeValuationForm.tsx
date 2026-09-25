@@ -6,6 +6,7 @@ import { Home, ArrowRight } from 'lucide-react';
 import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
+import { attributionPayload, trackEvent } from '@/lib/attribution';
 
 export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 'dark' | 'light'; surface?: string }) {
   // One form, two grounds: the homepage band is dark, the landing page is light.
@@ -36,6 +37,8 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Attribution: what brought this lead (utm/referrer/page/device).
+          ...attributionPayload(),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name: form.name,
           email: form.email,
@@ -50,6 +53,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
       });
       if (!res.ok) throw new Error();
       trackLead({ form_type: 'valuation' });
+      trackEvent('valuation_form_submitted', { form: surface || 'home-valuation' });
       router.push('/thank-you');
     } catch {
       setError('Something went wrong. Please try again or call us directly.');

@@ -10,6 +10,7 @@ import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
+import { attributionPayload, trackEvent } from '@/lib/attribution';
 
 const STEPS = [
   { number: '01', title: 'Free Home Valuation', description: 'We analyze recent sales, market trends, and your home\'s unique features to establish the ideal listing price.' },
@@ -31,6 +32,8 @@ export default function SellPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        // Attribution: what brought this lead (utm/referrer/page/device).
+        ...attributionPayload('sell-page'),
         recaptchaToken: await getRecaptchaToken('lead_form'),
         name: data.get('name'),
         email: data.get('email'),
@@ -42,6 +45,7 @@ export default function SellPage() {
       }),
     }).catch(() => {});
     setLoading(false);
+    trackEvent('valuation_form_submitted', { form: 'sell-page' });
     setSubmitted(true);
     trackLead({ form_type: 'valuation' });
   }

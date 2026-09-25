@@ -5,6 +5,7 @@ import { Phone, MessageSquare, X } from 'lucide-react';
 import { trackLead, trackPhoneClick } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
+import { attributionPayload, trackEvent } from '@/lib/attribution';
 
 interface Props {
   listingTitle: string;
@@ -47,6 +48,8 @@ export function StickyContactBar({ listingTitle, price }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Attribution: what brought this lead (utm/referrer/page/device).
+          ...attributionPayload('listing-sticky-bar'),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name, phone: phone || undefined, email: email || undefined,
           message: `Requesting a showing for: ${listingTitle}`,
@@ -57,6 +60,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
         }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Something went wrong.'); return; }
+      trackEvent('showing_request_submitted', { form: 'listing-sticky-bar' });
       setSubmitted(true);
       trackLead({ form_type: 'showing_request' });
     } catch { setError('Network error — please try again.'); }

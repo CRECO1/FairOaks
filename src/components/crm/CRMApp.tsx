@@ -29,6 +29,7 @@ const ListingsSection = dynamic(() => import('@/components/crm/ListingsSection')
 const TasksSection = dynamic(() => import('@/components/crm/TasksSection'), { ssr: false });
 const EsignComposer = dynamic(() => import('@/components/crm/EsignComposer'), { ssr: false });
 const EsignDashboard = dynamic(() => import('@/components/crm/EsignDashboard'), { ssr: false });
+const LeadAttribution = dynamic(() => import('@/components/crm/LeadAttribution'), { ssr: false });
 const CallingLog = dynamic(() => import('@/components/crm/CallingLog'), { ssr: false });
 const LeaseExpirationsSection = dynamic(() => import('@/components/crm/LeaseExpirationsSection'), { ssr: false });
 const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSection'), { ssr: false });
@@ -536,7 +537,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
-  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity'] as const;
+  const VALID_PAGES = ['dashboard', 'deals', 'contacts', 'agents', 'calendar', 'invite', 'campaigns', 'action-plans', 'tasks', 'commissions', 'social', 'properties', 'transaction-docs', 'esign', 'calls', 'activity', 'lead-attribution'] as const;
   // The sidebar says "Marketing" but the page is called 'campaigns', so a
   // #marketing link silently left you wherever you already were.
   const PAGE_ALIASES: Record<string, string> = { marketing: 'campaigns', 'e-sign': 'esign', docs: 'transaction-docs', listings: 'properties', 'calling-log': 'calls', calling: 'calls', phone: 'calls' };
@@ -3194,6 +3195,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   const pageLabel: Record<typeof page, string> = {
     dashboard: 'Dashboard', deals: filter || 'Deal Flow', contacts: 'Contacts',
+    'lead-attribution': 'Lead Attribution',
     agents: 'Team', calendar: 'Calendar', invite: 'Invite', campaigns: 'Campaigns', 'action-plans': 'Action Plans', tasks: 'Tasks', commissions: 'Commissions', social: 'Social Media', properties: 'Properties', 'transaction-docs': 'Transaction Docs', esign: 'E-Sign', calls: 'Calling Log', activity: 'Activity Log',
   };
 
@@ -3416,6 +3418,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => setPage('esign')}>✍️ &nbsp;E-Sign</button>
           <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); }}>📞 &nbsp;Calling Log</button>
           <button className="crm-nav" onClick={() => setCopilotActivityOpen(true)}>👁 &nbsp;{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
+          {/* Owner-only. The server also 403s non-super_admin, so hiding this
+              is convenience, not the access control. */}
+          {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => setPage('lead-attribution')}>📊 &nbsp;Lead Attribution</button>}
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -3586,6 +3591,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'esign' ? ' active' : ''}`} onClick={() => { setPage('esign'); setMobileMenuOpen(false); }}>✍️ &nbsp;E-Sign</button>
                 <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
                 <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}>👁 &nbsp;{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
+                {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}>📊 &nbsp;Lead Attribution</button>}
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
@@ -7896,6 +7902,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               isMobile={isMobile}
             />
           )}
+
+          {page === 'lead-attribution' && (isSuperAdmin ? (
+            <LeadAttribution authToken={session?.access_token ?? null} isMobile={isMobile} />
+          ) : (
+            <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', borderLeft: '4px solid #ef4444', padding: '18px 20px' }}>
+              <div style={{ fontSize: 14, color: '#374151' }}>Lead attribution is limited to the account owner.</div>
+            </div>
+          ))}
 
           {page === 'esign' && (
             <EsignDashboard

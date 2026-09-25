@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
+import { attributionPayload, trackEvent } from '@/lib/attribution';
 
 const CONTACT_REASONS = [
   'Schedule a Showing',
@@ -34,6 +35,8 @@ export default function ContactPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Attribution: what brought this lead (utm/referrer/page/device).
+          ...attributionPayload('contact-page'),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name: data.get('name'),
           email: data.get('email'),
@@ -46,6 +49,7 @@ export default function ContactPage() {
       });
       if (!res.ok) throw new Error('Server error');
       trackLead({ form_type: 'contact' });
+      trackEvent('contact_form_submitted', { form: 'contact-page' });
       router.push('/thank-you');
     } catch {
       setSubmitError('Something went wrong. Please try again or call us directly.');
