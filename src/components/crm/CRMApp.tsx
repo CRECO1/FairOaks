@@ -858,6 +858,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Campaign completed filter
   const [campaignFilter, setCampaignFilter] = useState<'all' | 'active' | 'draft' | 'paused' | 'completed'>('all');
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(new Set());
+  const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
+  const [busyCampaignId, setBusyCampaignId] = useState<string | null>(null);
 
   // Action plan test send
   const [testSending, setTestSending] = useState(false);
@@ -2806,6 +2810,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setActiveCampaign(null);
     setCampaignView('list');
     loadCampaigns();
+  }
+
+  // Set a campaign's status straight from the list (activate arms it — the PATCH route
+  // back-fills next_send_at on the enrollments; pause stops it). Cookie-authed like the
+  // detail view's Activate button, with the Bearer token too when we have a session.
+  async function setCampaignStatusFromList(id: string, status: 'active' | 'paused', name?: string) {
+    if (status === 'active' && !confirm(`Activate "${name ?? 'this campaign'}"? This schedules real emails to every enrolled contact.`)) return;
+    setBusyCampaignId(id);
+    try {
+      await fetch(`/api/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ status }),
+      });
+      showToast(status === 'active' ? 'Campaign activated ✓' : 'Campaign paused');
+      await loadCampaigns();
+    } finally {
+      setBusyCampaignId(null);
+    }
+  }
+
+  // Bulk status change for the multi-select action bar.
+  async function bulkSetCampaignStatus(ids: string[], status: 'active' | 'paused') {
+    if (ids.length === 0) return;
+    if (status === 'active' && !confirm(`Activate ${ids.length} campaign${ids.length !== 1 ? 's' : ''}? This schedules real emails to every enrolled contact.`)) return;
+    for (const id of ids) {
+      await fetch(`/api/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ status }),
+      });
+    }
+    showToast(`${ids.length} campaign${ids.length !== 1 ? 's' : ''} ${status === 'active' ? 'activated ✓' : 'paused'}`);
+    setSelectedCampaignIds(new Set());
+    await loadCampaigns();
   }
 
   async function loadCampaignEnrollments(campaignId: string) {
@@ -6212,16 +6251,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {campaignLoading ? (
                     <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading…</div>
                   ) : (() => {
-                    const visibleCampaigns = campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter));
+                    const q = campaignSearch.trim().toLowerCase();
+                    const visibleCampaigns = campaigns.filter(c => (campaignFilter === 'all' || c.status === campaignFilter) && (!campaignAgentFilter || c.created_by === campaignAgentFilter) && (!q || c.name.toLowerCase().includes(q) || (c.description ?? '').toLowerCase().includes(q)));
 
                     // Helper: render a single campaign row
                     const renderCampaignRow = (camp: Campaign) => {
                       const rateColor = camp.open_rate == null ? '#9ca3af' : camp.open_rate >= 40 ? '#16a34a' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444';
-                      const schedule = camp.last_sent_at
-                        ? `Sent ${new Date(camp.last_sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                        : camp.send_date
-                          ? `Sends ${new Date(camp.send_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                          : 'Not scheduled';
+                      const fmtD = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      // Honest scheduling: a send_date only means "will send" when the campaign
+                      // is active — a dated draft won't go out until it's activated, so say so.
+                      let schedule: string, scheduleColor: string;
+                      if (camp.last_sent_at) { schedule = `Sent ${fmtD(camp.last_sent_at)}`; scheduleColor = '#16a34a'; }
+                      else if (camp.send_date && camp.status === 'active') { schedule = `Sends ${fmtD(camp.send_date + 'T00:00:00')}`; scheduleColor = '#16a34a'; }
+                      else if (camp.send_date) { schedule = `Scheduled ${fmtD(camp.send_date + 'T00:00:00')} · not active`; scheduleColor = '#b45309'; }
+                      else { schedule = 'Not scheduled'; scheduleColor = '#9ca3af'; }
+                      const sender = camp.sender_agent_id ? profiles.find(p => p.id === camp.sender_agent_id) : null;
                       const sent = camp.send_count ?? 0;
                       return (
                       <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }}>
@@ -6239,9 +6283,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <span style={{ fontSize: 14, fontWeight: 600, color: '#111', minWidth: 0, ...(isMobile ? { lineHeight: 1.35, overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{camp.name}</span>
                             <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
-                          <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                            <span style={{ color: camp.last_sent_at ? '#16a34a' : '#9ca3af' }}>{schedule}</span>
-                            <span> · {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
+                          <div style={{ fontSize: 12, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ color: scheduleColor, fontWeight: (scheduleColor === '#b45309') ? 600 : 400 }}>{schedule}</span>
+                            <span>· {camp.frequency.charAt(0).toUpperCase() + camp.frequency.slice(1)}</span>
+                            {sender && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title={`Signs as ${sender.first_name} ${sender.last_name}`}>
+                                ·
+                                <span style={{ width: 15, height: 15, borderRadius: '50%', background: '#eef2ff', color: '#4338ca', fontSize: 9, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{`${sender.first_name?.[0] ?? ''}${sender.last_name?.[0] ?? ''}`.toUpperCase()}</span>
+                                signs as {sender.first_name}
+                              </span>
+                            )}
                           </div>
                         </div>
                         {/* Enrolled column */}
@@ -6263,29 +6314,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <div style={{ fontSize: 12, color: '#c4c4c4', textAlign: 'right' }}>Not sent yet</div>
                           )}
                         </div>
-                        {/* Move to project dropdown */}
-                        {isAdmin && campaignProjects.length > 0 && (
-                          <select
-                            value={camp.project_id ?? ''}
-                            onChange={e => assignCampaignToProject(camp.id, e.target.value || null)}
-                            title="Move to project"
-                            style={{ fontSize: isMobile ? 13 : 12, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: isMobile ? '10px 8px' : '4px 8px', color: '#6b7280', background: '#f9fafb', cursor: 'pointer', flexShrink: 0, ...(isMobile ? { width: '100%', minHeight: 44 } : { maxWidth: 120 }) }}
-                          >
-                            <option value="">No project</option>
-                            {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                          </select>
-                        )}
-                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, ...(isMobile ? { width: '100%' } : {}) }}>
-                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(camp)} title="Preview email" style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>👁 Preview</button>
+                        {/* Actions: Activate/Pause · Manage · overflow menu */}
+                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, alignItems: 'center', position: 'relative', ...(isMobile ? { width: '100%' } : {}) }}>
+                          {isAdmin && camp.status === 'draft' && (
+                            <button className="crm-btn crm-btn-sm" disabled={busyCampaignId === camp.id} title="Activate — schedules real sends to enrolled contacts" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: busyCampaignId === camp.id ? 'default' : 'pointer', whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, minHeight: 44 } : {}) }} onClick={() => setCampaignStatusFromList(camp.id, 'active', camp.name)}>{busyCampaignId === camp.id ? '…' : '▶ Activate'}</button>
+                          )}
+                          {isAdmin && camp.status === 'active' && (
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" disabled={busyCampaignId === camp.id} style={isMobile ? { flex: 1, minHeight: 44 } : undefined} onClick={() => setCampaignStatusFromList(camp.id, 'paused', camp.name)}>{busyCampaignId === camp.id ? '…' : '⏸ Pause'}</button>
+                          )}
                           <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>Manage</button>
-                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); }} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>Edit</button>}
-                          {isAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="Delete campaign" style={{ color: '#ef4444', borderColor: '#fecaca', ...(isMobile ? { width: 52, minHeight: 44, fontSize: 15, flexShrink: 0 } : {}) }} onClick={() => deleteCampaign(camp.id)}>🗑</button>}
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="More actions" title="More" onClick={() => setOpenRowMenuId(openRowMenuId === camp.id ? null : camp.id)} style={isMobile ? { minHeight: 44, width: 48 } : { padding: '4px 11px' }}>⋯</button>
+                          {openRowMenuId === camp.id && (
+                            <>
+                              <div onClick={() => setOpenRowMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', zIndex: 41, minWidth: 190, overflow: 'hidden', fontSize: 13 }}>
+                                <button onClick={() => { setPreviewCampaign(camp); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>👁 Preview email</button>
+                                {isAdmin && <button onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>✎ Edit campaign</button>}
+                                {isAdmin && campaignProjects.length > 0 && (
+                                  <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 14px' }}>
+                                    <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 5 }}>Move to project</div>
+                                    <select value={camp.project_id ?? ''} onChange={e => { assignCampaignToProject(camp.id, e.target.value || null); setOpenRowMenuId(null); }} style={{ width: '100%', fontSize: 13, fontFamily: "'DM Sans',sans-serif", border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 8px', color: '#374151', background: '#f9fafb', cursor: 'pointer' }}>
+                                      <option value="">No project</option>
+                                      {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                  </div>
+                                )}
+                                {isAdmin && <button onClick={() => { deleteCampaign(camp.id); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#ef4444', fontFamily: "'DM Sans',sans-serif" }}>🗑 Delete</button>}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
                     };
 
-                    if (visibleCampaigns.length === 0) return (
+                    if (campaigns.length === 0) return (
                       <div style={{ textAlign: 'center', padding: 60, background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
                         <div style={{ fontSize: 40, marginBottom: 12 }}>📣</div>
                         <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No campaigns yet</div>
@@ -6296,8 +6359,58 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                     // Status filter pills
                     const allFiltered = campaigns.filter(c => !campaignAgentFilter || c.created_by === campaignAgentFilter);
+                    // ── Pipeline metrics for the summary strip ──
+                    const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+                    const parseD = (d?: string | null) => d ? new Date(d + 'T00:00:00') : null;
+                    const fmtShort = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                    const activeCount = campaigns.filter(c => c.status === 'active').length;
+                    // Dated drafts that will NOT send until activated — the trap we flag.
+                    const scheduledDrafts = campaigns.filter(c => c.status === 'draft' && c.send_date && parseD(c.send_date)! >= today0);
+                    const armed = campaigns.filter(c => c.status === 'active' && c.send_date && parseD(c.send_date)! >= today0);
+                    const totalSent = campaigns.reduce((s, c) => s + (c.send_count ?? 0), 0);
+                    const ratedAll = campaigns.filter(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
+                    const avgOpenAll = ratedAll.length ? Math.round(ratedAll.reduce((s, c) => s + (c.open_rate ?? 0), 0) / ratedAll.length) : null;
+                    const nextArmed = armed.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+                    const nextDraft = scheduledDrafts.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
                     return (
                       <div>
+                        {/* Pipeline metrics */}
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Active</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{activeCount}</div>
+                          </div>
+                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Sending next</div>
+                            <div style={{ fontSize: (nextArmed || nextDraft) ? 15 : 22, fontWeight: 700, color: '#111', marginTop: (nextArmed || nextDraft) ? 2 : 0 }}>{nextArmed ? fmtShort(nextArmed) : nextDraft ? fmtShort(nextDraft) : '—'}</div>
+                            {scheduledDrafts.length > 0 ? <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginTop: 1 }}>{scheduledDrafts.length} not activated</div> : armed.length > 0 ? <div style={{ fontSize: 11, color: '#16a34a', marginTop: 1 }}>{armed.length} armed</div> : null}
+                          </div>
+                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Emails sent</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{totalSent.toLocaleString()}</div>
+                          </div>
+                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Avg open rate</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{avgOpenAll != null ? `${avgOpenAll}%` : '—'}</div>
+                          </div>
+                        </div>
+
+                        {/* Needs-attention banner: dated drafts that won't send */}
+                        {scheduledDrafts.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '11px 14px', marginBottom: 16, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                            <span style={{ fontSize: 16 }}>⚠️</span>
+                            <div style={{ flex: 1, fontSize: 13, color: '#92400e', minWidth: isMobile ? '100%' : 0 }}>{scheduledDrafts.length} campaign{scheduledDrafts.length !== 1 ? 's have' : ' has'} a send date but {scheduledDrafts.length !== 1 ? 'are' : 'is'} still in draft — {scheduledDrafts.length !== 1 ? 'they' : 'it'} won&apos;t send until activated.</div>
+                            <button className="crm-btn crm-btn-sm" style={{ background: '#111', color: '#fff', border: 'none', whiteSpace: 'nowrap', ...(isMobile ? { width: '100%', minHeight: 40 } : {}) }} onClick={() => { setCampaignFilter('draft'); setCampaignSearch(''); setExpandedProjects(new Set([...campaignProjects.map(p => p.id), '__ungrouped__'])); }}>Review drafts</button>
+                          </div>
+                        )}
+
+                        {/* Search */}
+                        <div style={{ position: 'relative', marginBottom: 12 }}>
+                          <input className="crm-input" value={campaignSearch} onChange={e => setCampaignSearch(e.target.value)} placeholder="Search campaigns by name…" style={{ width: '100%', paddingLeft: 32, ...(isMobile ? { minHeight: 44 } : {}) }} />
+                          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
+                          {campaignSearch && <button onClick={() => setCampaignSearch('')} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1 }} aria-label="Clear search">×</button>}
+                        </div>
+
                         {/* Filter pills + summary */}
                         <div style={{ display: 'flex', gap: isMobile ? 7 : 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
                           {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
@@ -6328,6 +6441,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
 
                         {/* Project sections */}
+                        {visibleCampaigns.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: 44, background: '#f9fafb', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
+                            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No campaigns match</div>
+                            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>Try a different search or filter.</div>
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setCampaignSearch(''); setCampaignFilter('all'); }}>Clear filters</button>
+                          </div>
+                        ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                           {[...campaignProjects].sort((a, b) => projectRecency(b.id) - projectRecency(a.id)).map(project => {
                             const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id).sort((a, b) => campaignRecency(b) - campaignRecency(a));
@@ -6419,6 +6539,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             );
                           })()}
                         </div>
+                        )}
                       </div>
                     );
                   })()}
