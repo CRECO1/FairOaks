@@ -38,7 +38,7 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 // Dedicated secret for the crecotx.com → CRM lead hand-off, so that integration
 // can be rotated without touching the shared secret the older feeds use.
 const CRM_LEAD_WEBHOOK_SECRET = process.env.CRM_LEAD_WEBHOOK_SECRET;
-const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@fairoaksrealtygroup.com';
+const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
 
 function adminClient() { return createClient(SUPABASE_URL, SERVICE_KEY); }
 

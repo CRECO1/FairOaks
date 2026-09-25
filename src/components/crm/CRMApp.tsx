@@ -11,6 +11,7 @@ import ContactComms from '@/components/crm/ContactComms';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
 import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
+import { agentTitle } from '@/lib/agent-title';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
@@ -3170,6 +3171,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       : '8000 Fair Oaks Pkwy Suite 100, Fair Oaks Ranch, TX 78015';
     return `<p>Hi {{first_name}},</p><p>I wanted to reach out and check in with you. Whether you're actively looking or just keeping an eye on the market, I'm here to help with any questions you may have.</p><p>Feel free to reply or call me directly at {{agent_phone}}.</p><p>Best regards,<br><strong>{{agent_name}}</strong>, {{agent_title}}<br>{{brokerage}}</p><p><small><a href="{{unsubscribe_url}}">Unsubscribe</a> · ${officeAddress}</small></p>`;
   }
+
+  // Client-side preview merge — mirrors the cron's applyMergeFields so the in-app
+  // preview matches the real send, INCLUDING the campaign's "Send As" agent
+  // (sender_agent_id) and {{agent_title}}. Pass the campaign's sender_agent_id so the
+  // signature shows the true signer (e.g. Brian), not whoever is logged in. An optional
+  // real contact fills the recipient fields; otherwise a Jane Smith sample is used.
+  const previewMerge = (
+    template: string,
+    senderAgentId?: string | null,
+    contact?: { first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null } | null,
+  ): string => {
+    const commercial = businessUnit === 'commercial';
+    const sender = (senderAgentId ? profiles.find(p => p.id === senderAgentId) : null) || profile;
+    const domain = commercial ? '@crecotx.com' : '@fairoaksrealtygroup.com';
+    const unitEmail = commercial ? 'zack@crecotx.com' : 'info@fairoaksrealtygroup.com';
+    const unitPhone = commercial ? '210-817-3443' : '210-390-9997';
+    const agentEmail = (sender?.email && sender.email.endsWith(domain)) ? sender.email : unitEmail;
+    const agentPhone = (sender?.phone && sender.phone.trim()) || unitPhone;
+    const firstName = (contact?.first_name || '').trim() || (contact?.business_name || '').trim() || 'Jane';
+    const lastName = contact ? (contact.last_name ?? '') : 'Smith';
+    const fullName = [contact?.first_name, contact?.last_name].filter(Boolean).join(' ') || (contact?.business_name || '').trim() || 'Jane Smith';
+    return (template ?? '')
+      .replaceAll('{{first_name}}', firstName)
+      .replaceAll('{{last_name}}', lastName)
+      .replaceAll('{{full_name}}', fullName)
+      .replaceAll('{{email}}', contact?.email ?? 'jane@example.com')
+      .replaceAll('{{client_type}}', contact?.type ?? 'Buyer')
+      .replaceAll('{{agent_name}}', `${sender?.first_name ?? 'Your'} ${sender?.last_name ?? 'Agent'}`.trim())
+      .replaceAll('{{agent_title}}', agentTitle(sender?.role))
+      .replaceAll('{{agent_email}}', agentEmail)
+      .replaceAll('{{agent_phone}}', agentPhone)
+      .replaceAll('{{brokerage}}', commercial ? 'CRECO' : 'Fair Oaks Realty Group')
+      .replaceAll('{{unsubscribe_url}}', '#preview')
+      .replaceAll('{{property}}', 'your recent transaction');
+  };
 
   // ── Render guards ─────────────────────────────────────────────────────────────
   if (loading) return (
@@ -6434,19 +6470,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               {viewCampaignSendModal && (() => {
                 const { send, contact } = viewCampaignSendModal;
                 const camp = campaigns.find(c => c.id === send.campaign_id);
-                const renderedBody = camp?.email_body
-                  ? camp.email_body
-                    .replaceAll('{{first_name}}', (contact.first_name || '').trim() || (contact.business_name || '').trim() || 'there')
-                    .replaceAll('{{last_name}}', contact.last_name ?? '')
-                    .replaceAll('{{full_name}}', [contact.first_name, contact.last_name].filter(Boolean).join(' '))
-                    .replaceAll('{{email}}', contact.email ?? '')
-                    .replaceAll('{{client_type}}', contact.type ?? '')
-                    .replaceAll('{{agent_name}}', `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim())
-                    .replaceAll('{{agent_email}}', profile?.email ?? '')
-                    .replaceAll('{{agent_phone}}', profile?.phone ?? '')
-                    .replaceAll('{{brokerage}}', businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
-                    .replaceAll('{{unsubscribe_url}}', '#preview')
-                  : null;
+                const renderedBody = camp?.email_body ? previewMerge(camp.email_body, camp.sender_agent_id, contact) : null;
                 return (
                   <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', zIndex: 2000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setViewCampaignSendModal(null)}>
                     <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 700, boxShadow: '0 24px 80px rgba(0,0,0,.35)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
@@ -6804,13 +6828,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ background: '#f3f4f6', borderRadius: 16, padding: 20, marginBottom: 16 }}>
                             <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 1 }}>SMS Preview</div>
                             <div style={{ background: '#fff', borderRadius: 12, padding: '12px 16px', fontSize: 14, lineHeight: 1.6, color: '#111', boxShadow: '0 1px 4px rgba(0,0,0,.08)', whiteSpace: 'pre-wrap' }}>
-                              {(activeCampaign.sms_body ?? '')
-                                .replace(/\{\{first_name\}\}/g, 'Jane')
-                                .replace(/\{\{last_name\}\}/g, 'Smith')
-                                .replace(/\{\{full_name\}\}/g, 'Jane Smith')
-                                .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                                .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                                .replace(/\{\{brokerage\}\}/g, 'Fair Oaks Realty Group')
+                              {previewMerge(activeCampaign.sms_body ?? '', activeCampaign.sender_agent_id)
                                 || <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>No SMS body set.</span>}
                             </div>
                           </div>

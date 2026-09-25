@@ -12,7 +12,7 @@ import { createRecruitContact } from '@/lib/recruiting-crm';
 const NOTIFICATION_EMAIL =
   process.env.RECRUITING_NOTIFICATION_EMAIL ??
   process.env.LEAD_NOTIFICATION_EMAIL ??
-  'info@fairoaksrealtygroup.com';
+  'info@crecotx.com';
 const FROM_EMAIL = 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
 
 function esc(s: string | null | undefined): string {
