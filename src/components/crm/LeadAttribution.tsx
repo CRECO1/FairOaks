@@ -34,9 +34,9 @@ interface Ga {
 interface Payload {
   windowDays: number;
   overTime: { month: string; inbound: number; imported: number }[];
-  channelMix: Row[]; captureSurface: Row[]; byType: Row[]; byCity: Row[];
+  channelMix: Row[]; bySite: Row[]; captureSurface: Row[]; byType: Row[]; byCity: Row[];
   health: Health;
-  recent: { name: string; date: string; source: string | null; channel: string | null; campaign: string | null; referrer: string | null; landing_page: string | null }[];
+  recent: { name: string; date: string; source: string | null; site: string | null; channel: string | null; campaign: string | null; referrer: string | null; landing_page: string | null }[];
   counts: { clients: number; imports: number; leads: number };
   ga: Ga;
 }
@@ -130,8 +130,8 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
 
       {/* ── 5. ATTRIBUTION HEALTH — built first, it makes the gap visible ── */}
       <div style={{ ...card, borderLeft: `4px solid ${GOLD}` }}>
-        <div style={panelTitle}>🩺 Attribution health — do we know where leads came from?</div>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: isMobile ? 12 : 18 }}>
+        <div style={panelTitle}>🩺 Attribution health by site — do we know where leads came from?</div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3,1fr)', gap: isMobile ? 14 : 18 }}>
           {data.health.sites.map(s => {
             const pct = s.pct;
             const tone = pct === null ? '#9ca3af' : pct >= 80 ? '#22c55e' : pct >= 40 ? '#f59e0b' : '#ef4444';
@@ -150,9 +150,9 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
           })}
         </div>
         <div style={{ fontSize: 12.5, color: MUTE, marginTop: 12, lineHeight: 1.6 }}>
-          Every lead from here on should carry a channel. Leads captured before the attribution
-          wiring shipped cannot be backfilled — this climbs as new leads arrive, it will not
-          repair history.
+          All three sites are listed even at zero leads — an absent row would read as &ldquo;fine&rdquo;
+          when it actually means the site sends us nothing we can see. Leads captured before the
+          attribution wiring shipped cannot be backfilled; this climbs as new leads arrive.
         </div>
       </div>
 
@@ -184,6 +184,10 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
 
       {/* ── 2 + 3. Channel mix and capture surface ── */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2,1fr)', gap: 14 }}>
+        <div style={card}>
+          <div style={panelTitle}>🏷 Leads by site</div>
+          <Bars rows={data.bySite ?? []} isMobile={isMobile} />
+        </div>
         <div style={card}>
           <div style={panelTitle}>🌐 Inbound channel mix</div>
           <Bars rows={data.channelMix} isMobile={isMobile} />
@@ -244,7 +248,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 8 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{r.name}</div>
                 <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>
-                  {r.date ? new Date(r.date).toLocaleDateString() : '—'} · {r.source ?? '—'}
+                  {r.date ? new Date(r.date).toLocaleDateString() : '—'} · {r.site ?? '—'} · {r.source ?? '—'}
                 </div>
                 <div style={{ fontSize: 12, color: r.channel ? '#9A6E18' : '#9ca3af', marginTop: 2 }}>
                   {r.channel ?? 'no source recorded'}{r.campaign ? ` · ${r.campaign}` : ''}
@@ -257,7 +261,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ textAlign: 'left', color: MUTE }}>
-                  {['Name', 'Date', 'Form', 'Channel', 'Campaign', 'Landing page'].map(h => (
+                  {['Name', 'Date', 'Site', 'Form', 'Channel', 'Campaign', 'Landing page'].map(h => (
                     <th key={h} style={{ padding: '6px 10px 8px 0', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -267,6 +271,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                   <tr key={i}>
                     <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', fontWeight: 600, color: INK }}>{r.name}</td>
                     <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: MUTE, whiteSpace: 'nowrap' }}>{r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
+                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: '#374151', whiteSpace: 'nowrap' }}>{r.site ?? '—'}</td>
                     <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: '#374151' }}>{r.source ?? '—'}</td>
                     <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: r.channel ? '#9A6E18' : '#9ca3af', fontWeight: r.channel ? 600 : 400 }}>{r.channel ?? 'not recorded'}</td>
                     <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: '#374151' }}>{r.campaign ?? '—'}</td>

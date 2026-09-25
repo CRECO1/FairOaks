@@ -21,6 +21,9 @@ alter table public.leads add column if not exists surface     text;
 alter table public.leads add column if not exists geo         text;
 alter table public.leads add column if not exists device      text;
 alter table public.leads add column if not exists channel     text;
+-- Which site produced the lead: crecotx.com / fairoaksrealtygroup.com /
+-- elkhornpoint.com. Null on older rows, which lead_site_of() infers from source.
+alter table public.leads add column if not exists lead_site   text;
 
 -- ── public.crm_clients: the full attribution set ────────────────────────────
 -- crm_clients is the contact book the dashboard charts. A lead that becomes a
