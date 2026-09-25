@@ -2847,6 +2847,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     await loadCampaigns();
   }
 
+  async function bulkMoveToProject(ids: string[], projectId: string | null) {
+    if (ids.length === 0) return;
+    for (const id of ids) {
+      await fetch(`/api/campaigns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ project_id: projectId }),
+      });
+    }
+    showToast(`Moved ${ids.length} campaign${ids.length !== 1 ? 's' : ''}`);
+    setSelectedCampaignIds(new Set());
+    await loadCampaigns();
+  }
+
+  async function bulkDeleteCampaigns(ids: string[]) {
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} campaign${ids.length !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    for (const id of ids) await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
+    showToast(`Deleted ${ids.length} campaign${ids.length !== 1 ? 's' : ''}`);
+    setSelectedCampaignIds(new Set());
+    await loadCampaigns();
+  }
+
   async function loadCampaignEnrollments(campaignId: string) {
     setCampaignEnrollmentsLoading(true);
     const res = await fetch(`/api/campaigns/${campaignId}/enrollments`, { headers: { 'Authorization': `Bearer ${session!.access_token}` } });
@@ -6214,36 +6237,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                   {/* New project modal */}
                   {showAddProject && (
-                    <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>New Project</div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        <input className="crm-input" placeholder="Project name *" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} style={{ flex: 2, minWidth: 160 }} />
-                        <input className="crm-input" placeholder="Description (optional)" value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} style={{ flex: 3, minWidth: 180 }} />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '60px 20px', overflowY: 'auto' }} onClick={() => { setShowAddProject(false); setNewProjectName(''); setNewProjectDesc(''); }}>
+                      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, boxShadow: '0 24px 70px rgba(0,0,0,.3)', padding: '22px 24px' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 16 }}>New project</div>
+                        <input className="crm-input" placeholder="Project name *" value={newProjectName} onChange={e => setNewProjectName(e.target.value)} style={{ width: '100%', marginBottom: 10 }} />
+                        <input className="crm-input" placeholder="Description (optional)" value={newProjectDesc} onChange={e => setNewProjectDesc(e.target.value)} style={{ width: '100%', marginBottom: 14 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                          <span style={{ fontSize: 12, color: '#9ca3af' }}>Color</span>
                           {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
-                            <button key={col} onClick={() => setNewProjectColor(col)} style={{ width: 22, height: 22, borderRadius: '50%', background: col, border: newProjectColor === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+                            <button key={col} onClick={() => setNewProjectColor(col)} style={{ width: 24, height: 24, borderRadius: '50%', background: col, border: newProjectColor === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
                           ))}
                         </div>
-                        <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={createCampaignProject} disabled={!newProjectName.trim()}>Create</button>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setShowAddProject(false); setNewProjectName(''); setNewProjectDesc(''); }}>Cancel</button>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setShowAddProject(false); setNewProjectName(''); setNewProjectDesc(''); }}>Cancel</button>
+                          <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={createCampaignProject} disabled={!newProjectName.trim()}>Create project</button>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Edit project inline */}
+                  {/* Edit project modal */}
                   {editingProject && (
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '18px 20px', marginBottom: 20 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 14 }}>Edit Project</div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        <input className="crm-input" placeholder="Project name *" value={editingProject.name} onChange={e => setEditingProject({ ...editingProject, name: e.target.value })} style={{ flex: 2, minWidth: 160 }} />
-                        <input className="crm-input" placeholder="Description" value={editingProject.description} onChange={e => setEditingProject({ ...editingProject, description: e.target.value })} style={{ flex: 3, minWidth: 180 }} />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '60px 20px', overflowY: 'auto' }} onClick={() => setEditingProject(null)}>
+                      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 480, boxShadow: '0 24px 70px rgba(0,0,0,.3)', padding: '22px 24px' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: '#111', marginBottom: 16 }}>Edit project</div>
+                        <input className="crm-input" placeholder="Project name *" value={editingProject.name} onChange={e => setEditingProject({ ...editingProject, name: e.target.value })} style={{ width: '100%', marginBottom: 10 }} />
+                        <input className="crm-input" placeholder="Description" value={editingProject.description} onChange={e => setEditingProject({ ...editingProject, description: e.target.value })} style={{ width: '100%', marginBottom: 14 }} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                          <span style={{ fontSize: 12, color: '#9ca3af' }}>Color</span>
                           {['#c9922c','#3b82f6','#16a34a','#8b5cf6','#ef4444','#6b7280'].map(col => (
-                            <button key={col} onClick={() => setEditingProject({ ...editingProject, color: col })} style={{ width: 22, height: 22, borderRadius: '50%', background: col, border: editingProject.color === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+                            <button key={col} onClick={() => setEditingProject({ ...editingProject, color: col })} style={{ width: 24, height: 24, borderRadius: '50%', background: col, border: editingProject.color === col ? '3px solid #111' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
                           ))}
                         </div>
-                        <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={updateCampaignProject}>Save</button>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setEditingProject(null)}>Cancel</button>
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setEditingProject(null)}>Cancel</button>
+                          <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={updateCampaignProject}>Save changes</button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -6268,7 +6297,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       const sender = camp.sender_agent_id ? profiles.find(p => p.id === camp.sender_agent_id) : null;
                       const sent = camp.send_count ?? 0;
                       return (
-                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: '#fff', borderRadius: 12, border: '1px solid #f0f0f0' }}>
+                      <div key={camp.id} title={camp.description || undefined} style={{ display: 'flex', flexWrap: isMobile ? 'wrap' : 'nowrap', alignItems: 'center', gap: isMobile ? 10 : 14, padding: '12px 16px', background: selectedCampaignIds.has(camp.id) ? '#fffdf5' : '#fff', borderRadius: 12, border: selectedCampaignIds.has(camp.id) ? '1px solid #e6c866' : '1px solid #f0f0f0' }}>
+                        {isAdmin && (
+                          <input type="checkbox" checked={selectedCampaignIds.has(camp.id)} onChange={() => setSelectedCampaignIds(prev => { const n = new Set(prev); n.has(camp.id) ? n.delete(camp.id) : n.add(camp.id); return n; })} aria-label={`Select ${camp.name}`} style={{ width: 16, height: 16, flexShrink: 0, cursor: 'pointer', accentColor: '#c9922c' }} />
+                        )}
                         <div style={{ width: 36, height: 36, borderRadius: 9, background: camp.type === 'email' ? '#dbeafe' : '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
                           {camp.type === 'email' ? '✉️' : '💬'}
                         </div>
@@ -6439,6 +6471,26 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             );
                           })()}
                         </div>
+
+                        {/* Bulk action bar */}
+                        {isAdmin && selectedCampaignIds.size > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#111', color: '#fff', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>{selectedCampaignIds.size} selected</span>
+                            <div style={{ display: 'flex', gap: 8, marginLeft: isMobile ? 0 : 'auto', flexWrap: 'wrap', ...(isMobile ? { width: '100%' } : {}) }}>
+                              <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none' }} onClick={() => bulkSetCampaignStatus([...selectedCampaignIds], 'active')}>▶ Activate</button>
+                              <button className="crm-btn crm-btn-sm" style={{ background: '#374151', color: '#fff', border: 'none' }} onClick={() => bulkSetCampaignStatus([...selectedCampaignIds], 'paused')}>⏸ Pause</button>
+                              {campaignProjects.length > 0 && (
+                                <select defaultValue="" onChange={e => { const v = e.target.value; if (v) { bulkMoveToProject([...selectedCampaignIds], v === '__none__' ? null : v); e.currentTarget.value = ''; } }} style={{ fontSize: 13, fontFamily: "'DM Sans',sans-serif", border: 'none', borderRadius: 6, padding: '5px 8px', background: '#374151', color: '#fff', cursor: 'pointer' }}>
+                                  <option value="">Move to…</option>
+                                  <option value="__none__">No project</option>
+                                  {campaignProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                              )}
+                              <button className="crm-btn crm-btn-sm" style={{ background: '#7f1d1d', color: '#fff', border: 'none' }} onClick={() => bulkDeleteCampaigns([...selectedCampaignIds])}>🗑 Delete</button>
+                              <button className="crm-btn crm-btn-sm" style={{ background: 'transparent', color: '#d1d5db', border: '1px solid #4b5563' }} onClick={() => setSelectedCampaignIds(new Set())}>Clear</button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Project sections */}
                         {visibleCampaigns.length === 0 ? (
