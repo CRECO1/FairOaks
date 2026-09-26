@@ -3,6 +3,7 @@ import { fairOaksEmail } from '@/lib/fair-oaks-email';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { buildLeadContext } from '@/lib/lead-context';

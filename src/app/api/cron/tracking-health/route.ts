@@ -247,6 +247,19 @@ export async function GET(req: NextRequest) {
     bump('degraded');
   }
 
+  // ── 5. Backstop for lead-notification failures ───────────────────────────
+  // recordIntegrationFailure() already tries to email the moment a lead alert
+  // fails, but when the thing that broke IS email that alert can fail too. The
+  // status row is written unconditionally, so reading it here means a stuck
+  // failure still surfaces on this cron's own schedule.
+  const { data: notifyRow } = await db
+    .from('crm_integration_status')
+    .select('last_status, updated_at').eq('id', 'lead_notifications').maybeSingle();
+  if (notifyRow && notifyRow.last_status && notifyRow.last_status !== 'ok') {
+    problems.push(`Lead notification emails are failing (state "${notifyRow.last_status}" as of ${String(notifyRow.updated_at).slice(0, 19)}). New leads are still being SAVED — only the alert to ${ALERT_EMAIL} is not arriving.`);
+    bump('error');
+  }
+
   const detail = problems.join(' | ');
   if (health.status !== 'ok') console.error(`[cron/tracking-health] ${health.status}: ${detail}`, notes);
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -52,7 +53,10 @@ export async function POST(req: NextRequest) {
         <p style="margin-top:16px"><a href="https://www.fairoaksrealtygroup.com/crm" style="background:#c9922c;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">View CRM →</a></p>
       </div>
     `,
-  }).catch(() => {});
+  }).then(() => recordIntegrationSuccess(LEAD_NOTIFY_KEY))
+      .catch(err => recordIntegrationFailure(LEAD_NOTIFY_KEY,
+        `Lead notification email failed from export-log: ${err?.message ?? err}. The lead itself was saved.`,
+        { subject: '⚠️ A lead alert did not send' }));
 
   return NextResponse.json({ success: true });
 }

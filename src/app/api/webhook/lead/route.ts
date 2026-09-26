@@ -29,6 +29,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { channelFor } from '@/lib/lead-context';
 
@@ -243,7 +244,10 @@ export async function POST(req: NextRequest) {
           <p style="margin-top:16px"><a href="https://www.fairoaksrealtygroup.com/crm" style="background:#c9922c;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">View in CRM →</a></p>
         </div>
       `,
-    }).catch((err) => { console.error('[webhook] lead notification email failed:', err?.message ?? err); }); // non-fatal
+    }).then(() => recordIntegrationSuccess(LEAD_NOTIFY_KEY))
+    .catch(err => recordIntegrationFailure(LEAD_NOTIFY_KEY,
+      `Lead notification email failed from webhook/lead: ${err?.message ?? err}. The lead itself was saved.`,
+      { subject: '⚠️ A lead alert did not send' }));  // non-fatal to the request
   }
 
   // New website leads can be enrolled in the brand's welcome sequence. Off

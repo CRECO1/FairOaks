@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 
