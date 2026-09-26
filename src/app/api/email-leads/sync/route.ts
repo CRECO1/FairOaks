@@ -263,6 +263,15 @@ function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string,
   // Test-suite / audit fixtures must never become real pipeline records
   if (/@example\.com/i.test(fromAddress) || (parsedEmail && /@example\.com/i.test(parsedEmail))) return false;
   if (/\bzz(test|aud)/i.test(subject)) return false;
+  // Synthetic deploy/uptime probe against the crecotx.com contact form. It
+  // arrives as a genuine "New Inquiry — …" notification from noreply@crecotx.com,
+  // so the ownWebsite source below rightly trusts the sender and the probe was
+  // becoming a real contact + deal + importer row roughly daily. Matched on the
+  // prospect address first — that is the stable signal — with the subject as a
+  // fallback in case the probe is ever renamed or re-addressed. Deliberately
+  // narrow: it rejects this probe, never noreply@crecotx.com inquiries at large.
+  if (parsedEmail && /(^attr\.probe(\.deploy)?@|probe\.deploy@)/i.test(parsedEmail)) return false;
+  if (/\battr(ibution)?[\s‐-―-]+probe\b/i.test(subject)) return false;
   // Own website contact form emails: sender IS our domain — that's expected, don't reject them.
   // Only apply the sender-domain filter for third-party platforms.
   if (!ownWebsite) {
