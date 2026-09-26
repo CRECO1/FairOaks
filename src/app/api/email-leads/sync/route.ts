@@ -566,6 +566,19 @@ export async function POST(req: import('next/server').NextRequest) {
     const processedIds = new Set((processed ?? []).map((r: any) => r.gmail_message_id));
 
     let totalImported = 0;
+    // Failures are counted, not just logged: the cron reads these back so a run
+    // that imports nothing because everything errored can no longer look like a
+    // quiet, successful run.
+    let totalFailed = 0;
+    let maxConsecutiveFailures = 0;
+    let runFailures = 0;
+    const failureSamples: string[] = [];
+    const noteFailure = (why: string, subject: string) => {
+      totalFailed++;
+      runFailures++;
+      if (runFailures > maxConsecutiveFailures) maxConsecutiveFailures = runFailures;
+      if (failureSamples.length < 5) failureSamples.push(`${why}: ${subject.slice(0, 80)}`);
+    };
 
     for (const conn of connections) {
       const token = await getValidToken(conn as any);
@@ -667,6 +680,7 @@ export async function POST(req: import('next/server').NextRequest) {
               console.error('[email-leads] contact insert failed — leaving message unprocessed for retry', {
                 messageId, subject, email: parsed.email, error: insertErr,
               });
+              noteFailure('contact insert failed', subject);
               continue;
             }
           }
@@ -678,6 +692,7 @@ export async function POST(req: import('next/server').NextRequest) {
           console.error('[email-leads] no contact could be resolved — leaving message unprocessed for retry', {
             messageId, subject, email: parsed.email,
           });
+          noteFailure('no contact resolved', subject);
           continue;
         }
 
@@ -757,10 +772,20 @@ export async function POST(req: import('next/server').NextRequest) {
 
         processedIds.add(messageId);
         totalImported++;
+        runFailures = 0;   // consecutive streak broken
       }
     }
 
-    return NextResponse.json({ imported: totalImported, ok: true });
+    if (totalFailed > 0) {
+      console.error(`[email-leads/sync] ${totalFailed} message(s) failed to import (longest consecutive run: ${maxConsecutiveFailures})`, failureSamples);
+    }
+    return NextResponse.json({
+      imported: totalImported,
+      failed: totalFailed,
+      maxConsecutiveFailures,
+      failureSamples,
+      ok: true,
+    });
   } catch (err: any) {
     console.error('[email-leads/sync]', err?.message ?? err);
     return NextResponse.json({ error: 'sync failed' }, { status: 500 });
