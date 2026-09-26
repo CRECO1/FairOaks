@@ -213,6 +213,45 @@ function detectSource(from: string): typeof LEAD_SOURCES[0] | null {
   return LEAD_SOURCES.find(s => f.includes(s.domain)) ?? null;
 }
 
+/**
+ * Find an existing contact by email, the way the DATABASE matches them.
+ *
+ * crm_clients carries a unique index on (lower(email), business_unit). The
+ * lookup here used `.eq('email', …)`, which is case-SENSITIVE, so a lead
+ * arriving as `Todd.Finn@…` did not match a stored `todd.finn@…`. The importer
+ * concluded the contact was new, inserted, and the index rejected it with
+ * 23505 — and because the insert's error was never read, the lead vanished.
+ * 69 contacts are stored with a non-lowercase address, so this was live.
+ *
+ * PostgREST cannot express `lower(email) = $1`, so this narrows with ILIKE and
+ * then confirms an exact case-insensitive equality in JS. The confirm step is
+ * what makes it correct: `_` and `%` are legal in a local-part and are ILIKE
+ * wildcards, so an unescaped pattern could match the WRONG contact. They are
+ * escaped below, and the JS check means a miss in that escaping can only ever
+ * cost us a match — never hand back somebody else's record.
+ */
+async function findClientByEmail(
+  supabase: ReturnType<typeof db>,
+  email: string,
+  business_unit: string,
+): Promise<string | null> {
+  const target = email.trim().toLowerCase();
+  if (!target) return null;
+  const pattern = target.replace(/([\\%_])/g, '\\$1');
+  const { data, error } = await supabase
+    .from('crm_clients')
+    .select('id, email')
+    .ilike('email', pattern)
+    .eq('business_unit', business_unit)
+    .limit(20);
+  if (error) {
+    console.error('[email-leads] contact lookup failed', { email: target, error });
+    return null;
+  }
+  const hit = (data ?? []).find(r => (r.email ?? '').trim().toLowerCase() === target);
+  return hit?.id ?? null;
+}
+
 // Reject billing/admin/platform emails — only keep actual lead notifications
 const NON_LEAD_PATTERNS = [
   /payment\s+failed/i,
@@ -572,16 +611,10 @@ export async function POST(req: import('next/server').NextRequest) {
         // Skip if no usable contact info
         if (!parsed.email && !parsed.phone && !parsed.fullName) continue;
 
-        // Dedup: don't create duplicate clients by email
+        // Dedup by email, case-insensitively, exactly as the unique index does.
         let clientId: string | null = null;
         if (parsed.email) {
-          const { data: existing } = await supabase
-            .from('crm_clients')
-            .select('id')
-            .eq('email', parsed.email)
-            .eq('business_unit', business_unit)
-            .maybeSingle();
-          if (existing) clientId = existing.id;
+          clientId = await findClientByEmail(supabase, parsed.email, business_unit);
         }
 
         // Create client if not already exists
@@ -592,13 +625,15 @@ export async function POST(req: import('next/server').NextRequest) {
 
           const clientType = business_unit === 'commercial' ? 'Tenant' : 'Buyer';
 
-          const { data: newClient } = await supabase.from('crm_clients').insert([{
+          const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
             agent_id:        agentId,
             assigned_agent_ids: [agentId],
             first_name:      firstName,
             last_name:        lastName,
             business_name:   parsed.company ?? '',
-            email:            parsed.email ?? '',
+            // Store lowercase so the stored value matches the index expression and
+            // future lookups cannot drift back out of sync.
+            email:            parsed.email?.trim().toLowerCase() ?? '',
             phone:            parsed.phone ?? '',
             type:             clientType,
             lead_source:      source.source,
@@ -612,6 +647,38 @@ export async function POST(req: import('next/server').NextRequest) {
           }]).select('id').single();
 
           clientId = newClient?.id ?? null;
+
+          if (insertErr) {
+            // 23505 = the unique index caught a contact we failed to find first.
+            // Somebody else's row already represents this person, so link to it
+            // rather than losing the lead. Reachable on a race between two runs
+            // even now the lookup is case-correct.
+            if ((insertErr as { code?: string }).code === '23505' && parsed.email) {
+              clientId = await findClientByEmail(supabase, parsed.email, business_unit);
+              if (clientId) {
+                console.warn(`[email-leads] duplicate on insert for ${parsed.email}; linked to existing contact ${clientId}`);
+              }
+            }
+            if (!clientId) {
+              // Any other failure is NOT the lead's fault. Leaving the message
+              // unrecorded is what lets the next run pick it up again: this used
+              // to write the import row anyway, marking the message processed
+              // forever and counting it as a success while the lead was gone.
+              console.error('[email-leads] contact insert failed — leaving message unprocessed for retry', {
+                messageId, subject, email: parsed.email, error: insertErr,
+              });
+              continue;
+            }
+          }
+        }
+
+        // No contact means nothing to attach the lead to. Skip WITHOUT recording
+        // the message, so it is retried instead of silently disappearing.
+        if (!clientId) {
+          console.error('[email-leads] no contact could be resolved — leaving message unprocessed for retry', {
+            messageId, subject, email: parsed.email,
+          });
+          continue;
         }
 
         // Create a deal in the Prospect stage (dedup by client_id + business_unit)
