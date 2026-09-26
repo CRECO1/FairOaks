@@ -36,7 +36,7 @@ interface RecentRow {
   referrer: string | null; landing_page: string | null;
 }
 interface Ga {
-  status: { connected: boolean; reason?: string; detail?: string };
+  status: { connected: boolean; reason?: string; detail?: string; via?: 'oauth' | 'service_account'; actionUrl?: string };
   label: string;
   totals: { sessions: number; users: number; leads: number; conversionRate: number } | null;
   byChannel: Row[]; bySourceMedium: Row[]; landingPages: Row[]; byCountryCity: Row[]; byDevice: Row[];
@@ -104,21 +104,116 @@ function Bars({ rows, isMobile, empty, tone = GOLD }: { rows: Row[]; isMobile: b
   );
 }
 
-function ConnectGa({ detail, label, viewing }: { detail?: string; label?: string; viewing?: string | null }) {
+/** Shared look for the gold action button. */
+const gaBtn: React.CSSProperties = {
+  display: 'inline-block', background: GOLD, color: '#fff', border: 'none',
+  borderRadius: 8, padding: '11px 18px', fontSize: 14, fontWeight: 700,
+  cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textDecoration: 'none',
+  lineHeight: 1.3, minHeight: 44,   // 44px keeps it a comfortable phone tap target
+};
+
+/**
+ * GA connection control.
+ *
+ * The button does NOT navigate straight to /api/ga4/connect. The CRM
+ * authenticates with a bearer token held in localStorage, and a plain
+ * navigation sends only cookies — so the route would reject it. Instead it
+ * asks the route for a freshly minted consent URL (?json=1, bearer attached)
+ * and then sends the browser there. Still one tap, and it works on a phone
+ * that has no SSR cookie.
+ *
+ * Every press mints a new single-use nonce server-side, so a half-finished
+ * attempt can simply be repeated — there is no stale-link state to get stuck in.
+ */
+function ConnectGa({ detail, label, viewing, token, reason, actionUrl }: {
+  detail?: string; label?: string; viewing?: string | null; token: string | null;
+  reason?: string; actionUrl?: string;
+}) {
   const covers = label ?? 'crecotx.com';
   const mismatch = viewing != null && viewing !== covers;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function connect() {
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch('/api/ga4/connect?json=1', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (res.status === 401 || res.status === 403) { setError('Only the account owner can connect Google Analytics.'); setBusy(false); return; }
+      if (!res.ok) { setError('Could not start the connection. Try again in a moment.'); setBusy(false); return; }
+      const j = await res.json() as { url?: string };
+      if (!j.url) { setError('No consent link came back. Try again.'); setBusy(false); return; }
+      window.location.href = j.url;          // → Google consent screen
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+      setBusy(false);
+    }
+  }
+
+  // The grant worked; only the Cloud project switch is left. One tap fixes it,
+  // and no re-authorization is needed afterwards.
+  const apiDisabled = reason === 'api_disabled' && !!actionUrl;
+
   return (
     <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, background: '#fffdf7' }}>
       <div style={panelTitle}>Google Analytics — {covers}</div>
       <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.7 }}>
         Session and landing-page data — the traffic that <em>didn&apos;t</em> become a lead, which is
-        what a conversion rate needs. Dark until a GA4 service account is connected.
-        <div style={{ marginTop: 10, fontSize: 13, color: MUTE }}>
-          Add <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>GA4_PROPERTY_ID</code> and{' '}
-          <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 4 }}>GA4_SERVICE_ACCOUNT_KEY</code> in Vercel, then redeploy.
+        what a conversion rate needs.
+      </div>
+
+      {apiDisabled ? (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 13, color: '#374151', marginBottom: 10 }}>
+            Your Google account is connected. One switch left: turn on the Analytics Data API
+            in the Google Cloud project, then reload this page.
+          </div>
+          <a href={actionUrl} target="_blank" rel="noopener noreferrer" style={gaBtn}>Enable the Analytics Data API →</a>
         </div>
-        {mismatch && <div style={{ marginTop: 8, fontSize: 12.5, color: GOLD_DEEP }}>Viewing <strong>{viewing}</strong>; the connected property measures {covers}.</div>}
-        {detail && <div style={{ marginTop: 8, fontSize: 12.5, color: GOLD_DEEP }}>Status: {detail}</div>}
+      ) : (
+        <div style={{ marginTop: 12 }}>
+          <button onClick={connect} disabled={busy} style={{ ...gaBtn, opacity: busy ? 0.6 : 1, cursor: busy ? 'default' : 'pointer' }}>
+            {busy ? 'Opening Google…' : 'Connect Google Analytics'}
+          </button>
+          <div style={{ marginTop: 8, fontSize: 12.5, color: MUTE }}>
+            Sends you to Google to approve read-only access. Sign in with the account that owns the {covers} property.
+          </div>
+        </div>
+      )}
+
+      {error && <div style={{ marginTop: 10, fontSize: 12.5, color: '#b00020' }}>{error}</div>}
+      {mismatch && <div style={{ marginTop: 8, fontSize: 12.5, color: GOLD_DEEP }}>Viewing <strong>{viewing}</strong>; the connected property measures {covers}.</div>}
+      {detail && !apiDisabled && <div style={{ marginTop: 8, fontSize: 12.5, color: MUTE }}>Status: {detail}</div>}
+    </div>
+  );
+}
+
+/** Connected badge with a quiet way to re-authorize. */
+function GaConnected({ label, via, token }: { label: string; via?: string; token: string | null }) {
+  const [busy, setBusy] = useState(false);
+  async function reconnect() {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/ga4/connect?json=1', { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      const j = await res.json().catch(() => null) as { url?: string } | null;
+      if (j?.url) { window.location.href = j.url; return; }
+    } catch { /* fall through */ }
+    setBusy(false);
+  }
+  return (
+    <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, marginBottom: 14, padding: '12px 20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12.5, color: '#374151', flex: '1 1 260px' }}>
+          <strong>Google Analytics — {label}</strong>
+          <span style={{ color: '#1a7f37', fontWeight: 700 }}> · Connected ✓</span>
+          {via === 'oauth' && <span style={{ color: MUTE }}> (Google sign-in)</span>}
+          <span style={{ color: MUTE }}> · traffic for this site only. The panels above cover all three sites.</span>
+        </div>
+        <button onClick={reconnect} disabled={busy}
+          style={{ background: 'none', border: `1px solid ${GOLD}`, color: GOLD_DEEP, borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: busy ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif", minHeight: 34 }}>
+          {busy ? 'Opening…' : 'Reconnect'}
+        </button>
       </div>
     </div>
   );
@@ -326,14 +421,12 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       </div>
 
       {/* ── GA ── */}
-      {!gaOn ? <ConnectGa detail={ga?.status?.detail} label={ga?.label} viewing={site} /> : (
+      {!gaOn ? (
+        <ConnectGa detail={ga?.status?.detail} label={ga?.label} viewing={site} token={token}
+                   reason={ga?.status?.reason} actionUrl={ga?.status?.actionUrl} />
+      ) : (
         <>
-          <div style={{ ...card, borderLeft: `4px solid ${GOLD}`, marginBottom: 14, padding: '12px 20px' }}>
-            <div style={{ fontSize: 12.5, color: '#374151' }}>
-              <strong>Google Analytics — {ga.label}</strong>
-              <span style={{ color: MUTE }}> · traffic for this site only. The panels above cover all three sites.</span>
-            </div>
-          </div>
+          <GaConnected label={ga.label} via={ga?.status?.via} token={token} />
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
             {[
               { label: 'Sessions', val: ga.totals?.sessions ?? 0, sub: 'GA4' },

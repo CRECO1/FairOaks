@@ -45,13 +45,19 @@ export async function GET(req: NextRequest) {
     if (!code)  return page('Something went wrong', 'Google did not send an authorization code back. Try the link again.', false);
 
     const res = await redeemGa4Code(code, stateRaw ?? '');
-    if (res.ok) {
-      return page('Google Analytics connected', `Connected as <strong>${res.email.replace(/[<>&]/g, '')}</strong>. Traffic panels will appear on the Lead Attribution dashboard.`, true);
+
+    // Success, and "connected but the Data API is still off", both land back on
+    // the Lead Attribution page. The panel reads live status, so it shows either
+    // the connected badge or the one-tap "Enable the Analytics Data API" button
+    // without any outcome needing to be threaded through the URL. CRMApp picks
+    // the page up from the hash fragment.
+    if (res.ok || res.reason === 'api_disabled') {
+      return NextResponse.redirect(`${CRM_URL}#lead-attribution`);
     }
-    if (res.reason === 'api_disabled') {
-      return page('Almost there', 'Your Google account is connected, but the Analytics Data API still needs switching on in the Cloud project. The dashboard will show a one-tap link to enable it.', false);
-    }
-    return page('Could not connect', `Google Analytics was not connected: ${res.reason.replace(/[<>&]/g, '')}.`, false);
+
+    // A genuine failure is worth explaining where it happened rather than
+    // bouncing to a dashboard that just looks unchanged.
+    return page('Could not connect', `Google Analytics was not connected: ${res.reason.replace(/[<>&]/g, '')}. You can tap Connect Google Analytics again on the Lead Attribution page.`, false);
   }
 
   // State is "userId|bu|retryFlag|nonce" (bu / retryFlag may be empty)
