@@ -20,6 +20,40 @@ export async function GET(req: NextRequest) {
   const stateRaw = req.nextUrl.searchParams.get('state');
   const error    = req.nextUrl.searchParams.get('error');
 
+  // ── Google Analytics connection borrows this callback ────────────────────
+  // A Google OAuth client only accepts redirect URIs registered against it in
+  // the Cloud console, and this one is already registered and working.
+  // Registering a second URI would mean desktop console access, which is the
+  // whole thing the GA connection is designed to avoid. The `ga4:` state prefix
+  // cannot collide with the Gmail flow's "userId|bu|retry|nonce" format, and
+  // returning here early leaves the Gmail path untouched.
+  if ((stateRaw ?? '').startsWith('ga4:')) {
+    const { redeemGa4Code } = await import('@/lib/ga4-oauth');
+    const page = (title: string, body: string, ok: boolean) =>
+      new NextResponse(
+        `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">`
+        + `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:34rem;margin:12vh auto;padding:0 1.25rem;line-height:1.55">`
+        + `<div style="font-size:2.5rem">${ok ? '&#9989;' : '&#9888;&#65039;'}</div>`
+        + `<h1 style="font-size:1.35rem;margin:.4rem 0 .6rem">${title}</h1>`
+        + `<p style="color:#444;margin:0 0 1.2rem">${body}</p>`
+        + `<a href="${CRM_URL}" style="display:inline-block;background:#C9922C;color:#fff;padding:.7rem 1.2rem;border-radius:.5rem;text-decoration:none;font-weight:600">Open the CRM</a>`
+        + `</div>`,
+        { status: ok ? 200 : 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+      );
+
+    if (error) return page('Authorization cancelled', 'Google Analytics was not connected. You can tap the link again any time.', false);
+    if (!code)  return page('Something went wrong', 'Google did not send an authorization code back. Try the link again.', false);
+
+    const res = await redeemGa4Code(code, stateRaw ?? '');
+    if (res.ok) {
+      return page('Google Analytics connected', `Connected as <strong>${res.email.replace(/[<>&]/g, '')}</strong>. Traffic panels will appear on the Lead Attribution dashboard.`, true);
+    }
+    if (res.reason === 'api_disabled') {
+      return page('Almost there', 'Your Google account is connected, but the Analytics Data API still needs switching on in the Cloud project. The dashboard will show a one-tap link to enable it.', false);
+    }
+    return page('Could not connect', `Google Analytics was not connected: ${res.reason.replace(/[<>&]/g, '')}.`, false);
+  }
+
   // State is "userId|bu|retryFlag|nonce" (bu / retryFlag may be empty)
   const stateParts  = (stateRaw ?? '').split('|');
   const stateUserId = stateParts[0];
