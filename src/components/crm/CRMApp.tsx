@@ -1641,10 +1641,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setSaving(false);
   }
 
+  /**
+   * Explain a refused contact delete instead of leaving an opaque failure.
+   *
+   * crm_deals.client_id is ON DELETE RESTRICT: a deal is financial history and
+   * must never silently detach from its contact — that is exactly how the Dita
+   * Lawson deal ended up orphaned. Postgres answers 23503, which on its own
+   * tells the person nothing about what to do next.
+   */
+  function contactDeleteMessage(error: { code?: string; message?: string } | null, subject: string): string {
+    const code = error?.code ?? '';
+    const msg = error?.message ?? '';
+    if (code === '23503' || /foreign key|violates/i.test(msg)) {
+      if (/crm_deals/i.test(msg)) {
+        return `${subject} has deals attached — reassign or delete those deals first, then remove the contact.`;
+      }
+      return `${subject} still has linked records — remove or reassign them first.`;
+    }
+    return `Could not remove ${subject}. Nothing was deleted.`;
+  }
+
   async function deleteClient(id: string, name: string) {
     if (!isSuperAdmin) { showToast('Only a super admin can delete contacts.'); return; }
     if (!confirm(`Remove ${name}? This cannot be undone.`)) return;
-    await supabase.from('crm_clients').delete().eq('id', id);
+    const { error } = await supabase.from('crm_clients').delete().eq('id', id);
+    // Without this the row vanished from the list and the toast said "removed"
+    // even when the delete was refused — a false success that reverted on the
+    // next reload.
+    if (error) { showToast(contactDeleteMessage(error, name)); return; }
     setClients(prev => prev.filter(c => c.id !== id));
     showToast(`${name} removed.`);
   }
@@ -1655,7 +1679,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (count === 0) return;
     if (!confirm(`Permanently delete ${count} contact${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
     const ids = [...selectedClientIds];
-    await supabase.from('crm_clients').delete().in('id', ids);
+    const { error } = await supabase.from('crm_clients').delete().in('id', ids);
+    // One statement, so a single protected contact refuses the whole batch and
+    // NOTHING is deleted. Say that plainly rather than clearing the selection
+    // and claiming success.
+    if (error) {
+      showToast(
+        (error as { code?: string }).code === '23503'
+          ? 'None were deleted — at least one of those contacts has deals attached. Reassign or delete those deals first.'
+          : 'None were deleted. Nothing was changed.',
+      );
+      return;
+    }
     setClients(prev => prev.filter(c => !ids.includes(c.id)));
     setSelectedClientIds(new Set());
     showToast(`${count} contact${count !== 1 ? 's' : ''} deleted.`);

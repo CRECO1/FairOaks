@@ -56,3 +56,26 @@ create index if not exists crm_campaign_sends_sent_at_idx
 -- not a data change.
 --
 -- Result: 385ms -> 117ms, results identical, ordering now deterministic.
+
+-- ── 4. crm_deals.client_id: SET NULL -> RESTRICT (approved 2026-09-26) ───────
+-- The Dita Lawson fix. Deleting a contact silently nulled client_id on their
+-- deals, leaving closed financial history attached to nobody and invisible in
+-- the pipeline. RESTRICT refuses the delete instead, so the deal can never be
+-- orphaned by accident.
+--
+-- Pre-checked: 23 of 23 deals point at a live contact, 0 dangling, 0 nulls —
+-- nothing to migrate. 21 contacts become protected.
+--
+-- The merge-contacts route is unaffected: REF_TABLES repoints crm_deals
+-- .client_id onto the survivor BEFORE deleting duplicates, verified by test D.
+--
+-- Verified: (A) deleting a contact with a deal is refused 23503 and the deal
+-- stays attached, (B) a contact with no deals still deletes, (C) removing the
+-- deals first then the contact works, (D) merge-style repoint-then-delete works.
+alter table public.crm_deals drop constraint crm_deals_client_id_fkey;
+alter table public.crm_deals add constraint crm_deals_client_id_fkey
+  foreign key (client_id) references public.crm_clients(id) on delete restrict;
+
+-- The other five data-bearing SET NULL FKs are deliberately unchanged pending
+-- review: crm_call_log.contact_id/deal_id, crm_text_messages.contact_id,
+-- crm_prospective_properties.contact_id, email_lead_imports.client_id.
