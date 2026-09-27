@@ -37,6 +37,12 @@ const LIMITS = {
   oauth:         { requests: 100, window: '1 h' },
   // AI caption generation — 10 per IP per hour (OpenAI/Anthropic cost control)
   caption:       { requests: 10, window: '1 h' },
+  // CRM copilot — 30 chat turns per IP per 10 minutes. Each turn is up to six
+  // Claude rounds with tool results fed back in, so this is the most expensive
+  // endpoint in the app by a wide margin. Signed-in-only, so the budget is set
+  // well above real use (a busy agent runs a handful of turns an hour) and is
+  // there to bound a runaway client or a stolen session, not to ration anyone.
+  copilot:       { requests: 30, window: '10 m' },
   // E-sign link — 120 per IP per minute. Generous on purpose: several signers
   // at one company share a NAT address, and each page view makes a handful of
   // calls. Used with failOpen, see rateLimitFailOpen below.
