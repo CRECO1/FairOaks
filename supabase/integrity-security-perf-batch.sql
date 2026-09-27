@@ -79,3 +79,16 @@ alter table public.crm_deals add constraint crm_deals_client_id_fkey
 -- The other five data-bearing SET NULL FKs are deliberately unchanged pending
 -- review: crm_call_log.contact_id/deal_id, crm_text_messages.contact_id,
 -- crm_prospective_properties.contact_id, email_lead_imports.client_id.
+
+-- ── 5. anon SELECT reduced to the genuinely public tables (2026-09-26) ──────
+-- anon retained SELECT on 67 tables after the write revoke, contained only by
+-- RLS. Measured what anon could ACTUALLY read: exactly 5 tables returned rows
+-- (listings, agents, testimonials, neighborhoods, site_settings) — the rest
+-- already returned zero under RLS, so revoking their grant changes no
+-- behaviour and adds the second layer RLS alone was providing.
+-- Also confirmed no public page queries them: the public site uses no browser
+-- Supabase client at all, every public read is server-side.
+--   revoke select on table public.<62 tables> from anon;
+-- Verified after: the 5 public tables still readable by anon; crm_clients,
+-- crm_deals, audit_logs, crm_campaign_sends, gmail_connections, ga4_oauth,
+-- crm_profiles and leads all denied 42501 at the grant level.

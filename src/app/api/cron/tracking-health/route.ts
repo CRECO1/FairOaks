@@ -260,6 +260,16 @@ export async function GET(req: NextRequest) {
     bump('error');
   }
 
+  // Export alerts share the same backstop: the row is written even when the
+  // notification email cannot be sent.
+  const { data: exportRow } = await db
+    .from('crm_integration_status')
+    .select('last_status, updated_at').eq('id', 'export_alerts').maybeSingle();
+  if (exportRow && exportRow.last_status && exportRow.last_status !== 'ok') {
+    problems.push(`Contact-export alerts are failing (state "${exportRow.last_status}" as of ${String(exportRow.updated_at).slice(0, 19)}). Exports are still recorded in audit_logs — only the notification is not arriving.`);
+    bump('error');
+  }
+
   const detail = problems.join(' | ');
   if (health.status !== 'ok') console.error(`[cron/tracking-health] ${health.status}: ${detail}`, notes);
 

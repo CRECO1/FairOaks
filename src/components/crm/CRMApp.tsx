@@ -2313,6 +2313,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const filename = `contacts-${today()}.csv`;
     const label = `${toExport.length} contact${toExport.length !== 1 ? 's' : ''}`;
 
+    /**
+     * Tell the server an export happened.
+     *
+     * This CSV is built here from contacts already in memory, so no request
+     * reaches the server as the file is written and the two server export
+     * routes never see it. Without this call the owner's browser export leaves
+     * no trace at all. Only the scope is sent — the server counts the rows
+     * itself and writes the audit row, so the number in the record is not one
+     * the browser supplied. Fire-and-forget: a logging failure must never cost
+     * the user their download.
+     */
+    const recordExport = () => {
+      void fetch('/api/crm/export-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({
+          business_unit: businessUnit,
+          ids: selectedClientIds.size > 0 ? [...selectedClientIds] : null,
+        }),
+      }).catch(() => { /* never block the download on logging */ });
+    };
+
     // Use native Save As dialog if browser supports it (Chrome / Edge)
     if ('showSaveFilePicker' in window) {
       try {
@@ -2324,6 +2346,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const writable = await handle.createWritable();
         await writable.write(csv);
         await writable.close();
+        recordExport();
         showToast(`Exported ${label}`);
         return;
       } catch (err: unknown) {
@@ -2338,6 +2361,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const a = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
+    recordExport();
     showToast(`Exported ${label}`);
   }
 

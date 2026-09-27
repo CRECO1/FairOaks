@@ -37,6 +37,10 @@ const LIMITS = {
   oauth:         { requests: 100, window: '1 h' },
   // AI caption generation — 10 per IP per hour (OpenAI/Anthropic cost control)
   caption:       { requests: 10, window: '1 h' },
+  // E-sign link — 120 per IP per minute. Generous on purpose: several signers
+  // at one company share a NAT address, and each page view makes a handful of
+  // calls. Used with failOpen, see rateLimitFailOpen below.
+  esign:         { requests: 120, window: '1 m' },
 } as const;
 
 type LimiterKey = keyof typeof LIMITS;
@@ -107,4 +111,35 @@ export async function rateLimit(
     remaining: result.remaining,
     reset:     result.reset,
   };
+}
+
+/**
+ * Rate limit that lets traffic through when the limiter itself is unavailable.
+ *
+ * rateLimit() fails CLOSED, which is right for a lead form: if Redis is down,
+ * dropping submissions beats letting someone flood the database. It is the
+ * wrong trade for the e-sign link. That endpoint is reached by external
+ * counterparties signing a contract, its tokens are 128-bit and not guessable,
+ * and the realistic threat is noise rather than compromise. Failing closed
+ * there would mean a Redis hiccup stops people signing — a worse outcome than
+ * the abuse the limit is meant to deter.
+ *
+ * So this is deliberately weaker than rateLimit() and must not be used for
+ * anything that writes on behalf of an unauthenticated caller.
+ */
+export async function rateLimitFailOpen(
+  req: NextRequest,
+  key: LimiterKey,
+): Promise<{ success: boolean; limit: number; remaining: number; reset: number }> {
+  try {
+    const limiter = getLimiter(key);
+    if (limiter === 'unavailable' || !limiter) {
+      return { success: true, limit: 0, remaining: 0, reset: 0 };   // let it through
+    }
+    const result = await limiter.limit(getIp(req));
+    return { success: result.success, limit: result.limit, remaining: result.remaining, reset: result.reset };
+  } catch (e) {
+    console.error(`[ratelimit] ${key} check failed, allowing through:`, e);
+    return { success: true, limit: 0, remaining: 0, reset: 0 };
+  }
 }

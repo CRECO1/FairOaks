@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimitFailOpen } from '@/lib/ratelimit';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, declinedEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
@@ -43,6 +44,11 @@ function turnStatus(env: Envelope, signer: Signer, signers: Signer[]): 'voided' 
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  // Fail-open limiter: deters enumeration of the 128-bit signing tokens without
+  // ever standing between a counterparty and a contract if Redis is unwell.
+  const rl = await rateLimitFailOpen(req, 'esign');
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   const { token } = await params;
   const ctx = await load(token);
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
@@ -113,6 +119,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  // Fail-open limiter: deters enumeration of the 128-bit signing tokens without
+  // ever standing between a counterparty and a contract if Redis is unwell.
+  const rl = await rateLimitFailOpen(req, 'esign');
+  if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+
   const { token } = await params;
   const ctx = await load(token);
   if (!ctx) return NextResponse.json({ error: 'not_found' }, { status: 404 });
