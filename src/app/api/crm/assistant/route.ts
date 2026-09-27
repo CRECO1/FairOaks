@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, runTool, describeWrite, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
+import { rateLimit } from '@/lib/ratelimit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -62,8 +63,21 @@ export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
 
+  // The costliest endpoint in the app: each call is up to six Claude rounds with tool
+  // results fed back in. Auth alone bounds WHO can spend that, not HOW MUCH.
+  const { success } = await rateLimit(req, 'copilot');
+  if (!success) return NextResponse.json({ error: "You're going a bit fast for me — give it a minute." }, { status: 429 });
+
   const { messages: incoming = [], allowWrites = false }: ReqBody = await req.json();
   if (!Array.isArray(incoming) || incoming.length === 0) return NextResponse.json({ error: 'messages required' }, { status: 400 });
+  // The whole conversation is replayed by the client on every turn, so its size is
+  // caller-controlled and gets re-sent to the model up to six times per request. Without
+  // a ceiling one request can bill an arbitrary number of tokens. Generous on purpose:
+  // a single turn can add a dozen entries (each tool round appends an assistant turn and
+  // a tool_result turn), so these sit far above any real conversation.
+  if (incoming.length > 150 || JSON.stringify(incoming).length > 120_000) {
+    return NextResponse.json({ error: 'That conversation has gotten too long — start a new chat.' }, { status: 413 });
+  }
 
   // Agent's first name for a personal system prompt.
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });

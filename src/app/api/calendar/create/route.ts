@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { safeJson } from '@/lib/safe-json';
@@ -48,6 +48,12 @@ export async function POST(req: NextRequest) {
     if (!title || !due_date || !userId) {
       return NextResponse.json({ error: 'title, due_date, and userId required' }, { status: 400 });
     }
+
+    // userId selects which agent's Google account the event is written to. It arrives in
+    // the body, so it has to be checked against the caller: without this, any signed-in
+    // CRM user could POST someone else's id and create events on THEIR calendar using
+    // THEIR stored OAuth token. Mirrors the same guard in /api/gmail/send.
+    if (caller.id !== userId) return forbidden("Cannot use another user's Google connection");
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
