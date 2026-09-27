@@ -23,6 +23,20 @@ function gtag(event: string, params?: Record<string, any>) {
     window.dataLayer = window.dataLayer || [];
     window.dataLayer.push({ event, ...params });
   }
+
+  // Mirror the event NAME into Clarity, matching what attribution.ts#trackEvent
+  // already does. Without this, half the site's events could be used to filter
+  // session replays and half could not, purely depending on which helper a
+  // component happened to call — which is the kind of inconsistency nobody
+  // discovers until they are staring at an empty Clarity segment. Clarity takes
+  // a bare string, so the parameters stay in GA. Its own try/catch: a Clarity
+  // failure must not swallow a GA event that already succeeded.
+  try {
+    const c = (window as unknown as { clarity?: (cmd: string, ...a: unknown[]) => void }).clarity;
+    if (typeof c === 'function') c('event', event);
+  } catch {
+    // Analytics must never break the page.
+  }
 }
 
 // ─── Lead Generation ──────────────────────────────────────────────────────────
