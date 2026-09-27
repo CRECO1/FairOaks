@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Image from 'next/image';
 import { renderPdfPages, revokePages, type RenderedPage } from '@/lib/pdf-render';
 import { labelFor, readTextRuns, isGenericLabel } from '@/lib/pdf-field-labels';
 import { Dancing_Script, Great_Vibes, Sacramento, Homemade_Apple, Caveat } from 'next/font/google';
@@ -631,14 +632,17 @@ export default function SignPage() {
   const header = (
     <div style={{ borderBottom: `3px solid ${GOLD}`, background: '#fff' }}>
       <div style={{ maxWidth: 960, margin: '0 auto', padding: narrow ? '10px 16px' : '14px 24px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', minHeight: narrow ? 38 : 44 }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {brand === 'creco' && <img src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" style={{ height: narrow ? 38 : 44, width: 'auto', display: 'block' }} />}
+        {brand === 'creco' && <Image src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" priority width={64} height={44}
+                                     style={{ height: narrow ? 38 : 44, width: 'auto', display: 'block' }} />}
         {brand === 'fairoaks' && (
           // The Fair Oaks mark is a tall tree; its own wordmark is unreadable at header
           // height, so the name is set beside it.
           <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/fair-oaks-logo.png" alt="" aria-hidden style={{ height: narrow ? 42 : 50, width: 'auto', display: 'block' }} />
+            {/* next/image so the browser gets a ~3KB WebP for a 50px mark instead
+                of the 376KB source PNG; Next falls back to PNG where WebP is not
+                accepted, so no <picture> or second asset is needed. */}
+            <Image src="/fair-oaks-logo.png" alt="" aria-hidden priority width={50} height={57}
+                   style={{ height: narrow ? 42 : 50, width: 'auto', display: 'block' }} />
             <span style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: narrow ? 17 : 20, fontWeight: 600, color: INK, letterSpacing: .2, whiteSpace: 'nowrap' }}>Fair Oaks Realty Group</span>
           </span>
         )}

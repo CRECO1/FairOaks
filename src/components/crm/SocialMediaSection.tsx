@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import NextImage from 'next/image';
 import VideoEditorModal from './VideoEditorModal';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -2913,7 +2914,8 @@ export default function SocialMediaSection({ agentId, isAdmin, toast }: Props) {
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', gap: 12, borderBottom: '1px solid #efefef' }}>
                 <div style={{ width: 44, height: 44, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, border: '2px solid transparent', background: 'linear-gradient(white,white) padding-box, linear-gradient(45deg,#f09433,#bc1888) border-box' }}>
-                  <img src="/fair-oaks-logo.png" alt="Fair Oaks Realty Group" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {/* 44px avatar — next/image serves a tiny WebP rather than the full PNG. */}
+                  <NextImage src="/fair-oaks-logo.png" alt="Fair Oaks Realty Group" width={44} height={44} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#000' }}>fairoaksrealtygroup</div>
