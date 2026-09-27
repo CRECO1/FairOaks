@@ -6,7 +6,9 @@ import React, { useEffect, useRef, useState } from 'react';
 // Claude tool-use loop over the agent's CRM. Writes are confirmed before they run.
 type Block = { type: string; text?: string; name?: string; input?: unknown };
 type Msg = { role: 'user' | 'assistant'; content: string | Block[] };
-type Pending = { name: string; summary: string };
+/** A write the copilot has queued. `id` is the server's signed approval ticket: sending
+ *  it back is what authorises that exact call, so it is never inspected here. */
+type Pending = { id: string; name: string; summary: string };
 /** A UI directive the server asks the browser to apply — currently just navigation. */
 type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string };
 
@@ -34,7 +36,7 @@ const TOOL_LABEL: Record<string, string> = {
   open_page: 'opened a section',
   complete_task: 'completed a task', add_note: 'added a note', update_deal_stage: 'moved a deal',
   find_property: 'found a property', list_properties: 'checked properties', get_property: 'looked up a property',
-  list_forms: 'listed forms', draft_lease: 'drafted a lease', autofill_loi: 'pre-filled a letter of intent',
+  list_forms: 'listed forms', draft_lease: 'drafted a lease', autofill_loi: 'pre-filled a letter of intent', complete_loi: 'completed a letter of intent',
   generate_lease: 'generated the lease', start_form: 'started a form', send_for_signature: 'sent for e-signature',
   send_email: 'sent an email', schedule_event: 'scheduled an event',
   create_contact: 'added a contact', update_contact: 'updated a contact', create_property: 'added a property',
@@ -56,16 +58,23 @@ export default function AssistantPanel({ token, onClose, onNavigate }: {
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, loading]);
 
-  async function send(text: string, allowWrites = false) {
-    if (!text.trim() || loading) return;
+  /**
+   * One turn. `confirm` carries the approval tickets for writes the agent just okayed —
+   * the server replays those exact calls rather than asking the model to produce them
+   * again, so what runs is what was shown on the confirmation card.
+   */
+  async function send(text: string, confirmTickets: string[] = []) {
+    const confirming = confirmTickets.length > 0;
+    if ((!text.trim() && !confirming) || loading) return;
     setError(null); setPending([]);
-    const next: Msg[] = [...messages, { role: 'user', content: text }];
-    setMessages(next); setInput(''); setLoading(true);
+    // Confirming adds no new question — the conversation carries on from where it was.
+    const next: Msg[] = confirming ? messages : [...messages, { role: 'user', content: text }];
+    setMessages(next); if (!confirming) setInput(''); setLoading(true);
     try {
       const res = await fetch('/api/crm/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ messages: next, allowWrites }),
+        body: JSON.stringify({ messages: next, ...(confirming ? { confirm: confirmTickets } : {}) }),
       });
       const j = await res.json();
       if (!res.ok) { setError(j.error || 'Something went wrong.'); setMessages(messages); }
@@ -135,7 +144,7 @@ export default function AssistantPanel({ token, onClose, onNavigate }: {
           <div style={{ fontSize: 13, color: '#92400e', fontWeight: 600, marginBottom: 8 }}>Confirm to run:</div>
           {pending.map((p, i) => <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 6 }}>• {p.summary}</div>)}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-            <button onClick={() => send('Yes, go ahead.', true)} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Confirm &amp; run</button>
+            <button onClick={() => send('', pending.map(p => p.id))} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Confirm &amp; run</button>
             <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
           </div>
         </div>

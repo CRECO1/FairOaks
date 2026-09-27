@@ -5,6 +5,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
+import { generateLoi } from '@/lib/loi-generate';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -153,7 +154,7 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 }
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
-  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign']);
+  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi']);
 
 // Contact types the CRM actually uses — kept closed so the copilot can't invent one.
 const CONTACT_TYPES = ['Tenant', 'Buyer', 'Seller', 'Landlord/Investor', 'Broker', 'Agent'];
@@ -189,6 +190,12 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {} } },
   { name: 'autofill_loi', description: "Pre-fill a Letter of Intent from a deal and report what it could and could not fill. READ-ONLY — it drafts and returns the proposed values with where each came from; it creates no document and sends nothing. Use it when the agent asks to fill/prepare/draft an LOI. Tell them which fields still need their input, then point them at the Auto-fill button on the deal's Docs tab to review and generate — you cannot generate it yourself.",
     input_schema: { type: 'object', properties: { deal_id: { type: 'string', description: 'The deal to fill from.' }, form_id: { type: 'string', description: 'The LOI form id from list_forms (Letters of Intent category).' } }, required: ['deal_id', 'form_id'] } },
+  { name: 'complete_loi', description: "Complete a Letter of Intent: fill it from the deal plus the values the agent gave you, generate the PDF and file it on the deal as a reviewable draft. WRITE — the app pauses it for the agent's one-click confirmation, and what gets stamped is exactly what they confirm. Run autofill_loi FIRST and tell the agent what is filled and what is missing; if any REQUIRED field is still blank this refuses, so ask the agent for those exact values and pass them in `provided`. `provided` keys are the slot names autofill_loi reported (e.g. 'addressee_name', or a term row label like 'Seller:' / 'Purchase Price:'). NEVER put a value in `provided` that the agent did not give you — not a party name, not a price, not a date. This files a DRAFT only; it never sends for signature.",
+    input_schema: { type: 'object', properties: {
+      deal_id: { type: 'string', description: 'The deal to fill from and file against.' },
+      form_id: { type: 'string', description: 'The LOI form id from list_forms.' },
+      provided: { type: 'object', description: 'Slot name → value, for values the AGENT supplied. Omit anything they did not state.', additionalProperties: { type: 'string' } },
+    }, required: ['deal_id', 'form_id'] } },
   { name: 'draft_lease', description: "Draft lease values from a plain-English description of the deal, using the property's rent roll (e.g. '24 months for Acme in suite 3101, $808/mo, no deposit'). Returns proposed values + notes to review. This DRAFTS only — it creates nothing.",
     input_schema: { type: 'object', properties: { listing_id: { type: 'string', description: 'The property id from find_property' }, prompt: { type: 'string', description: 'The deal described in plain English' } }, required: ['listing_id', 'prompt'] } },
   { name: 'generate_lease', description: 'Generate and file the lease document from approved draft values (from draft_lease). WRITE — creates the lease PDF on the property/contact. Confirm the key terms with the agent first.',
@@ -496,11 +503,42 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           weRepresent: draft.side.side, sideConfidence: draft.side.confidence, sideReason: draft.side.reason,
           filledFromCrm: draft.slots.filter(x => x.provenance === 'crm').map(x => `${x.label}: ${x.value}`),
           standardLanguage: draft.slots.filter(x => x.provenance === 'default').length,
-          needsAgentInput: draft.needsInput.map(x => x.label),
+          // Reported as slot + label together: the slot is the key complete_loi takes,
+          // and handing back only the label had the model key its answers by the
+          // label, which then matched nothing.
+          needsAgentInput: draft.needsInput.map(x => ({ key: x.slot, label: x.label, required: x.required })),
           checkThese: draft.checkThese.map(x => `${x.label} — ${x.check}`),
-          requiredStillBlank: missing.map(x => x.label),
+          requiredStillBlank: missing.map(x => ({ key: x.slot, label: x.label })),
           blocked: draft.blocked?.reason,
           note: 'Nothing was created. To review each line and generate the draft PDF, the agent opens the deal\u2019s Docs tab and uses the ✨ Auto-fill button on this form. You cannot generate it.',
+        });
+      }
+      case 'complete_loi': {
+        // The gated twin of autofill_loi. Reaching here means the agent already
+        // confirmed the ticket, so the arguments are the ones they approved — the
+        // model cannot have changed its mind about a party name or a price since.
+        const bad = await outOfWorkspace(db, ctx, 'crm_deals', input.deal_id, 'Deal'); if (bad) return bad;
+        const { data: me } = await db.from('crm_profiles').select('first_name, last_name, email, phone, license').eq('id', ctx.userId).maybeSingle();
+        const r = await generateLoi(db, ctx.userId, ctx.businessUnit, {
+          name: `${me?.first_name ?? ''} ${me?.last_name ?? ''}`.trim(), email: me?.email ?? '', phone: me?.phone ?? '', license: me?.license ?? '',
+        }, {
+          formId: String(input.form_id), dealId: String(input.deal_id),
+          provided: (input.provided ?? {}) as Record<string, string>,
+          baseUrl: ctx.origin ?? 'https://www.fairoaksrealtygroup.com',
+        });
+        if (!r.ok) {
+          // The 422 branch is the required-field gate: name the fields so the model
+          // asks the agent for exactly those rather than inventing them.
+          return j({
+            error: r.error,
+            ...(r.missingRequired?.length ? { askTheAgentFor: r.missingRequired.map(m => m.label), note: 'Ask the agent for these exact values. Do not supply them yourself.' } : {}),
+            ...(r.blocked ? { blocked: r.blocked } : {}),
+          });
+        }
+        await logCopilot(db, ctx, `Completed the Letter of Intent and filed it on the deal`, null);
+        return j({
+          ok: true, filed: true, submission: r.submission, weRepresent: r.side,
+          note: 'The completed draft is on the deal. Nothing has been sent — e-signature is a separate step the agent takes themselves.',
         });
       }
       case 'draft_lease': {
@@ -692,6 +730,15 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;
     case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}`;
     case 'draft_campaign': return `Save “${input.name}” as an UNSENT draft campaign — nothing is emailed`;
+    case 'complete_loi': {
+      // The agent is approving legal values, so the summary lists the ones THEY
+      // supplied verbatim rather than a count — those are the lines that are not
+      // standard language and not pulled from a record.
+      const given = Object.entries((input.provided ?? {}) as Record<string, string>)
+        .filter(([, v]) => String(v ?? '').trim())
+        .map(([k, v]) => `${k.replace(/:$/, '')} = ${v}`);
+      return `📄 Generate the Letter of Intent and file it on this deal as a draft${given.length ? `, with ${given.join('; ')}` : ''} — everything else comes from the deal record or the standard language. Nothing is sent for signature.`;
+    }
     default: return name;
   }
 }

@@ -142,14 +142,53 @@ export interface BuildInput {
 
 export interface AgentIdentity { name: string; email: string; phone: string; license: string }
 
+/**
+ * Accept a field's DISPLAY LABEL as an alias for its slot.
+ *
+ * Slots and labels differ by a colon or a prefix — the term row 'Seller:' shows as
+ * "Seller", and the meta slot 'addressee_name' shows as "Seller — name". A caller
+ * reading the draft back (a person, or the copilot, which is shown labels) will
+ * naturally key its answers by what it was shown, and those answers were silently
+ * dropped: the values arrived, matched no slot, and the required-field gate then
+ * refused to generate a letter the agent had in fact completed.
+ *
+ * EXACT matching only, against a closed table built from this form's own slots.
+ * Deliberately not fuzzy: on a legal form a near-miss that lands a value in the
+ * neighbouring blank is far worse than a value that does not land at all.
+ */
+export function canonicalizeProvided(spec: LoiSpec, provided: Record<string, string>): Record<string, string> {
+  const otherParty = spec.kind === 'purchase' ? 'Seller' : 'Landlord';
+  const alias = new Map<string, string>();
+  const put = (label: string, slot: string) => alias.set(label.trim().toLowerCase(), slot);
+
+  put('Letter date', 'loi_date');
+  put(`${otherParty} — name`, 'addressee_name');
+  put(`${otherParty} — address line 1`, 'addressee_addr1');
+  put(`${otherParty} — address line 2`, 'addressee_addr2');
+  put('RE: line', 're_line');
+  put('Agent name', 'agent_name');
+  put('Agent email', 'agent_email');
+  put('Agent phone', 'agent_phone');
+  // Term rows: the slot is the label with its trailing colon.
+  for (const row of spec.defaultTerms) put(row.label.replace(/:$/, ''), row.label);
+
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(provided)) {
+    const slot = alias.get(String(k).trim().toLowerCase());
+    // A key that is already a slot wins over an alias resolving to the same place.
+    out[slot ?? k] = v;
+  }
+  return out;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function buildLoiDraft(db: SupabaseClient<any, any, any>, agent: AgentIdentity, input: BuildInput): Promise<LoiDraft | { error: string }> {
-  const provided = input.provided ?? {};
-
   const { data: form } = await db.from('crm_forms').select('id, name, form_code, business_unit').eq('id', input.formId).maybeSingle();
   if (!form) return { error: 'Form not found' };
   const spec = specForForm(form.form_code, form.name);
   if (!spec) return { error: 'That form is not a Letter of Intent. This slice covers the LOIs only.' };
+
+  const provided = canonicalizeProvided(spec, input.provided ?? {});
 
   const { data: deal } = input.dealId
     ? await db.from('crm_deals').select('id, client, client_email, client_phone, type, property, value, client_id, listing_id, representation_side, business_unit').eq('id', input.dealId).maybeSingle()

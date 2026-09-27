@@ -133,7 +133,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
     }
 
-    const caller = await getCrmUser();
+    // getCrmUser(req), not getCrmUser(): the copilot calls this route server-to-server
+    // with the agent's Bearer token and no cookies, so the cookie-only form could never
+    // authenticate it — send_email failed with a misleading "connect Gmail in Settings".
+    const caller = await getCrmUser(req);
     if (!caller) return unauthorized();
     if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 

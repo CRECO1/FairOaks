@@ -40,7 +40,9 @@ async function getValidAccessToken(conn: GmailConn): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   try {
-    const caller = await getCrmUser();
+    // Bearer-aware for the same reason as /api/gmail/send: the copilot has a token,
+    // not a cookie jar.
+    const caller = await getCrmUser(req);
     if (!caller) return unauthorized();
 
     const { title, due_date, notes, client_name, task_type, userId } = await req.json();
