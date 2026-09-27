@@ -128,16 +128,19 @@ function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attach
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, dealId, clientId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
-    if (!userId || (!dealId && !clientId) || !to || !subject || !body) {
-      return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
-    }
-
+    // Auth first, before the body is even inspected: an anonymous caller should get
+    // 401, not a 400 telling them which fields this endpoint wants.
+    //
     // getCrmUser(req), not getCrmUser(): the copilot calls this route server-to-server
     // with the agent's Bearer token and no cookies, so the cookie-only form could never
     // authenticate it — send_email failed with a misleading "connect Gmail in Settings".
     const caller = await getCrmUser(req);
     if (!caller) return unauthorized();
+
+    const { userId, dealId, clientId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
+    if (!userId || (!dealId && !clientId) || !to || !subject || !body) {
+      return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
+    }
     if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
     const attList: Attachment[] = Array.isArray(attachments) ? attachments : [];
