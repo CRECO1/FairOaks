@@ -8,8 +8,11 @@ import { guardRead, capLimit } from '@/lib/crm-read-guard';
 // listing, create a deal pre-linked to a property, and link/unlink an existing
 // deal. Scoped to the caller's business_unit (admins bypass).
 
+/** Mirrors the crm_deals_representation_side_check constraint. */
+const REPRESENTATION_SIDES = ['buyer', 'tenant', 'seller', 'landlord', 'intermediary', 'unknown'];
+
 const DEAL_COLS =
-  'id, client, client_email, client_phone, client_id, type, property, value, stage, agent_id, assigned_agent_ids, listing_id, business_unit, created_at, last_touch';
+  'id, client, client_email, client_phone, client_id, type, property, value, stage, agent_id, assigned_agent_ids, listing_id, business_unit, representation_side, created_at, last_touch';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -72,6 +75,14 @@ export async function PATCH(req: NextRequest) {
     patch.listing_id = b.listing_id || null;
   }
   if (typeof b.stage === 'string') patch.stage = b.stage;
+  // Which side of the deal we act for. Set by the agent from the deal header or the
+  // form-fill review screen; form auto-fill will not map party fields without it.
+  if (typeof b.representation_side === 'string') {
+    if (!REPRESENTATION_SIDES.includes(b.representation_side)) {
+      return NextResponse.json({ error: 'invalid representation_side' }, { status: 400 });
+    }
+    patch.representation_side = b.representation_side;
+  }
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'nothing to update' }, { status: 400 });
   patch.last_touch = new Date().toISOString().slice(0, 10);
   const supabase = adminClient();

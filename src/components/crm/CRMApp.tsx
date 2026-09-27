@@ -36,7 +36,9 @@ const LeaseExpirationsSection = dynamic(() => import('@/components/crm/LeaseExpi
 const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSection'), { ssr: false });
 const ActivitySection = dynamic(() => import('@/components/crm/ActivitySection'), { ssr: false });
 const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: false });
+const FormAutofillReview = dynamic(() => import('@/components/crm/FormAutofillReview'), { ssr: false });
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
+import { deriveSide } from '@/lib/representation-side';
 
 // Use the SSR browser client so the session is stored in cookies,
 // which allows server-side API routes to read it via getCrmUser().
@@ -54,7 +56,7 @@ interface SmartList { id: string; created_by: string; name: string; filters: Rec
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
-interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
+interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
 interface DealEmail { id: string; deal_id: string | null; client_id?: string | null; direction: 'sent' | 'received'; from_email: string; to_email: string; subject: string; body: string; email_date: string; tracking_id?: string; opened_at?: string | null; open_count?: number; gmail_thread_id?: string | null; rfc_message_id?: string | null; }
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
@@ -610,6 +612,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // composer is opened from that record (so it lands on that record's E-Sign list).
   const [composer, setComposer] = useState<{ file: File | null; doc: ComposerDoc | null; dealId?: string; listingId?: string } | null>(null);
   const [loiDoc, setLoiDoc] = useState<{ formId: string; name: string; submissionId?: string; spec: LoiSpec } | null>(null);
+  // Form auto-fill review (LOIs). Opens before anything is created; Generate inside it files the draft.
+  const [autofillDoc, setAutofillDoc] = useState<{ formId: string; name: string } | null>(null);
   const [dealTab, setDealTab] = useState<'overview' | 'client' | 'emails' | 'docs' | 'esign' | 'intel' | 'commission'>('overview');
   const [dealCommission, setDealCommission] = useState<Commission | null>(null);
   const [commissionLoading, setCommissionLoading] = useState(false);
@@ -918,6 +922,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   } : undefined, [profile]);
   // Client + property info from a deal, seeded into a blank form by field_key
   // (e.g. the 8000 lease's tenant_name / tenant_email / tenant_phone / suite / building).
+  /** The inferred side, shown only as a hint next to "not set" — never saved silently. */
+  const dealSideHint = useCallback((d: Deal | null): string => {
+    if (!d) return '';
+    const c = clients.find(x => x.id === d.client_id);
+    const r = deriveSide({ stored: d.representation_side, dealType: d.type, contactType: c?.type ?? null });
+    return r.side === 'unknown' ? '' : r.side;
+  }, [clients]);
+
   const dealPrefill = useCallback((deal: Deal | null): Record<string, string> => {
     if (!deal) return {};
     const client = clients.find(c => c.id === deal.client_id);
@@ -8327,6 +8339,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {STAGES.map(s => <option key={s}>{s}</option>)}
                       </select>
                     </div>
+                    {/* Which side of the table we act for. Visible at a glance and
+                        correctable here, because every party field on every form
+                        filled from this deal depends on it. Left unset it shows the
+                        inference, and auto-fill will not map party names. */}
+                    <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>We Represent</label>
+                      <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.representation_side ?? 'unknown'}
+                        onChange={e => { updateDeal(activeDeal.id, { representation_side: e.target.value }); setActiveDeal(prev => prev ? { ...prev, representation_side: e.target.value } : prev); }}>
+                        <option value="unknown">— not set{dealSideHint(activeDeal) ? ` (looks like ${dealSideHint(activeDeal)})` : ''} —</option>
+                        <option value="buyer">the Buyer</option>
+                        <option value="tenant">the Tenant</option>
+                        <option value="seller">the Seller</option>
+                        <option value="landlord">the Landlord</option>
+                        <option value="intermediary">both (intermediary)</option>
+                      </select>
+                    </div>
                     {isAdmin && (
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Assigned Agent</label>
                         <select className="crm-input" style={{ marginTop: 4 }} value={activeDeal.agent_id} onChange={e => updateDeal(activeDeal.id, { agent_id: e.target.value })}>
@@ -8923,6 +8950,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               background: dealFormPick ? '#c9922c' : '#e5e7eb', color: dealFormPick ? '#fff' : '#9ca3af', cursor: dealFormPick && !dealFormAdding ? 'pointer' : 'default' }}>
                             {dealFormAdding ? 'Adding…' : isWaiting ? '✍️ Fill' : '+ Add'}
                           </button>
+                          {/* Auto-fill is offered only for the forms that support it — today the
+                              Letters of Intent, whose generator builds from data rather than from
+                              stamped coordinates. Everything else keeps the existing Add flow. */}
+                          {(() => {
+                            if (isWaiting || !dealFormPick) return null;
+                            const f = crmForms.find(x => x.id === dealFormPick.slice(4));
+                            if (!f || !specForForm(f.form_code, f.name)) return null;
+                            return (
+                              <button onClick={() => { setAutofillDoc({ formId: f.id, name: f.name }); setDealFormPick(''); }}
+                                title="Pre-fill this letter from the deal, then review every line before anything is created"
+                                style={{ padding: '8px 16px', fontSize: 12.5, fontWeight: 700, borderRadius: 8, flexShrink: 0, fontFamily: "'DM Sans',sans-serif",
+                                  background: '#fdf6e9', color: '#a06a12', border: '1px solid #f0e2c4', cursor: 'pointer' }}>
+                                ✨ Auto-fill
+                              </button>
+                            );
+                          })()}
                         </div>
                       );
                     })()}
@@ -12001,6 +12044,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           />
         );
       })()}
+
+      {/* Form auto-fill review — pre-fills an LOI from the deal, files a draft on Generate */}
+      {autofillDoc && (
+        <FormAutofillReview
+          formId={autofillDoc.formId}
+          formName={autofillDoc.name}
+          dealId={activeDeal?.id ?? null}
+          listingId={activeDeal?.listing_id ?? null}
+          authToken={session?.access_token}
+          onToast={showToast}
+          onClose={() => setAutofillDoc(null)}
+          onFiled={(_id, url) => {
+            setAutofillDoc(null);
+            if (activeDeal) loadDealForms(activeDeal.id);
+            if (profile) loadDeals(profile);   // the side may have been set from the review screen
+            if (url) { const w = window.open(url, '_blank'); if (w) w.opener = null; }
+          }}
+        />
+      )}
 
       {/* Toast */}
       {toast && (

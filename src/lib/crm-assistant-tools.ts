@@ -4,6 +4,7 @@
 // and are gated behind an explicit confirmation in the API route.
 import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -186,6 +187,8 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { listing_id: { type: 'string' } }, required: ['listing_id'] } },
   { name: 'list_forms', description: 'List the available transaction-doc form templates (leases, contracts, addenda, etc.) — name, form_code, category.',
     input_schema: { type: 'object', properties: {} } },
+  { name: 'autofill_loi', description: "Pre-fill a Letter of Intent from a deal and report what it could and could not fill. READ-ONLY — it drafts and returns the proposed values with where each came from; it creates no document and sends nothing. Use it when the agent asks to fill/prepare/draft an LOI. Tell them which fields still need their input, then point them at the Auto-fill button on the deal's Docs tab to review and generate — you cannot generate it yourself.",
+    input_schema: { type: 'object', properties: { deal_id: { type: 'string', description: 'The deal to fill from.' }, form_id: { type: 'string', description: 'The LOI form id from list_forms (Letters of Intent category).' } }, required: ['deal_id', 'form_id'] } },
   { name: 'draft_lease', description: "Draft lease values from a plain-English description of the deal, using the property's rent roll (e.g. '24 months for Acme in suite 3101, $808/mo, no deposit'). Returns proposed values + notes to review. This DRAFTS only — it creates nothing.",
     input_schema: { type: 'object', properties: { listing_id: { type: 'string', description: 'The property id from find_property' }, prompt: { type: 'string', description: 'The deal described in plain English' } }, required: ['listing_id', 'prompt'] } },
   { name: 'generate_lease', description: 'Generate and file the lease document from approved draft values (from draft_lease). WRITE — creates the lease PDF on the property/contact. Confirm the key terms with the agent first.',
@@ -476,6 +479,29 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         q = scoped(q, ctx);
         const { data, error } = await q;
         return error ? j({ error: error.message }) : j(data ?? []);
+      }
+      case 'autofill_loi': {
+        // Read-only: builds the same draft the review screen shows, so the copilot can
+        // say what is ready and what is missing. Generating stays a human action in
+        // the UI — the copilot triggers and narrates, it does not file documents.
+        const bad = await outOfWorkspace(db, ctx, 'crm_deals', input.deal_id, 'Deal'); if (bad) return bad;
+        const { data: p } = await db.from('crm_profiles').select('first_name, last_name, email, phone, license').eq('id', ctx.userId).maybeSingle();
+        const draft = await buildLoiDraft(db, {
+          name: `${p?.first_name ?? ''} ${p?.last_name ?? ''}`.trim(), email: p?.email ?? '', phone: p?.phone ?? '', license: p?.license ?? '',
+        }, { formId: String(input.form_id), dealId: String(input.deal_id) });
+        if ('error' in draft) return j({ error: draft.error });
+        const missing = missingRequired(draft);
+        return j({
+          form: draft.formName,
+          weRepresent: draft.side.side, sideConfidence: draft.side.confidence, sideReason: draft.side.reason,
+          filledFromCrm: draft.slots.filter(x => x.provenance === 'crm').map(x => `${x.label}: ${x.value}`),
+          standardLanguage: draft.slots.filter(x => x.provenance === 'default').length,
+          needsAgentInput: draft.needsInput.map(x => x.label),
+          checkThese: draft.checkThese.map(x => `${x.label} — ${x.check}`),
+          requiredStillBlank: missing.map(x => x.label),
+          blocked: draft.blocked?.reason,
+          note: 'Nothing was created. To review each line and generate the draft PDF, the agent opens the deal\u2019s Docs tab and uses the ✨ Auto-fill button on this form. You cannot generate it.',
+        });
       }
       case 'draft_lease': {
         const r = await crmFetch(ctx, '/api/crm/lease-draft', 'POST', { listing_id: input.listing_id, prompt: input.prompt });

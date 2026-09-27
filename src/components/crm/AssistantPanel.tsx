@@ -34,7 +34,7 @@ const TOOL_LABEL: Record<string, string> = {
   open_page: 'opened a section',
   complete_task: 'completed a task', add_note: 'added a note', update_deal_stage: 'moved a deal',
   find_property: 'found a property', list_properties: 'checked properties', get_property: 'looked up a property',
-  list_forms: 'listed forms', draft_lease: 'drafted a lease',
+  list_forms: 'listed forms', draft_lease: 'drafted a lease', autofill_loi: 'pre-filled a letter of intent',
   generate_lease: 'generated the lease', start_form: 'started a form', send_for_signature: 'sent for e-signature',
   send_email: 'sent an email', schedule_event: 'scheduled an event',
   create_contact: 'added a contact', update_contact: 'updated a contact', create_property: 'added a property',
