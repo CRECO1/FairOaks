@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
@@ -160,6 +161,14 @@ export async function POST(req: NextRequest) {
             console.error('[listing_alerts] crm_clients insert error:', JSON.stringify(crmErr));
           } else {
             console.log(`[listing_alerts] CRM lead created: ${cleanEmail}`);
+            await createLeadFollowUpTask(admin, {
+              clientId: created?.id ?? '',
+              name: display, email: cleanEmail,
+              channel: attr.channel, leadSite: 'fairoaksrealtygroup.com',
+              campaign: attr.utm_campaign, source: 'Listing alerts',
+              businessUnit: 'residential',
+              detail: criteria.join('\n'),
+            });
             // Surfaces it in the Prospects tab straight away, same as web leads.
             await admin.from('email_lead_imports').insert([{
               gmail_message_id:    `listing-alerts-${crypto.randomUUID()}`,

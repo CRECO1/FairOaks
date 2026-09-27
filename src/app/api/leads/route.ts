@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { fairOaksEmail } from '@/lib/fair-oaks-email';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
@@ -193,6 +194,15 @@ export async function POST(req: NextRequest) {
               console.error('[leads] crm_clients insert error:', JSON.stringify(crmInsertErr));
             } else {
               console.log(`[leads] CRM client created: ${first_name} ${last_name} (${email ?? phone})`);
+              // Speed-to-lead: put it on the owner's list the moment it lands.
+              if (newClient?.id) await createLeadFollowUpTask(supabaseAdmin, {
+                clientId: newClient.id,
+                name, email, phone,
+                channel: attr.channel, leadSite: 'fairoaksrealtygroup.com',
+                campaign: attr.utm_campaign, source: source ?? 'contact',
+                businessUnit: unit,
+                detail: [message ? `Message: ${message}` : '', property_interest ? `Interested in: ${property_interest}` : ''].filter(Boolean).join('\n'),
+              });
               // Welcome sequence: off unless LEAD_AUTOENROLL_UNITS names this unit.
               if (newClient?.id) await maybeAutoEnrollLead(supabaseAdmin, { clientId: newClient.id, agentId: adminId ?? null, businessUnit: unit as 'commercial' | 'residential' });
               // Write to email_lead_imports so the Prospects tab shows this lead immediately

@@ -26,6 +26,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
@@ -217,6 +218,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not save lead' }, { status: 500 });
     }
     clientId = newClient.id;
+
+    // Speed-to-lead. Only for a NEWLY created contact — a repeat enquiry
+    // from someone already in the book should not spawn a second chore.
+    await createLeadFollowUpTask(supabase, {
+      clientId,
+      name: `${first_name} ${last_name}`.trim(),
+      email, phone,
+      channel: (attrFields as Record<string, unknown>)?.channel as string | null ?? null,
+      leadSite: (attrFields as Record<string, unknown>)?.lead_site as string | null ?? null,
+      campaign: (attrFields as Record<string, unknown>)?.utm_campaign as string | null ?? null,
+      source,
+      businessUnit: unit,
+      detail: typeof message === 'string' && message ? `Message: ${message}` : null,
+    });
   }
 
   // ── Notify team via email ─────────────────────────────────────────────────
