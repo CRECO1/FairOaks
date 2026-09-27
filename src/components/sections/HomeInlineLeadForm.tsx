@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Container } from '@/components/ui/Container';
 import { Honeypot } from '@/components/Honeypot';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
-import { attributionPayload, trackEvent } from '@/lib/attribution';
+import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
 
 /**
  * Inline lead capture for the home page.
@@ -63,7 +63,7 @@ export default function HomeInlineLeadForm() {
         }),
       });
       if (!res.ok) throw new Error(String(res.status));
-      trackEvent('lead_submit', { surface: 'home-inline' });
+      trackEvent('home_inline_submitted', { surface: 'home-inline' });
       setStatus('sent');
     } catch {
       setStatus('error');
@@ -93,7 +93,13 @@ export default function HomeInlineLeadForm() {
                 </p>
               </div>
             ) : (
-              <form onSubmit={onSubmit} className="space-y-4">
+              <form
+                onSubmit={onSubmit}
+                className="space-y-4"
+                // One capture-phase handler covers every field; trackFormStart
+                // de-duplicates, so tabbing between inputs still counts once.
+                onFocusCapture={() => trackFormStart('home-inline')}
+              >
                 <Honeypot />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>

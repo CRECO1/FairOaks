@@ -53,6 +53,8 @@ const LEAD_EVENTS = new Set<string>([
   'valuation_form_submitted',
   'listing_inquiry_submitted',
   'showing_request_submitted',
+  'home_inline_submitted',
+  'listing_alert_submitted',
 ]);
 
 /** Read the stored attribution payload. Safe in SSR and against junk cookies. */
@@ -125,6 +127,40 @@ export function trackEvent(name: string, params: Record<string, unknown> = {}): 
   } catch {
     // Analytics must never break the form.
   }
+
+  // Mirror into Clarity so session replays can be filtered by the same event
+  // names GA charts. Clarity takes a bare string rather than a params object,
+  // so the detail stays in GA and Clarity gets just the name — enough to
+  // segment recordings. Separate try: a Clarity failure must not swallow a GA
+  // event that already succeeded.
+  try {
+    const c = (window as unknown as { clarity?: (cmd: string, ...a: unknown[]) => void }).clarity;
+    if (typeof c === 'function') c('event', name);
+  } catch {
+    // Same contract — never break the page.
+  }
+}
+
+/**
+ * Fire a "began filling this form" event exactly once per form, per page view.
+ *
+ * Started-vs-submitted is the only way to see abandonment, and abandonment is
+ * the number worth acting on: lots of starts with few submits means the form
+ * has a problem. Guarded by a module-level set because the natural trigger is
+ * focus, and focus fires again every time someone tabs back into a field —
+ * without the guard one hesitant visitor looks like ten.
+ *
+ * The set lives for the life of the JS module, so a client-side route change
+ * keeps the guard. That is deliberate: re-focusing the same form after
+ * navigating away and back is the same attempt, not a new one.
+ */
+const startedForms = new Set<string>();
+
+export function trackFormStart(surface: string, params: Record<string, unknown> = {}): void {
+  if (typeof window === 'undefined') return;
+  if (startedForms.has(surface)) return;
+  startedForms.add(surface);
+  trackEvent('lead_form_started', { surface, page_path: window.location.pathname, ...params });
 }
 
 /**

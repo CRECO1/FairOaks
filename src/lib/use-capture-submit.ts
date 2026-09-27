@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
+import { trackEvent, trackFormStart } from '@/lib/attribution';
 
 /**
  * The submit engine every Fair Oaks capture shares.
@@ -21,6 +22,10 @@ import { getRecaptchaToken } from '@/lib/recaptcha-client';
  */
 export interface CaptureSubmitOptions {
   endpoint: string;
+  /** Analytics label for this surface, e.g. 'listing-alerts-footer'. Events are
+   *  only emitted when it is set, so an un-labelled caller stays silent rather
+   *  than reporting under a name nobody can interpret. */
+  surface?: string;
   /** reCAPTCHA v3 action — keep each surface's existing name. */
   recaptchaAction: string;
   buildPayload: (extras: { recaptchaToken: string | undefined }) => Record<string, unknown>;
@@ -35,6 +40,8 @@ export interface CaptureSubmitState {
   submitted: boolean;
   error: string | null;
   submit: (e: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  /** Attach to the form's onFocusCapture to record a form start (de-duplicated). */
+  onFormFocus: () => void;
   reset: () => void;
 }
 
@@ -59,6 +66,9 @@ export function useCaptureSubmit(opts: CaptureSubmitOptions): CaptureSubmitState
         throw new Error(body.error || opts.errorFallback || `HTTP ${res.status}`);
       }
       setSubmitted(true);
+      // Fire after the response is known good, so a rejected submission never
+      // counts as a conversion.
+      if (opts.surface) trackEvent('listing_alert_submitted', { surface: opts.surface });
       await opts.onSuccess?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -73,6 +83,7 @@ export function useCaptureSubmit(opts: CaptureSubmitOptions): CaptureSubmitState
     submitted,
     error,
     submit,
+    onFormFocus: () => { if (opts.surface) trackFormStart(opts.surface); },
     reset: () => { setSubmitted(false); setError(null); },
   };
 }

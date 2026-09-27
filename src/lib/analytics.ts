@@ -43,7 +43,18 @@ export function trackLead(params: {
 
 // ─── Contact Interactions ────────────────────────────────────────────────────
 
+/**
+ * Set whenever a component reports a contact click itself. ContactLinkTracker
+ * watches this so the ~11 links with their own onClick handler are not counted
+ * twice — it covers the other ~80 that have none.
+ */
+let lastManualContactClick = 0;
+export function contactClickWasManual(withinMs = 400): boolean {
+  return Date.now() - lastManualContactClick < withinMs;
+}
+
 export function trackPhoneClick(location: string) {
+  lastManualContactClick = Date.now();
   gtag('phone_call', {
     event_category: 'Contact',
     event_label: location,
@@ -51,6 +62,7 @@ export function trackPhoneClick(location: string) {
 }
 
 export function trackEmailClick(location: string) {
+  lastManualContactClick = Date.now();
   gtag('email_click', {
     event_category: 'Contact',
     event_label: location,

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
-import { attributionPayload, trackEvent } from '@/lib/attribution';
+import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
 
 const CONTACT_REASONS = [
   'Schedule a Showing',
@@ -161,7 +161,7 @@ export default function ContactPage() {
                   <>
                       <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
                       <p className="mb-6 text-body-sm text-foreground-muted">We read every message ourselves and reply personally.</p>
-                      <form onSubmit={handleSubmit} className="space-y-5">
+                      <form onSubmit={handleSubmit} onFocusCapture={() => trackFormStart('contact-page')} className="space-y-5">
                         <Honeypot />
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                           <div>

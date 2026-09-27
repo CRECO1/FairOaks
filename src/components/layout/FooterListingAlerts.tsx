@@ -12,8 +12,9 @@ import { useCaptureSubmit } from '@/lib/use-capture-submit';
  */
 export function FooterListingAlerts() {
   const [email, setEmail] = useState('');
-  const { submitting, submitted, error, submit } = useCaptureSubmit({
+  const { submitting, submitted, error, submit , onFormFocus } = useCaptureSubmit({
     endpoint: '/api/listing-alerts',
+    surface: 'listing-alerts-footer',
     recaptchaAction: 'listing_alerts',
     buildPayload: ({ recaptchaToken }) => ({ email: email.trim(), recaptchaToken }),
     onSuccess: () => setEmail(''),
@@ -28,7 +29,7 @@ export function FooterListingAlerts() {
   }
 
   return (
-    <form onSubmit={submit} className="mt-2">
+    <form onSubmit={submit} onFocusCapture={onFormFocus} className="mt-2">
       <label htmlFor="footer-alert-email" className="block text-body-sm text-white/60 mb-2">
         Get emailed the moment a home hits the market.
       </label>

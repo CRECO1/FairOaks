@@ -20,8 +20,9 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
   // Client-side validation stays here — the shared engine owns the request,
   // not what counts as a usable name and address on this form.
   const [validationError, setValidationError] = useState('');
-  const { submitting: loading, submitted, error: submitError, submit } = useCaptureSubmit({
+  const { submitting: loading, submitted, error: submitError, submit , onFormFocus } = useCaptureSubmit({
     endpoint: '/api/listing-alerts',
+    surface: 'listing-alerts-saved-search',
     recaptchaAction: 'listing_alerts',
     buildPayload: ({ recaptchaToken }) => ({
       recaptchaToken,
@@ -112,7 +113,7 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
                   </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                <form onSubmit={handleSubmit} onFocusCapture={onFormFocus} className="flex flex-col gap-3">
                   <input
                     type="text"
                     placeholder="Your name"
