@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { specForForm } from '@/lib/loi-doc';
 import dynamic from 'next/dynamic';
 
 const TransactionDocEditor = dynamic(() => import('./TransactionDocEditor'), { ssr: false });
+const FormAutofillReview = dynamic(() => import('./FormAutofillReview'), { ssr: false });
 
 interface Form {
   id: string;
@@ -38,6 +40,9 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   const [editing, setEditing] = useState<{ form: Form; dealId?: string } | null>(null);
   const [pickForDeal, setPickForDeal] = useState<string | null>(null);
   const [formMenuOpen, setFormMenuOpen] = useState(false);
+  // Auto-fill from here carries no deal and no contact: the agent supplies the terms
+  // and the draft is filed to their documents on the E-Sign page.
+  const [autofill, setAutofill] = useState<{ id: string; name: string } | null>(null);
 
   const authHeaders = useMemo<Record<string, string>>(() => {
     const h: Record<string, string> = {};
@@ -128,7 +133,19 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
                                 <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{f.name}</div>
                                 <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 1 }}>{f.form_code ? `Form ${f.form_code}` : ''}{f.form_code && f.page_count ? ' · ' : ''}{f.page_count ? `${f.page_count} pp` : ''}</div>
                               </div>
-                              <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>Fill ›</span>
+                              {specForForm(f.form_code, f.name) ? (
+                                <span style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setFormMenuOpen(false); setAutofill({ id: f.id, name: f.name }); }}
+                                    title="Let the CRM pre-fill what it can and ask you for the rest — no deal needed"
+                                    style={{ fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fdf6e9', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                                    ✨ Auto-fill
+                                  </button>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c' }}>Fill ›</span>
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 12, fontWeight: 700, color: '#c9922c', flexShrink: 0 }}>Fill ›</span>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -192,6 +209,20 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
             </div>
           </div>
         </div>
+      )}
+
+      {autofill && (
+        <FormAutofillReview
+          formId={autofill.id}
+          formName={autofill.name}
+          authToken={authToken}
+          onToast={onToast}
+          onClose={() => setAutofill(null)}
+          onFiled={(_id: string, url: string | null) => {
+            setAutofill(null);
+            if (url) { const w = window.open(url, '_blank'); if (w) w.opener = null; }
+          }}
+        />
       )}
 
       {editing && editing.form.url && (

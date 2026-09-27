@@ -132,9 +132,14 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const supabase = adminClient();
+  // Two kinds of document have no home anywhere else in the app, and both belong
+  // here: a PDF imported straight into E-Sign (form_id null), and one generated from
+  // the library but filed against nothing — which is what form auto-fill produces
+  // when an agent completes a letter with no deal and no contact. Listing only the
+  // first left the second invisible: created, stored, and unreachable.
   let q = supabase.from('crm_form_submissions')
-    .select('id, title, filled_path, deal_id, listing_id, created_at, updated_at')
-    .is('form_id', null)
+    .select('id, title, filled_path, deal_id, listing_id, client_id, created_at, updated_at')
+    .or('form_id.is.null,and(deal_id.is.null,listing_id.is.null,client_id.is.null)')
     .order('updated_at', { ascending: false })
     .limit(50);
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);

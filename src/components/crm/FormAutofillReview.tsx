@@ -33,10 +33,11 @@ const SIDES: { v: Side; label: string }[] = [
 ];
 
 export default function FormAutofillReview({
-  formId, formName, dealId, listingId, authToken, onClose, onFiled, onToast,
+  formId, formName, dealId, contactId, listingId, authToken, onClose, onFiled, onToast,
 }: {
   formId: string; formName: string;
-  dealId?: string | null; listingId?: string | null;
+  /** All optional — a deal is a convenience, not a requirement. */
+  dealId?: string | null; contactId?: string | null; listingId?: string | null;
   authToken?: string;
   onClose: () => void;
   onFiled: (submissionId: string, url: string | null) => void;
@@ -48,6 +49,9 @@ export default function FormAutofillReview({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ack, setAck] = useState(false);
+  // With no deal there is nowhere to persist the side, so it rides along with this
+  // draft instead. Deliberately not a reason to create a deal the agent didn't ask for.
+  const [sideOverride, setSideOverride] = useState<Side | null>(null);
 
   const headers = useCallback((): Record<string, string> => ({
     'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
@@ -61,14 +65,14 @@ export default function FormAutofillReview({
     try {
       const r = await fetch('/api/crm/form-fill/draft', {
         method: 'POST', headers: headers(),
-        body: JSON.stringify({ form_id: formId, deal_id: dealId ?? null, listing_id: listingId ?? null, provided: next }),
+        body: JSON.stringify({ form_id: formId, deal_id: dealId ?? null, contact_id: contactId ?? null, listing_id: listingId ?? null, side: sideOverride, provided: next }),
       });
       const j = await r.json();
       if (!r.ok) { setError(j.error || 'Could not build the draft.'); return; }
       setDraft(j.draft as LoiDraft);
     } catch { setError('Network error — try again.'); }
     finally { setLoading(false); }
-  }, [formId, dealId, listingId, headers]);
+  }, [formId, dealId, contactId, listingId, sideOverride, headers]);
 
   useEffect(() => { refresh({}); }, [refresh]);
 
@@ -79,14 +83,14 @@ export default function FormAutofillReview({
     refresh(next);
   };
 
-  async function saveSide(side: Side) {
-    if (!dealId) return;
+  async function chooseSide(side: Side) {
+    setSideOverride(side);
+    if (!dealId) { onToast(`Using: we represent ${SIDES.find(s => s.v === side)?.label ?? side}`); return; }
     setBusy(true);
     try {
       const r = await fetch(`/api/crm/deals?id=${dealId}`, { method: 'PATCH', headers: headers(), body: JSON.stringify({ representation_side: side }) });
-      if (!r.ok) { onToast('Could not save the representation side'); return; }
-      onToast(`✓ Saved — we represent ${SIDES.find(s => s.v === side)?.label ?? side}`);
-      await refresh(provided);
+      if (!r.ok) { onToast('Could not save it to the deal — using it for this document'); return; }
+      onToast(`✓ Saved to the deal — we represent ${SIDES.find(s => s.v === side)?.label ?? side}`);
     } finally { setBusy(false); }
   }
 
@@ -95,7 +99,7 @@ export default function FormAutofillReview({
     try {
       const r = await fetch('/api/crm/form-fill/generate', {
         method: 'POST', headers: headers(),
-        body: JSON.stringify({ form_id: formId, deal_id: dealId ?? null, listing_id: listingId ?? null, provided, acknowledge_direction: ack }),
+        body: JSON.stringify({ form_id: formId, deal_id: dealId ?? null, contact_id: contactId ?? null, listing_id: listingId ?? null, side: sideOverride, provided, acknowledge_direction: ack }),
       });
       const j = await r.json();
       if (!r.ok) { setError(j.error || 'Could not generate the document.'); return; }
@@ -158,8 +162,8 @@ export default function FormAutofillReview({
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
                 <div style={{ fontSize: 11, letterSpacing: .8, textTransform: 'uppercase', color: '#64748b', fontWeight: 700, marginBottom: 6 }}>We represent</div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select className="crm-input" value={draft.side.side === 'unknown' ? '' : draft.side.side} disabled={!dealId || busy}
-                    onChange={e => e.target.value && saveSide(e.target.value as Side)}
+                  <select className="crm-input" value={draft.side.side === 'unknown' ? '' : draft.side.side} disabled={busy}
+                    onChange={e => e.target.value && chooseSide(e.target.value as Side)}
                     style={{ width: 'auto', minWidth: 210, fontSize: 13.5 }}>
                     <option value="">— not established —</option>
                     {SIDES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
@@ -195,6 +199,14 @@ export default function FormAutofillReview({
                 </div>
               )}
 
+              {draft.unmatchedProvided.length > 0 && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', marginBottom: 6 }}>Not on this form · {draft.unmatchedProvided.length}</div>
+                  <div style={{ fontSize: 12.5, color: '#991b1b', lineHeight: 1.6 }}>{draft.unmatchedProvided.join(' · ')}</div>
+                  <div style={{ fontSize: 11.5, color: '#b91c1c', marginTop: 6 }}>These values match no field on this letter, so they are not on it. Use the fields below.</div>
+                </div>
+              )}
+
               {draft.checkThese.length > 0 && (
                 <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af', marginBottom: 6 }}>Check these · {draft.checkThese.length}</div>
@@ -213,7 +225,7 @@ export default function FormAutofillReview({
           <div style={{ flex: 1, fontSize: 12.5, color: missing.length ? '#b91c1c' : '#6b7280', minWidth: 200 }}>
             {loading ? 'Re-checking…'
               : missing.length ? `${missing.length} required field${missing.length === 1 ? '' : 's'} still blank: ${missing.map(m => m.label).join(', ')}`
-              : 'Generates a draft PDF on the deal. Nothing is emailed or sent for signature.'}
+              : `Generates a draft PDF, filed on ${draft?.filesOn.label ?? 'the deal'}. Nothing is emailed or sent for signature.`}
           </div>
           <button onClick={onClose} style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13.5, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
           <button onClick={generate} disabled={!canGenerate}

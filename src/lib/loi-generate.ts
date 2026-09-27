@@ -17,8 +17,12 @@ import { renderLoi, specForForm } from '@/lib/loi-doc';
 
 export interface GenerateInput {
   formId: string;
+  /** All optional: a deal, just a contact, or neither. */
   dealId?: string | null;
+  contactId?: string | null;
   listingId?: string | null;
+  /** Which side we act for, when the agent states it outright. */
+  side?: string | null;
   provided?: Record<string, string>;
   submissionId?: string | null;
   /** Deliberate override of the direction warning (a listing-side deal). */
@@ -28,7 +32,7 @@ export interface GenerateInput {
 }
 
 export type GenerateResult =
-  | { ok: true; submission: Record<string, unknown>; url: string | null; side: string }
+  | { ok: true; submission: Record<string, unknown>; url: string | null; side: string; filedOn: string; unmatchedProvided: string[] }
   | { ok: false; status: number; error: string; missingRequired?: DraftSlot[]; blocked?: { reason: string; fix: string } };
 
 /** The letterhead, fetched once per warm instance. */
@@ -46,7 +50,8 @@ export interface GenerateAgent { name: string; email: string; phone: string; lic
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function generateLoi(db: SupabaseClient<any, any, any>, userId: string, businessUnit: string | null, agent: GenerateAgent, input: GenerateInput): Promise<GenerateResult> {
   const draft = await buildLoiDraft(db, agent, {
-    formId: input.formId, dealId: input.dealId ?? null, listingId: input.listingId ?? null, provided: input.provided ?? {},
+    formId: input.formId, dealId: input.dealId ?? null, contactId: input.contactId ?? null,
+    listingId: input.listingId ?? null, side: input.side ?? null, provided: input.provided ?? {},
   });
   if ('error' in draft) return { ok: false, status: 400, error: draft.error };
 
@@ -78,17 +83,20 @@ export async function generateLoi(db: SupabaseClient<any, any, any>, userId: str
     .upload(path, Buffer.from(pdfBytes), { contentType: 'application/pdf', upsert: true });
   if (upErr) { console.error('[loi-generate] upload', upErr); return { ok: false, status: 500, error: 'Could not save the document.' }; }
 
+  // Filed against whatever the agent actually has. With no deal and no contact it is
+  // a standalone document, which the E-Sign page lists — so it is still somewhere they
+  // can open, review and send from.
   const row = {
-    form_id: input.formId, deal_id: input.dealId ?? null, listing_id: draft.listingId,
+    form_id: input.formId, deal_id: draft.dealId, client_id: draft.contactId, listing_id: draft.listingId,
     business_unit: form?.business_unit ?? businessUnit ?? 'commercial',
     title: spec.title, values: sigFields, builder_data: draft.data,
     filled_path: path, status: 'saved', updated_at: new Date().toISOString(),
   };
   const { data: saved, error } = input.submissionId
-    ? await db.from('crm_form_submissions').update(row).eq('id', input.submissionId).select('id, title, filled_path, deal_id, listing_id, status').single()
-    : await db.from('crm_form_submissions').insert({ ...row, created_by: userId }).select('id, title, filled_path, deal_id, listing_id, status').single();
+    ? await db.from('crm_form_submissions').update(row).eq('id', input.submissionId).select('id, title, filled_path, deal_id, client_id, listing_id, status').single()
+    : await db.from('crm_form_submissions').insert({ ...row, created_by: userId }).select('id, title, filled_path, deal_id, client_id, listing_id, status').single();
   if (error) { console.error('[loi-generate] save', error); return { ok: false, status: 500, error: 'Could not file the document.' }; }
 
   const { data: signed } = await db.storage.from('transaction-forms').createSignedUrl(path, 60 * 60);
-  return { ok: true, submission: saved as Record<string, unknown>, url: signed?.signedUrl ?? null, side: draft.side.side };
+  return { ok: true, submission: saved as Record<string, unknown>, url: signed?.signedUrl ?? null, side: draft.side.side, filedOn: draft.filesOn.label, unmatchedProvided: draft.unmatchedProvided };
 }

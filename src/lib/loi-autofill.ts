@@ -50,13 +50,23 @@ export interface LoiDraft {
   formCode: string;
   title: string;
   dealId: string | null;
+  contactId: string | null;
   listingId: string | null;
+  /** Where the generated draft will be filed, and how to say that to the agent. */
+  filesOn: { kind: 'deal' | 'contact' | 'standalone'; label: string };
   side: SideResult;
   /** The rendered payload. Only complete once the agent has filled needsInput. */
   data: LoiPurchaseData;
   slots: DraftSlot[];
   needsInput: DraftSlot[];
   checkThese: DraftSlot[];
+  /**
+   * Values the caller supplied that matched no field on this form.
+   *
+   * Silently dropping them is the worst option available: the agent believes they
+   * answered, the letter generates without it, and nothing anywhere says so.
+   */
+  unmatchedProvided: string[];
   /** Set when the draft cannot responsibly be produced at all. */
   blocked: { reason: string; fix: string } | null;
 }
@@ -121,8 +131,16 @@ function requiredSlots(spec: LoiSpec, requiredKeys: Set<string>): Set<string> {
   };
   for (const [slot, key] of Object.entries(metaSlot)) if (key && requiredKeys.has(key)) out.add(slot);
   // A term row is required when any field_key that fed it was marked required.
+  //
+  // Matched on the BASE key: a clause too long for one line is stored as property_l1 /
+  // property_l2, while overlayKeys names it 'property'. Comparing the raw strings meant
+  // the curated `property_l1` matched nothing, so "Property:" was never required — and a
+  // purchase LOI generated with no property on it at all. fieldName() already strips
+  // this suffix elsewhere; the same rule belongs here.
+  const base = (k: string) => k.replace(/_l\d+$/, '');
+  const requiredBases = new Set([...requiredKeys].map(base));
   for (const [label, keys] of Object.entries(spec.overlayKeys)) {
-    if (keys.some(k => requiredKeys.has(k))) out.add(label);
+    if (keys.some(k => requiredBases.has(base(k)))) out.add(label);
   }
   // A template with no curated fields at all (the Short-Term LOI has no field rows)
   // still needs the letter to be a letter.
@@ -134,8 +152,12 @@ function requiredSlots(spec: LoiSpec, requiredKeys: Set<string>): Set<string> {
 
 export interface BuildInput {
   formId: string;
+  /** All three optional. A deal is a convenience, never a requirement. */
   dealId?: string | null;
+  contactId?: string | null;
   listingId?: string | null;
+  /** Which side we act for, when the agent states it outright. */
+  side?: string | null;
   /** Values the agent has already supplied, by slot. Always wins over a CRM pull. */
   provided?: Record<string, string>;
 }
@@ -166,6 +188,12 @@ export function canonicalizeProvided(spec: LoiSpec, provided: Record<string, str
   put(`${otherParty} — address line 1`, 'addressee_addr1');
   put(`${otherParty} — address line 2`, 'addressee_addr2');
   put('RE: line', 're_line');
+  // Phrasings an agent reaches for that name the same slot. Still exact matches
+  // against a closed list — this is a synonym table, not fuzzy matching.
+  put(`${otherParty} address`, 'addressee_addr1');
+  put(`${otherParty} — address`, 'addressee_addr1');
+  put('Property address', 'Property:');
+  put('Property Address', 'Property:');
   put('Agent name', 'agent_name');
   put('Agent email', 'agent_email');
   put('Agent phone', 'agent_phone');
@@ -181,6 +209,32 @@ export function canonicalizeProvided(spec: LoiSpec, provided: Record<string, str
   return out;
 }
 
+/**
+ * The addressee and the counterparty term row are the same party. Fill either from
+ * the other.
+ *
+ * On a purchase LOI the letter is addressed TO the seller and the term sheet names
+ * the seller — one entity, two slots, because the template stores the letterhead
+ * block separately from the terms. Asked for "the seller", an agent (or the copilot
+ * relaying them) naturally answers once. That answer used to land in whichever slot
+ * happened to be named, leave the other blank, and the required-field gate would then
+ * refuse a letter the agent had in fact completed — while showing them the seller's
+ * name right there on the draft.
+ *
+ * This is a deterministic identity, not an inference: the counterparty of a purchase
+ * IS the addressee. Only ever copies into an EMPTY slot, so an agent who deliberately
+ * addresses the letter to someone else — counsel, a broker, an entity's agent — keeps
+ * both values exactly as they typed them.
+ */
+function mirrorCounterparty(spec: LoiSpec, provided: Record<string, string>): Record<string, string> {
+  if (spec.kind !== 'purchase') return provided;   // a lease LOI has no counterparty term row
+  const out = { ...provided };
+  const filled = (k: string) => String(out[k] ?? '').trim() !== '';
+  if (filled('addressee_name') && !filled('Seller:')) out['Seller:'] = out['addressee_name'];
+  else if (filled('Seller:') && !filled('addressee_name')) out['addressee_name'] = out['Seller:'];
+  return out;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function buildLoiDraft(db: SupabaseClient<any, any, any>, agent: AgentIdentity, input: BuildInput): Promise<LoiDraft | { error: string }> {
   const { data: form } = await db.from('crm_forms').select('id, name, form_code, business_unit').eq('id', input.formId).maybeSingle();
@@ -188,20 +242,28 @@ export async function buildLoiDraft(db: SupabaseClient<any, any, any>, agent: Ag
   const spec = specForForm(form.form_code, form.name);
   if (!spec) return { error: 'That form is not a Letter of Intent. This slice covers the LOIs only.' };
 
-  const provided = canonicalizeProvided(spec, input.provided ?? {});
+  const provided = mirrorCounterparty(spec, canonicalizeProvided(spec, input.provided ?? {}));
 
   const { data: deal } = input.dealId
     ? await db.from('crm_deals').select('id, client, client_email, client_phone, type, property, value, client_id, listing_id, representation_side, business_unit').eq('id', input.dealId).maybeSingle()
     : { data: null };
-  const { data: contact } = deal?.client_id
-    ? await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type').eq('id', deal.client_id).maybeSingle()
+  // The contact can arrive three ways: named outright, reached through a deal, or not
+  // at all. An explicitly named one wins — the agent chose it for this document.
+  const contactId = input.contactId ?? deal?.client_id ?? null;
+  const { data: contact } = contactId
+    ? await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type').eq('id', contactId).maybeSingle()
     : { data: null };
   const listingId = input.listingId ?? deal?.listing_id ?? null;
   const { data: listing } = listingId
     ? await db.from('crm_listings').select('id, name, address, city, state, zip, sq_ft, asking_price').eq('id', listingId).maybeSingle()
     : { data: null };
 
-  const side = deriveSide({ stored: deal?.representation_side, dealType: deal?.type, contactType: contact?.type });
+  const side = deriveSide({
+    stated: input.side, stored: deal?.representation_side,
+    dealType: deal?.type, contactType: contact?.type,
+    // With no deal, the document itself settles lease-vs-sale.
+    formTransaction: spec.kind === 'purchase' ? 'sale' : 'lease',
+  });
   const canFillParties = mayFillPartyFields(side);
 
   const { data: reqRows } = await db.from('crm_form_fields').select('field_key').eq('form_id', form.id).eq('required', true);
@@ -254,9 +316,10 @@ export async function buildLoiDraft(db: SupabaseClient<any, any, any>, agent: Ag
     : deal?.property ? 'Deal — property field'
     : listing?.name ? `Property — ${listing.name} (no street address on the record)`
     : '';
+  const noRecords = !deal && !contact && !listing;
   take('re_line', 'RE: line', () => propertyAddress
     ? { value: propertyAddress, provenance: 'crm' as Provenance, source: propertySource }
-    : { value: '', provenance: 'needs_input' as Provenance, source: 'No property on this deal — type the address' });
+    : { value: '', provenance: 'needs_input' as Provenance, source: noRecords ? 'Tell me the property address' : 'No property on this deal — type the address' });
 
   // ── Agent block ────────────────────────────────────────────────────────────
   const fromProfile = (v: string, what: string) => v
@@ -274,7 +337,10 @@ export async function buildLoiDraft(db: SupabaseClient<any, any, any>, agent: Ag
     const label = row.label;
     const given = provided[label];
     if (given !== undefined && String(given).trim() !== '') {
-      add(label, label.replace(/:$/, ''), String(given).trim(), 'agent', 'You supplied this');
+      const mirrored = label === 'Seller:' && (input.provided ?? {})['Seller:'] === undefined
+        && String((input.provided ?? {})['addressee_name'] ?? '').trim() !== '';
+      add(label, label.replace(/:$/, ''), String(given).trim(), 'agent',
+        mirrored ? 'Same party as the addressee you gave me' : 'You supplied this');
       return { ...row, value: String(given).trim() };
     }
 
@@ -340,12 +406,25 @@ export async function buildLoiDraft(db: SupabaseClient<any, any, any>, agent: Ag
     sellers: [{ entity: v('addressee_name'), signatory: provided.party1_signatory ?? '' }],
   };
 
+  // Where it lands, in descending order of specificity. A document with nowhere to go
+  // is worse than one filed loosely: standalone documents are listed on the E-Sign
+  // page, so the agent can still find, review and send it.
+  const filesOn: LoiDraft['filesOn'] = deal?.id
+    ? { kind: 'deal', label: `the ${deal.client ?? 'deal'} deal` }
+    : contact
+      ? { kind: 'contact', label: `${contactName(contact)}'s contact record` }
+      : { kind: 'standalone', label: 'your documents on the E-Sign page (not filed to a deal or contact)' };
+
+  const knownSlots = new Set(slots.map(x => x.slot));
+  const unmatchedProvided = Object.keys(provided).filter(k => !knownSlots.has(k) && k !== 'additional_terms' && k !== 'party1_signatory');
+
   return {
     formId: form.id, formName: form.name, formCode: form.form_code, title: spec.title,
-    dealId: deal?.id ?? null, listingId,
+    dealId: deal?.id ?? null, contactId: contact?.id ?? null, listingId, filesOn,
     side, data, slots,
     needsInput: slots.filter(s => s.provenance === 'needs_input' || s.provenance === 'missing_source'),
     checkThese: slots.filter(s => s.check),
+    unmatchedProvided,
     blocked,
   };
 }

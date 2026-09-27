@@ -28,11 +28,14 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const formId = String(b.form_id ?? '');
   const dealId = b.deal_id ? String(b.deal_id) : null;
+  const contactId = b.contact_id ? String(b.contact_id) : null;
+  const side = typeof b.side === 'string' ? b.side : null;
   const listingId = b.listing_id ? String(b.listing_id) : null;
   const submissionId = b.submission_id ? String(b.submission_id) : null;
   if (!formId) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
 
   if (dealId && !(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
+  if (contactId && !(await assertOwnsResource('crm_clients', contactId, ctx))) return notFound('Contact not found');
   if (listingId && !(await assertCanAccessListing(listingId, ctx))) return notFound('Property not found');
   if (submissionId && !(await assertOwnsResource('crm_form_submissions', submissionId, ctx))) return notFound('Document not found');
 
@@ -44,7 +47,7 @@ export async function POST(req: NextRequest) {
   };
 
   const r = await generateLoi(db, ctx.userId, ctx.businessUnit, agent, {
-    formId, dealId, listingId, submissionId,
+    formId, dealId, contactId, listingId, submissionId, side,
     provided: (b.provided && typeof b.provided === 'object') ? b.provided as Record<string, string> : {},
     acknowledgeDirection: b.acknowledge_direction === true,
     baseUrl: req.nextUrl.origin,
@@ -53,7 +56,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: r.error, ...(r.missingRequired ? { missingRequired: r.missingRequired } : {}), ...(r.blocked ? { blocked: r.blocked } : {}) }, { status: r.status });
   }
   return NextResponse.json({
-    submission: r.submission, url: r.url, side: r.side,
+    submission: r.submission, url: r.url, side: r.side, filedOn: r.filedOn,
     // Said plainly so no caller mistakes filing for sending.
     note: 'Filed as a draft on the deal. Nothing has been sent — e-signature is a separate step.',
   });

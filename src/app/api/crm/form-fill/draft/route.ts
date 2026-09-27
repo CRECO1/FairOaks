@@ -24,12 +24,15 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const formId = String(b.form_id ?? '');
   const dealId = b.deal_id ? String(b.deal_id) : null;
+  const contactId = b.contact_id ? String(b.contact_id) : null;
+  const side = typeof b.side === 'string' ? b.side : null;
   const listingId = b.listing_id ? String(b.listing_id) : null;
   if (!formId) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
 
   // The draft reads a deal, a contact and a property, so it answers to the same
   // ownership checks the rest of the CRM does — the service-role key bypasses RLS.
   if (dealId && !(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
+  if (contactId && !(await assertOwnsResource('crm_clients', contactId, ctx))) return notFound('Contact not found');
   if (listingId && !(await assertCanAccessListing(listingId, ctx))) return notFound('Property not found');
 
   const db = adminClient();
@@ -40,7 +43,7 @@ export async function POST(req: NextRequest) {
   };
 
   const draft = await buildLoiDraft(db, agent, {
-    formId, dealId, listingId,
+    formId, dealId, contactId, listingId, side,
     provided: (b.provided && typeof b.provided === 'object') ? b.provided as Record<string, string> : {},
   });
   if ('error' in draft) return NextResponse.json({ error: draft.error }, { status: 400 });

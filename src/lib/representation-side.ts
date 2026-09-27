@@ -18,6 +18,9 @@
 
 export type Side = 'buyer' | 'tenant' | 'seller' | 'landlord' | 'intermediary' | 'unknown';
 
+/** Mirrors the crm_deals_representation_side_check constraint. */
+export const VALID_SIDES: Side[] = ['buyer', 'tenant', 'seller', 'landlord', 'intermediary', 'unknown'];
+
 /** How much weight the answer carries. Only `confirmed` and `high` may fill party fields. */
 export type SideConfidence = 'confirmed' | 'high' | 'medium' | 'conflict' | 'none';
 
@@ -83,14 +86,34 @@ const article = (w: string) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
 export interface DeriveInput {
   /** crm_deals.representation_side — an agent's stored decision, if there is one. */
   stored?: string | null;
+  /** What the agent said in this request. Outranks everything: they are the source. */
+  stated?: string | null;
   dealType?: string | null;
   contactType?: string | null;
+  /**
+   * The transaction the FORM is for, when there is no deal to say.
+   *
+   * A contact's type cannot tell a lease from a sale — "Landlord/Investor" describes a
+   * person, not this transaction. But the document does: a Letter of Intent to Purchase
+   * is a sale by construction. Supplying it is what lets a contact-only or ad-hoc
+   * request derive a side at all instead of always stopping to ask.
+   */
+  formTransaction?: 'lease' | 'sale' | null;
 }
 
-export function deriveSide({ stored, dealType, contactType }: DeriveInput): SideResult {
+export function deriveSide({ stored, stated, dealType, contactType, formTransaction }: DeriveInput): SideResult {
   const signals = { dealType: dealType ?? null, contactType: contactType ?? null };
 
-  // 1. An agent already said so. Nothing re-derives over a human decision.
+  // 0. The agent said it in this request. They are the authority; nothing outranks it.
+  if (stated && stated !== 'unknown' && VALID_SIDES.includes(stated as Side)) {
+    return {
+      side: stated as Side, confidence: 'confirmed',
+      reason: `You told me we represent the ${stated}.`,
+      needsConfirmation: false, signals: { ...signals, stored: stated as Side },
+    };
+  }
+
+  // 1. An agent already recorded it on the deal. Nothing re-derives over that.
   if (stored && stored !== 'unknown') {
     return {
       side: stored as Side, confidence: 'confirmed',
@@ -99,22 +122,47 @@ export function deriveSide({ stored, dealType, contactType }: DeriveInput): Side
     };
   }
 
-  const { txn, camp: dealCamp } = dealAxes(dealType);
+  const fromDeal = dealAxes(dealType);
+  // With no deal type, the form supplies the transaction axis and the contact the camp.
+  const txn: Transaction = fromDeal.txn !== 'unknown' ? fromDeal.txn : (formTransaction ?? 'unknown');
+  const dealCamp = fromDeal.camp;
   const cCamp = contactCamp(contactType);
 
-  // 2. No usable deal type. The contact alone cannot say lease vs sale, so there is
-  //    no side to derive — only a hint about which camp.
+  // 2. Nothing establishes lease vs sale — not the deal, not the form.
   if (txn === 'unknown') {
     return {
       side: 'unknown', confidence: 'none',
       reason: cCamp === 'unknown'
-        ? 'The deal has no type set and the contact type does not say which side we are on.'
-        : `The deal has no type set, so there is no way to tell a lease from a sale. The contact is ${article(String(contactType))} ${contactType}.`,
+        ? 'Nothing here says which side we are on — there is no deal type and the contact type does not settle it.'
+        : `There is no way to tell a lease from a sale here. The contact is ${article(String(contactType))} ${contactType}, which only says which side of the table they are on.`,
       needsConfirmation: true, signals,
     };
   }
 
-  // 3. The contact is not a principal (broker, agent, unset) — the deal stands alone.
+  const noDeal = fromDeal.camp === 'unknown';
+
+  // 3. NO DEAL, but the form gives the transaction and the contact gives the camp.
+  //    This is the contact-only path: a real derivation, one signal short of the
+  //    corroborated case, so the agent still confirms it.
+  if (noDeal) {
+    if (cCamp === 'unknown') {
+      return {
+        side: 'unknown', confidence: 'none',
+        reason: contactType
+          ? `The contact is ${article(contactType)} ${contactType}, which is not a principal, so it does not say which side we represent. Tell me and I will use it.`
+          : 'There is no deal and no contact to derive a side from. Tell me which side we represent.',
+        needsConfirmation: true, signals,
+      };
+    }
+    const side = combine(txn, cCamp);
+    return {
+      side, confidence: 'medium',
+      reason: `No deal record, so this comes from the form (${txn === 'sale' ? 'a purchase' : 'a lease'}) and the contact's type "${contactType}" — that puts us on the ${side} side. Confirm it.`,
+      needsConfirmation: true, signals,
+    };
+  }
+
+  // 4. The contact is not a principal (broker, agent, unset) — the deal stands alone.
   if (cCamp === 'unknown') {
     return {
       side: combine(txn, dealCamp), confidence: 'medium',
@@ -125,7 +173,7 @@ export function deriveSide({ stored, dealType, contactType }: DeriveInput): Side
     };
   }
 
-  // 4. Both agree on the camp. The deal supplies lease-vs-sale.
+  // 5. Both agree on the camp. The deal supplies lease-vs-sale.
   if (cCamp === dealCamp) {
     const side = combine(txn, dealCamp);
     return {
@@ -136,7 +184,7 @@ export function deriveSide({ stored, dealType, contactType }: DeriveInput): Side
     };
   }
 
-  // 5. They contradict each other on the camp. Do not pick a winner.
+  // 6. They contradict each other on the camp. Do not pick a winner.
   return {
     side: 'unknown', confidence: 'conflict',
     reason: `Deal type "${dealType}" puts us on the ${combine(txn, dealCamp)} side, but the contact is typed "${contactType}", which is the other side of the table. Confirm which is right.`,
