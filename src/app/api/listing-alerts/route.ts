@@ -4,6 +4,8 @@ import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { buildLeadContext } from '@/lib/lead-context';
+import crypto from 'crypto';
 
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
@@ -83,6 +85,101 @@ export async function POST(req: NextRequest) {
     if (dbErr) {
       console.error('listing_alerts insert error:', dbErr.message);
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
+    // ── Also register the signup as a CRM lead ───────────────────────────────
+    // Someone asking to be told about new homes matching a price, bed count and
+    // set of cities is a self-qualified buyer. Until now that person became a
+    // row in listing_alerts and nothing else: no CRM contact, no attribution,
+    // invisible to the Lead Attribution dashboard and to any follow-up.
+    //
+    // This is purely additive — the alert row above is written first and is
+    // untouched, and every failure here is swallowed so a CRM problem can never
+    // cost someone their alert subscription or return them an error.
+    try {
+      const attr = buildLeadContext(req, { ...(body as Record<string, unknown>), surface: 'listing-alerts' });
+      const admin = createClient(supabaseUrl, serviceKey);
+      const { data: adminProfile } = await admin
+        .from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
+      const adminId = adminProfile?.id;
+      const cleanEmail = email.toLowerCase().trim();
+
+      if (adminId) {
+        const { data: existing } = await admin
+          .from('crm_clients').select('id').ilike('email', cleanEmail).maybeSingle();
+
+        // The criteria are the most useful thing about this lead — what they
+        // want and where — so they go in the notes rather than being dropped.
+        const criteria = [
+          safeCities.length && safeCities[0] !== 'All Areas' ? `Areas: ${safeCities.join(', ')}` : 'Areas: all',
+          safeSearch ? `Search: "${safeSearch}"` : '',
+          min_price ? `Min price: $${Number(min_price).toLocaleString()}` : '',
+          max_price ? `Max price: $${Number(max_price).toLocaleString()}` : '',
+          min_beds ? `Min beds: ${min_beds}` : '',
+          min_baths ? `Min baths: ${min_baths}` : '',
+        ].filter(Boolean);
+
+        if (existing?.id) {
+          // Already a contact — append the criteria rather than creating a twin.
+          const { data: prior } = await admin.from('crm_clients').select('notes').eq('id', existing.id).maybeSingle();
+          const appended = [String(prior?.notes ?? '').trim(), `🔔 Listing alert signup — ${new Date().toISOString().slice(0, 10)}`, ...criteria]
+            .filter(Boolean).join('\n');
+          await admin.from('crm_clients').update({ notes: appended }).eq('id', existing.id);
+          console.log(`[listing_alerts] existing contact ${existing.id} updated with alert criteria`);
+        } else {
+          const rawName = typeof name === 'string' ? name.trim() : '';
+          // Footer signup asks for email only, so derive something usable rather
+          // than filing a nameless contact.
+          const display = rawName || cleanEmail.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase());
+          const parts = display.split(/\s+/);
+
+          const { data: created, error: crmErr } = await admin.from('crm_clients').insert([{
+            first_name: parts[0] ?? display,
+            last_name: parts.slice(1).join(' '),
+            email: cleanEmail,
+            phone: '',
+            type: 'Buyer',
+            notes: ['🔔 Listing alert signup — fairoaksrealtygroup.com', ...criteria].join('\n'),
+            agent_id: adminId,
+            assigned_agent_ids: [],
+            lead_source: 'Listing alerts — fairoaksrealtygroup.com',
+            prospect_status: 'new',
+            business_unit: 'residential',
+            tags: ['New Lead', 'Website Lead', 'Listing Alerts'],
+            unsubscribe_token: crypto.randomUUID(),
+            utm_source: attr.utm_source, utm_medium: attr.utm_medium, utm_campaign: attr.utm_campaign,
+            utm_term: attr.utm_term, utm_content: attr.utm_content,
+            referrer: attr.referrer, landing_page: attr.landing_page,
+            page_path: attr.page_path, page_title: attr.page_title,
+            surface: attr.surface, geo: attr.geo, device: attr.device,
+            channel: attr.channel,
+            lead_site: 'fairoaksrealtygroup.com',
+          }]).select('id').single();
+
+          if (crmErr) {
+            console.error('[listing_alerts] crm_clients insert error:', JSON.stringify(crmErr));
+          } else {
+            console.log(`[listing_alerts] CRM lead created: ${cleanEmail}`);
+            // Surfaces it in the Prospects tab straight away, same as web leads.
+            await admin.from('email_lead_imports').insert([{
+              gmail_message_id:    `listing-alerts-${crypto.randomUUID()}`,
+              gmail_connection_id: null,
+              source:              'Website',
+              business_unit:       'residential',
+              client_id:           created?.id ?? null,
+              raw_subject:         `Listing alert signup: ${display}`,
+              parsed_name:         display,
+              parsed_email:        cleanEmail,
+              parsed_message:      criteria.join(' · '),
+              channel:             attr.channel,
+              lead_site:           'fairoaksrealtygroup.com',
+            }]);
+          }
+        }
+      }
+    } catch (e) {
+      // Never fail the subscription because the CRM side had a problem.
+      console.error('[listing_alerts] CRM forward failed (alert itself is unaffected):', e);
     }
 
     // Send confirmation email

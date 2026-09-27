@@ -75,6 +75,7 @@ import { ValuationCta } from '@/components/sections/ValuationCta';
 import { getTestimonials, getNeighborhoods, supabase } from '@/lib/supabase';
 import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';
+import HomeInlineLeadForm from '@/components/sections/HomeInlineLeadForm';
 import { CommercialCallout } from '@/components/sections/CommercialCallout';
 import { jsonLdScript } from '@/lib/json-ld';
 
@@ -305,6 +306,8 @@ export default async function HomePage() {
       </section>
 
       {/* ── Commercial (CRECO) ───────────────────────────────────────── */}
+      <HomeInlineLeadForm />
+
       <CommercialCallout />
 
       {/* ── Why Us ───────────────────────────────────────────────────── */}
