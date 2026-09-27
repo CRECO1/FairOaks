@@ -116,6 +116,16 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
+        {/* Skip link — WCAG 2.4.1. Off-screen until focused, so it costs a
+            sighted user nothing and saves a keyboard user tabbing through the
+            whole nav on every page. Targets #main-content, which every page
+            layout provides. */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-5 focus:py-3 focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-gold focus:ring-offset-2"
+        >
+          Skip to main content
+        </a>
         <AnalyticsScripts />
         {/* Attribution capture. Wrapped in Suspense because it reads
             useSearchParams — without a boundary that would opt every page out

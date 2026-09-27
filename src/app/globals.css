@@ -669,3 +669,23 @@
     -webkit-overflow-scrolling: touch !important;
   }
 }
+
+/* ── Reduced motion ─────────────────────────────────────────────────────────
+   WCAG 2.3.3. The site leans on scroll-reveal transitions throughout; for
+   someone with a vestibular disorder those are not decoration, they are a
+   symptom trigger. Honour the OS setting: keep everything visible and in
+   place, just stop it moving. `reveal` elements start at opacity 0 and are
+   revealed by a class, so they are forced visible here — without that, a
+   reduced-motion visitor would see a blank page. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal, .reveal-down, .reveal-left, .reveal-right, .reveal-scale {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

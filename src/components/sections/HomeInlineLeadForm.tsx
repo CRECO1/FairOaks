@@ -122,7 +122,9 @@ export default function HomeInlineLeadForm() {
                 {error && <p className="text-body-sm text-red-600" role="alert">{error}</p>}
 
                 <button type="submit" disabled={status === 'sending'}
-                        className="w-full rounded-lg bg-gold px-6 py-3.5 text-body-sm font-semibold text-white transition hover:bg-gold-dark disabled:opacity-60 sm:w-auto sm:px-10">
+                        // White on #C9A962 is 2.25:1 — below the 4.5:1 AA floor. Dark ink on the
+                        // same gold is 7.74:1 and matches the sticky CTA bar already on the page.
+                        className="w-full rounded-lg bg-gold px-6 py-3.5 text-body-sm font-semibold text-primary transition hover:bg-gold-dark hover:text-white disabled:opacity-60 sm:w-auto sm:px-10">
                   {status === 'sending' ? 'Sending…' : 'Get in touch'}
                 </button>
                 <p className="text-caption text-foreground-light">

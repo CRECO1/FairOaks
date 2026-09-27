@@ -138,6 +138,10 @@ export default async function HomePage() {
     <>
       <Header variant="transparent" />
 
+      {/* The one key page that had no main landmark. Also the skip link's
+          target, so it has to exist on the busiest page of all. */}
+      <main id="main-content">
+
       {/* ── Hero ─────────────────────────────────────────────────────── */}
       <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-primary">
         <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-primary/80" />
@@ -450,6 +454,8 @@ export default async function HomePage() {
 
       {/* No FAQPage markup here: the four Q&As it carried were never shown on the page,
           and structured data must match visible content. See Zack's punch list. */}
+
+      </main>
 
       <Footer />
     </>
