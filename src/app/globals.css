@@ -689,3 +689,32 @@
     transform: none !important;
   }
 }
+
+/* ── Skip link ──────────────────────────────────────────────────────────────
+   WCAG 2.4.1. Parked off the top of the viewport and slid in on focus, rather
+   than sr-only + focus:not-sr-only — that Tailwind pairing did NOT reverse
+   here, which left the link focusable but invisible: a keyboard user tabbing
+   once landed on a control they could not see. Verified in a browser.
+   Uses transform rather than clip so there is nothing to un-clip, and the
+   reduced-motion block above already flattens the transition. */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 200;
+  display: inline-block;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  background: #1A1A1A;
+  color: #FFFFFF;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(calc(-100% - 1.5rem));
+  transition: transform 0.15s ease-out;
+}
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid #C9A962;
+  outline-offset: 3px;
+}
