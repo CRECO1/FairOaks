@@ -6,7 +6,7 @@ import { Home, ArrowRight } from 'lucide-react';
 import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
-import { attributionPayload, trackEvent } from '@/lib/attribution';
+import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
 
 export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 'dark' | 'light'; surface?: string }) {
   // One form, two grounds: the homepage band is dark, the landing page is light.
@@ -63,7 +63,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <form onSubmit={handleSubmit} onFocusCapture={() => trackFormStart(surface || 'home-valuation')} className="flex flex-col gap-3">
       <Honeypot />
       <input
         type="text"

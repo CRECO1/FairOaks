@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import AnalyticsScripts from '@/components/AnalyticsScripts';
 import UtmCapture from '@/components/analytics/UtmCapture';
 import ContactLinkTracker from '@/components/analytics/ContactLinkTracker';
+import CtaClickTracker from '@/components/analytics/CtaClickTracker';
 import StickyCTA from '@/components/ui/StickyCTA';
 import { FORG, CRECO, AFFILIATION, ORG_ID, areaServed, peopleNodes, trecCredential } from '@/lib/site-identity';
 import './globals.css';
@@ -137,6 +138,8 @@ export default function RootLayout({
         {/* Delegated tel:/mailto: click tracking — see the component for why it
             is one listener rather than per-link handlers. */}
         <ContactLinkTracker />
+        {/* Conversion CTAs, matched by destination so new buttons are covered. */}
+        <CtaClickTracker />
         <StickyCTA />
         {/* JSON-LD Structured Data — LocalBusiness + RealEstateAgent */}
         <script

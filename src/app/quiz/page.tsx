@@ -100,7 +100,7 @@ export default function QuizPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
 
-  useEffect(() => { trackQuizStart(); }, []);
+  useEffect(() => { trackQuizStart(STEPS.length); }, []);
 
   const current = STEPS[step];
   const progress = ((step + 1) / STEPS.length) * 100;
@@ -112,7 +112,7 @@ export default function QuizPage() {
       setAnswers(a => ({ ...a, [current.id]: next }));
     } else {
       setAnswers(a => ({ ...a, [current.id]: value }));
-      trackQuizStep(step, value);
+      trackQuizStep(step, value, current.id);
       if (step < STEPS.length - 1) {
         setTimeout(() => setStep(s => s + 1), 200);
       } else {

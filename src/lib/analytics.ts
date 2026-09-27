@@ -154,15 +154,25 @@ export function trackSearch(params: {
 
 // ─── Quiz ─────────────────────────────────────────────────────────────────────
 
-export function trackQuizStart() {
-  gtag('quiz_start', { event_category: 'Quiz' });
+export function trackQuizStart(totalSteps?: number) {
+  gtag('quiz_start', {
+    event_category: 'Quiz',
+    // Lets the funnel be read as "reached step N of M" without the total being
+    // hardcoded in a GA report that then rots when the quiz changes length.
+    total_steps: totalSteps ?? 0,
+  });
 }
 
-export function trackQuizStep(step: number, answer?: string) {
+export function trackQuizStep(step: number, answer?: string, stepId?: string) {
   gtag('quiz_step', {
     event_category: 'Quiz',
     step_number: step,
+    // A fixed option slug ('first-time', 'upsize'), never free text — the quiz
+    // only takes free input on its final contact step, which is not tracked.
     answer: answer ?? '',
+    // The index alone says people leave at "step 3"; the id says which question
+    // that was, and survives the quiz being re-ordered.
+    step_id: stepId ?? '',
   });
 }
 
@@ -172,15 +182,28 @@ export function trackQuizComplete() {
 
 // ─── CTA Clicks ───────────────────────────────────────────────────────────────
 
+/**
+ * Set whenever a component reports a CTA click itself, so CtaClickTracker can
+ * stand down rather than counting the same click twice.
+ */
+let lastManualCta = 0;
+export function ctaClickWasManual(withinMs = 400): boolean {
+  return Date.now() - lastManualCta < withinMs;
+}
+
 export function trackCTA(params: {
   text: string;
   location: string;
   destination?: string;
 }) {
+  lastManualCta = Date.now();
   gtag('cta_click', {
     event_category: 'CTA',
     event_label: params.text,
     cta_location: params.location,
     destination: params.destination ?? '',
+    // Which page the CTA was clicked FROM — without it every CTA of the same
+    // name across the site collapses into one undifferentiated row.
+    page_path: typeof window !== 'undefined' ? window.location.pathname : '',
   });
 }
