@@ -22,8 +22,17 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-/** Marks the tasks this helper owns, so the duplicate check is precise. */
-export const LEAD_FOLLOWUP_TYPE = 'lead_followup';
+/**
+ * crm_tasks.type is constrained to 'call' | 'email' | 'follow_up'. Using the
+ * existing 'follow_up' rather than widening the CHECK keeps these tasks
+ * indistinguishable from a hand-made follow-up everywhere in the CRM UI — the
+ * brief was to reuse the schema, not extend it.
+ *
+ * It also makes the duplicate check slightly broader in a useful way: if Zack
+ * has already put a follow-up on a contact, a fresh enquiry from that same
+ * person does not add a second one.
+ */
+export const LEAD_FOLLOWUP_TYPE = 'follow_up';
 
 export interface LeadFollowUpInput {
   clientId: string;
