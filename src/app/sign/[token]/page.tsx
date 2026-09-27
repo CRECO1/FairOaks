@@ -632,7 +632,7 @@ export default function SignPage() {
   const header = (
     <div style={{ borderBottom: `3px solid ${GOLD}`, background: '#fff' }}>
       <div style={{ maxWidth: 960, margin: '0 auto', padding: narrow ? '10px 16px' : '14px 24px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', minHeight: narrow ? 38 : 44 }}>
-        {brand === 'creco' && <Image src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" priority width={64} height={44}
+        {brand === 'creco' && <Image src="/creco-logo.png" alt="CRECO — Commercial Real Estate Company" priority width={128} height={44}
                                      style={{ height: narrow ? 38 : 44, width: 'auto', display: 'block' }} />}
         {brand === 'fairoaks' && (
           // The Fair Oaks mark is a tall tree; its own wordmark is unreadable at header
