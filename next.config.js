@@ -65,6 +65,11 @@ const securityHeaders = [
       "object-src 'none'",
       // Base URI: self only
       "base-uri 'self'",
+      // Who may frame us. X-Frame-Options: SAMEORIGIN already says this, but that
+      // is the legacy header — frame-ancestors is what modern browsers honour, and
+      // CSP wins where both are present. Same policy either way, so this closes the
+      // gap without changing behaviour. 'self', not 'none': the CRM embeds its own pages.
+      "frame-ancestors 'self'",
     ].join('; '),
   },
 ];
