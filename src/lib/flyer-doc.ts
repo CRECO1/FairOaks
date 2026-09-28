@@ -40,9 +40,8 @@ export interface FlyerInput {
   // top-left + the PDF rotation that lays each name along its road — see roadLabels().
   aerialLabels?: Array<{ text: string; x: number; y: number; angle: number }> | null;
   floorPlan?: { bytes: Uint8Array; png: boolean } | null;
-  // Optional page-2 trade-area panel — a dark stat strip (demographics). When present
-  // it takes the aerial map's slot, since the location is already mapped on page 1 and
-  // the numbers sell the site harder than a second map does.
+  // Optional page-2 trade-area panel — a dark stat strip (traffic counts, population,
+  // daytime jobs; up to 4 tiles + a one-line source caption). Drawn above the aerial.
   tradeArea?: { tiles: Array<{ value: string; label: string }>; caption?: string } | null;
   fontBold: Uint8Array;          // Oswald-Bold TTF
   logoPng: Uint8Array;           // CRECO letterhead PNG
@@ -369,8 +368,9 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   // site plan is actually legible rather than a small centred letterbox. The area map
   // is secondary (page 1 already carries a location map), so it takes the smaller share.
   if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
-  // Trade-area demographics take the aerial's slot when supplied (page 1 already maps the
-  // location, so the numbers earn the space better than a second map).
+  // Trade-area demographics (traffic counts, population, jobs) sit above the aerial when
+  // supplied. The strip is only ~60pt tall, so it never crowds the map out — and site
+  // selectors read the numbers and the labelled aerial together.
   if (input.tradeArea?.tiles?.length) {
     const ta = input.tradeArea;
     p2blocks.push({
@@ -378,7 +378,8 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
       natural: () => 60 + (ta.caption ? 17 : 0),
       draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body),
     });
-  } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
+  }
+  if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
     const r = drawContain(p2!, aerial!, x, y, w, h);
     drawMapLabels(p2!, r, aerial!, input.aerialLabels, labelFont);
     return r;

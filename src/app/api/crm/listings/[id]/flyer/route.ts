@@ -216,6 +216,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     badge, address,
     description: publicSafeText(L.description || L.notes || ''),
     highlights: publicSafeHighlights(String(L.highlights || '').split('\n').map(s => s.trim()).filter(Boolean)),
+    // Trade-area strip (crm_listings.trade_area jsonb: { tiles: [{ value, label }], caption }).
+    // Filled in per property from TxDOT AADT + Census ring pulls; absent on most listings.
+    tradeArea: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length
+      ? { tiles: L.trade_area.tiles.slice(0, 4).map((t: { value?: unknown; label?: unknown }) => ({ value: String(t.value ?? ''), label: String(t.label ?? '') })), caption: L.trade_area.caption ? String(L.trade_area.caption) : undefined }
+      : null,
     statPrice, statSize,
     agentNames,
     contacts,
