@@ -2,7 +2,7 @@
 
 import Script from 'next/script';
 import { usePathname } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * Third-party analytics for the PUBLIC marketing site only.
@@ -26,6 +26,29 @@ import { useEffect } from 'react';
 // Routes where analytics/tracking must NOT fire.
 const EXCLUDED_PREFIXES = ['/crm', '/manage'];
 
+// Only load analytics on the real marketing host. Previously the tags loaded on
+// any host — including Vercel preview URLs (fair-oaks-*.vercel.app) and localhost
+// — leaking staging/dev sessions into the production GA4 property (G-SYPXDGGWQS)
+// and inflating its session denominator so the conversion rate reads ~0.
+const PROD_HOSTS = new Set(['fairoaksrealtygroup.com', 'www.fairoaksrealtygroup.com']);
+
+/**
+ * Unambiguous automation / bot signals — real browsers match none of these. GA4's
+ * traffic was topped by datacenter hubs (headless scrapers that fire GA but never
+ * convert), which collapses the conversion rate toward zero. Don't load gtag when
+ * the client looks automated. Deliberately conservative so no real visitor is
+ * dropped; sophisticated bots that fully mimic a browser still get through.
+ */
+function isLikelyBot(): boolean {
+  try {
+    if (navigator.webdriver) return true;
+    const ua = navigator.userAgent || '';
+    return /bot|crawl|spider|headless|scrape|lighthouse|pagespeed|gtmetrix|pingdom|phantom|puppeteer|playwright|selenium|prerender|slurp|monitoring/i.test(ua);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Microsoft Clarity project. One project per page: Clarity's loader installs a
  * single window.clarity global with a shared queue, so a second tag on the same
@@ -37,6 +60,9 @@ const CLARITY_ID = process.env.NEXT_PUBLIC_CLARITY_ID || 'ynv21imdze';
 export default function AnalyticsScripts() {
   const pathname = usePathname();
   const excluded = !pathname || EXCLUDED_PREFIXES.some(prefix => pathname.startsWith(prefix));
+  // Host + bot decision is client-only (hostname is unknown during SSR). Starts
+  // false so nothing loads until a real production browser is confirmed.
+  const [enabled, setEnabled] = useState(false);
 
   // Halt an already-running Clarity session when the user moves into the CRM.
   // Hook runs unconditionally — it must sit above the early return.
@@ -49,7 +75,11 @@ export default function AnalyticsScripts() {
     }
   }, [excluded]);
 
-  if (excluded) return null;
+  useEffect(() => {
+    setEnabled(PROD_HOSTS.has(window.location.hostname) && !isLikelyBot());
+  }, []);
+
+  if (excluded || !enabled) return null;
 
   return (
     <>
