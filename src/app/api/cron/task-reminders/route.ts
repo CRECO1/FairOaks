@@ -63,15 +63,24 @@ export async function GET(req: NextRequest) {
   // every super-admin so nothing sits unclaimed. A failure here must not stop the
   // task digest, so it degrades to "no call-backs".
   try {
-    const nowIso = new Date().toISOString();
-    const { data: callbacks } = await supabase
+    const now = Date.now();
+    const GRACE_MS = 12 * 3600_000;   // an undated call-back starts nagging once it's ~half a day old
+    const { data: openCbs } = await supabase
       .from('crm_call_log')
-      .select('id, caller_name, from_number, callback_number, summary, follow_up_due, follow_up_assignee, business_unit, contact_id')
-      .eq('needs_follow_up', true).is('handled_at', null)
-      .not('follow_up_due', 'is', null).lte('follow_up_due', nowIso)
-      .order('follow_up_due', { ascending: true });
+      .select('id, caller_name, from_number, callback_number, summary, follow_up_due, follow_up_assignee, business_unit, contact_id, started_at')
+      .eq('needs_follow_up', true).is('handled_at', null);
 
-    if (callbacks && callbacks.length) {
+    // A call-back nags once its due time passes — or, if none was set, once the call
+    // itself is older than the grace window. Auto-captured voicemails and missed calls
+    // carry no due time, so without this branch they would never reach the digest.
+    const callbacks = (openCbs ?? []).flatMap((cb) => {
+      const due = cb.follow_up_due ? new Date(cb.follow_up_due).getTime() : null;
+      if (due != null) return due <= now ? [{ ...cb, sinceMs: now - due, dated: true }] : [];
+      const age = now - new Date(cb.started_at).getTime();
+      return age >= GRACE_MS ? [{ ...cb, sinceMs: age, dated: false }] : [];
+    }).sort((a, b) => b.sinceMs - a.sinceMs);   // most overdue / longest-waiting first
+
+    if (callbacks.length) {
       const assigneeIds = Array.from(new Set(callbacks.map(c => c.follow_up_assignee).filter(Boolean))) as string[];
       const contactIds = Array.from(new Set(callbacks.map(c => c.contact_id).filter(Boolean))) as string[];
       const [assigneeProfiles, superAdmins, contacts] = await Promise.all([
@@ -149,9 +158,10 @@ export async function GET(req: NextRequest) {
       const todayRows = dueTodayTasks.map(renderRow).join('');
 
       const renderCallback = (c: any) => {
-        const mins = Math.max(1, Math.round((Date.now() - new Date(c.follow_up_due).getTime()) / 60000));
+        const mins = Math.max(1, Math.round(c.sinceMs / 60000));
         const h = Math.floor(mins / 60), d = Math.floor(h / 24);
-        const overdueLabel = d >= 1 ? `${d}d overdue` : h >= 1 ? `${h}h overdue` : `${mins}m overdue`;
+        const ago = d >= 1 ? `${d}d` : h >= 1 ? `${h}h` : `${mins}m`;
+        const label = c.dated ? `${ago} overdue` : `waiting ${ago}`;
         return `
           <tr>
             <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;vertical-align:top;">
@@ -159,11 +169,14 @@ export async function GET(req: NextRequest) {
               ${c.summary ? `<div style="font-size:12px;color:#9ca3af;margin-top:2px;">${String(c.summary).slice(0, 120)}</div>` : ''}
             </td>
             <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;white-space:nowrap;text-align:right;vertical-align:top;">
-              <span style="font-size:12px;font-weight:700;color:#dc2626;">${overdueLabel}</span>
+              <span style="font-size:12px;font-weight:700;color:#dc2626;">${label}</span>
             </td>
           </tr>`;
       };
-      const callbackRows = overdueCallbacks.map(renderCallback).join('');
+      // Keep the email digestible when a backlog exists; the rest live in the Calling Log.
+      const CALLBACK_CAP = 12;
+      const callbackRows = overdueCallbacks.slice(0, CALLBACK_CAP).map(renderCallback).join('')
+        + (overdueCallbacks.length > CALLBACK_CAP ? `<tr><td colspan="2" style="padding:9px 12px;font-size:12px;color:#6b7280;">+ ${overdueCallbacks.length - CALLBACK_CAP} more waiting — open the Calling Log</td></tr>` : '');
 
       const html = `
 <!DOCTYPE html>
@@ -204,7 +217,7 @@ export async function GET(req: NextRequest) {
 
       ${overdueCallbacks.length > 0 ? `
       <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#dc2626;margin-bottom:8px;">
-        📞 Call-backs overdue (${overdueCallbacks.length})
+        📞 Call-backs to return (${overdueCallbacks.length})
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;border:1px solid #fee2e2;border-radius:8px;overflow:hidden;">
         ${callbackRows}

@@ -542,7 +542,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         <span style={{ fontSize: 11, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.text}</span>
                         {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
                         {pending && di && <span style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? '#b91c1c' : '#a06a12', background: di.overdue ? '#fee2e2' : '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
-                        {pending && !di && <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>waiting {waiting(c)}</span>}
+                        {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? '#b91c1c' : aH >= 24 ? '#a06a12' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
                         {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', background: '#e0e7ff', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
                         {c.handled_at && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
                       </div>
