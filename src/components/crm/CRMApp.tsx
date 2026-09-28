@@ -8184,7 +8184,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             <EsignDashboard
               authToken={session?.access_token}
               showToast={showToast}
-              forms={crmForms}
               deals={deals}
               refreshKey={esignFieldsVersion}
               isSuperAdmin={isSuperAdmin}

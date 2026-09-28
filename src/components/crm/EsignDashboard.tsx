@@ -52,7 +52,6 @@ interface Props {
   // Opens the envelope composer: with a freshly dropped file, or on a document
   // already imported and still being prepared.
   onCompose?: (arg: { file?: File; doc?: ImportedDoc }) => void;
-  forms?: { id: string; name: string; form_code?: string; category?: string }[];
   // Bumped by the parent whenever the editor saves, so the list re-reads the doc.
   refreshKey?: number;
   // Opens a PDF in the app's own viewer rather than forcing a download.
@@ -63,10 +62,7 @@ const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bear
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap' };
 
-export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, forms = [], deals = [], refreshKey = 0 }: Props) {
-  const [showForms, setShowForms] = useState(false);
-  const [formsList, setFormsList] = useState<{ id: string; name: string; form_code?: string; category?: string }[]>(forms);
-  const [formQ, setFormQ] = useState('');
+export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, deals = [], refreshKey = 0 }: Props) {
   const [envs, setEnvs] = useState<Envelope[]>([]);
   const [docs, setDocs] = useState<ImportedDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,17 +85,9 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       const j = await fetch('/api/crm/esign-import', { headers: auth(authToken) }).then(r => r.json());
       setDocs(Array.isArray(j.documents) ? j.documents : []);
     } catch { setDocs([]); }
-    try {
-      const fj = await fetch('/api/crm/forms', { headers: auth(authToken) }).then(r => r.json());
-      if (Array.isArray(fj.forms)) setFormsList(fj.forms);
-    } catch { /* keep what we have */ }
   }, [authToken]);
   useEffect(() => { loadDocs(); }, [loadDocs, refreshKey]);
 
-  // A dropped file goes straight into the composer, which does the upload as its
-  // first step — so the agent lands on "Set Up Envelope" with the document in place.
-  // Send a saved CRM form (IABS, TREC forms…) straight to signing — the server
-  // copies its clean template into a ready submission, no upload from disk.
   // Pull a document out of a deal's folder — the counter-signed lease the other
   // side emailed over, say — instead of downloading it and dropping it back in.
   const loadDealDocs = useCallback(async (dealId: string) => {
@@ -123,18 +111,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     finally { setUploading(false); }
   }, [authToken, onCompose, showToast]);
 
-  const chooseForm = useCallback(async (formId: string) => {
-    setUploading(true);
-    try {
-      const r = await fetch('/api/crm/esign-import', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ from_form_id: formId }) });
-      const j = await r.json();
-      if (!r.ok) { showToast?.(j.error || 'Could not open that form'); return; }
-      setShowForms(false);
-      onCompose?.({ doc: j.submission });
-    } catch { showToast?.('Could not open that form'); }
-    finally { setUploading(false); }
-  }, [authToken, onCompose, showToast]);
-
+  // A dropped file goes straight into the composer, which does the upload as its
+  // first step — so the agent lands on "Set Up Envelope" with the document in place.
   const importFile = useCallback((file: File) => {
     if (!/\.pdf$/i.test(file.name)) { showToast?.('Only PDFs can be sent for signature — save it as a PDF first'); return; }
     onCompose?.({ file });
@@ -438,29 +416,6 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         </div>
       )}
 
-      {formsList.length > 0 && (
-        <div style={{ marginTop: -12, marginBottom: 22 }}>
-          <button onClick={() => setShowForms(v => !v)} style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            {showForms ? '▾' : '▸'} …or send a saved form from the CRM — IABS, TREC forms &amp; more (no import needed)
-          </button>
-          {showForms && (
-            <div style={{ marginTop: 10, border: '1px solid #eef0f2', borderRadius: 10, padding: 10, background: '#fff' }}>
-              <input value={formQ} onChange={e => setFormQ(e.target.value)} placeholder="Search your forms…"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, marginBottom: 8, fontFamily: "'DM Sans',sans-serif" }} />
-              <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {formsList.filter(f => { const q = formQ.trim().toLowerCase(); return !q || `${f.name} ${f.form_code ?? ''}`.toLowerCase().includes(q); }).map(f => (
-                  <button key={f.id} disabled={uploading} onClick={() => chooseForm(f.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 9, textAlign: 'left', padding: '10px 11px', border: '1px solid #f1f2f4', borderRadius: 8, background: '#fff', cursor: uploading ? 'default' : 'pointer' }}>
-                    <span style={{ fontSize: 16 }}>📄</span>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#a06a12', flexShrink: 0 }}>Use →</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ── Imported, not yet sent ── */}
       {queue.length > 0 && (
