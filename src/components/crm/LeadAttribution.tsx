@@ -223,7 +223,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   const token = authToken;
   const [data, setData] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [days, setDays] = useState(90);
+  const [days, setDays] = useState(7);
   const [site, setSite] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
