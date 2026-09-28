@@ -132,14 +132,19 @@ export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const supabase = adminClient();
-  // Two kinds of document have no home anywhere else in the app, and both belong
-  // here: a PDF imported straight into E-Sign (form_id null), and one generated from
-  // the library but filed against nothing — which is what form auto-fill produces
-  // when an agent completes a letter with no deal and no contact. Listing only the
-  // first left the second invisible: created, stored, and unreachable.
+  // Imports only — a PDF dropped on E-Sign, or a library form copied into one by
+  // the "send a saved form" path above, both of which carry `form_id` null.
+  //
+  // This used to also list library-form submissions filed against nothing (no deal,
+  // listing or contact), on the grounds that they had no home anywhere else. In
+  // practice they read as duplicates of documents already signed and cluttered the
+  // send queue, so Zack asked for them out. The trade-off is real and deliberate:
+  // such a submission is now unreachable in the UI. It is a narrow case — an agent
+  // completing a form with no deal and no contact attached — and the fix if it ever
+  // matters is to give them a home of their own, not to put them back here.
   let q = supabase.from('crm_form_submissions')
     .select('id, title, form_id, source_path, filled_path, deal_id, listing_id, client_id, created_at, updated_at')
-    .or('form_id.is.null,and(deal_id.is.null,listing_id.is.null,client_id.is.null)')
+    .is('form_id', null)
     .order('updated_at', { ascending: false })
     .limit(50);
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
