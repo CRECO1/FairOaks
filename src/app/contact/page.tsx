@@ -5,7 +5,7 @@ import { FORG } from '@/lib/site-identity';
 import { useRouter } from 'next/navigation';
 import { Phone, Mail, MapPin, Clock, Calendar } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
-import { trackLead, trackPhoneClick, trackEmailClick } from '@/lib/analytics';
+import { trackPhoneClick, trackEmailClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
@@ -48,7 +48,8 @@ export default function ContactPage() {
         }),
       });
       if (!res.ok) throw new Error('Server error');
-      trackLead({ form_type: 'contact' });
+      // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror below —
+      // a second trackLead() here double-counted the conversion.
       trackEvent('contact_form_submitted', { form: 'contact-page' });
       router.push('/thank-you');
     } catch {

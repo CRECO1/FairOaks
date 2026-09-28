@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { CheckCircle, Laptop, Megaphone, Search, Network, UserCheck, DollarSign } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
-import { trackLead, trackPhoneClick } from '@/lib/analytics';
+import { trackPhoneClick } from '@/lib/analytics';
+import { trackEvent } from '@/lib/attribution';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
@@ -53,7 +54,9 @@ export default function JoinPage() {
       });
       if (!res.ok) throw new Error('Submission failed');
       setSubmitted(true);
-      trackLead({ form_type: 'agent_apply' });
+      // Recruiting is NOT a buyer/seller lead — track it as its own event so it
+      // doesn't inflate generate_lead conversions.
+      trackEvent('agent_application_submitted', { form: 'join' });
     } catch {
       setError('Something went wrong. Please try again or call us at 210-390-9997.');
     } finally {

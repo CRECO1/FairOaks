@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { TrendingUp, Clock, DollarSign, Users, CheckCircle, ArrowRight, Phone } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { ValuationCta } from '@/components/sections/ValuationCta';
-import { trackLead, trackPhoneClick } from '@/lib/analytics';
+import { trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
@@ -45,9 +45,9 @@ export default function SellPage() {
       }),
     }).catch(() => {});
     setLoading(false);
+    // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
     trackEvent('valuation_form_submitted', { form: 'sell-page' });
     setSubmitted(true);
-    trackLead({ form_type: 'valuation' });
   }
 
   return (

@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Home, ArrowRight } from 'lucide-react';
-import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
@@ -52,7 +51,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
         }),
       });
       if (!res.ok) throw new Error();
-      trackLead({ form_type: 'valuation' });
+      // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror below.
       trackEvent('valuation_form_submitted', { form: surface || 'home-valuation' });
       router.push('/thank-you');
     } catch {

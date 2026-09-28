@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Phone, MessageSquare, X } from 'lucide-react';
-import { trackLead, trackPhoneClick } from '@/lib/analytics';
+import { trackPhoneClick } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
@@ -60,9 +60,9 @@ export function StickyContactBar({ listingTitle, price }: Props) {
         }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Something went wrong.'); return; }
+      // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
       trackEvent('showing_request_submitted', { form: 'listing-sticky-bar' });
       setSubmitted(true);
-      trackLead({ form_type: 'showing_request' });
     } catch { setError('Network error — please try again.'); }
     finally { setSending(false); }
   }

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { trackLead } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
@@ -51,9 +50,9 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         setError(d.error ?? 'Something went wrong. Please try again.');
         return;
       }
+      // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
       trackEvent('listing_inquiry_submitted', { form: 'listing-detail' });
       setSubmitted(true);
-      trackLead({ form_type: 'listing_inquiry' });
       form.reset();
     } catch {
       setError('Network error — please try again.');

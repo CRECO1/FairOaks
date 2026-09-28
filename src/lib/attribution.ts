@@ -119,10 +119,10 @@ export function trackEvent(name: string, params: Record<string, unknown> = {}): 
   try {
     if (typeof w.gtag === 'function') {
       w.gtag('event', name, params);
-      if (LEAD_EVENTS.has(name)) w.gtag('event', 'generate_lead', { lead_source: name, ...params });
+      if (LEAD_EVENTS.has(name)) w.gtag('event', 'generate_lead', { lead_source: name, value: 1, currency: 'USD', ...params });
     } else if (Array.isArray(w.dataLayer)) {
       w.dataLayer.push({ event: name, ...params });
-      if (LEAD_EVENTS.has(name)) w.dataLayer.push({ event: 'generate_lead', lead_source: name, ...params });
+      if (LEAD_EVENTS.has(name)) w.dataLayer.push({ event: 'generate_lead', lead_source: name, value: 1, currency: 'USD', ...params });
     }
   } catch {
     // Analytics must never break the form.

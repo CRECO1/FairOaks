@@ -40,7 +40,7 @@ export default function ContactLinkTracker() {
         const isTel = href.startsWith('tel:');
         // Strip any ?subject=/&body= — that can contain free text.
         const destination = href.replace(/^(tel:|mailto:)/, '').split('?')[0];
-        trackEvent(isTel ? 'phone_click' : 'email_click', {
+        trackEvent(isTel ? 'phone_call' : 'email_click', {
           link_type: isTel ? 'tel' : 'mailto',
           destination,
           page_path: window.location.pathname,
