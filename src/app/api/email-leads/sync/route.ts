@@ -296,9 +296,23 @@ const NON_LEAD_PATTERNS = [
 // Our own internal domains — parsed lead emails from these should be skipped
 const INTERNAL_DOMAINS = ['crecotx.com', 'fairoaksrealtygroup.com'];
 
-function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string, parsedEmail?: string, ownWebsite?: boolean): boolean {
+function isLeadEmail(subject: string, fromAddress: string, sourceDomain: string, parsedEmail?: string, ownWebsite?: boolean, body = ''): boolean {
   // Reject known non-lead patterns in subject
   if (NON_LEAD_PATTERNS.some(re => re.test(subject))) return false;
+  // Our own noreply@ address also sends campaign blasts, action-plan emails, sample
+  // previews and internal hand-offs — none of those are inquiries, but they landed in
+  // the synced inbox and became blank "Website" contacts + Prospect deals (2026-09-28:
+  // three "[SAMPLE …]" campaign previews, and Brian's "Re: Space needed …" replies
+  // relayed through noreply@). A genuine form notification always carries the
+  // prospect's email (both sites reject a submission without one), never starts with
+  // Re:/Fwd:, is never a sample, and never carries campaign tracking or an
+  // unsubscribe link — so anything from noreply@ that fails those is not a lead.
+  if (ownWebsite) {
+    if (!parsedEmail) return false;
+    if (/^\s*(re|fwd?|aw)\s*:/i.test(subject)) return false;
+    if (/\[\s*sample\b|^\s*sample\b/i.test(subject)) return false;
+    if (/utm_medium=email|\/unsubscribe\b|api\/campaigns\/unsubscribe/i.test(body)) return false;
+  }
   // Test-suite / audit fixtures must never become real pipeline records
   if (/@example\.com/i.test(fromAddress) || (parsedEmail && /@example\.com/i.test(parsedEmail))) return false;
   if (/\bzz(test|aud)/i.test(subject)) return false;
@@ -608,7 +622,7 @@ export async function POST(req: import('next/server').NextRequest) {
         const fromAddress = (from.match(/<([^>]+)>/) ?? [, from])[1] ?? from;
         // Parse lead first so we can pass the extracted email to isLeadEmail
         const parsed = parseLeadEmail(subject, body, from);
-        if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email, source.ownWebsite)) continue;
+        if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email, source.ownWebsite, body)) continue;
 
         // Determine business_unit: source domain takes priority over agent profile
         const business_unit = source.business_unit;
