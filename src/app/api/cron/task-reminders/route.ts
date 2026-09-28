@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Group tasks by assigned agent
-  const byAgent: Record<string, { email: string; name: string; firstName: string; tasks: any[] }> = {};
+  const byAgent: Record<string, { email: string; name: string; firstName: string; tasks: any[]; callbacks: any[] }> = {};
   for (const task of tasks) {
     const assignee = (task as any).assignee;
     if (!assignee?.email) continue;
@@ -52,9 +52,49 @@ export async function GET(req: NextRequest) {
         name: `${assignee.first_name} ${assignee.last_name}`.trim(),
         firstName: assignee.first_name,
         tasks: [],
+        callbacks: [],
       };
     }
     byAgent[assignee.id].tasks.push(task);
+  }
+
+  // Overdue call-backs from the Calling Log go into the same digest. The call row is
+  // the single source of truth — assigned ones nag their owner, unassigned ones nag
+  // every super-admin so nothing sits unclaimed. A failure here must not stop the
+  // task digest, so it degrades to "no call-backs".
+  try {
+    const nowIso = new Date().toISOString();
+    const { data: callbacks } = await supabase
+      .from('crm_call_log')
+      .select('id, caller_name, from_number, callback_number, summary, follow_up_due, follow_up_assignee, business_unit, contact_id')
+      .eq('needs_follow_up', true).is('handled_at', null)
+      .not('follow_up_due', 'is', null).lte('follow_up_due', nowIso)
+      .order('follow_up_due', { ascending: true });
+
+    if (callbacks && callbacks.length) {
+      const assigneeIds = Array.from(new Set(callbacks.map(c => c.follow_up_assignee).filter(Boolean))) as string[];
+      const contactIds = Array.from(new Set(callbacks.map(c => c.contact_id).filter(Boolean))) as string[];
+      const [assigneeProfiles, superAdmins, contacts] = await Promise.all([
+        assigneeIds.length ? supabase.from('crm_profiles').select('id, first_name, last_name, email').in('id', assigneeIds) : Promise.resolve({ data: [] as any[] }),
+        supabase.from('crm_profiles').select('id, first_name, last_name, email').eq('role', 'super_admin'),
+        contactIds.length ? supabase.from('crm_clients').select('id, first_name, last_name, business_name').in('id', contactIds) : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const profById = new Map((assigneeProfiles.data ?? []).map(p => [p.id, p]));
+      const contactById = new Map((contacts.data ?? []).map(c => [c.id, `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || '']));
+      const admins = (superAdmins.data ?? []).filter(a => a.email);
+
+      const attach = (p: { id: string; first_name?: string | null; last_name?: string | null; email: string }, cb: any) => {
+        if (!byAgent[p.id]) byAgent[p.id] = { email: p.email, name: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim(), firstName: p.first_name ?? 'there', tasks: [], callbacks: [] };
+        byAgent[p.id].callbacks.push({ ...cb, who: contactById.get(cb.contact_id) || cb.caller_name || cb.callback_number || cb.from_number || 'Unknown caller' });
+      };
+      for (const cb of callbacks) {
+        const owner = cb.follow_up_assignee ? profById.get(cb.follow_up_assignee) : null;
+        if (owner?.email) attach(owner as any, cb);
+        else if (!cb.follow_up_assignee) admins.forEach(a => attach(a as any, cb));   // unassigned → every super-admin
+      }
+    }
+  } catch (cbErr) {
+    console.error('[task-reminders] callbacks fetch error:', cbErr);
   }
 
   const PRIORITY_BADGE: Record<string, string> = {
@@ -71,7 +111,13 @@ export async function GET(req: NextRequest) {
     try {
       const overdueTasks = agent.tasks.filter((t: any) => t.due_date < todayStr);
       const dueTodayTasks = agent.tasks.filter((t: any) => t.due_date === todayStr);
-      const total = agent.tasks.length;
+      const overdueCallbacks = agent.callbacks;
+      const total = agent.tasks.length + overdueCallbacks.length;
+      if (total === 0) continue;
+      const summary = [
+        agent.tasks.length ? `${agent.tasks.length} task${agent.tasks.length !== 1 ? 's' : ''}` : '',
+        overdueCallbacks.length ? `${overdueCallbacks.length} call-back${overdueCallbacks.length !== 1 ? 's' : ''}` : '',
+      ].filter(Boolean).join(agent.tasks.length && overdueCallbacks.length ? ' and ' : '');
 
       const renderRow = (t: any) => {
         const client = (t.client as any);
@@ -102,6 +148,23 @@ export async function GET(req: NextRequest) {
       const overdueRows = overdueTasks.map(renderRow).join('');
       const todayRows = dueTodayTasks.map(renderRow).join('');
 
+      const renderCallback = (c: any) => {
+        const mins = Math.max(1, Math.round((Date.now() - new Date(c.follow_up_due).getTime()) / 60000));
+        const h = Math.floor(mins / 60), d = Math.floor(h / 24);
+        const overdueLabel = d >= 1 ? `${d}d overdue` : h >= 1 ? `${h}h overdue` : `${mins}m overdue`;
+        return `
+          <tr>
+            <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;vertical-align:top;">
+              <div style="font-size:14px;font-weight:600;color:#111;">📞 ${c.who}</div>
+              ${c.summary ? `<div style="font-size:12px;color:#9ca3af;margin-top:2px;">${String(c.summary).slice(0, 120)}</div>` : ''}
+            </td>
+            <td style="padding:10px 12px;border-bottom:1px solid #f3f4f6;white-space:nowrap;text-align:right;vertical-align:top;">
+              <span style="font-size:12px;font-weight:700;color:#dc2626;">${overdueLabel}</span>
+            </td>
+          </tr>`;
+      };
+      const callbackRows = overdueCallbacks.map(renderCallback).join('');
+
       const html = `
 <!DOCTYPE html>
 <html>
@@ -120,7 +183,7 @@ export async function GET(req: NextRequest) {
     <div style="padding:24px 28px;">
       <p style="margin:0 0 20px;font-size:15px;color:#374151;">
         Hi <strong>${agent.firstName}</strong>, you have
-        <strong style="color:#111;">${total} task${total !== 1 ? 's' : ''}</strong> needing attention today.
+        <strong style="color:#111;">${summary}</strong> needing attention today.
       </p>
 
       ${overdueTasks.length > 0 ? `
@@ -139,11 +202,23 @@ export async function GET(req: NextRequest) {
         ${todayRows}
       </table>` : ''}
 
+      ${overdueCallbacks.length > 0 ? `
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#dc2626;margin-bottom:8px;">
+        📞 Call-backs overdue (${overdueCallbacks.length})
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:20px;border:1px solid #fee2e2;border-radius:8px;overflow:hidden;">
+        ${callbackRows}
+      </table>` : ''}
+
       <div style="text-align:center;margin-top:24px;">
-        <a href="${CRM_URL}#tasks"
-           style="background:#c9922c;color:#111;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;">
+        ${agent.tasks.length ? `<a href="${CRM_URL}#tasks"
+           style="background:#c9922c;color:#111;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;margin:0 4px 8px;">
           Open Task Board →
-        </a>
+        </a>` : ''}
+        ${overdueCallbacks.length ? `<a href="${CRM_URL}#calls"
+           style="background:#111;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block;margin:0 4px 8px;">
+          Open Calling Log →
+        </a>` : ''}
       </div>
     </div>
 
@@ -158,7 +233,7 @@ export async function GET(req: NextRequest) {
       await resend.emails.send({
         from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
         to: agent.email,
-        subject: `📋 ${total} task${total !== 1 ? 's' : ''} need your attention today`,
+        subject: `📋 ${summary} need your attention today`,
         html,
       });
       sent++;

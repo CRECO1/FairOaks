@@ -8200,6 +8200,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               isAdmin={isAdmin}
               isSuperAdmin={isSuperAdmin}
               businessUnit={businessUnit}
+              agents={profiles}
               onOpenContact={async (contactId) => {
                 let c = clients.find(x => x.id === contactId);
                 if (!c) {

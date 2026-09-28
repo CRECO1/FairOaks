@@ -11,10 +11,12 @@ export interface CallRow {
   contact_id: string | null; contact?: { id: string; name: string; business_name?: string | null; type?: string | null } | null;
   deal_id: string | null; started_at: string; duration_sec: number | null; has_recording: boolean;
   transcript: string | null; summary: string | null; intent: string | null; callback_number: string | null;
-  needs_follow_up: boolean; handled_at: string | null; handled_by: string | null; handled_by_name?: string | null;
+  needs_follow_up: boolean; follow_up_due: string | null; follow_up_assignee: string | null; assignee_name?: string | null;
+  handled_at: string | null; handled_by: string | null; handled_by_name?: string | null;
   notes: string | null; ai_meta: Record<string, unknown> | null; created_at: string;
 }
-interface Stats { today: number; week: number; bot: number; missed: number; voicemail: number; follow_up: number }
+interface Agent { id: string; first_name: string; last_name: string }
+interface Stats { today: number; week: number; bot: number; missed: number; voicemail: number; follow_up: number; overdue: number }
 interface Settings {
   business_unit: string; enabled: boolean; bot_name: string; company_name: string | null; greeting: string | null; instructions: string | null;
   transfer_number: string | null; notify_emails: string[]; twilio_number: string | null; talkroute_numbers: string[];
@@ -26,11 +28,12 @@ interface Thread { conversation_id: string; number: string | null; our_number: s
 
 interface Props {
   authToken?: string; showToast?: (m: string) => void; isAdmin?: boolean; isSuperAdmin?: boolean; businessUnit: string;
-  onOpenContact?: (contactId: string) => void;
+  onOpenContact?: (contactId: string) => void; agents?: Agent[];
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
+const chip: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 6, padding: '4px 9px', minHeight: 30, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
 const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans',sans-serif" };
 const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
 
@@ -65,7 +68,37 @@ function resultBadge(c: CallRow): { text: string; bg: string; fg: string } {
   return { text: r || (c.direction === 'outbound' ? 'Outbound' : 'Call'), bg: '#f3f4f6', fg: '#6b7280' };
 }
 
-export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact }: Props) {
+// Compact "2h" / "3d" from a millisecond gap — never blank, floors at 1m.
+function rel(ms: number): string {
+  const mins = Math.max(1, Math.round(Math.abs(ms) / 60000));
+  const h = Math.floor(mins / 60), d = Math.floor(h / 24);
+  return d >= 1 ? `${d}d` : h >= 1 ? `${h}h` : `${mins}m`;
+}
+// A due call-back reads as "Due in 2h" or, once past, "Overdue 1d".
+function dueInfo(c: CallRow): { label: string; overdue: boolean } | null {
+  if (!c.follow_up_due) return null;
+  const diff = new Date(c.follow_up_due).getTime() - Date.now();
+  return { label: diff < 0 ? `Overdue ${rel(diff)}` : `Due in ${rel(diff)}`, overdue: diff < 0 };
+}
+// How long the caller has waited since the call, for an undated call-back.
+const waiting = (c: CallRow) => rel(Date.now() - new Date(c.started_at).getTime());
+// <input type="datetime-local"> works in local time; convert both ways without UTC drift.
+const toLocalInput = (iso: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso), p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const fromLocalInput = (v: string): string | null => (v ? new Date(v).toISOString() : null);
+// Quick due presets, in local time.
+function preset(kind: 'hour' | 'eod' | 'tmrw'): string {
+  const d = new Date();
+  if (kind === 'hour') d.setTime(d.getTime() + 3600_000);
+  else if (kind === 'eod') d.setHours(17, 0, 0, 0);
+  else { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }
+  return d.toISOString();
+}
+
+export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [] }: Props) {
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,6 +181,17 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       // Counts moved.
       fetch(`/api/crm/calls?stats=1&business_unit=${businessUnit}`, { headers: auth(authToken) }).then(r => r.json()).then(sj => sj.stats && setStats(sj.stats)).catch(() => {});
     } finally { setBusy(null); }
+  }
+
+  // Assign a call-back to an agent. The PATCH echoes the id but not the name, so
+  // set the name locally from the agent list we already have.
+  async function assign(c: CallRow, agentId: string) {
+    setCalls(cs => cs.map(x => x.id === c.id ? { ...x, follow_up_assignee: agentId || null, assignee_name: agentName(agentId || null) } : x));
+    await patch(c, { follow_up_assignee: agentId || null }, agentId ? `Assigned to ${agentName(agentId)} ✓` : 'Unassigned');
+  }
+  // Set (or clear) when the call-back is due.
+  async function setDue(c: CallRow, iso: string | null) {
+    await patch(c, { follow_up_due: iso }, iso ? 'Call-back scheduled ✓' : 'Due time cleared');
   }
 
   async function toggleOpen(c: CallRow) {
@@ -278,6 +322,11 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   }
 
   const list = useMemo(() => calls, [calls]);
+  const agentName = useCallback((id: string | null) => {
+    if (!id) return null;
+    const a = agents.find(x => x.id === id);
+    return a ? `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || 'Agent' : null;
+  }, [agents]);
   const light = (ok: boolean) => <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 9, background: ok ? '#22c55e' : '#ef4444', marginRight: 6, verticalAlign: 'middle' }} />;
 
   return (
@@ -297,7 +346,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       {stats && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
           {[
-            { label: 'Needs call back', value: stats.follow_up, sub: 'open follow-ups', tone: stats.follow_up ? '#b91c1c' : '#15803d', pick: 'follow_up' as const },
+            { label: 'Needs call back', value: stats.follow_up, sub: stats.overdue ? `${stats.overdue} overdue now` : 'open follow-ups', tone: stats.follow_up ? '#b91c1c' : '#15803d', pick: 'follow_up' as const },
             { label: 'Today', value: stats.today, sub: 'calls', pick: 'all' as const },
             { label: 'This week', value: stats.week, sub: 'calls', pick: 'all' as const },
             { label: 'Bot answered', value: stats.bot, sub: 'last 7 days', tone: '#6d28d9', pick: 'bot' as const },
@@ -480,8 +529,10 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
               const num = c.direction === 'outbound' ? c.to_number : c.from_number;
               const pending = c.needs_follow_up && !c.handled_at;
               const urgent = (c.ai_meta?.urgency as string) === 'high';
+              const di = pending ? dueInfo(c) : null;
+              const hot = urgent || (di?.overdue ?? false);   // urgent OR past-due → the row goes red
               return (
-                <div key={c.id} style={{ background: '#fff', border: `1px solid ${pending ? (urgent ? '#fca5a5' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (urgent ? '#ef4444' : '#c9922c') : '#e5e7eb'}`, borderRadius: 12, padding: '12px 14px' }}>
+                <div key={c.id} style={{ background: '#fff', border: `1px solid ${pending ? (hot ? '#fca5a5' : '#f3e4c4') : '#eef0f2'}`, borderLeft: `4px solid ${pending ? (hot ? '#ef4444' : '#c9922c') : '#e5e7eb'}`, borderRadius: 12, padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 6 }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }} title={c.source}>{kindIcon(c)}</span>
                     <div style={{ flex: '1 1 200px', minWidth: 0 }}>
@@ -490,6 +541,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         {c.contact && onOpenContact && <button onClick={() => onOpenContact(c.contact!.id)} style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{c.contact.type ? ` · ${c.contact.type}` : ''}</button>}
                         <span style={{ fontSize: 11, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.text}</span>
                         {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
+                        {pending && di && <span style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? '#b91c1c' : '#a06a12', background: di.overdue ? '#fee2e2' : '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
+                        {pending && !di && <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af' }}>waiting {waiting(c)}</span>}
+                        {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', background: '#e0e7ff', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
                         {c.handled_at && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
                       </div>
                       <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>
@@ -511,6 +565,22 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }} title="Delete this record">✕</button>}
                     </div>
                   </div>
+                  {pending && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginTop: 9, paddingTop: 9, borderTop: '1px dashed #f0e6cf' }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#c9922c' }}>Call back</span>
+                      <button onClick={() => setDue(c, preset('hour'))} disabled={busy === c.id} style={chip}>+1h</button>
+                      <button onClick={() => setDue(c, preset('eod'))} disabled={busy === c.id} style={chip}>Today 5p</button>
+                      <button onClick={() => setDue(c, preset('tmrw'))} disabled={busy === c.id} style={chip}>Tmrw 9a</button>
+                      <input type="datetime-local" value={toLocalInput(c.follow_up_due)} onChange={e => setDue(c, fromLocalInput(e.target.value))} style={{ ...input, width: 'auto', minHeight: 30, padding: '4px 8px', fontSize: 12 }} title="Pick a due time" />
+                      {c.follow_up_due && <button onClick={() => setDue(c, null)} disabled={busy === c.id} style={{ ...chip, color: '#9ca3af', background: '#fff', borderColor: '#e5e7eb' }}>clear</button>}
+                      {agents.length > 0 && (
+                        <select value={c.follow_up_assignee ?? ''} onChange={e => assign(c, e.target.value)} style={{ ...input, width: 'auto', minHeight: 30, padding: '4px 8px', fontSize: 12 }} title="Assign this call back to an agent">
+                          <option value="">Unassigned</option>
+                          {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || 'Agent'}</option>)}
+                        </select>
+                      )}
+                    </div>
+                  )}
                   {audio[c.id] && <audio controls autoPlay src={audio[c.id]} style={{ width: '100%', marginTop: 10, height: 36 }} />}
                   {openNow && (
                     <div style={{ marginTop: 10, borderTop: '1px solid #f1f2f4', paddingTop: 10 }}>

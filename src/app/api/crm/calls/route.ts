@@ -6,7 +6,7 @@ import { toE164 } from '@/lib/phone';
 // The Calling Log: Talkroute calls + voicemails, calls the voice bot answered, and
 // calls agents log by hand — one list, scoped to the caller's workspace.
 
-const COLS = 'id, business_unit, source, kind, external_id, direction, result, from_number, to_number, caller_name, contact_id, deal_id, started_at, duration_sec, recording_url, transcript, summary, intent, callback_number, needs_follow_up, handled_at, handled_by, notes, ai_meta, created_at';
+const COLS = 'id, business_unit, source, kind, external_id, direction, result, from_number, to_number, caller_name, contact_id, deal_id, started_at, duration_sec, recording_url, transcript, summary, intent, callback_number, needs_follow_up, follow_up_due, follow_up_assignee, handled_at, handled_by, notes, ai_meta, created_at';
 
 function scopedUnit(req: NextRequest, ctx: { role: string | null; businessUnit: string | null }): string {
   if (isAdminRole(ctx.role)) return req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial';
@@ -36,17 +36,19 @@ export async function GET(req: NextRequest) {
     const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
     const base = () => supabase.from('crm_call_log').select('id', { count: 'exact', head: true }).eq('business_unit', unit);
-    const [today, week, bot, missed, voicemail, followUp] = await Promise.all([
+    const [today, week, bot, missed, voicemail, followUp, overdue] = await Promise.all([
       base().gte('started_at', startToday.toISOString()),
       base().gte('started_at', since7),
       base().gte('started_at', since7).eq('source', 'voicebot'),
       base().gte('started_at', since7).eq('result', 'missed'),
       base().gte('started_at', since7).eq('kind', 'voicemail'),
       base().eq('needs_follow_up', true).is('handled_at', null),
+      // Overdue = an open call-back whose due time has passed. (Nulls are excluded by lte.)
+      base().eq('needs_follow_up', true).is('handled_at', null).lte('follow_up_due', new Date().toISOString()),
     ]);
     return NextResponse.json({ stats: {
       today: today.count ?? 0, week: week.count ?? 0, bot: bot.count ?? 0, missed: missed.count ?? 0,
-      voicemail: voicemail.count ?? 0, follow_up: followUp.count ?? 0,
+      voicemail: voicemail.count ?? 0, follow_up: followUp.count ?? 0, overdue: overdue.count ?? 0,
     } });
   }
 
@@ -56,7 +58,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(500, Math.max(1, Number(sp.get('limit') ?? 200) || 200));
   const contactId = sp.get('contact_id');
 
-  let query = supabase.from('crm_call_log').select(COLS).eq('business_unit', unit).order('started_at', { ascending: false }).limit(limit);
+  let query = supabase.from('crm_call_log').select(COLS).eq('business_unit', unit).limit(limit);
   if (contactId) {
     // Linked rows plus any whose number is one of the contact's — covers calls that
     // came in before the card existed.
@@ -78,23 +80,29 @@ export async function GET(req: NextRequest) {
     if (d.length >= 3) parts.push(`from_number.ilike.%${d}%`, `callback_number.ilike.%${d}%`);
     query = query.or(parts.join(','));
   }
+  // The call-back queue is ordered by when each is due (soonest / overdue first,
+  // undated last); every other view stays newest-first.
+  if (filter === 'follow_up') query = query.order('follow_up_due', { ascending: true, nullsFirst: false });
+  query = query.order('started_at', { ascending: false });
   const { data, error } = await query;
   if (error) return dbError('api/crm/calls GET', error);
 
   // Resolve contact + handler names in one go, scoped to the workspace.
   const rows = data ?? [];
   const contactIds = Array.from(new Set(rows.map(r => r.contact_id).filter(Boolean))) as string[];
-  const handlerIds = Array.from(new Set(rows.map(r => r.handled_by).filter(Boolean))) as string[];
-  const [contacts, handlers] = await Promise.all([
+  // One profile lookup covers both who handled a call and who a call-back is assigned to.
+  const profileIds = Array.from(new Set(rows.flatMap(r => [r.handled_by, r.follow_up_assignee]).filter(Boolean))) as string[];
+  const [contacts, profiles] = await Promise.all([
     contactIds.length ? supabase.from('crm_clients').select('id, first_name, last_name, business_name, type').in('id', contactIds).eq('business_unit', unit) : Promise.resolve({ data: [] as Array<{ id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null }> }),
-    handlerIds.length ? supabase.from('crm_profiles').select('id, first_name, last_name').in('id', handlerIds) : Promise.resolve({ data: [] as Array<{ id: string; first_name: string | null; last_name: string | null }> }),
+    profileIds.length ? supabase.from('crm_profiles').select('id, first_name, last_name').in('id', profileIds) : Promise.resolve({ data: [] as Array<{ id: string; first_name: string | null; last_name: string | null }> }),
   ]);
   const cById = new Map((contacts.data ?? []).map(c => [c.id, { id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact', business_name: c.business_name, type: c.type }]));
-  const hById = new Map((handlers.data ?? []).map(h => [h.id, `${h.first_name ?? ''} ${h.last_name ?? ''}`.trim() || 'Agent']));
+  const pById = new Map((profiles.data ?? []).map(h => [h.id, `${h.first_name ?? ''} ${h.last_name ?? ''}`.trim() || 'Agent']));
   return NextResponse.json({ calls: rows.map(r => ({
     ...r,
     contact: r.contact_id ? (cById.get(r.contact_id) ?? null) : null,
-    handled_by_name: r.handled_by ? (hById.get(r.handled_by) ?? null) : null,
+    handled_by_name: r.handled_by ? (pById.get(r.handled_by) ?? null) : null,
+    assignee_name: r.follow_up_assignee ? (pById.get(r.follow_up_assignee) ?? null) : null,
     // Never ship provider-signed links or Twilio SIDs to the browser; the audio route resolves them.
     has_recording: !!r.recording_url, recording_url: undefined,
   })) });
@@ -150,6 +158,20 @@ export async function PATCH(req: NextRequest) {
     }
     patch.deal_id = b.deal_id || null;
   }
+  if (b.follow_up_due !== undefined) {
+    if (b.follow_up_due === null || b.follow_up_due === '') patch.follow_up_due = null;
+    else { const dt = new Date(b.follow_up_due); patch.follow_up_due = Number.isNaN(dt.getTime()) ? null : dt.toISOString(); }
+  }
+  if (b.follow_up_assignee !== undefined) {
+    if (b.follow_up_assignee) {
+      const { data: p } = await supabase.from('crm_profiles').select('id').eq('id', b.follow_up_assignee).maybeSingle();
+      if (!p) return notFound('Agent not found');
+      patch.follow_up_assignee = b.follow_up_assignee;
+    } else patch.follow_up_assignee = null;
+  }
+  // Giving a call a due time or an owner makes it a call-back — keep it in the queue
+  // unless the caller is explicitly clearing the flag in the same request.
+  if ((patch.follow_up_due || patch.follow_up_assignee) && b.needs_follow_up !== false && b.handled !== true) patch.needs_follow_up = true;
   const { data, error } = await supabase.from('crm_call_log').update(patch).eq('id', id).select(COLS).single();
   if (error) return dbError('api/crm/calls PATCH', error);
 
