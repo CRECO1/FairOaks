@@ -138,7 +138,7 @@ export async function GET(req: NextRequest) {
   // when an agent completes a letter with no deal and no contact. Listing only the
   // first left the second invisible: created, stored, and unreachable.
   let q = supabase.from('crm_form_submissions')
-    .select('id, title, filled_path, deal_id, listing_id, client_id, created_at, updated_at')
+    .select('id, title, form_id, source_path, filled_path, deal_id, listing_id, client_id, created_at, updated_at')
     .or('form_id.is.null,and(deal_id.is.null,listing_id.is.null,client_id.is.null)')
     .order('updated_at', { ascending: false })
     .limit(50);

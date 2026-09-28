@@ -20,7 +20,26 @@ interface Signer { id: string; name: string; email: string; signer_role: string;
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
-export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; envelope?: { id: string; status: string } | null }
+export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; form_id?: string | null; source_path?: string | null; envelope?: { id: string; status: string } | null }
+
+// Identity of the underlying DOCUMENT, as opposed to the row. Re-importing the
+// same PDF writes a new object with a fresh `<epoch>_` prefix, so the original
+// filename is what actually says "this is the same paper"; a document generated
+// from the library has no file, and is identified by which form it came from.
+//
+// The trailing " (1)" is dropped too: that is the browser's own suffix for
+// downloading the same file twice, so `Amendment-signed (1).pdf` is the same
+// paper as `Amendment-signed.pdf` — and keeping them apart was enough to leave
+// a document on the queue whose signing had already completed under the other
+// name, which is the whole complaint.
+const docKey = (d: ImportedDoc) => {
+  if (!d.source_path) return `form:${d.form_id ?? ''}|${(d.title ?? '').trim().toLowerCase()}`;
+  const file = d.source_path.split('/').pop()!
+    .replace(/^\d{10,}_/, '')
+    .replace(/(?:[ _]\(\d+\)|__\d+_)(?=\.[a-z0-9]+$|$)/i, '')
+    .toLowerCase();
+  return `file:${file}`;
+};
 
 interface Props {
   authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void;
@@ -199,6 +218,33 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   // signature, then the completed docs archived directly beneath them (so a signed
   // doc never disappears), then — only when the toggle is on — the cancelled/archived
   // ones. A completed doc drops into its own group automatically; no manual archiving.
+  // ── The "ready to prepare & send" queue ──────────────────────────────────
+  // Every import stays here whether or not it gets sent, so working through one
+  // document — drop it, look at it, drop a corrected copy — used to leave a row
+  // behind per attempt, and the queue read as a pile of duplicates of paper that
+  // was in fact long since signed. Two rules fix that, and neither deletes a row:
+  //   1. one entry per DOCUMENT, the newest, counting the copies behind it;
+  //   2. no entry at all once that document has been signed to completion.
+  // Only `completed` supersedes. A voided request means the send was called off,
+  // and the unsent copy sitting here is very likely the retry — hiding it would
+  // take away the thing the agent is reaching for.
+  const queue = (() => {
+    const byDoc = new Map<string, ImportedDoc[]>();
+    for (const d of docs) {
+      const k = docKey(d);
+      const rows = byDoc.get(k);
+      if (rows) rows.push(d); else byDoc.set(k, [d]);
+    }
+    const out: Array<{ doc: ImportedDoc; dupes: number }> = [];
+    for (const rows of byDoc.values()) {
+      if (rows.some(r => r.envelope?.status === 'completed')) continue;
+      const unsent = rows.filter(r => !r.envelope)
+        .sort((a, b) => (b.updated_at ?? '').localeCompare(a.updated_at ?? ''));
+      if (unsent.length) out.push({ doc: unsent[0], dupes: unsent.length - 1 });
+    }
+    return out.sort((a, b) => (b.doc.updated_at ?? '').localeCompare(a.doc.updated_at ?? ''));
+  })();
+
   const shown = envs.filter(env => !byAgent || env.sent_by === byAgent);
   const isClosed = (e: Envelope) => !!e.archived_at || e.status === 'voided' || e.status === 'declined';
   const activeEnvs = shown.filter(e => !isClosed(e) && e.status !== 'completed');
@@ -316,16 +362,19 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       )}
 
       {/* ── Imported, not yet sent ── */}
-      {docs.filter(d => !d.envelope).length > 0 && (
+      {queue.length > 0 && (
         <div style={{ marginBottom: 26 }}>
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>Ready to prepare &amp; send</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {docs.filter(d => !d.envelope).map(d => (
+            {queue.map(({ doc: d, dupes }) => (
               <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
                 <div style={{ flex: '1 1 190px', minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Document'}</div>
-                  <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>Imported{d.updated_at ? ` · ${ago(d.updated_at)}` : ''} · not sent yet</div>
+                  <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
+                    Imported{d.updated_at ? ` · ${ago(d.updated_at)}` : ''} · not sent yet
+                    {dupes > 0 && ` · newest of ${dupes + 1} copies`}
+                  </div>
                 </div>
                 <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }}>✕</button>
                 {onCompose && <button onClick={() => onCompose({ doc: d })} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Prepare &amp; send →</button>}
