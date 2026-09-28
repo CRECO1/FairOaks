@@ -45,7 +45,7 @@ const securityHeaders = [
       // builds do not require it. It is appended for `next dev` only (see devScriptSrc
       // above), because HMR evaluates modules through eval(). Do not add it here
       // unconditionally; if a dependency needs it in production, justify it explicitly.
-      `script-src 'self' 'unsafe-inline'${devScriptSrc} https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://www.clarity.ms https://maps.googleapis.com https://maps.gstatic.com https://www.recaptcha.net https://www.gstatic.com https://recaptcha.google.com`,
+      `script-src 'self' 'unsafe-inline'${devScriptSrc} https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com https://*.clarity.ms https://maps.googleapis.com https://maps.gstatic.com https://www.recaptcha.net https://www.gstatic.com https://recaptcha.google.com`,
       // Styles: self + inline (Tailwind/CSS-in-JS) + Google Fonts
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       // Images: allow any https source + data URIs (listing photos, Supabase storage) +
