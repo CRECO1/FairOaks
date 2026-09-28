@@ -5,6 +5,7 @@ import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { buildLeadContext } from '@/lib/lead-context';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
@@ -49,6 +50,12 @@ export async function POST(req: NextRequest) {
       .map(([k, v]) => `${k}: ${Array.isArray(v) ? (v as string[]).join(', ') : v}`)
       .join('\n');
 
+    // Attribution: the quiz client now sends utm/referrer/page in the body;
+    // buildLeadContext merges those with request-derived geo/device/channel.
+    // Previously the quiz persisted nothing here, so every quiz buyer landed
+    // in the CRM with a blank source.
+    const attr = buildLeadContext(req, body as Record<string, unknown>);
+
     // ── Save lead to Supabase ───────────────────────────────────────────────────
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     // Always use the service role key for server-side writes so RLS never blocks the insert
@@ -64,6 +71,11 @@ export async function POST(req: NextRequest) {
         status: 'new',
         quiz_data: answers ?? {},
         message: `Quiz Answers:\n${answerSummary}`,
+        utm_source: attr.utm_source, utm_medium: attr.utm_medium, utm_campaign: attr.utm_campaign,
+        utm_term: attr.utm_term, utm_content: attr.utm_content,
+        referrer: attr.referrer, landing_page: attr.landing_page,
+        page_path: attr.page_path, page_url: attr.page_url, page_title: attr.page_title,
+        surface: attr.surface, geo: attr.geo, device: attr.device, channel: attr.channel,
       }]);
     }
 
@@ -92,6 +104,11 @@ export async function POST(req: NextRequest) {
               business_unit: unit,
               tags: unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
+              utm_source: attr.utm_source, utm_medium: attr.utm_medium, utm_campaign: attr.utm_campaign,
+              utm_term: attr.utm_term, utm_content: attr.utm_content,
+              referrer: attr.referrer, landing_page: attr.landing_page,
+              page_path: attr.page_path, page_title: attr.page_title,
+              surface: attr.surface, geo: attr.geo, device: attr.device, channel: attr.channel,
             }]).select('id').single().then(async ({ data: created }) => {
               // Welcome sequence: off unless LEAD_AUTOENROLL_UNITS names this unit.
               if (created?.id) await maybeAutoEnrollLead(supabaseAdmin, { clientId: created.id, agentId: adminId ?? null, businessUnit: unit as 'commercial' | 'residential' });

@@ -268,7 +268,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600 }}>Window</span>
-        {[30, 90, 365].map(d => (
+        {[7, 30, 90, 365].map(d => (
           <button key={d} onClick={() => setDays(d)} aria-pressed={days === d} style={{ ...pill(days === d), borderRadius: 6 }}>
             {d === 365 ? '1 year' : `${d} days`}
           </button>

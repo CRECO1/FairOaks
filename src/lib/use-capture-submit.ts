@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
-import { trackEvent, trackFormStart } from '@/lib/attribution';
+import { trackEvent, trackFormStart, attributionPayload } from '@/lib/attribution';
 
 /**
  * The submit engine every Fair Oaks capture shares.
@@ -59,7 +59,11 @@ export function useCaptureSubmit(opts: CaptureSubmitOptions): CaptureSubmitState
       const res = await fetch(opts.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(opts.buildPayload({ recaptchaToken })),
+        // Attribution first, caller's explicit fields second so they always win
+        // on any key collision. This is why the listing-alert signups (footer +
+        // save-search) land with utm/referrer/channel: the API's buildLeadContext
+        // reads exactly these keys off the body — they were arriving empty before.
+        body: JSON.stringify({ ...attributionPayload(opts.surface), ...opts.buildPayload({ recaptchaToken }) }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
