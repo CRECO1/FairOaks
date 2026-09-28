@@ -13,7 +13,7 @@ import { tenancies } from '@/lib/rent-roll-tenancy';
 // Columns an agent may write. Everything else (ids, timestamps) is server-owned.
 const EDITABLE = ['tenant_name', 'suite', 'building', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration',
   'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'mail_only',
-  'contact_id', 'renewal_status', 'notes', 'sort_order'] as const;
+  'contact_id', 'renewal_status', 'notes', 'sort_order', 'is_backup'] as const;
 const NUMERIC = new Set(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'keys', 'sort_order']);
 const DATE = new Set(['lease_start', 'lease_expiration']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,6 +26,7 @@ function clean(body: Record<string, unknown>): Record<string, unknown> {
   for (const k of EDITABLE) {
     if (!(k in body)) continue;
     const v = body[k];
+    if (k === 'is_backup') { out[k] = v === true || v === 'true' || v === 1 || v === '1'; continue; }
     if (v === '' || v === null || v === undefined) { out[k] = null; continue; }
     if (k === 'contact_id') { const id = String(v).trim(); out[k] = UUID.test(id) ? id : null; continue; }
     if (NUMERIC.has(k)) { const n = Number(v); out[k] = Number.isFinite(n) ? n : null; continue; }
@@ -101,7 +102,8 @@ export async function POST(req: NextRequest) {
     .insert({ ...row, listing_id: listingId, business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId })
     .select(SELECT).single();
   if (error) { console.error('[rent-roll] POST', error); return NextResponse.json({ error: 'Could not add the suite' }, { status: 500 }); }
-  if (await isInEffect(supabase, listingId, data.suite, data.id)) await syncFloorPlan(supabase, data.business_unit, data.suite, row);
+  // Backup / prospective tenants never drive the Floor Plan — they aren't occupants.
+  if (!row.is_backup && await isInEffect(supabase, listingId, data.suite, data.id)) await syncFloorPlan(supabase, data.business_unit, data.suite, row);
   return NextResponse.json({ row: data });
 }
 
@@ -123,7 +125,8 @@ export async function PATCH(req: NextRequest) {
     .update({ ...row, updated_at: new Date().toISOString() }).eq('id', id).select(SELECT).single();
   if (error) { console.error('[rent-roll] PATCH', error); return NextResponse.json({ error: 'Could not save the change' }, { status: 500 }); }
   // Sync against the suite as it now stands (a renamed suite moves the mirror with it).
-  if (await isInEffect(supabase, cur.listing_id, data.suite ?? cur.suite, id)) {
+  // Backup / prospective tenants never drive the Floor Plan.
+  if (!data.is_backup && await isInEffect(supabase, cur.listing_id, data.suite ?? cur.suite, id)) {
     await syncFloorPlan(supabase, data.business_unit, data.suite ?? cur.suite, { ...row, tenant_name: data.tenant_name, size_sf: data.size_sf, lease_expiration: data.lease_expiration });
   }
   return NextResponse.json({ row: data });

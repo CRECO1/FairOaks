@@ -14,7 +14,7 @@ export interface RentRollRow {
   monthly_rent?: number | null; annual_rent?: number | null; rent_psf?: number | null; pct_share?: number | null;
   mailbox_box?: string | null; keys?: number | null; email?: string | null; phone?: string | null; contact_name?: string | null;
   contact_id?: string | null; crm_clients?: CrmContact | null;
-  renewal_status?: string | null; notes?: string | null; sort_order?: number | null;
+  renewal_status?: string | null; notes?: string | null; sort_order?: number | null; is_backup?: boolean | null;
 }
 export interface CrmContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; phone?: string; cell_phone?: string; type?: string }
 interface VendorRow { id: string; category: string; label?: string | null; vendor?: string | null; contact?: string | null; phone?: string | null; notes?: string | null; sort_order?: number | null }
@@ -308,8 +308,13 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
     if (!res.ok) { onToast?.('Could not add a suite'); return; }
     const j = await res.json(); setRows(rs => [...rs, j.row]); onToast?.('Suite added — fill in the details');
   };
+  const addBackup = async () => {
+    const res = await fetch('/api/crm/rent-roll', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authOf(authToken) }, body: JSON.stringify({ listing_id: listingId, is_backup: true, sort_order: (rows.at(-1)?.sort_order ?? rows.length) + 1 }) });
+    if (!res.ok) { onToast?.('Could not add a backup tenant'); return; }
+    const j = await res.json(); setRows(rs => [...rs, j.row]); onToast?.('Backup tenant added — fill in the details');
+  };
   const removeSuite = async (r: RentRollRow) => {
-    if (!window.confirm(`Remove suite ${r.suite || ''}${r.tenant_name ? ` (${r.tenant_name})` : ''} from the rent roll?`)) return;
+    if (!window.confirm(`Remove ${r.is_backup ? 'backup tenant' : 'suite'} ${r.suite || ''}${r.tenant_name ? ` (${r.tenant_name})` : ''}?`)) return;
     const res = await fetch(`/api/crm/rent-roll?id=${r.id}`, { method: 'DELETE', headers: authOf(authToken) });
     if (!res.ok) { onToast?.('Could not remove the suite'); return; }
     setRows(rs => rs.filter(x => x.id !== r.id)); onToast?.('Suite removed');
@@ -339,7 +344,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
   }, [rows]);
 
   const stats = useMemo(() => {
-    const live = rows.filter(r => tenancy.get(r)?.status === 'current');
+    const live = rows.filter(r => !r.is_backup && tenancy.get(r)?.status === 'current');
     const occ = live.filter(r => !isVacant(r));
     const vac = live.filter(isVacant);
     const sf = live.reduce((s, r) => s + (Number(r.size_sf) || 0), 0);
@@ -347,14 +352,14 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
     const mo = occ.reduce((s, r) => s + (Number(r.monthly_rent) || 0), 0);
     const yr = occ.reduce((s, r) => s + (Number(r.annual_rent) || Number(r.monthly_rent || 0) * 12), 0);
     const in12 = occ.filter(r => { if (!r.lease_expiration) return false; const d = (new Date(r.lease_expiration).getTime() - Date.now()) / 86400000; return d < 365; });
-    const upcoming = rows.filter(r => tenancy.get(r)?.status === 'upcoming' && !isVacant(r));
+    const upcoming = rows.filter(r => !r.is_backup && tenancy.get(r)?.status === 'upcoming' && !isVacant(r));
     const upMo = upcoming.reduce((s, r) => s + (Number(r.monthly_rent) || 0), 0);
     return { occ: occ.length, vac: vac.length, sf, occSf, mo, yr, in12: in12.length, in12Sf: in12.reduce((s, r) => s + (Number(r.size_sf) || 0), 0), upcoming: upcoming.length, upMo };
   }, [rows, tenancy]);
 
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const out = rows.filter(r => (showVacant || !isVacant(r)) &&
+    const out = rows.filter(r => !r.is_backup && (showVacant || !isVacant(r)) &&
       (!needle || [r.suite, r.tenant_name, r.email, rowContact(r), r.mailbox_box, r.notes].some(v => String(v ?? '').toLowerCase().includes(needle))));
     if (!sort.key) return out;                      // no sort = the saved suite order
     const k = sort.key;
@@ -378,7 +383,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
     const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'renewal_status', 'notes'];
     const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
     const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const csv = [head.join(','), ...rows.map(r => cols.map(c => esc(c === 'contact_name' ? rowContact(r) : r[c])).join(','))].join('\n');
+    const csv = [head.join(','), ...rows.filter(r => !r.is_backup).map(r => cols.map(c => esc(c === 'contact_name' ? rowContact(r) : r[c])).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = 'rent-roll.csv'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
@@ -396,6 +401,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
 
   const vendorRows = vendors.filter(v => v.category === 'vendor');
   const infoRows = vendors.filter(v => v.category === 'building_info');
+  const backupRows = rows.filter(r => r.is_backup);
 
   const body = (
     <div style={{ fontFamily: "'DM Sans',sans-serif" }}>
@@ -489,6 +495,43 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
       </div>
       <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>
         Click any cell to edit — changes save automatically. Tenant, size and lease expiration also update the Floor Plan for that suite.
+      </div>
+
+      {/* Backup / prospective tenants — their own section; never counted, never on the Floor Plan */}
+      <div style={{ marginTop: 26 }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 9 }}>
+          <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: GOLD, fontWeight: 700 }}>Backup / Prospective Tenants</div>
+          <span style={{ flex: 1 }} />
+          <button onClick={addBackup} style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 8, padding: '5px 11px', cursor: 'pointer' }}>＋ Backup tenant</button>
+        </div>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 900 }}>
+            <thead><tr>
+              {['Suite', 'Prospect / Tenant', 'Sq Ft', 'Contact', 'Phone', 'Email', 'Notes'].map((h, i) => (
+                <th key={i} style={{ ...TH, textAlign: i === 2 ? 'right' : 'left' }}>{h}</th>
+              ))}
+              <th style={{ ...TH, width: 34 }} />
+            </tr></thead>
+            <tbody>
+              {backupRows.map(r => (
+                <tr key={r.id} style={{ background: '#fff' }}>
+                  <td style={TD}><Cell value={r.suite} onSave={v => saveCell(r.id, 'suite', v)} /></td>
+                  <td style={TD}><Cell value={r.tenant_name} bold placeholder="Prospect name" onSave={v => saveCell(r.id, 'tenant_name', v)} /></td>
+                  <td style={TD}><Cell value={r.size_sf} align="right" type="number" onSave={v => saveCell(r.id, 'size_sf', v)} /></td>
+                  <td style={TD}><ContactCell row={r} contacts={localContacts.length ? [...localContacts, ...contacts] : contacts} onLink={c => linkContact(r, c)} onText={v => setContactText(r, v)} onCreate={n => createContact(n, r)} /></td>
+                  <td style={TD}><Cell value={r.phone} onSave={v => saveCell(r.id, 'phone', v)} /></td>
+                  <td style={TD}><Cell value={r.email} onSave={v => saveCell(r.id, 'email', v)} /></td>
+                  <td style={TD}><Cell value={r.notes} onSave={v => saveCell(r.id, 'notes', v)} /></td>
+                  <td style={{ ...TD, textAlign: 'center' }}>
+                    {isAdmin && <button onClick={() => removeSuite(r)} title="Remove backup tenant" style={{ background: 'none', border: 'none', color: '#e5b4b4', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
+                  </td>
+                </tr>
+              ))}
+              {backupRows.length === 0 && <tr><td colSpan={8} style={{ padding: 22, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No backup tenants yet — add prospects waiting on a space here.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>Backup / prospective tenants are tracked here only — not counted in the totals above, and never shown on the Floor Plan.</div>
       </div>
 
       {/* Vendors */}
