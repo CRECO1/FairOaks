@@ -16,6 +16,7 @@ import { adminClient } from '@/lib/supabase-admin';
 //   GET   → the imported documents waiting to be sent
 
 const BUCKET = 'transaction-forms';
+const DEAL_BUCKET = 'deal-docs';     // where a deal's own attachments live
 const MAX_SIZE = 25 * 1024 * 1024;   // 25 MB — well past a normal contract scan
 
 export async function POST(req: NextRequest) {
@@ -44,6 +45,43 @@ export async function POST(req: NextRequest) {
       source_path: path, filled_path: path, created_by: ctx.userId,
     }).select('id, title').single();
     if (error) { console.error('[esign-import] form submission', error); return NextResponse.json({ error: 'Could not prepare that form.' }, { status: 500 }); }
+    const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+    return NextResponse.json({ submission: { id: sub.id, title: sub.title, url: signed?.signedUrl ?? null } });
+  }
+
+  // Send a document that is already attached to a deal — the counter-signed lease
+  // the other side emailed over, a vendor agreement, whatever is sitting in the
+  // deal's folder — without downloading it and dropping it back in. Same shape as
+  // the library-form path: copy the bytes into an import and hand back a
+  // ready-to-prepare submission.
+  if (body.from_deal_doc_id) {
+    const supabase = adminClient();
+    const { data: doc } = await supabase.from('crm_deal_docs')
+      .select('id, deal_id, storage_path, name').eq('id', body.from_deal_doc_id).maybeSingle();
+    if (!doc?.storage_path) return notFound('Document not found');
+    // crm_deal_docs carries no business_unit of its own — access comes from the deal.
+    if (!(await assertOwnsResource('crm_deals', doc.deal_id, ctx))) return notFound('Document not found');
+    // A deal folder also holds Word files and photos; signing needs fixed page
+    // geometry to place fields against, which only a PDF has.
+    if (!/\.pdf$/i.test(doc.storage_path)) {
+      return NextResponse.json({ error: 'Only PDFs can be sent for signature — save that document as a PDF and attach it to the deal.' }, { status: 400 });
+    }
+    const { data: blob } = await supabase.storage.from(DEAL_BUCKET).download(doc.storage_path);
+    if (!blob) return NextResponse.json({ error: 'Could not read that document.' }, { status: 500 });
+    const bytes = Buffer.from(await blob.arrayBuffer());
+    const base = String(doc.name || doc.storage_path.split('/').pop() || 'Document').replace(/\.pdf$/i, '');
+    const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
+    const path = `imports/${ctx.userId}/${Date.now()}_${safe}.pdf`;
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: 'application/pdf', upsert: true });
+    if (upErr) { console.error('[esign-import] deal doc copy', upErr); return NextResponse.json({ error: 'Could not prepare that document.' }, { status: 500 }); }
+    const unit = isAdminRole(ctx.role) ? (body.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
+    // deal_id is carried over, so the signed copy files itself back onto the deal
+    // it came from rather than landing unattached.
+    const { data: sub, error } = await supabase.from('crm_form_submissions').insert({
+      form_id: null, business_unit: unit, title: base, values: [], status: 'saved',
+      source_path: path, filled_path: path, deal_id: doc.deal_id, created_by: ctx.userId,
+    }).select('id, title').single();
+    if (error) { console.error('[esign-import] deal doc submission', error); return NextResponse.json({ error: 'Could not prepare that document.' }, { status: 500 }); }
     const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
     return NextResponse.json({ submission: { id: sub.id, title: sub.title, url: signed?.signedUrl ?? null } });
   }

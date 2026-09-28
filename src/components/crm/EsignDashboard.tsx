@@ -41,8 +41,12 @@ const docKey = (d: ImportedDoc) => {
   return `file:${file}`;
 };
 
+export interface DealDoc { id: string; name?: string; storage_path?: string; created_at?: string }
+
 interface Props {
   authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void;
+  // Deals whose folders can be pulled from when starting a signature request.
+  deals?: { id: string; client?: string | null; property?: string | null }[];
   // Only the account owner may destroy a signature request; everyone else archives.
   isSuperAdmin?: boolean;
   // Opens the envelope composer: with a freshly dropped file, or on a document
@@ -59,7 +63,7 @@ const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bear
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap' };
 
-export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, forms = [], refreshKey = 0 }: Props) {
+export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCompose, onPreview, isSuperAdmin, forms = [], deals = [], refreshKey = 0 }: Props) {
   const [showForms, setShowForms] = useState(false);
   const [formsList, setFormsList] = useState<{ id: string; name: string; form_code?: string; category?: string }[]>(forms);
   const [formQ, setFormQ] = useState('');
@@ -71,6 +75,10 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [byAgent, setByAgent] = useState('');     // '' = every agent
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [pickDeal, setPickDeal] = useState(false);          // the "from a deal" picker is open
+  const [dealPick, setDealPick] = useState<string | null>(null); // which deal is expanded in it
+  const [dealDocs, setDealDocs] = useState<DealDoc[] | null>(null); // null = still loading
+  const [dealQ, setDealQ] = useState('');
   const [actFor, setActFor] = useState<string | null>(null);        // envelope whose activity is open
   const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
   const [stats, setStats] = useState<Stats | null>(null);
@@ -92,6 +100,29 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   // first step — so the agent lands on "Set Up Envelope" with the document in place.
   // Send a saved CRM form (IABS, TREC forms…) straight to signing — the server
   // copies its clean template into a ready submission, no upload from disk.
+  // Pull a document out of a deal's folder — the counter-signed lease the other
+  // side emailed over, say — instead of downloading it and dropping it back in.
+  const loadDealDocs = useCallback(async (dealId: string) => {
+    setDealPick(dealId); setDealDocs(null);
+    try {
+      const j = await fetch(`/api/crm/docs?dealId=${dealId}`, { headers: auth(authToken) }).then(r => r.json());
+      // Deal folders also hold Word files and photos; only a PDF can be signed.
+      setDealDocs((Array.isArray(j.docs) ? j.docs : []).filter((d: DealDoc) => /\.pdf$/i.test(d.storage_path ?? d.name ?? '')));
+    } catch { setDealDocs([]); showToast?.('Could not load that deal’s documents'); }
+  }, [authToken, showToast]);
+
+  const chooseDealDoc = useCallback(async (docId: string) => {
+    setUploading(true);
+    try {
+      const r = await fetch('/api/crm/esign-import', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ from_deal_doc_id: docId }) });
+      const j = await r.json();
+      if (!r.ok) { showToast?.(j.error || 'Could not open that document'); return; }
+      setPickDeal(false); setDealPick(null); setDealDocs(null);
+      onCompose?.({ doc: j.submission });
+    } catch { showToast?.('Could not open that document'); }
+    finally { setUploading(false); }
+  }, [authToken, onCompose, showToast]);
+
   const chooseForm = useCallback(async (formId: string) => {
     setUploading(true);
     try {
@@ -333,9 +364,79 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
         <div style={{ fontSize: 26, marginBottom: 4 }}>{uploading ? '⏳' : '📥'}</div>
         <div style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>{uploading ? 'Importing…' : 'Send a document for signature'}</div>
         <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 3 }}>
-          Drop a PDF here or click to browse — add the signers, drag where each of them signs and dates, then review before it goes out.
+          Drop a PDF here, or pick where it comes from — add the signers, drag where each of them signs and dates, then review before it goes out.
         </div>
+        {!uploading && (
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+            {/* Both buttons stopPropagation: the zone itself opens the file browser, so
+                without it "From a deal" would open the picker AND the file dialog. */}
+            <button onClick={e => { e.stopPropagation(); setPickDeal(true); setDealPick(null); setDealDocs(null); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 9, border: '1px solid #e6d3a2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700, color: '#a06a12' }}>
+              📁 From a deal
+            </button>
+            <button onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 9, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700 }}>
+              💻 From my computer
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* ── Pick a document out of a deal's folder ── */}
+      {pickDeal && (
+        <div className="crm-sheet" onClick={e => { if (e.target === e.currentTarget) setPickDeal(false); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 700, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}>
+          <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, padding: 22, width: '100%', maxWidth: 520, boxShadow: '0 24px 64px rgba(0,0,0,.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 700, margin: 0, color: '#111' }}>
+                {dealPick ? 'Pick a document' : 'Pick a deal'}
+              </h3>
+              <button onClick={() => (dealPick ? (setDealPick(null), setDealDocs(null)) : setPickDeal(false))}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>
+                {dealPick ? '‹' : '✕'}
+              </button>
+            </div>
+
+            {!dealPick ? (
+              deals.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No deals in this workspace yet.</div> : (
+                <>
+                  <input autoFocus value={dealQ} onChange={e => setDealQ(e.target.value)} placeholder="Search deals…"
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5, marginBottom: 10, fontFamily: "'DM Sans',sans-serif" }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: '54vh', overflowY: 'auto' }}>
+                    {deals.filter(d => { const q = dealQ.trim().toLowerCase(); return !q || `${d.client ?? ''} ${d.property ?? ''}`.toLowerCase().includes(q); }).map(d => (
+                      <button key={d.id} onClick={() => loadDealDocs(d.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', border: '1px solid #f1f2f4', borderRadius: 8, background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                        <span style={{ fontSize: 16 }}>📁</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111' }}>{d.client || 'Deal'}</span>
+                          {d.property && <span style={{ display: 'block', fontSize: 12, color: '#9ca3af' }}>{d.property}</span>}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#a06a12' }}>›</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )
+            ) : dealDocs === null ? <div style={{ fontSize: 13, color: '#9ca3af', padding: '10px 0' }}>Loading…</div>
+              : dealDocs.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#9ca3af', padding: '10px 0' }}>
+                  No PDFs in this deal&apos;s folder. Only PDFs can be sent for signature — a Word file or a photo has to be saved as a PDF first.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: '54vh', overflowY: 'auto' }}>
+                  {dealDocs.map(d => (
+                    <button key={d.id} disabled={uploading} onClick={() => chooseDealDoc(d.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', border: '1px solid #f1f2f4', borderRadius: 8, background: '#fff', cursor: uploading ? 'default' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                      <span style={{ fontSize: 16 }}>📄</span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: '#111', overflowWrap: 'anywhere' }}>{d.name || d.storage_path?.split('/').pop()}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: '#a06a12', flexShrink: 0 }}>Use →</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+          </div>
+        </div>
+      )}
 
       {formsList.length > 0 && (
         <div style={{ marginTop: -12, marginBottom: 22 }}>

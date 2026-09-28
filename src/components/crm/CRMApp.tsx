@@ -8185,6 +8185,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               authToken={session?.access_token}
               showToast={showToast}
               forms={crmForms}
+              deals={deals}
               refreshKey={esignFieldsVersion}
               isSuperAdmin={isSuperAdmin}
               onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })}
