@@ -46,7 +46,7 @@ export interface DealDoc { id: string; name?: string; storage_path?: string; cre
 interface Props {
   authToken?: string; showToast?: (m: string) => void; onOpenDeal?: (dealId: string) => void;
   // Deals whose folders can be pulled from when starting a signature request.
-  deals?: { id: string; client?: string | null; property?: string | null }[];
+  deals?: { id: string; client?: string | null; property?: string | null; stage?: string | null }[];
   // Only the account owner may destroy a signature request; everyone else archives.
   isSuperAdmin?: boolean;
   // Opens the envelope composer: with a freshly dropped file, or on a document
@@ -57,6 +57,12 @@ interface Props {
   // Opens a PDF in the app's own viewer rather than forcing a download.
   onPreview?: (file: { url: string; name: string }) => void;
 }
+
+// Same set Transaction Docs uses. The lead sync opens a Prospect deal for every
+// inbound email, so the raw list is mostly autoresponders and phone numbers —
+// nothing anyone is sending a contract on. Stage-less deals are kept: those are
+// hand-made and simply never moved along.
+const ACTIVE_STAGES = ['Active', 'LOI', 'In Contract'];
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const ago = (iso?: string | null) => { if (!iso) return ''; const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000); return d <= 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`; };
@@ -254,6 +260,14 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     return out.sort((a, b) => (b.doc.updated_at ?? '').localeCompare(a.doc.updated_at ?? ''));
   })();
 
+  // Active deals only, unless the agent searches — then everything is fair game,
+  // since the one they want may be closed.
+  const dealChoices = (() => {
+    const q = dealQ.trim().toLowerCase();
+    const pool = q ? deals : deals.filter(d => !d.stage || ACTIVE_STAGES.includes(d.stage));
+    return pool.filter(d => !q || `${d.client ?? ''} ${d.property ?? ''}`.toLowerCase().includes(q)).slice(0, 60);
+  })();
+
   const shown = envs.filter(env => !byAgent || env.sent_by === byAgent);
   const isClosed = (e: Envelope) => !!e.archived_at || e.status === 'voided' || e.status === 'declined';
   const activeEnvs = shown.filter(e => !isClosed(e) && e.status !== 'completed');
@@ -376,12 +390,12 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
             </div>
 
             {!dealPick ? (
-              deals.length === 0 ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No deals in this workspace yet.</div> : (
+              dealChoices.length === 0 && !dealQ ? <div style={{ fontSize: 13, color: '#9ca3af' }}>No active deals in this workspace yet.</div> : (
                 <>
                   <input autoFocus value={dealQ} onChange={e => setDealQ(e.target.value)} placeholder="Search deals…"
                     style={{ width: '100%', boxSizing: 'border-box', padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5, marginBottom: 10, fontFamily: "'DM Sans',sans-serif" }} />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: '54vh', overflowY: 'auto' }}>
-                    {deals.filter(d => { const q = dealQ.trim().toLowerCase(); return !q || `${d.client ?? ''} ${d.property ?? ''}`.toLowerCase().includes(q); }).map(d => (
+                    {dealChoices.map(d => (
                       <button key={d.id} onClick={() => loadDealDocs(d.id)}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', border: '1px solid #f1f2f4', borderRadius: 8, background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                         <span style={{ fontSize: 16 }}>📁</span>
