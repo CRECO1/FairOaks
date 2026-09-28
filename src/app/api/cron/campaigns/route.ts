@@ -302,8 +302,19 @@ export async function GET(req: NextRequest) {
     const nextSend = computeNextSend(campaign.frequency);
     if (campaign.frequency === 'one-time') {
       await supabase.from('crm_campaign_enrollments').update({ active: false, next_send_at: null }).eq('id', enrollment.id);
-      // Mark the campaign as completed so it doesn't re-trigger and shows in Completed filter
-      await supabase.from('crm_campaigns').update({ status: 'completed' }).eq('id', campaign.id);
+      // Mark the campaign completed only once it has no active enrollments left. Each run
+      // handles at most 50 enrollments, so a one-time campaign with more recipients spans
+      // several runs; completing it after the first enrollment dropped it out of the
+      // `status = 'active'` query and silently stranded everyone after the first batch
+      // (the Elkhorn send stopped at 50 of 157 until the status was reset by hand).
+      const { count: remaining } = await supabase
+        .from('crm_campaign_enrollments')
+        .select('*', { count: 'exact', head: true })
+        .eq('campaign_id', campaign.id)
+        .eq('active', true);
+      if (!remaining) {
+        await supabase.from('crm_campaigns').update({ status: 'completed' }).eq('id', campaign.id);
+      }
     } else {
       await supabase.from('crm_campaign_enrollments').update({ next_send_at: nextSend }).eq('id', enrollment.id);
     }
