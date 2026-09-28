@@ -3382,22 +3382,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
+    <div className="crm-app-shell" style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
-        /* Printing a record page is a one-click way to get a clean, watermark-free
-           PDF of it. Suppress it: this is friction, not security — the same content
-           is still on screen and still capturable. Anything genuinely meant to leave
-           the CRM (flyers, generated documents) is produced as its own PDF, so this
-           takes nothing legitimate away. */
-        @media print {
-          body { display: none !important; }
-          html::after {
-            content: "Printing is disabled in the CRM. Use the document or flyer PDF instead.";
-            display: block; padding: 40px; font: 16px 'DM Sans', sans-serif; color: #111;
-          }
-        }
+        /* Print is enabled. The 1099-NEC report and the document preview each scope
+           their own @media print rules to isolate just their content. The old blanket
+           "printing disabled" block guarded a per-user screen watermark that was
+           removed (agent-trust) — with the watermark gone it only broke real prints. */
         .crm-input{padding:8px 12px;border:1px solid #ddd;border-radius:6px;font-size:14px;font-family:'DM Sans',sans-serif;width:100%;}
         .crm-input:focus{outline:none;border-color:#c9922c;}
         .crm-btn{padding:10px 18px;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;border:none;font-family:'DM Sans',sans-serif;transition:all .15s;min-height:44px;}
@@ -5964,9 +5956,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Print stylesheet injected inline */}
                   <style>{`
                     @media print {
-                      body > * { display: none !important; }
-                      #crm-1099-report { display: block !important; position: static !important; width: 100% !important; }
+                      /* Neutralize the fixed-height, overflow-hidden app shell so the
+                         report isn't clipped to one screen. */
+                      .crm-app-shell { height: auto !important; overflow: visible !important; display: block !important; }
+                      .crm-page-scroll { height: auto !important; overflow: visible !important; }
+                      /* Hide everything, then re-show just the report subtree. visibility
+                         (not display) so a hidden ancestor can't swallow the report. */
+                      body > * { visibility: hidden !important; }
+                      #crm-1099-report, #crm-1099-report * { visibility: visible !important; }
+                      #crm-1099-report { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; background: #fff !important; }
                       .crm-1099-no-print { display: none !important; }
+                      @page { margin: 14mm; }
                     }
                   `}</style>
 
