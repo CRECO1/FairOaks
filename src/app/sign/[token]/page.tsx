@@ -166,6 +166,9 @@ function DocView({ url, fields = [], filled, values, onFill, onClear, onPick, on
         const phone = window.matchMedia('(max-width: 640px)').matches;
         await renderPdfPages(data, {
           quality: 0.85, signal: ac.signal, targetWidth: phone ? 1200 : undefined,
+          // If the renderer restarts on the main thread, drop the worker's partial pages
+          // so the signer never sees duplicated pages.
+          onReset: () => { revokePages(collected); collected.length = 0; if (!ac.signal.aborted) setPages([]); },
           onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p]); },
         });
         if (!ac.signal.aborted) setState('ready');

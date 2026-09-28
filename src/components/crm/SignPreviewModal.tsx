@@ -66,6 +66,9 @@ export default function SignPreviewModal({ url, fields, signerLabel, signers, on
         // doc doesn't freeze the review sheet; pages stream in so page 1 shows at once.
         await renderPdfPages(data, {
           targetWidth: targetWidthFor(820), quality: 0.85, signal: ac.signal,
+          // If the renderer restarts on the main thread, drop the worker's partial pages
+          // (state + object URLs) so the re-render doesn't duplicate them.
+          onReset: () => { revokePages(collected); collected.length = 0; if (!ac.signal.aborted) setPages([]); },
           onPage: (p) => { collected.push(p); if (!ac.signal.aborted) setPages(prev => [...prev, p]); },
         });
         if (!ac.signal.aborted) setStatus('ready');

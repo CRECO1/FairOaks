@@ -16,6 +16,10 @@ interface Opts {
   quality?: number;
   /** Called as each page finishes, so the caller can paint page 1 immediately. */
   onPage?: (page: RenderedPage, index: number, total: number) => void;
+  /** Called if the renderer discards already-emitted pages to restart cleanly on the
+   *  main thread — the caller must clear whatever it painted from onPage so the
+   *  main-thread re-render doesn't duplicate those pages. */
+  onReset?: () => void;
   signal?: AbortSignal;
 }
 
@@ -84,11 +88,12 @@ function renderViaWorker(w: Worker, bytes: ArrayBuffer, targetWidth: number, qua
       const d = ev.data;
       if (!d || d.id !== id) return;
       if (d.error) {
-        // Propagate a genuine document error, or any failure that struck after pages were
-        // already emitted (falling back would re-emit them as duplicates). Otherwise the
-        // worker just can't do this doc — fall back to the main thread, keep the worker.
-        const propagate = DOC_FATAL.has(d.name) || pages.length > 0;
-        const e = propagate ? new DocError(d.error) : new FallbackError(d.error);
+        // A genuine document error (encrypted / corrupt) fails the same way on the main
+        // thread — surface it. Anything else is just the worker tripping on this doc (an
+        // image or font op its DOM-less context can't do), so fall back to a full
+        // main-thread render even if pages were already emitted — the caller clears its
+        // partial pages via onReset, so there are no duplicates.
+        const e = DOC_FATAL.has(d.name) ? new DocError(d.error) : new FallbackError(d.error);
         e.name = d.name || 'Error';
         return finish(() => reject(e));
       }
@@ -155,10 +160,12 @@ export async function renderPdfPages(bytes: ArrayBuffer, opts: Opts = {}): Promi
     try {
       return await renderViaWorker(w, bytes, targetWidth, quality, opts);
     } catch (e) {
-      // Only a FallbackError falls through to the main thread (the worker couldn't do
-      // this doc, but nothing was emitted). A DocError — encrypted/corrupt PDF, an abort,
-      // or a mid-stream failure — would fail identically or duplicate pages, so surface it.
+      // A DocError (encrypted/corrupt PDF, or a user abort) fails identically on the main
+      // thread — surface it. A FallbackError means the worker just couldn't render this
+      // doc, so re-render the WHOLE thing on the main thread. If the worker had already
+      // painted pages, onReset lets the caller clear them first so there are no duplicates.
       if (!(e instanceof FallbackError)) throw e;
+      opts.onReset?.();
     }
   }
   return renderOnMainThread(bytes, targetWidth, quality, opts);
