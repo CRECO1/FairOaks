@@ -33,7 +33,7 @@ import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { screenSubmission } from '@/lib/bot-guard';
-import { channelFor } from '@/lib/lead-context';
+import { channelFor, parseJourney, intOrNull } from '@/lib/lead-context';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -104,6 +104,16 @@ export async function POST(req: NextRequest) {
   if (!attrFields.channel && (attrFields.referrer || attrFields.utm_medium || attrFields.utm_source)) {
     attrFields.channel = channelFor(attrFields.referrer ?? null, attrFields.utm_medium ?? null, attrFields.utm_source ?? null);
   }
+  // Visit journey + dwell — jsonb/int, so they can't ride the string loop above.
+  // A sender that forwards none (Crexi/LoopNet/Zapier) simply leaves them null.
+  const journeySteps = parseJourney(body.journey);
+  const journeyFields: Record<string, unknown> = {};
+  if (journeySteps) journeyFields.journey = journeySteps;
+  const tos = intOrNull(body.time_on_site_sec);
+  if (tos != null) journeyFields.time_on_site_sec = tos;
+  const pv = intOrNull(body.page_views, 1000) ?? (journeySteps ? journeySteps.length : null);
+  if (pv != null) journeyFields.page_views = pv;
+
   const extraTags = (body.tags as string[] | undefined) ?? [];
   // Webhook leads are commercial by default (Crexi, LoopNet, CoStar); override with business_unit param
   const unit: 'residential' | 'commercial' = (body.business_unit as string | undefined) === 'residential' ? 'residential' : 'commercial';
@@ -184,7 +194,7 @@ export async function POST(req: NextRequest) {
       // that arrives with a campaign shouldn't lose it just because we already
       // knew the person — but a later direct visit must not overwrite the
       // original acquisition source either.
-      ...(existing.channel ? {} : attrFields),
+      ...(existing.channel ? {} : { ...attrFields, ...journeyFields }),
     }).eq('id', existing.id);
     clientId = existing.id;
   } else {
@@ -214,6 +224,7 @@ export async function POST(req: NextRequest) {
       // Zapier/Make. Every field is optional: a webhook that sends none still
       // creates the client exactly as before, just without a channel.
       ...attrFields,
+      ...journeyFields,
       ...(asset_types ? { asset_types } : {}),
       ...(budget ? { budget } : {}),
       ...(size_range ? { size_range } : {}),

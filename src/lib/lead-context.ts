@@ -52,7 +52,7 @@ function str(v: unknown, max = 200): string | null {
 }
 
 /** A non-negative integer from a number/string body value, capped. */
-function intOrNull(v: unknown, max = 86400): number | null {
+export function intOrNull(v: unknown, max = 86400): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? parseInt(v, 10) : NaN;
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.min(Math.round(n), max);
@@ -63,7 +63,7 @@ function intOrNull(v: unknown, max = 86400): number | null {
  * attribution.ts writes) and, defensively, a bare string[]. Caps length and
  * field sizes so a crafted body can't bloat a row. Returns null when empty.
  */
-function parseJourney(v: unknown): JourneyStep[] | null {
+export function parseJourney(v: unknown): JourneyStep[] | null {
   if (!Array.isArray(v)) return null;
   const out: JourneyStep[] = [];
   for (const item of v) {
