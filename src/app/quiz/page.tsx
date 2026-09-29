@@ -100,6 +100,7 @@ export default function QuizPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { trackQuizStart(STEPS.length); }, []);
 
@@ -130,16 +131,25 @@ export default function QuizPage() {
   async function handleContact(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await fetch('/api/quiz/lead', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-    ...attributionPayload('quiz'), recaptchaToken: await getRecaptchaToken('quiz_lead'), name, email, phone, answers }),
-    }).catch(() => {});
-    trackQuizComplete();
-    trackLead({ form_type: 'quiz' });
-    setLoading(false);
-    setDone(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/quiz/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...attributionPayload('quiz'), recaptchaToken: await getRecaptchaToken('quiz_lead'), name, email, phone, answers }),
+      });
+      if (!res.ok) throw new Error(`quiz lead POST ${res.status}`);
+      // Only show "Results On the Way" on a real success — a dropped submit used
+      // to render the confirmation while the lead was never saved.
+      trackQuizComplete();
+      trackLead({ form_type: 'quiz' });
+      setDone(true);
+    } catch {
+      setError('Something went wrong sending your answers. Please try again, or call or text us at 210-390-9997.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (done) {
@@ -217,6 +227,7 @@ export default function QuizPage() {
                 <p className="text-caption text-foreground-muted">
                   By submitting, you agree to be contacted by Fair Oaks Realty Group. We never share your information.
                 </p>
+                {error && <p role="alert" className="text-body-sm text-red-600">{error}</p>}
                 <Button type="submit" size="lg" fullWidth loading={loading}>
                   Send My Recommendations
                   <ArrowRight className="ml-2 h-5 w-5" />

@@ -265,7 +265,10 @@ export async function POST(req: NextRequest) {
             </p>
           </div>
         `,
-      });
+      }).then(() => recordIntegrationSuccess(LEAD_NOTIFY_KEY))
+      .catch(err => recordIntegrationFailure(LEAD_NOTIFY_KEY,
+        `Lead notification email failed from /api/leads: ${err?.message ?? err}. The lead itself was saved.`,
+        { subject: '⚠️ A lead alert did not send' }));  // non-fatal — the lead is already saved
 
       // Auto-reply to the lead (only if they provided an email)
       if (email) await resend.emails.send({
@@ -282,7 +285,7 @@ export async function POST(req: NextRequest) {
           cta: { label: 'Browse homes for sale', href: 'https://www.fairoaksrealtygroup.com/listings' },
           reason: 'You&rsquo;re receiving this because you contacted Fair Oaks Realty Group at fairoaksrealtygroup.com.',
         }),
-      });
+      }).catch(err => console.error('Lead auto-reply email failed (non-fatal):', err));
     }
 
     return NextResponse.json({ success: true, message: 'Lead received' });

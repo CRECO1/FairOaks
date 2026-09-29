@@ -23,31 +23,41 @@ const STEPS = [
 export default function SellPage() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     const data = new FormData(e.currentTarget);
-    await fetch('/api/leads', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        // Attribution: what brought this lead (utm/referrer/page/device).
-        ...attributionPayload('sell-page'),
-        recaptchaToken: await getRecaptchaToken('lead_form'),
-        name: data.get('name'),
-        email: data.get('email'),
-        phone: data.get('phone'),
-        message: `Address: ${data.get('address')}\nTimeline: ${data.get('timeline')}\nAdditional info: ${data.get('notes')}`,
-        source: 'valuation',
-        business_unit: 'residential',
-        website: (data.get('website') as string) || undefined,
-      }),
-    }).catch(() => {});
-    setLoading(false);
-    // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
-    trackEvent('valuation_form_submitted', { form: 'sell-page' });
-    setSubmitted(true);
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          // Attribution: what brought this lead (utm/referrer/page/device).
+          ...attributionPayload('sell-page'),
+          recaptchaToken: await getRecaptchaToken('lead_form'),
+          name: data.get('name'),
+          email: data.get('email'),
+          phone: data.get('phone'),
+          message: `Address: ${data.get('address')}\nTimeline: ${data.get('timeline')}\nAdditional info: ${data.get('notes')}`,
+          source: 'valuation',
+          business_unit: 'residential',
+          website: (data.get('website') as string) || undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(`lead POST ${res.status}`);
+      // Only a real 200 counts — a dropped valuation request (the highest-value
+      // lead) used to render "Request Received!" while nothing was saved.
+      // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
+      trackEvent('valuation_form_submitted', { form: 'sell-page' });
+      setSubmitted(true);
+    } catch {
+      setError('Something went wrong sending your request. Please try again, or call or text us at 210-390-9997.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -166,6 +176,7 @@ export default function SellPage() {
                           <option>Just exploring</option>
                         </select>
                         <textarea name="notes" rows={3} placeholder="Anything else we should know about your home?" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold resize-none" />
+                        {error && <p role="alert" className="text-body-sm text-red-600">{error}</p>}
                         <Button type="submit" size="lg" fullWidth loading={loading}>
                           Request Free Valuation
                           <ArrowRight className="ml-2 h-5 w-5" />
