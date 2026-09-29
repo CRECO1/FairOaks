@@ -164,9 +164,20 @@ export function trackFormStart(surface: string, params: Record<string, unknown> 
 }
 
 /**
+ * Milliseconds this browser has had the site open — the fill-time signal the
+ * lead endpoints REQUIRE (lib/bot-guard.ts rejects a missing value). Measured
+ * from the document's time origin, so it only grows across client-side
+ * navigation; a script posting straight at the API never has one.
+ */
+export function formElapsedMs(): number {
+  return typeof performance === 'undefined' ? 0 : Math.round(performance.now());
+}
+
+/**
  * Everything a form should send so the lead is attributable: the stored
  * utm/referrer payload plus the page it was submitted from and the viewport
- * (the server turns the viewport + user-agent into a device label).
+ * (the server turns the viewport + user-agent into a device label). Also
+ * carries elapsed_ms, which every lead endpoint requires.
  */
 export function attributionPayload(surface?: string): Record<string, unknown> {
   if (typeof window === 'undefined') return {};
@@ -176,6 +187,7 @@ export function attributionPayload(surface?: string): Record<string, unknown> {
     page_url: window.location.href.slice(0, 500),
     page_title: (typeof document !== 'undefined' ? document.title : '').slice(0, 200),
     viewport_width: window.innerWidth,
+    elapsed_ms: formElapsedMs(),
     ...(surface ? { surface } : {}),
   };
 }

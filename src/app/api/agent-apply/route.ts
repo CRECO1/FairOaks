@@ -4,6 +4,7 @@ import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } f
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { screenSubmission } from '@/lib/bot-guard';
 import { createRecruitContact } from '@/lib/recruiting-crm';
 
 // Agent applications are recruiting mail, not sales mail, so they get their own
@@ -29,6 +30,12 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => null);
     if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+
+    // Honeypot, mandatory fill time, gibberish name (lib/bot-guard.ts). Looks
+    // successful to the bot; nothing is filed and no one is emailed.
+    if (screenSubmission(body, { route: 'agent-apply', browserForm: true, names: [body.name], email: body.email })) {
+      return NextResponse.json({ success: true });
+    }
 
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
     const captcha = await verifyRecaptcha(

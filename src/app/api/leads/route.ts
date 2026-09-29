@@ -7,6 +7,7 @@ import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { screenSubmission } from '@/lib/bot-guard';
 import { buildLeadContext } from '@/lib/lead-context';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
@@ -26,11 +27,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
 
-    // Honeypot — `website` is an invisible field on our forms; a filled value is
-    // almost certainly a bot. Return 200 so it thinks it succeeded and doesn't
-    // retry with a different strategy. Nothing is stored. Works even while
-    // reCAPTCHA is unconfigured (the check below is a no-op without a secret key).
-    if (typeof body.website === 'string' && body.website.length > 0) {
+    // Honeypot, mandatory fill time, gibberish name (lib/bot-guard.ts). A blocked
+    // bot gets the same 200 a real lead does, so it has nothing to adapt to, and
+    // nothing is stored.
+    if (screenSubmission(body, { route: 'leads', browserForm: true, names: [body.name], email: body.email })) {
       return NextResponse.json({ success: true, message: 'Lead received' });
     }
 

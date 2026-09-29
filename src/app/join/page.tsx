@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { CheckCircle, Laptop, Megaphone, Search, Network, UserCheck, DollarSign } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { trackPhoneClick } from '@/lib/analytics';
-import { trackEvent } from '@/lib/attribution';
+import { trackEvent, formElapsedMs } from '@/lib/attribution';
+import { Honeypot } from '@/components/Honeypot';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
@@ -44,6 +45,8 @@ export default function JoinPage() {
       current_brokerage: data.get('current_brokerage'),
       production: data.get('production'),
       message: data.get('message'),
+      elapsed_ms: formElapsedMs(),
+      website: (data.get('website') as string) || undefined,   // honeypot
     };
 
     try {
@@ -153,6 +156,7 @@ export default function JoinPage() {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-5">
+                    <Honeypot />
                     {/* Name + Email */}
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                       <div>

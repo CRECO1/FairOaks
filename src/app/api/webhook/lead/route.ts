@@ -32,6 +32,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
+import { screenSubmission } from '@/lib/bot-guard';
 import { channelFor } from '@/lib/lead-context';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -119,6 +120,14 @@ export async function POST(req: NextRequest) {
     const parts = rawName.trim().split(/\s+/);
     first_name = parts[0] ?? rawName;
     last_name = parts.slice(1).join(' ');
+  }
+
+  // Gibberish-name screen only (lib/bot-guard.ts). This endpoint is
+  // secret-authenticated server-to-server, so there is no browser to time and no
+  // honeypot to read — the sending site runs those on its own form. A 200 keeps
+  // the sender from raising a delivery-failure alert over a filtered bot.
+  if (screenSubmission(body, { route: 'webhook/lead', browserForm: false, names: [`${first_name} ${last_name}`, rawName], email })) {
+    return NextResponse.json({ success: true, clientId: null, isNew: false, filtered: true });
   }
 
   // A lead needs a NAME and at least one way to reach them. Requiring an email

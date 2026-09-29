@@ -5,6 +5,7 @@ import { Resend } from 'resend';
 import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
+import { screenSubmission } from '@/lib/bot-guard';
 import { buildLeadContext } from '@/lib/lead-context';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
@@ -23,6 +24,12 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => null);
     if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+
+    // Honeypot, mandatory fill time, gibberish name (lib/bot-guard.ts). Looks
+    // successful to the bot; nothing is stored.
+    if (screenSubmission(body, { route: 'quiz', browserForm: true, names: [body.name], email: body.email })) {
+      return NextResponse.json({ success: true });
+    }
 
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
     const captcha = await verifyRecaptcha(

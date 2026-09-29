@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { FAIR_OAKS_VALUE_PROPS } from '@/lib/recruiting';
 import { Header, Footer } from '@/components/layout';
-import { trackEvent } from '@/lib/attribution';
+import { trackEvent, formElapsedMs } from '@/lib/attribution';
+import { Honeypot } from '@/components/Honeypot';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import Link from 'next/link';
@@ -72,6 +73,8 @@ export default function CareersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recaptchaToken: await getRecaptchaToken('agent_apply'),
+          elapsed_ms: formElapsedMs(),
+          website: (data.get('website') as string) || undefined,   // honeypot
           name: data.get('name'),
           email: data.get('email'),
           phone: data.get('phone'),
@@ -320,6 +323,7 @@ export default function CareersPage() {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-5">
+                    <Honeypot />
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                       <div>
                         <label className="label-readable">Full Name *</label>
