@@ -99,16 +99,27 @@ export interface ReconcileResult {
 export async function reconcileOffMarket(opts: { dryRun?: boolean } = {}): Promise<ReconcileResult> {
   const supabase = adminClient();
 
-  const { data: ours, error } = await supabase
-    .from('listings')
-    .select('id, listing_key')
-    .eq('source', 'mls')
-    .eq('status', 'active')
-    .limit(100000);
-  if (error) {
-    return { ourActive: 0, saborActive: 0, expected: 0, retire: 0, retired: 0, aborted: `could not read our listings: ${error.message}` };
+  // Read ALL of our active MLS listings. PostgREST caps a single response at 1000
+  // rows regardless of .limit(), so page with .range() until a short page — a bare
+  // .limit(100000) silently returns only the first 1000, which made the retire
+  // fraction meaningless (and tripped Guard 2 on a 1000-row slice).
+  const ourList: { id: string; listing_key: string }[] = [];
+  const READ_PAGE = 1000;
+  for (let from = 0; from < 500000; from += READ_PAGE) {
+    const { data, error } = await supabase
+      .from('listings')
+      .select('id, listing_key')
+      .eq('source', 'mls')
+      .eq('status', 'active')
+      .order('id', { ascending: true })
+      .range(from, from + READ_PAGE - 1);
+    if (error) {
+      return { ourActive: ourList.length, saborActive: 0, expected: 0, retire: 0, retired: 0, aborted: `could not read our listings: ${error.message}` };
+    }
+    const batch = (data ?? []) as { id: string; listing_key: string }[];
+    for (const r of batch) if (r.listing_key) ourList.push(r);
+    if (batch.length < READ_PAGE) break;
   }
-  const ourList = (ours ?? []).filter(r => r.listing_key) as { id: string; listing_key: string }[];
 
   const { keys: saborKeys, expected } = await fetchAllActiveListingKeys();
 
