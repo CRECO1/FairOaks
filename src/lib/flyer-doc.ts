@@ -9,7 +9,6 @@
 import { PDFDocument, StandardFonts, rgb, degrees, PDFFont, PDFImage, PDFPage } from 'pdf-lib';
 import type { RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
-import { drawnWidth } from '@/lib/rich-text';
 
 const BLACK: RGB = rgb(0.086, 0.086, 0.098);
 const GOLD: RGB = rgb(0.941, 0.616, 0.078);
@@ -30,6 +29,10 @@ export interface FlyerInput {
   highlights: string[];
   statPrice: string;             // "$22.00 /SF/YR" or "$1,200,000"
   statSize: string;              // "2,760 SF" (or lot size)
+  // Optional second row of tiles. The facts a reader hunts for first belong in tiles,
+  // not in the prose — lot size and zoning are the two that come up on every call.
+  statLot?: string | null;       // "1.01 AC"
+  statZoning?: string | null;    // "I-1"
   agentNames: string[];
   contacts: string[];            // email / phone lines
   hero?: { bytes: Uint8Array; png: boolean } | null;
@@ -39,6 +42,10 @@ export interface FlyerInput {
   // Street names to draw over the aerial (USGS imagery has none). Image pixels from the
   // top-left + the PDF rotation that lays each name along its road — see roadLabels().
   aerialLabels?: Array<{ text: string; x: number; y: number; angle: number }> | null;
+  // Hand-made aerials (lot outlined, highways marked). When a listing has one it
+  // replaces the generated aerial above: a drawn outline says where the property is
+  // at a glance, which a pin on unlabelled imagery with a dozen street names does not.
+  siteAerials?: Array<{ bytes: Uint8Array; png: boolean }> | null;
   floorPlan?: { bytes: Uint8Array; png: boolean } | null;
   // Optional page-2 trade-area panel — a dark stat strip (traffic counts, population,
   // daytime jobs; up to 4 tiles + a one-line source caption). Drawn above the aerial.
@@ -118,15 +125,6 @@ function photoGridHeight(n: number, w: number) {
   const cols = n === 1 ? 1 : n === 2 || n === 4 ? 2 : 3;
   const rows = Math.ceil(n / cols), g = 6;
   return rows * (((w - (cols - 1) * g) / cols) * 0.75) + (rows - 1) * g;
-}
-// Draw one line justified to fill maxW (word gaps stretched evenly).
-function drawJustified(page: PDFPage, text: string, x: number, y: number, maxW: number, font: PDFFont, size: number, color: RGB) {
-  const words = text.split(' ').filter(Boolean);
-  if (words.length < 2) { page.drawText(text, { x, y, size, font, color }); return; }
-  const wordsW = words.reduce((s, w) => s + drawnWidth(font, w, size), 0);
-  const gap = (maxW - wordsW) / (words.length - 1);
-  let cx = x;
-  for (const w of words) { page.drawText(w, { x: cx, y, size, font, color }); cx += drawnWidth(font, w, size) + gap; }
 }
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
 function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB): Rect {
@@ -240,77 +238,90 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   // fixed budget: highlights reserve their space first (they're the scannable part),
   // and whatever is left caps the description.
   const FLOOR = 148;                       // the agent block's divider sits at 128
-  const LEAD = 12.4;
-  const hl = (input.highlights || []).map(s => sanitize(s).trim()).filter(Boolean);
-  const allDesc = wrapText(input.description || 'Contact the listing agent for full property details.', body, 9.3, leftW);
+  // A flyer is read in seconds. The column is therefore: one bold sentence that says
+  // what this is, a couple of plain sentences under it, and a short list of bullets —
+  // set large enough to read at arm's length and never cut off mid-thought. Anything
+  // that doesn't fit is left out whole (a sentence, a bullet), not trailed off with "…".
+  const DESC_SIZE = 10.2, DESC_LEAD = 14, LEAD_SIZE = 11.2, LEAD_LEAD = 15;
+  const HL_SIZE = 10.2, HL_ROW = 17, HL_WRAP = 13, HL_MAX = 6;
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const hl = (input.highlights || []).map(s => sanitize(s).trim()).filter(Boolean).slice(0, HL_MAX);
+  const sentences = sanitize(input.description || 'Contact the listing agent for full property details.')
+    .replace(/\s*\n+\s*/g, ' ').split(/(?<=[.!?])\s+(?=[A-Z0-9$~"'])/).map(t => t.trim()).filter(Boolean);
+  const leadLines = wrapText(sentences[0] || '', bold, LEAD_SIZE, leftW).slice(0, 3);
 
-  // Both want the same column. When they both fit, both get everything; when they
-  // don't, they split it — neither a one-line description nor a single bullet.
-  const availLeft = ly - 17 - FLOOR - 12;
-  const hlWant = hl.length ? 18 + Math.min(hl.length, 8) * 16 : 0;
-  const descWant = allDesc.length * LEAD;
-  const hlNeed = descWant + hlWant <= availLeft
-    ? hlWant
-    : Math.min(hlWant, Math.max(availLeft - descWant, availLeft * 0.5));
+  // Bullets are the scannable part, so they reserve their room first.
+  const hlHeights = hl.map(h => HL_ROW + (wrapText(h, body, HL_SIZE, leftW - 16).length - 1) * HL_WRAP);
+  const hlWant = hl.length ? 19 + hlHeights.reduce((a, b) => a + b, 0) : 0;
 
-  // Left: PROPERTY DESCRIPTION
   p1.drawText('PROPERTY DESCRIPTION', { x: leftX, y: ly, size: 13, font: osw, color: INK });
-  ly -= 17;
-  const descRoom = Math.max(0, ly - FLOOR - hlNeed - 12);
-  const maxDescLines = Math.max(2, Math.floor(descRoom / LEAD));
-  const descLines = allDesc.slice(0, maxDescLines);
-  if (descLines.length < allDesc.length && descLines.length) descLines[descLines.length - 1] += '…';
-  descLines.forEach((ln, i) => {
-    const isLast = i === descLines.length - 1;
-    // Justify full lines; leave the last line (and short paragraph-enders) ragged.
-    if (!isLast && body.widthOfTextAtSize(ln, 9.3) > leftW * 0.6) drawJustified(p1, ln, leftX, ly, leftW, body, 9.3, BODY);
-    else p1.drawText(ln, { x: leftX, y: ly, size: 9.3, font: body, color: BODY });
-    ly -= LEAD;
-  });
+  ly -= 18;
+  for (const ln of leadLines) { p1.drawText(ln, { x: leftX, y: ly, size: LEAD_SIZE, font: bold, color: INK }); ly -= LEAD_LEAD; }
+  ly -= 3;
+  // Whole sentences only, set as one paragraph, for as long as they fit above the bullets.
+  const room = ly - FLOOR - hlWant - 10;
+  let para: string[] = [];
+  for (let n = 2; n <= sentences.length; n++) {
+    const lines = wrapText(sentences.slice(1, n).join(' '), body, DESC_SIZE, leftW);
+    if (lines.length * DESC_LEAD > room) break;
+    para = lines;
+  }
+  for (const ln of para) { p1.drawText(ln, { x: leftX, y: ly, size: DESC_SIZE, font: body, color: BODY }); ly -= DESC_LEAD; }
   ly -= 12;
 
-  // Left: HIGHLIGHTS — stop at the floor and say how many didn't fit.
   if (hl.length) {
     p1.drawText('HIGHLIGHTS', { x: leftX, y: ly, size: 13, font: osw, color: INK });
-    ly -= 18;
-    let shown = 0;
-    for (const h of hl) {
-      const lines = wrapText(h, body, 10, leftW - 16);
-      const rowH = 16 + (lines.length - 1) * 13;
-      if (ly - rowH < FLOOR) break;
-      p1.drawEllipse({ x: leftX + 3, y: ly + 3, xScale: 2, yScale: 2, color: GOLD });
-      lines.forEach((ln, i) => { p1.drawText(ln, { x: leftX + 14, y: ly, size: 10, font: body, color: INK }); if (i < lines.length - 1) ly -= 13; });
-      ly -= 16;
-      shown++;
-    }
-    if (shown < hl.length && ly - 12 >= FLOOR - 12) {
-      p1.drawText(`+ ${hl.length - shown} more — ask the listing agent`, { x: leftX + 14, y: ly, size: 9, font: body, color: rgb(0.55, 0.57, 0.61) });
-    }
+    ly -= 19;
+    hl.forEach((h, i) => {
+      if (ly - hlHeights[i] < FLOOR - 14) return;
+      const lines = wrapText(h, body, HL_SIZE, leftW - 16);
+      p1.drawEllipse({ x: leftX + 3, y: ly + 3.2, xScale: 2.2, yScale: 2.2, color: GOLD });
+      lines.forEach((ln, j) => { p1.drawText(ln, { x: leftX + 14, y: ly, size: HL_SIZE, font: body, color: INK }); if (j < lines.length - 1) ly -= HL_WRAP; });
+      ly -= HL_ROW;
+    });
   }
 
-  // Right: two stat tiles (black, gold value)
-  const tileY = bannerY - 24 - 46, tileH = 46;
-  p1.drawRectangle({ x: rightX, y: tileY, width: rightW, height: tileH, color: BLACK });
+  // Right: stat tiles (black, white value, gold icon). Price + size always; lot size
+  // and zoning make a second row when the listing has them.
+  const tileH = 46;
   const half = rightW / 2;
-  p1.drawRectangle({ x: rightX + half - 0.5, y: tileY + 8, width: 1, height: tileH - 16, color: rgb(0.3, 0.31, 0.34) });
-  const tile = (cx: number, cw: number, kind: 'price' | 'size', value: string) => {
+  const extra = [
+    { kind: 'lot' as const, value: sanitize(input.statLot || '').trim() },
+    { kind: 'zoning' as const, value: sanitize(input.statZoning || '').trim() },
+  ].filter(t => t.value);
+  const tileRows = extra.length ? 2 : 1;
+  const tileTop = bannerY - 24;
+  const tileY = tileTop - tileH;                      // first row
+  const tilesBottom = tileTop - tileRows * tileH;
+  p1.drawRectangle({ x: rightX, y: tilesBottom, width: rightW, height: tileRows * tileH, color: BLACK });
+  const hair = rgb(0.3, 0.31, 0.34);
+  for (let r = 0; r < tileRows; r++) p1.drawRectangle({ x: rightX + half - 0.5, y: tileTop - (r + 1) * tileH + 8, width: 1, height: tileH - 16, color: hair });
+  if (tileRows === 2) p1.drawRectangle({ x: rightX + 12, y: tileY - 0.5, width: rightW - 24, height: 1, color: hair });
+  const tile = (cx: number, cy: number, cw: number, kind: 'price' | 'size' | 'lot' | 'zoning', value: string) => {
     // Vector icon (drawSvgPath anchors at the top-left, SVG y points down from there).
-    const ix = cx + 12, iyTop = tileY + tileH / 2 + 7.5;
+    const ix = cx + 12, iyTop = cy + tileH / 2 + 7.5;
     if (kind === 'price') {
       p1.drawSvgPath('M6 1 L15 1 L15 15 L6 15 L1 8 Z', { x: ix, y: iyTop, color: GOLD });
       p1.drawEllipse({ x: ix + 5, y: iyTop - 8, xScale: 1.5, yScale: 1.5, color: BLACK });
-    } else {
+    } else if (kind === 'size') {
       p1.drawSvgPath('M1 1 L15 1 L15 15 L1 15 Z M1 8 L15 8 M8 1 L8 15', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
+    } else if (kind === 'lot') {
+      // a parcel: an irregular outline
+      p1.drawSvgPath('M2 4 L13 1 L15 12 L5 15 Z', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
+    } else {
+      // zoning: a stacked-layers mark
+      p1.drawSvgPath('M8 1 L15 5 L8 9 L1 5 Z M1 9 L8 13 L15 9', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
     }
     const v = sanitize(value) || '—';
     const vs = fitSize(v, osw, cw - 44, 15, 8);
-    p1.drawText(v, { x: cx + 36, y: tileY + tileH / 2 - vs * 0.34, size: vs, font: osw, color: WHITE });
+    p1.drawText(v, { x: cx + 36, y: cy + tileH / 2 - vs * 0.34, size: vs, font: osw, color: WHITE });
   };
-  tile(rightX, half, 'price', input.statPrice);
-  tile(rightX + half, half, 'size', input.statSize);
+  tile(rightX, tileY, half, 'price', input.statPrice);
+  tile(rightX + half, tileY, half, 'size', input.statSize);
+  extra.forEach((t, i) => tile(rightX + (extra.length === 1 ? 0 : i * half), tilesBottom, extra.length === 1 ? rightW : half, t.kind, t.value));
 
   // Right: location map
-  const mapTop = tileY - 12, mapBottom = 116, mapH = mapTop - mapBottom;
+  const mapTop = tilesBottom - 12, mapBottom = 140, mapH = mapTop - mapBottom;   // divider sits at 128
   if (map) { const r = drawContain(p1, map, rightX, mapBottom, rightW, mapH); p1.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: LINE, borderWidth: 1 }); }
   else { p1.drawRectangle({ x: rightX, y: mapBottom, width: rightW, height: mapH, color: rgb(0.95, 0.96, 0.97), borderColor: LINE, borderWidth: 1 }); p1.drawText('Location map', { x: rightX + rightW / 2 - 30, y: mapBottom + mapH / 2, size: 10, font: body, color: rgb(0.6, 0.63, 0.67) }); }
 
@@ -348,38 +359,45 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   // ── PAGE 2 — adaptive: only added when there's a gallery / floor plan / aerial ─
   let p2: PDFPage | null = null;
   const p2blocks: Array<{ title: string; weight: number; border: boolean; natural?: (w: number) => number; draw: (x: number, y: number, w: number, h: number) => Rect }> = [];
+  // Order is deliberate: the numbers a site selector screens on come first, then the
+  // photos, then the plan, then where it sits.
+  if (input.tradeArea?.tiles?.length) {
+    const ta = input.tradeArea;
+    p2blocks.push({
+      title: 'BY THE NUMBERS', weight: 1.0, border: false,
+      natural: () => 60 + (ta.caption ? 17 : 0),
+      draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body),
+    });
+  }
   if (gallery.length === 1) {
     // A single gallery photo reads far better as a full-width banner (contained at
     // its own aspect) than as a small centred 4:3 cell — so the rendering is legible.
     const g = gallery[0];
     p2blocks.push({
-      title: 'PROPERTY GALLERY', weight: 2.2, border: true,
+      title: 'PHOTOS', weight: 2.2, border: true,
       natural: (w) => w * (g.height / g.width),
       draw: (x, y, w, h) => drawContain(p2!, g, x, y, w, h),
     });
   } else if (gallery.length) p2blocks.push({
-    title: 'PROPERTY GALLERY', weight: 1.9, border: false,
+    title: 'PHOTOS', weight: 1.9, border: false,
     // The grid holds the photos' 4:3, so it can't use a taller box — say so up front
     // and the leftover goes to the map instead of becoming a hole in the page.
     natural: (w) => photoGridHeight(gallery.length, w),
     draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, LINE),
   });
   // Floor plan is the key page-2 visual — weight it to fill most of the width so the
-  // site plan is actually legible rather than a small centred letterbox. The area map
-  // is secondary (page 1 already carries a location map), so it takes the smaller share.
+  // site plan is actually legible rather than a small centred letterbox.
   if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
-  // Trade-area demographics (traffic counts, population, jobs) sit above the aerial when
-  // supplied. The strip is only ~60pt tall, so it never crowds the map out — and site
-  // selectors read the numbers and the labelled aerial together.
-  if (input.tradeArea?.tiles?.length) {
-    const ta = input.tradeArea;
+  // Where it sits. A hand-made aerial (lot outlined) wins over the generated one, and
+  // there is only ever one: a single aerial at full width reads; two at half size don't.
+  const siteAerial = (await Promise.all((input.siteAerials || []).slice(0, 1).map(embed))).find((g): g is PDFImage => !!g);
+  if (siteAerial) {
     p2blocks.push({
-      title: 'TRADE AREA', weight: 1.0, border: false,
-      natural: () => 60 + (ta.caption ? 17 : 0),
-      draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body),
+      title: 'SITE AERIAL', weight: 1.6, border: true,
+      natural: (w) => w * (siteAerial.height / siteAerial.width),
+      draw: (x, y, w, h) => drawContain(p2!, siteAerial, x, y, w, h),
     });
-  }
-  if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
+  } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
     const r = drawContain(p2!, aerial!, x, y, w, h);
     drawMapLabels(p2!, r, aerial!, input.aerialLabels, labelFont);
     return r;

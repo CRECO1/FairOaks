@@ -124,7 +124,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return blob ? Buffer.from(await blob.arrayBuffer()) : null;
   };
   const isImg = (f: { category?: string; file_type?: string }) => { const ft = (f.file_type || '').toLowerCase(); return f.category === 'photo' || ft.startsWith('image/') || ft.includes('png') || ft.includes('jpeg') || ft.includes('jpg') || ft.includes('webp'); };
-  const photoRows = rows.filter(f => (f.category === 'photo' || (f.file_type || '').startsWith('image/')) && isImg(f));
+  const allPhotoRows = rows.filter(f => (f.category === 'photo' || (f.file_type || '').startsWith('image/')) && isImg(f));
+  // Hand-made aerials (lot outlined, highways marked) are maps, not photos: they go to
+  // the page-2 aerial slot instead of the cover or the photo grid. Recognised by name —
+  // "…aerial…" in the file the agent uploaded.
+  const isAerial = (f: { storage_path: string }) => /aerial/i.test(f.storage_path);
+  const aerialRows = allPhotoRows.filter(isAerial);
+  // A listing whose only images are aerials still needs a cover, so keep them as photos then.
+  const photoRows = allPhotoRows.some(f => !isAerial(f)) ? allPhotoRows.filter(f => !isAerial(f)) : allPhotoRows;
 
   // Hero → normalize to the hero box aspect (612:372) as JPEG (embeddable + capped size).
   let hero: { bytes: Uint8Array; png: boolean } | null = null;
@@ -135,6 +142,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   for (const f of photoRows.slice(1, 7)) {
     const b = await dl(f); if (!b) continue;
     try { const j = await sharp(b).resize(640, 480, { fit: 'cover', position: 'centre' }).jpeg({ quality: 82 }).toBuffer(); galleryPhotos.push({ bytes: new Uint8Array(j), png: false }); } catch { /* skip */ }
+  }
+
+  // Site aerials, kept at their own aspect (they carry drawn labels that a crop would cut).
+  const siteAerials: Array<{ bytes: Uint8Array; png: boolean }> = [];
+  if (photoRows !== allPhotoRows) for (const f of aerialRows.slice(0, 2)) {
+    const b = await dl(f); if (!b) continue;
+    try { const j = await sharp(b).resize(1600, 1600, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 86 }).toBuffer(); siteAerials.push({ bytes: new Uint8Array(j), png: false }); } catch { /* skip */ }
   }
 
   // Floor plan (first floor_plan image, contained as-is).
@@ -153,6 +167,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     : isSale ? money(ap)
     : isRate ? `$${ap.toFixed(2)} /SF/YR` : `${money(ap)} /YR`;
   const statSize = L.sq_ft ? `${Number(L.sq_ft).toLocaleString()} SF` : (L.lot_size ? String(L.lot_size) : '—');
+  // Second row of tiles. lot_size is acres when it is a bare number; zoning prints its
+  // code only ("I-1 General Industrial" → "I-1") so it fits a tile.
+  const lotNum = Number(String(L.lot_size ?? '').replace(/[^0-9.]/g, ''));
+  const statLot = L.sq_ft && Number.isFinite(lotNum) && lotNum > 0
+    ? (/[a-z]/i.test(String(L.lot_size)) ? String(L.lot_size) : `${lotNum.toFixed(2)} AC`) : '';
+  const statZoning = String(L.zoning ?? '').trim().split(/\s+/)[0].slice(0, 12);
 
   const address = stripInlineTags([L.address, L.city, L.state, L.zip].filter(Boolean).join(', ') || L.name || 'Property');
   const residential = L.business_unit === 'residential';
@@ -174,9 +194,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .update({ latitude: g.lat, longitude: g.lon, geocoded_at: new Date().toISOString() }).eq('id', id);
     }
   }
+  // Page-1 map box: 272pt wide; 192pt tall under one row of tiles, 144pt under two.
+  const mapPx = (statLot || statZoning) ? 288 : 384;
   const [mapBytes, aerialBytes, aerialLabels] = await Promise.all([
-    googleStaticMap({ center: address, zoom: '13', size: '272x214', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
-      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: 428 }) : null)),
+    googleStaticMap({ center: address, zoom: '13', size: (statLot || statZoning) ? '272x144' : '272x192', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: mapPx }) : null)),
     googleStaticMap({ center: address, zoom: '16', size: '576x444', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
       .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }) : null)),
     // Google's satellite tiles come labelled; the USGS ones don't, so name the roads
@@ -221,7 +243,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     tradeArea: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length
       ? { tiles: L.trade_area.tiles.slice(0, 4).map((t: { value?: unknown; label?: unknown }) => ({ value: String(t.value ?? ''), label: String(t.label ?? '') })), caption: L.trade_area.caption ? String(L.trade_area.caption) : undefined }
       : null,
-    statPrice, statSize,
+    statPrice, statSize, statLot, statZoning,
+    siteAerials,
     agentNames,
     contacts,
     hero, galleryPhotos, mapBytes, aerialBytes, aerialLabels, floorPlan, iabsPdf,
