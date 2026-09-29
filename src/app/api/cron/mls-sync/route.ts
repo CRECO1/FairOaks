@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runMlsSync } from '@/lib/mls-sync';
+import { SYNC_FILTER } from '@/lib/sabor-reso';
 
 export async function GET(req: NextRequest) {
   // Verify the cron secret
@@ -26,17 +27,19 @@ export async function GET(req: NextRequest) {
     const deltaMs = 35 * 60 * 1000;
     const since   = new Date(Date.now() - deltaMs).toISOString().replace(/\.\d+Z$/, 'Z');
 
-    const deltaFilter =
-      `(StandardStatus eq ODataService.StandardStatus'ACTIVE' or ` +
-      `StandardStatus eq ODataService.StandardStatus'ACTIVE_UNDER_CONTRACT') and ` +
-      `ModificationTimestamp gt ${since}`;
+    // Pull every recently-changed listing — active states AND the off-market
+    // transitions (SYNC_FILTER). A listing that sold / expired / withdrew in this
+    // window is fetched and, on upsert, flipped to sold/off-market, so it drops off
+    // the active feed. That replaces the old (broken) "retire listings absent from
+    // the feed" sweep with SABOR's positive status signal.
+    const deltaFilter = `${SYNC_FILTER} and ModificationTimestamp gt ${since}`;
 
     // Run the sync IN-PROCESS — not via fetch(`${origin}/api/mls/sync`). When Vercel
     // fires the cron, `origin` is the PROTECTED *.vercel.app deployment URL, so
     // Deployment Protection intercepted that internal call and every scheduled run
     // failed with `sync failed: { protection: … }` (the data froze for 68 days).
     // Calling the shared function directly removes the HTTP hop entirely.
-    const result = await runMlsSync(deltaFilter, { markStale: false });
+    const result = await runMlsSync(deltaFilter);
 
     console.log('[MLS cron] delta sync complete (since %s):', since, result);
     return NextResponse.json({ ...result, deltaFilter, since });

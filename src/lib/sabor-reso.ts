@@ -113,6 +113,21 @@ export function statusFilter(statuses: string[]): string {
 /** Active + Pending (under contract) listings */
 export const ACTIVE_FILTER = statusFilter(['ACTIVE', 'ACTIVE_UNDER_CONTRACT']);
 
+/**
+ * Active states PLUS the off-market transitions. The delta sync uses this — not just
+ * ACTIVE — so a listing that just sold / expired / withdrew is pulled within the
+ * window and its status is corrected on upsert (CLOSED→sold, EXPIRED/CANCELED/
+ * WITHDRAWN→off-market via resoPropertyToListing). That's the reliable way to retire
+ * a listing, versus inferring absence from an incomplete, 10k-capped active feed.
+ */
+export const SYNC_FILTER = statusFilter([
+  'ACTIVE', 'ACTIVE_UNDER_CONTRACT', 'COMING_SOON', 'HOLD',
+  'CLOSED', 'EXPIRED', 'CANCELED', 'WITHDRAWN',
+]);
+
+/** Just the off-market transitions — used to retire a backlog of already-sold listings. */
+export const OFF_MARKET_FILTER = statusFilter(['CLOSED', 'EXPIRED', 'CANCELED', 'WITHDRAWN']);
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function authenticate(): Promise<string> {

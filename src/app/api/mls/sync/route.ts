@@ -88,9 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     const filter = buildFilter(overrideFilter);
-    // A full (no-override) sync is authoritative for what's active, so it may
-    // retire listings no longer in the feed; a delta override must not.
-    const result = await runMlsSync(filter, { markStale: !overrideFilter });
+    const result = await runMlsSync(filter);
     return NextResponse.json(result);
   } catch (err: any) {
     console.error('[MLS sync] error:', err);

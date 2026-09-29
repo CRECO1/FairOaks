@@ -24,13 +24,17 @@ function adminClient() {
 export interface MlsSyncResult { synced: number; failed: number; total: number; filter: string }
 
 /**
- * @param filter    OData $filter string (already built by the caller).
- * @param markStale When true, MLS listings we hold that are NOT in this feed are
- *                  flipped to off-market. Only safe for a FULL sync — never for a
- *                  delta (a delta only contains recently-modified listings, so
- *                  everything else would be wrongly retired).
+ * Fetch every listing matching `filter` from SABOR and upsert it. Each listing's
+ * status is set from its StandardStatus on upsert (see resoPropertyToListing), so
+ * INCLUDING the off-market statuses in the filter (SYNC_FILTER / OFF_MARKET_FILTER)
+ * is what retires sold / expired listings. There is deliberately no separate
+ * "mark listings absent from the feed as stale" pass — that was unreliable: the feed
+ * is capped at 10k records, so absence never actually meant off-market, and the
+ * 10k-key NOT-IN it built blew past the query-length limit and silently no-op'd.
+ *
+ * @param filter OData $filter string (already built by the caller).
  */
-export async function runMlsSync(filter: string, opts: { markStale?: boolean } = {}): Promise<MlsSyncResult> {
+export async function runMlsSync(filter: string): Promise<MlsSyncResult> {
   // ── Fetch all matching properties from SABOR ──────────────────────────────
   const properties = await searchPropertiesAll(
     { filter, orderby: 'ModificationTimestamp desc', top: 200 },
@@ -64,27 +68,6 @@ export async function runMlsSync(filter: string, opts: { markStale?: boolean } =
       failed += chunk.length;
     } else {
       synced += chunk.length;
-    }
-  }
-
-  // ── Mark listings no longer in the SABOR feed as off-market ──────────────
-  // Only for MLS-sourced listings — never touch manually entered ones, and only
-  // on a full sync (see markStale note above).
-  if (opts.markStale && listingIds.length > 0) {
-    const { data: stale } = await supabase
-      .from('listings')
-      .select('id, listing_key, title')
-      .eq('source', 'mls')
-      .in('status', ['active', 'pending'])
-      .not('listing_key', 'in', `(${listingIds.filter(k => /^[\w\-]+$/.test(k)).map(k => `'${k}'`).join(',')})`)  // only allow safe alphanumeric/dash MLS IDs
-      .limit(500);
-
-    if (stale && stale.length > 0) {
-      const staleIds = stale.map((r: { id: string }) => r.id);
-      await supabase
-        .from('listings')
-        .update({ status: 'off-market', synced_at: new Date().toISOString() })
-        .in('id', staleIds);
     }
   }
 
