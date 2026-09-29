@@ -11,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { runMlsSync } from '@/lib/mls-sync';
 
 export async function GET(req: NextRequest) {
   // Verify the cron secret
@@ -30,27 +31,15 @@ export async function GET(req: NextRequest) {
       `StandardStatus eq ODataService.StandardStatus'ACTIVE_UNDER_CONTRACT') and ` +
       `ModificationTimestamp gt ${since}`;
 
-    // Delegate to the sync route so logic stays in one place
-    const origin  = req.nextUrl.origin;
-    const syncRes = await fetch(`${origin}/api/mls/sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Use a dedicated internal secret — never re-use the service role key as a transport token
-        'x-internal-key': process.env.INTERNAL_SYNC_SECRET ?? '',
-      },
-      body: JSON.stringify({ filter: deltaFilter }),
-    });
+    // Run the sync IN-PROCESS — not via fetch(`${origin}/api/mls/sync`). When Vercel
+    // fires the cron, `origin` is the PROTECTED *.vercel.app deployment URL, so
+    // Deployment Protection intercepted that internal call and every scheduled run
+    // failed with `sync failed: { protection: … }` (the data froze for 68 days).
+    // Calling the shared function directly removes the HTTP hop entirely.
+    const result = await runMlsSync(deltaFilter, { markStale: false });
 
-    const data = await syncRes.json();
-
-    if (!syncRes.ok) {
-      console.error('[MLS cron] sync failed:', data);
-      return NextResponse.json({ error: 'MLS sync failed.' }, { status: 500 });
-    }
-
-    console.log('[MLS cron] delta sync complete (since %s):', since, data);
-    return NextResponse.json({ ...data, deltaFilter, since });
+    console.log('[MLS cron] delta sync complete (since %s):', since, result);
+    return NextResponse.json({ ...result, deltaFilter, since });
   } catch (err: any) {
     console.error('[MLS cron] error:', err);
     return NextResponse.json({ error: 'MLS sync failed.' }, { status: 500 });

@@ -19,20 +19,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getCrmAdmin } from '@/lib/crm-auth';
-import {
-  searchPropertiesAll,
-  getMediaBatch,
-  resoPropertyToListing,
-  ACTIVE_FILTER,
-} from '@/lib/sabor-reso';
-
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
+import { ACTIVE_FILTER } from '@/lib/sabor-reso';
+import { runMlsSync } from '@/lib/mls-sync';
 
 function buildFilter(overrideFilter?: string): string {
   if (overrideFilter) return overrideFilter;
@@ -100,77 +88,10 @@ export async function POST(req: NextRequest) {
     }
 
     const filter = buildFilter(overrideFilter);
-
-    // ── Fetch all matching properties from SABOR ──────────────────────────────
-    const properties = await searchPropertiesAll(
-      { filter, orderby: 'ModificationTimestamp desc', top: 200 },
-      50 // max 50 pages = up to 10,000 records per sync
-    );
-
-    if (properties.length === 0) {
-      return NextResponse.json({ synced: 0, updated: 0, skipped: 0 });
-    }
-
-    // ── Fetch media for all listings in batches ───────────────────────────────
-    const listingIds = properties.map(p => p.ListingId);
-    const mediaMap = await getMediaBatch(listingIds);
-
-    // ── Upsert into Supabase ──────────────────────────────────────────────────
-    const supabase = adminClient();
-    let synced = 0;
-    let failed = 0;
-
-    // Process in chunks of 50 to stay within Supabase payload limits
-    const CHUNK = 50;
-    for (let i = 0; i < properties.length; i += CHUNK) {
-      const chunk = properties.slice(i, i + CHUNK);
-      const rows = chunk.map(p => {
-        const images = mediaMap.get(p.ListingId) ?? [];
-        return resoPropertyToListing(p, images);
-      });
-
-      const { error } = await supabase
-        .from('listings')
-        .upsert(rows, {
-          onConflict: 'listing_key',
-          ignoreDuplicates: false,
-        });
-
-      if (error) {
-        console.error('[MLS sync] upsert error:', error);
-        failed += chunk.length;
-      } else {
-        synced += chunk.length;
-      }
-    }
-
-    // ── Mark listings no longer in SABOR feed as off-market ──────────────────
-    // Only for MLS-sourced listings — never touch manually entered ones
-    if (listingIds.length > 0 && !overrideFilter) {
-      // Find MLS listings we have that are NOT in the current feed
-      const { data: stale } = await supabase
-        .from('listings')
-        .select('id, listing_key, title')
-        .eq('source', 'mls')
-        .in('status', ['active', 'pending'])
-        .not('listing_key', 'in', `(${listingIds.filter(k => /^[\w\-]+$/.test(k)).map(k => `'${k}'`).join(',')})`)  // only allow safe alphanumeric/dash MLS IDs
-        .limit(500);
-
-      if (stale && stale.length > 0) {
-        const staleIds = stale.map((r: any) => r.id);
-        await supabase
-          .from('listings')
-          .update({ status: 'off-market', synced_at: new Date().toISOString() })
-          .in('id', staleIds);
-      }
-    }
-
-    return NextResponse.json({
-      synced,
-      failed,
-      total: properties.length,
-      filter,
-    });
+    // A full (no-override) sync is authoritative for what's active, so it may
+    // retire listings no longer in the feed; a delta override must not.
+    const result = await runMlsSync(filter, { markStale: !overrideFilter });
+    return NextResponse.json(result);
   } catch (err: any) {
     console.error('[MLS sync] error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
