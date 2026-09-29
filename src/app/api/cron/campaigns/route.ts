@@ -82,6 +82,43 @@ function computeNextSend(frequency: string): string | null {
   return now.toISOString();
 }
 
+/**
+ * Daily email cap, per workspace.
+ *
+ * The CRECO Resend account is on the free plan: 100 emails a DAY, and that quota is
+ * shared with everything else CRECO sends — website lead alerts, the auto-reply to an
+ * inquiry, e-signature requests. A campaign blast that spends the whole allowance can
+ * make a lead alert or a lease signature request fail. So campaigns stop at a cap that
+ * leaves headroom, and whatever is left over rolls to the next business morning on its
+ * own: that is what "send in batches" means here, with nobody having to remember it.
+ *
+ * Override per workspace with CAMPAIGN_DAILY_CAP_COMMERCIAL / _RESIDENTIAL (0 = no cap).
+ * Raise or remove the commercial cap when the Resend plan is upgraded.
+ */
+const DAILY_EMAIL_CAP: Record<string, number> = { commercial: 75 };
+
+function dailyCapFor(businessUnit: string | null | undefined): number | null {
+  const unit = String(businessUnit ?? '');
+  const env = process.env[`CAMPAIGN_DAILY_CAP_${unit.toUpperCase()}`];
+  const n = env !== undefined && env !== '' ? Number(env) : DAILY_EMAIL_CAP[unit];
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * The same time of day on the next business day (Mon–Fri, Central). Keeping the time
+ * of day — seconds included — preserves the order recipients were queued in, so a
+ * deferred batch goes out in the same priority order the next morning.
+ */
+function deferToNextSendDay(prev: string | null): string {
+  const d = new Date(prev ?? Date.now());
+  const weekday = (x: Date) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(x);
+  do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getTime() <= Date.now() || ['Sat', 'Sun'].includes(weekday(d)));
+  return d.toISOString();
+}
+
+/** Resend refusing on volume (daily quota or rate limit) rather than on the message itself. */
+const isQuotaError = (msg: string | null) => /quota|rate.?limit|too many requests|\b429\b/i.test(msg ?? '');
+
 export async function GET(req: NextRequest) {
   // Secure the cron endpoint
   const cronSecret = process.env.CRON_SECRET;
@@ -108,6 +145,9 @@ export async function GET(req: NextRequest) {
     .is('client.unsubscribed_at', null)
     .not('next_send_at', 'is', null)
     .lte('next_send_at', now)
+    // Oldest first, so a queue that spans several runs (or several days, under the
+    // daily cap) goes out in the order it was scheduled.
+    .order('next_send_at', { ascending: true })
     .limit(50);
 
   if (fetchErr) {
@@ -153,6 +193,22 @@ export async function GET(req: NextRequest) {
 
   let sent = 0;
   let failed = 0;
+  let deferred = 0;
+
+  // How many campaign emails each capped workspace has already sent today. Resend's
+  // daily allowance runs on the UTC day, so the count does too.
+  const sentToday = new Map<string, number>();
+  const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
+  for (const unit of new Set((enrollments as any[]).map(e => String(e.campaign?.business_unit ?? '')))) {
+    if (dailyCapFor(unit) === null) continue;
+    const { count } = await supabase
+      .from('crm_campaign_sends')
+      .select('id, campaign:crm_campaigns!inner(business_unit)', { count: 'exact', head: true })
+      .eq('status', 'sent').eq('type', 'email')
+      .gte('sent_at', dayStart.toISOString())
+      .eq('campaign.business_unit', unit);
+    sentToday.set(unit, count ?? 0);
+  }
 
   for (const enrollment of (enrollments as any[])) {
     const campaign = enrollment.campaign;
@@ -215,6 +271,18 @@ export async function GET(req: NextRequest) {
       windowDays > 0 &&
       !!priorSend &&
       Date.now() - new Date(priorSend).getTime() < windowDays * 86400_000;
+
+    // Daily cap reached for this workspace: leave the recipient queued for the next
+    // business morning instead of sending. Nothing is logged as a send because
+    // nothing was attempted.
+    const unit = String(campaign.business_unit ?? '');
+    const cap = dailyCapFor(unit);
+    if (cap !== null && campaign.type === 'email' && client.email && !withinWindow && (sentToday.get(unit) ?? 0) >= cap) {
+      await supabase.from('crm_campaign_enrollments')
+        .update({ next_send_at: deferToNextSendDay(enrollment.next_send_at) }).eq('id', enrollment.id);
+      deferred++;
+      continue;
+    }
 
     try {
       if (withinWindow) {
@@ -296,6 +364,18 @@ export async function GET(req: NextRequest) {
     // Stamp last_touched_at on the client so the contact shows as recently touched
     if (status === 'sent') {
       await supabase.from('crm_clients').update({ last_touched_at: now }).eq('id', client.id);
+      if (campaign.type === 'email') sentToday.set(unit, (sentToday.get(unit) ?? 0) + 1);
+    }
+
+    // Resend refused on volume. The message was fine, so the recipient must not be
+    // dropped: keep them enrolled for the next business morning, and stop sending for
+    // this workspace today — every further attempt would fail the same way.
+    if (status === 'failed' && campaign.type === 'email' && isQuotaError(errorMessage)) {
+      await supabase.from('crm_campaign_enrollments')
+        .update({ next_send_at: deferToNextSendDay(enrollment.next_send_at) }).eq('id', enrollment.id);
+      sentToday.set(unit, Math.max(sentToday.get(unit) ?? 0, cap ?? Number.MAX_SAFE_INTEGER));
+      failed++; deferred++;
+      continue;
     }
 
     // Advance next_send_at — for one-time campaigns, deactivate the enrollment
@@ -323,5 +403,5 @@ export async function GET(req: NextRequest) {
     else if (status === 'failed') failed++;
   }
 
-  return NextResponse.json({ processed: enrollments.length, sent, failed });
+  return NextResponse.json({ processed: enrollments.length, sent, failed, deferred });
 }
