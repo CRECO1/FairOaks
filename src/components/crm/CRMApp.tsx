@@ -671,6 +671,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callViewAgentId, setCallViewAgentId] = useState('');
   const [callViewTasks, setCallViewTasks] = useState<CRMTask[]>([]);
   const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls' | 'leases'>('tasks');
+  // Dashboard: the reporting charts collapse into a "Numbers" section so the
+  // action center (what needs attention today/this week) leads. Default closed.
+  const [showNumbers, setShowNumbers] = useState(false);
 
   // Kanban drag state
   const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
@@ -4034,6 +4037,132 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Dashboard ── */}
           {page === 'dashboard' && (
             <div>
+              {/* ── Action center: what needs YOU today / this week (your own open
+                     tasks + follow-ups + deals). Leads the dashboard; the charts
+                     sit in the collapsed "Numbers" section below. ── */}
+              {(() => {
+                const pad = (n: number) => String(n).padStart(2, '0');
+                const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                const addDays = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+                const localDate = (ymd: string) => new Date(ymd + 'T00:00:00');
+                const t0 = iso(new Date());
+                const weekEnd = addDays(7);
+                const staleCut = addDays(-14);
+
+                // allTasks is already the current user's own OPEN tasks (agent_id = me,
+                // completed_at IS NULL) — no extra scoping needed. Lead follow-ups are
+                // just crm_tasks with type 'follow_up', so they're already in here.
+                const overdue = allTasks.filter(t => t.due_date && t.due_date < t0);
+                const dueToday = allTasks.filter(t => t.due_date === t0);
+                const thisWeek = allTasks.filter(t => t.due_date && t.due_date > t0 && t.due_date <= weekEnd);
+                // Deals are team-wide for admins, so scope to mine explicitly.
+                const myDeals = deals.filter(d => d.agent_id === profile.id || (d.assigned_agent_ids ?? []).includes(profile.id));
+                const inContract = myDeals.filter(d => d.stage === 'In Contract');
+                const stalled = myDeals.filter(d => d.stage === 'Active' && d.last_touch && d.last_touch < staleCut);
+
+                const hr = new Date().getHours();
+                const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
+                const nothing = !overdue.length && !dueToday.length && !thisWeek.length && !inContract.length && !stalled.length;
+
+                const cname = (id?: string) => { const c = clients.find(x => x.id === id); return c ? `${c.first_name} ${c.last_name}` : ''; };
+                const tIcon = (t: CRMTask) => t.type === 'call' ? '📞' : t.type === 'email' ? '✉️' : '🔔';
+                const openTask = (t: CRMTask) => { const c = clients.find(x => x.id === t.client_id); if (c) { setPage('contacts'); setActiveClient(c); } else { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); } };
+                const allTasksLink = <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>All tasks →</button>;
+                const head = (color: string, label: string, right?: React.ReactNode) => (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
+                    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color, fontWeight: 700 }}>{label}</div>
+                    {right}
+                  </div>
+                );
+                const taskRow = (t: CRMTask, badge: React.ReactNode) => (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>{tIcon(t)}</span>
+                    <button onClick={() => openTask(t)} style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                      {cname(t.client_id) && <div style={{ fontSize: 11, color: '#6b7280' }}>{cname(t.client_id)}</div>}
+                    </button>
+                    {badge}
+                    <button onClick={() => completeTask(t.id)} title="Mark done" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#16a34a', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
+                  </div>
+                );
+                const dealRow = (d: Deal, sub: string, bg: string, bd: string) => (
+                  <button key={d.id} onClick={() => { setPage('deals'); openDeal(d); }} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: bg, border: `1px solid ${bd}`, borderRadius: 8, cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans',sans-serif" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.client}{d.property ? ` — ${d.property}` : ''}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280' }}>{sub}</div>
+                    </div>
+                    {d.value > 0 && <span style={{ fontSize: 12, color: '#6b7280', flexShrink: 0 }}>{d.value >= 1e6 ? `$${(d.value / 1e6).toFixed(1)}M` : `$${Math.round(d.value / 1e3)}K`}</span>}
+                  </button>
+                );
+
+                return (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 26 : 32, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>{greet}, {profile.first_name}.</div>
+                      <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+                        {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                        {' · '}
+                        {nothing ? "you're all caught up 🎉" : [overdue.length ? `${overdue.length} overdue` : '', `${dueToday.length} due today`, thisWeek.length ? `${thisWeek.length} this week` : ''].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+
+                    {nothing && (
+                      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '22px 20px', textAlign: 'center', marginBottom: 16 }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>🎉 Nothing needs your attention right now.</div>
+                        <div style={{ fontSize: 13, color: '#15803d', marginTop: 4 }}>No tasks due, and your active deals are current.</div>
+                      </div>
+                    )}
+
+                    {overdue.length > 0 && (
+                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fecaca', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('#dc2626', `⚠️ Overdue — ${overdue.length}`, allTasksLink)}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {overdue.slice(0, 6).map(t => { const dOd = Math.max(1, Math.floor((Date.now() - localDate(t.due_date).getTime()) / 864e5)); return taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{dOd}d</span>); })}
+                          {overdue.length > 6 && <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>+{overdue.length - 6} more overdue</div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {dueToday.length > 0 && (
+                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', borderLeft: '4px solid #c9922c', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('#6b7280', `📋 Due today — ${dueToday.length}`, allTasksLink)}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {dueToday.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#fef3c7', color: '#92400e', fontWeight: 700, flexShrink: 0 }}>Today</span>))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(thisWeek.length > 0 || inContract.length > 0) && (
+                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('#6b7280', '🗓 This week')}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {inContract.map(d => dealRow(d, 'In contract — keep it moving to close', '#fef9f0', '#fde68a'))}
+                          {thisWeek.map(t => taskRow(t, <span key="b" style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#f3f4f6', color: '#6b7280', fontWeight: 700, flexShrink: 0 }}>{localDate(t.due_date).toLocaleDateString('en-US', { weekday: 'short' })}</span>))}
+                        </div>
+                      </div>
+                    )}
+
+                    {stalled.length > 0 && (
+                      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fed7aa', padding: '16px 20px', marginBottom: 14 }}>
+                        {head('#c2410c', `🕗 Deals gone quiet — ${stalled.length}`)}
+                        <div style={{ marginBottom: 8, fontSize: 12, color: '#6b7280' }}>Active deals with no touch in 2+ weeks.</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {stalled.slice(0, 5).map(d => dealRow(d, `Last touch ${d.last_touch ? new Date(d.last_touch).toLocaleDateString() : '—'}`, '#fff7ed', '#fed7aa'))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── Numbers — reporting charts, collapsed by default so the action
+                     center above stays the focus. ── */}
+              <button onClick={() => setShowNumbers(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: '#fff', border: '1px solid #e0e0e0', borderRadius: 10, padding: '12px 18px', marginBottom: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                <span style={{ fontSize: 13, color: '#6b7280', transition: 'transform .15s', transform: showNumbers ? 'rotate(90deg)' : 'none' }}>▸</span>
+                <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700 }}>📊 Numbers — pipeline, commissions & trends</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#9ca3af' }}>{showNumbers ? 'Hide' : 'Show'}</span>
+              </button>
+              {showNumbers && (<>
               {/* Deal stat cards */}
               <div className="stats-4col" style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: isMobile ? 10 : 14, marginBottom: 14 }}>
                 {[
@@ -4253,6 +4382,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 );
               })()}
+              </>)}
 
               {/* LXP Expiration Alert widget */}
               {(() => {
@@ -4376,39 +4506,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         +{neverTouchedTenants.length - 5} more — <button onClick={() => { setPage('contacts'); setContactTypeFilter('Tenant'); setContactSort('never'); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline', fontFamily: "'DM Sans',sans-serif" }}>view all</button>
                       </div>
                     )}
-                  </div>
-                );
-              })()}
-
-              {/* Overdue Tasks widget */}
-              {(() => {
-                const overdue = allTasks.filter(t => t.due_date && t.due_date < today());
-                if (overdue.length === 0) return null;
-                return (
-                  <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fecaca', padding: '16px 20px', marginBottom: 26 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#dc2626', fontWeight: 600 }}>
-                        ⚠️ Overdue Tasks — {overdue.length}
-                      </div>
-                      <button onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>View All Tasks →</button>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {overdue.slice(0, 5).map(t => {
-                        const client = clients.find(c => c.id === t.client_id);
-                        const daysOverdue = Math.floor((Date.now() - new Date(t.due_date!).getTime()) / (1000 * 60 * 60 * 24));
-                        return (
-                          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                            <span style={{ fontSize: 14 }}>{t.type === 'call' ? '📞' : t.type === 'email' ? '✉️' : '📝'}</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                              {client && <div style={{ fontSize: 11, color: '#6b7280' }}>{client.first_name} {client.last_name}</div>}
-                            </div>
-                            <span style={{ fontSize: 12, padding: '2px 9px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{daysOverdue}d overdue</span>
-                            <button onClick={() => completeTask(t.id)} style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#16a34a', fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", flexShrink: 0 }}>Done ✓</button>
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
                 );
               })()}
