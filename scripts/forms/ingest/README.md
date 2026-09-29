@@ -77,6 +77,38 @@ Rules that keep biting:
 Verify by stamping **every** field with the editor's own math and rasterising the
 result before you publish — see `scripts/forms/txr_compensation/build_fields.py`.
 
+## Verifying a form is still a form
+
+`lib/verify_pdf.mjs` is the single source of truth for both the auditor
+(`audit_forms.mjs`, what is already published) and the publisher's gate (what is
+about to be). It counts, per page, the glyphs drawn and the white boxes painted:
+sparse text **and** white fills is an overlay with the form deleted (DAMAGED);
+sparse text alone is often a real signature page or exhibit (REVIEW).
+
+It reads content from **all** of a page's streams and follows the **Form
+XObjects** the page draws, because neither is optional:
+
+- A forms portal (TCPDF) imports the blank as a template and the page does
+  nothing but `/TPL1 Do`. Counting only the page stream scored such a page at
+  zero — TXR-2404 read 0 chars where `pdftotext` read 1539/2016/1080.
+- `/Contents` can be one stream, an array of streams, **or an indirect reference
+  to that array**. Treating the unresolved value as a single stream decoded a
+  PDFArray to '' — TREC 16-7 page 2 has seven streams and 1,582 characters and
+  reported `0 chars, 1 stream`.
+
+Both looked like the checker merely being fussy about healthy forms, which is
+why they sat. The second is the dangerous one: a genuinely damaged page reading
+0 chars with 0 white fills is downgraded from DAMAGED to REVIEW, and REVIEW does
+not fail the build.
+
+```bash
+node scripts/forms/ingest/selftest.mjs      # after touching verify_pdf.mjs
+```
+
+Four fixtures, built in-process: an overlay with the form deleted (must stay
+DAMAGED), a genuinely thin exhibit page (REVIEW), a form whose body is inside a
+Form XObject (OK), and a page whose `/Contents` is an indirect array (OK).
+
 ## 3. Publish
 
 ```bash

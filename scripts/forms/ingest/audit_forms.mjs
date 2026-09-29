@@ -121,7 +121,8 @@ if (asJson) {
     console.log(`${icon[r.status] ?? '  ?   '} ${r.name}${where}${r.detail ? ` — ${r.detail}` : ''}`);
     if (r.status !== 'OK' && r.pages?.length) {
       for (const [i, p] of r.pages.entries()) {
-        console.log(`          p${i + 1}: ${p.textChars} chars, ${p.drawnStrings} strings, ${p.whiteFills} white fills, ${p.streams} stream(s)`);
+        console.log(`          p${i + 1}: ${p.textChars} chars, ${p.drawnStrings} strings, ${p.whiteFills} white fills, ${p.streams} stream(s)`
+          + (p.formXObjects ? ` + ${p.formXObjects} form XObject(s)` : ''));
       }
     }
   }

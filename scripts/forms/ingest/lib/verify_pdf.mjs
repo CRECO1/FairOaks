@@ -147,11 +147,86 @@ export function countWhiteFills(text) {
   return count;
 }
 
-/** What a single page draws. */
+/** How deep to follow Form XObjects that themselves draw Form XObjects. */
+const MAX_XOBJECT_DEPTH = 8;
+
+const resolve = (pdf, value) => {
+  try { return value === undefined || value === null ? undefined : pdf.context.lookup(value); }
+  catch { return undefined; }
+};
+
+/**
+ * The content a page draws through its Form XObjects, gathered recursively.
+ *
+ * A page's /Contents is not the whole story. A producer may put the entire form in a
+ * Form XObject and have the page do nothing but `/TPL1 Do` — which is exactly what a
+ * forms portal (TCPDF) does when it imports a blank as a template. Counting only the
+ * page stream scored such a page at ZERO characters, so a perfectly healthy form was
+ * called damaged by the auditor and refused by the publisher. TXR-2404 read 0/0/34
+ * chars while `pdftotext` read 1539/2016/1080, and TREC 16-7 page 2 was reported
+ * empty when it matches TREC's own file exactly.
+ *
+ * Each XObject is counted once per page: a template drawn repeatedly is still one
+ * form, and deduplicating also stops a cyclic /Resources chain from recursing forever.
+ * The `seen` set is per-page, so pages sharing one template each still see it.
+ */
+function xobjectText(pdf, text, resources, seen, depth) {
+  if (depth > MAX_XOBJECT_DEPTH || !resources || typeof resources.get !== 'function') return '';
+  const xobjects = resolve(pdf, resources.get(PDFName.of('XObject')));
+  if (!xobjects || typeof xobjects.get !== 'function') return '';
+
+  const parts = [];
+  for (const m of text.matchAll(/\/([^\s/[\]<>(){}]+)\s+Do\b/g)) {
+    const ref = xobjects.get(PDFName.of(m[1]));
+    if (!ref) continue;
+    const id = ref.toString?.() ?? m[1];
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    const stream = resolve(pdf, ref);
+    // Image XObjects draw no text and have no resources worth following.
+    if (!stream?.dict || typeof stream.dict.get !== 'function') continue;
+    if (stream.dict.get(PDFName.of('Subtype'))?.asString?.() !== '/Form') continue;
+
+    const inner = decode(stream);
+    // A Form XObject may carry its own /Resources; when it does not it inherits the
+    // ones in scope where it was drawn.
+    const innerRes = resolve(pdf, stream.dict.get(PDFName.of('Resources'))) ?? resources;
+    parts.push(inner, xobjectText(pdf, inner, innerRes, seen, depth + 1));
+  }
+  return parts.join('\n');
+}
+
+/**
+ * The content streams of a page, as stream objects.
+ *
+ * /Contents is one stream, an array of streams, OR — and this is what caught us —
+ * an indirect reference TO that array. Treating the unresolved value as a single
+ * stream meant handing `decode` a PDFArray, which yields '': the page read as one
+ * empty stream. TREC 16-7 page 2 has seven streams and 1,582 characters and was
+ * reported as `0 chars, 1 stream`. Worse than a cosmetic miscount — a genuinely
+ * damaged page read as empty-with-no-white-fills lands in REVIEW instead of
+ * DAMAGED, so the auditor exits 0 and the publisher's gate lets it through.
+ */
+function contentStreams(pdf, page) {
+  const resolved = resolve(pdf, page.node.get(PDFName.of('Contents')));
+  const list = resolved instanceof PDFArray ? resolved.asArray() : [resolved];
+  return list.map((entry) => resolve(pdf, entry)).filter(Boolean);
+}
+
+/** What a single page draws, through its own streams and any Form XObjects. */
 export function analysePage(pdf, page) {
-  const contents = page.node.get(PDFName.of('Contents'));
-  const refs = contents instanceof PDFArray ? contents.asArray() : [contents];
-  const text = refs.map((r) => decode(r && pdf.context.lookup(r))).join('\n');
+  const refs = contentStreams(pdf, page);
+  const pageText = refs.map((s) => decode(s)).join('\n');
+
+  // Resources are inheritable from the page tree, so ask the leaf rather than
+  // reading the page dict directly.
+  let resources;
+  try { resources = page.node.Resources?.() ?? resolve(pdf, page.node.get(PDFName.of('Resources'))); }
+  catch { resources = resolve(pdf, page.node.get(PDFName.of('Resources'))); }
+
+  const seen = new Set();
+  const text = pageText + '\n' + xobjectText(pdf, pageText, resources, seen, 0);
 
   const textChars = glyphCount(text);
   const drawnStrings =
@@ -159,7 +234,7 @@ export function analysePage(pdf, page) {
 
   const whiteFills = countWhiteFills(text);
 
-  return { streams: refs.length, textChars, drawnStrings, whiteFills };
+  return { streams: refs.length, formXObjects: seen.size, textChars, drawnStrings, whiteFills };
 }
 
 /**
@@ -195,6 +270,7 @@ export async function analysePdf(bytes) {
 /** One line per page, for error messages and verbose output. */
 export function describePages(pages) {
   return pages
-    .map((p, i) => `  p${i + 1}: ${p.textChars} chars, ${p.drawnStrings} text ops, ${p.whiteFills} white fills, ${p.streams} stream(s)`)
+    .map((p, i) => `  p${i + 1}: ${p.textChars} chars, ${p.drawnStrings} text ops, ${p.whiteFills} white fills, ${p.streams} stream(s)`
+      + (p.formXObjects ? ` + ${p.formXObjects} form XObject(s)` : ''))
     .join('\n');
 }
