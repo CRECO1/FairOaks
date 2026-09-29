@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { runMlsSync } from '@/lib/mls-sync';
-import { SYNC_FILTER } from '@/lib/sabor-reso';
+import { ACTIVE_FILTER } from '@/lib/sabor-reso';
 
 export async function GET(req: NextRequest) {
   // Verify the cron secret
@@ -27,12 +27,11 @@ export async function GET(req: NextRequest) {
     const deltaMs = 35 * 60 * 1000;
     const since   = new Date(Date.now() - deltaMs).toISOString().replace(/\.\d+Z$/, 'Z');
 
-    // Pull every recently-changed listing — active states AND the off-market
-    // transitions (SYNC_FILTER). A listing that sold / expired / withdrew in this
-    // window is fetched and, on upsert, flipped to sold/off-market, so it drops off
-    // the active feed. That replaces the old (broken) "retire listings absent from
-    // the feed" sweep with SABOR's positive status signal.
-    const deltaFilter = `${SYNC_FILTER} and ModificationTimestamp gt ${since}`;
+    // SABOR's feed only exposes active inventory, so the delta just refreshes active
+    // listings (price/status changes among the still-listed). Retiring SOLD listings
+    // is handled by the daily reconcile cron — a sold listing simply drops out of
+    // this feed and never appears as CLOSED (see reconcileOffMarket).
+    const deltaFilter = `${ACTIVE_FILTER} and ModificationTimestamp gt ${since}`;
 
     // Run the sync IN-PROCESS — not via fetch(`${origin}/api/mls/sync`). When Vercel
     // fires the cron, `origin` is the PROTECTED *.vercel.app deployment URL, so

@@ -113,21 +113,6 @@ export function statusFilter(statuses: string[]): string {
 /** Active + Pending (under contract) listings */
 export const ACTIVE_FILTER = statusFilter(['ACTIVE', 'ACTIVE_UNDER_CONTRACT']);
 
-/**
- * Active states PLUS the off-market transitions. The delta sync uses this — not just
- * ACTIVE — so a listing that just sold / expired / withdrew is pulled within the
- * window and its status is corrected on upsert (CLOSED→sold, EXPIRED/CANCELED/
- * WITHDRAWN→off-market via resoPropertyToListing). That's the reliable way to retire
- * a listing, versus inferring absence from an incomplete, 10k-capped active feed.
- */
-export const SYNC_FILTER = statusFilter([
-  'ACTIVE', 'ACTIVE_UNDER_CONTRACT', 'COMING_SOON', 'HOLD',
-  'CLOSED', 'EXPIRED', 'CANCELED', 'WITHDRAWN',
-]);
-
-/** Just the off-market transitions — used to retire a backlog of already-sold listings. */
-export const OFF_MARKET_FILTER = statusFilter(['CLOSED', 'EXPIRED', 'CANCELED', 'WITHDRAWN']);
-
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function authenticate(): Promise<string> {
@@ -275,6 +260,37 @@ export async function searchPropertiesAll(
   }
 
   return all;
+}
+
+/**
+ * Fetch the ListingId of EVERY active listing in SABOR, plus SABOR's own reported
+ * total (`@odata.count`). Used by the off-market reconciliation: a listing we hold
+ * as active but ABSENT from this set is off-market (SABOR's feed only exposes active
+ * inventory — a sold listing simply drops out, it never appears as CLOSED). Selects
+ * only ListingId and pages fully (SABOR's active feed is ~30k). The returned
+ * `expected` lets the caller refuse to retire anything on an incomplete fetch.
+ */
+export async function fetchAllActiveListingKeys(): Promise<{ keys: Set<string>; expected: number }> {
+  const keys = new Set<string>();
+  let expected = 0;
+  let skip = 0;
+  const TOP = 200;
+  const MAX_PAGES = 400; // 400 * 200 = 80k — well above SABOR's active count, a runaway guard
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await searchProperties({
+      filter: ACTIVE_FILTER,
+      select: 'ListingId',
+      top: TOP,
+      skip,
+      count: page === 0,
+      orderby: 'ListingId asc', // stable order so $skip paging can't miss/duplicate rows
+    });
+    if (page === 0) expected = Number((res as { '@odata.count'?: number })['@odata.count'] ?? 0);
+    for (const p of res.value) if (p.ListingId) keys.add(p.ListingId);
+    if (!res['@odata.nextLink'] || res.value.length < TOP) break;
+    skip += TOP;
+  }
+  return { keys, expected };
 }
 
 // ─── Media queries ────────────────────────────────────────────────────────────

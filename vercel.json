@@ -16,6 +16,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/mls-reconcile",
+      "schedule": "0 11 * * *"
+    },
+    {
       "path": "/api/cron/listing-alerts",
       "schedule": "0 9 * * *"
     },
