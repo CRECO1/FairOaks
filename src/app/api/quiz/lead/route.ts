@@ -65,12 +65,16 @@ export async function POST(req: NextRequest) {
 
     // ── Save lead to Supabase ───────────────────────────────────────────────────
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    // Always use the service role key for server-side writes so RLS never blocks the insert
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    // Server-side writes must use the SERVICE ROLE key — the publishable key would
+    // fail silently under RLS. Require it and log loudly if it's missing, so a
+    // config gap never looks like a quietly-dropped lead.
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (supabaseUrl && supabaseKey) {
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('[quiz/lead] Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY — quiz lead NOT saved');
+    } else {
       const supabase = createClient(supabaseUrl, supabaseKey, { auth: { autoRefreshToken: false, persistSession: false } });
-      await supabase.from('leads').insert([{
+      const { error: leadErr } = await supabase.from('leads').insert([{
         name,
         email,
         phone: phone ?? null,
@@ -84,6 +88,7 @@ export async function POST(req: NextRequest) {
         page_path: attr.page_path, page_url: attr.page_url, page_title: attr.page_title,
         surface: attr.surface, geo: attr.geo, device: attr.device, channel: attr.channel,
       }]);
+      if (leadErr) console.error('[quiz/lead] leads insert failed:', leadErr.message);
     }
 
     // ── Auto-create CRM client from quiz lead ──────────────────────────────────

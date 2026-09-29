@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getListingBySlug } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
+import { rateLimit } from '@/lib/ratelimit';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const rl = await rateLimit(req, 'brochure');
+    if (!rl.success) {
+      return NextResponse.json({ error: 'Too many requests — please wait a moment and try again.' }, { status: 429 });
+    }
     const { slug } = await params;
     const listing = await getListingBySlug(slug);
 

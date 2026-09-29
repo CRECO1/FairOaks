@@ -47,6 +47,9 @@ const LIMITS = {
   // at one company share a NAT address, and each page view makes a handful of
   // calls. Used with failOpen, see rateLimitFailOpen below.
   esign:         { requests: 120, window: '1 m' },
+  // Brochure PDF — 20 per IP per minute; each request builds a jsPDF doc, so an
+  // unthrottled GET was the one public route that could be hammered to burn CPU.
+  brochure:      { requests: 20, window: '1 m' },
 } as const;
 
 type LimiterKey = keyof typeof LIMITS;

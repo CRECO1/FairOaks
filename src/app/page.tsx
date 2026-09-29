@@ -161,12 +161,12 @@ export default async function HomePage() {
 
         <Container className="relative z-10 text-center text-white px-5 sm:px-6 pt-20">
           <h1 className="mb-5 sm:mb-6 animate-fade-in-up font-heading text-display-xl font-bold text-white text-shadow-hero fill-both">
-            {s.hero_headline.includes('\n')
-              ? s.hero_headline.split('\n').map((line: string, i: number) => (
+            {(s.hero_headline ?? '').includes('\n')
+              ? (s.hero_headline ?? '').split('\n').map((line: string, i: number) => (
                 <span key={i}>{i > 0 && <br />}{line}</span>
               ))
               : <>
-                  {s.hero_headline.replace('Texas Hill Country', '').trimEnd()}{' '}
+                  {(s.hero_headline ?? '').replace('Texas Hill Country', '').trimEnd()}{' '}
                   <span className="text-gold">Texas Hill Country</span>
                 </>
             }

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const safeCities: string[] = Array.isArray(cities) ? cities.slice(0, 20).map(String).filter(c => c.length <= 100) : [];
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;   // service role only — the publishable key would fail silently under RLS
     const supabase = createClient(supabaseUrl, serviceKey);
 
     const safeSearch = typeof search === 'string' ? search.slice(0, 200).trim() : null;
