@@ -4098,7 +4098,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 return (
                   <div style={{ marginBottom: 20 }}>
                     <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 26 : 32, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>{greet}, {profile.first_name}.</div>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 26 : 32, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>{greet}, {profile.first_name.replace(/\.$/, '')}.</div>
                       <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
                         {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                         {' · '}
