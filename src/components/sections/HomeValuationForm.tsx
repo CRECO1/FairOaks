@@ -37,7 +37,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // Attribution: what brought this lead (utm/referrer/page/device).
-          ...attributionPayload(),
+          ...attributionPayload(undefined, { email: form.email, name: form.name }),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name: form.name,
           email: form.email,

@@ -49,7 +49,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // Attribution: what brought this lead (utm/referrer/page/device).
-          ...attributionPayload('listing-sticky-bar'),
+          ...attributionPayload('listing-sticky-bar', { email, name }),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name, phone: phone || undefined, email: email || undefined,
           message: `Requesting a showing for: ${listingTitle}`,

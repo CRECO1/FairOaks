@@ -57,6 +57,7 @@ raw_leads as (
   select l.created_at,
          public.lead_site_of(l.lead_site, l.source) as site,
          l.source, l.channel, l.utm_campaign, l.utm_content, l.referrer, l.landing_page,
+         l.journey, l.time_on_site_sec, l.page_views,
          coalesce(nullif(btrim(l.name),''),'') as name,
          lower(nullif(btrim(l.email),'')) as email_key,
          0 as src_rank
@@ -66,6 +67,7 @@ raw_leads as (
   select c.created_at,
          public.lead_site_of(c.lead_site, c.lead_source) as site,
          c.lead_source, c.channel, c.utm_campaign, c.utm_content, c.referrer, c.landing_page,
+         c.journey, c.time_on_site_sec, c.page_views,
          coalesce(nullif(btrim(coalesce(c.first_name,'')||' '||coalesce(c.last_name,'')),''),'') as name,
          lower(nullif(btrim(c.email),'')) as email_key,
          1 as src_rank
@@ -202,7 +204,8 @@ health as (
 recent as (
   select coalesce(jsonb_agg(x order by x.date desc), '[]'::jsonb) v from (
     select name, created_at as date, source, site, channel,
-           utm_campaign as campaign, utm_content as content, referrer, landing_page
+           utm_campaign as campaign, utm_content as content, referrer, landing_page,
+           journey, time_on_site_sec, page_views
     from all_leads
     where name <> ''            -- a bare em-dash row is noise, not a lead
     order by created_at desc limit 200) x)

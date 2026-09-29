@@ -52,7 +52,7 @@ export default function HomeInlineLeadForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...attributionPayload('home-inline'),
+          ...attributionPayload('home-inline', { email: data.get('email'), name: data.get('name') }),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name: data.get('name'),
           email: data.get('email'),

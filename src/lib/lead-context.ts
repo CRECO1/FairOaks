@@ -18,6 +18,9 @@
 
 import type { NextRequest } from 'next/server';
 
+/** One page in a visit: the path plus ms elapsed since the first page view. */
+export interface JourneyStep { p: string; t: number }
+
 export interface LeadContext {
   utm_source: string | null;
   utm_medium: string | null;
@@ -34,12 +37,48 @@ export interface LeadContext {
   device: string | null;
   /** Human label for the acquisition channel, e.g. "Google" / "Direct". */
   channel: string;
+  /** Ordered pages this visit touched, [{p, t}], or null if none were sent. */
+  journey: JourneyStep[] | null;
+  /** Seconds on site before submitting — "how long before they left". */
+  time_on_site_sec: number | null;
+  /** Distinct pages in the journey (mirrors journey.length when present). */
+  page_views: number | null;
 }
 
 function str(v: unknown, max = 200): string | null {
   if (typeof v !== 'string') return null;
   const t = v.trim();
   return t ? t.slice(0, max) : null;
+}
+
+/** A non-negative integer from a number/string body value, capped. */
+function intOrNull(v: unknown, max = 86400): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? parseInt(v, 10) : NaN;
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(Math.round(n), max);
+}
+
+/**
+ * Sanitise the visit trail the browser sent. Accepts [{p,t}] (the shape
+ * attribution.ts writes) and, defensively, a bare string[]. Caps length and
+ * field sizes so a crafted body can't bloat a row. Returns null when empty.
+ */
+function parseJourney(v: unknown): JourneyStep[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: JourneyStep[] = [];
+  for (const item of v) {
+    if (out.length >= 40) break;
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const p = (item as Record<string, unknown>).p;
+      const t = (item as Record<string, unknown>).t;
+      if (typeof p === 'string' && p.trim()) {
+        out.push({ p: p.trim().slice(0, 200), t: typeof t === 'number' && t >= 0 ? Math.round(t) : 0 });
+      }
+    } else if (typeof item === 'string' && item.trim()) {
+      out.push({ p: item.trim().slice(0, 200), t: 0 });
+    }
+  }
+  return out.length ? out : null;
 }
 
 /**
@@ -95,6 +134,8 @@ export function buildLeadContext(req: NextRequest, body: Record<string, unknown>
   const utm_medium = str(body.utm_medium, 120);
   const referrer = str(body.referrer, 300);
 
+  const journey = parseJourney(body.journey);
+
   return {
     utm_source,
     utm_medium,
@@ -110,5 +151,8 @@ export function buildLeadContext(req: NextRequest, body: Record<string, unknown>
     geo: geoParts.length ? geoParts.join(', ') : null,
     device: deviceFrom(h.get('user-agent'), body.viewport_width),
     channel: channelFor(referrer, utm_medium, utm_source),
+    journey,
+    time_on_site_sec: intOrNull(body.time_on_site_sec),
+    page_views: intOrNull(body.page_views, 1000) ?? (journey ? journey.length : null),
   };
 }

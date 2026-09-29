@@ -19,7 +19,7 @@
  * RPC has EXECUTE revoked from authenticated/anon. The nav gate is cosmetic.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 
 const GOLD = '#c9922c';
 const GOLD_DEEP = '#9A6E18';
@@ -30,10 +30,14 @@ const FAINT = '#9ca3af';
 interface Row { label: string; value: number }
 interface HealthSite { site: string; total: number; withAttribution: number; pct: number | null }
 interface CampaignRow { name: string; utm: string | null; sent: number; opens: number; clicks: number; leads: number }
+interface JourneyStep { p: string; t: number }
 interface RecentRow {
   name: string; date: string; source: string | null; site: string | null;
   channel: string | null; campaign: string | null; content: string | null;
   referrer: string | null; landing_page: string | null;
+  journey: JourneyStep[] | null;
+  time_on_site_sec: number | null;
+  page_views: number | null;
 }
 interface Ga {
   status: { connected: boolean; reason?: string; detail?: string; via?: 'oauth' | 'service_account'; actionUrl?: string };
@@ -61,6 +65,42 @@ function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ fontSize: 13, color: FAINT, lineHeight: 1.6, padding: '6px 0 2px', fontStyle: 'italic' }}>
       {children}
+    </div>
+  );
+}
+
+/** Seconds → "48s" / "4m 12s" / "1h 3m". Null for missing/negative. */
+function fmtDur(sec: number | null | undefined): string | null {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) return null;
+  if (sec < 60) return `${Math.round(sec)}s`;
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  if (m < 60) return s ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60), mm = m % 60;
+  return mm ? `${h}h ${mm}m` : `${h}h`;
+}
+
+/**
+ * The ordered pages of a visit as chips, each showing how long they lingered
+ * there. Dwell on a page is the gap to the next page view; on the final page
+ * it runs to when they left (total time on site) — i.e. how long they sat on
+ * the page they submitted from.
+ */
+function JourneyTrail({ steps, totalSec }: { steps: JourneyStep[]; totalSec: number | null }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+      {steps.map((s, i) => {
+        const nextT = i + 1 < steps.length ? steps[i + 1].t : (totalSec != null ? totalSec * 1000 : null);
+        const dwell = nextT != null ? fmtDur(Math.max(0, (nextT - s.t) / 1000)) : null;
+        return (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {i > 0 && <span style={{ color: FAINT }}>→</span>}
+            <span style={{ fontSize: 12, color: '#374151', background: '#f6f2e9', border: '1px solid #ecdfc4', borderRadius: 5, padding: '2px 7px' }}>
+              <span style={{ fontWeight: 600 }}>{s.p}</span>
+              {dwell && <span style={{ color: MUTE }}> · {dwell}</span>}
+            </span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -226,6 +266,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   const [days, setDays] = useState(7);
   const [site, setSite] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<number | null>(null);   // which recent-lead row is showing its visit path
 
   const load = useCallback(async (d: number, s: string | null) => {
     setLoading(true); setErr(null);
@@ -457,40 +498,83 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
           <Empty>No leads in this window. When one arrives it will appear here with its site, form, channel and campaign.</Empty>
         ) : isMobile ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {data.recent.map((r, i) => (
-              <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 9 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{r.name}</div>
-                <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>
-                  {r.date ? new Date(r.date).toLocaleDateString() : '—'} · {r.site ?? '—'} · {r.source ?? '—'}
+            {data.recent.map((r, i) => {
+              const pv = r.page_views ?? (r.journey ? r.journey.length : null);
+              const dur = fmtDur(r.time_on_site_sec);
+              const hasJourney = !!(r.journey && r.journey.length);
+              const open = expanded === i;
+              return (
+                <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 9 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{r.name}</div>
+                  <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>
+                    {r.date ? new Date(r.date).toLocaleDateString() : '—'} · {r.site ?? '—'} · {r.source ?? '—'}
+                  </div>
+                  <div style={{ fontSize: 12, color: r.channel ? GOLD_DEEP : FAINT, marginTop: 2, fontWeight: r.channel ? 600 : 400 }}>
+                    {r.channel ?? 'no source recorded'}{r.campaign ? ` · ${r.campaign}` : ''}
+                  </div>
+                  {(hasJourney || dur) && (
+                    <button type="button" onClick={() => hasJourney && setExpanded(open ? null : i)}
+                      style={{ marginTop: 5, background: 'none', border: 'none', padding: 0, cursor: hasJourney ? 'pointer' : 'default', fontSize: 12, color: GOLD_DEEP, fontWeight: 600 }}>
+                      {pv != null ? `${pv} ${pv === 1 ? 'page' : 'pages'}` : ''}{dur ? `${pv != null ? ' · ' : ''}${dur} on site` : ''}{hasJourney ? ` ${open ? '▾' : '▸'}` : ''}
+                    </button>
+                  )}
+                  {open && hasJourney && (
+                    <div style={{ marginTop: 6 }}><JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} /></div>
+                  )}
                 </div>
-                <div style={{ fontSize: 12, color: r.channel ? GOLD_DEEP : FAINT, marginTop: 2, fontWeight: r.channel ? 600 : 400 }}>
-                  {r.channel ?? 'no source recorded'}{r.campaign ? ` · ${r.campaign}` : ''}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead>
                 <tr style={{ textAlign: 'left', color: MUTE }}>
-                  {['Name', 'Date', 'Site', 'Form', 'Channel', 'Campaign', 'Landing page'].map(h => (
+                  {['Name', 'Date', 'Site', 'Form', 'Channel', 'Campaign', 'Landing page', 'Pages · time on site'].map(h => (
                     <th key={h} style={{ padding: '6px 10px 8px 0', fontWeight: 600, borderBottom: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {data.recent.map((r, i) => (
-                  <tr key={i}>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', fontWeight: 600, color: INK }}>{r.name}</td>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: MUTE, whiteSpace: 'nowrap' }}>{r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: '#374151', whiteSpace: 'nowrap' }}>{r.site ?? '—'}</td>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: '#374151' }}>{r.source ?? '—'}</td>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: r.channel ? GOLD_DEEP : FAINT, fontWeight: r.channel ? 600 : 400 }}>{r.channel ?? 'not recorded'}</td>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: '#374151' }}>{r.campaign ?? '—'}</td>
-                    <td style={{ padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5', color: MUTE, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.landing_page ?? ''}>{r.landing_page ?? '—'}</td>
-                  </tr>
-                ))}
+                {data.recent.map((r, i) => {
+                  const pv = r.page_views ?? (r.journey ? r.journey.length : null);
+                  const dur = fmtDur(r.time_on_site_sec);
+                  const hasJourney = !!(r.journey && r.journey.length);
+                  const open = expanded === i;
+                  const td: React.CSSProperties = { padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5' };
+                  return (
+                    <Fragment key={i}>
+                      <tr onClick={hasJourney ? () => setExpanded(open ? null : i) : undefined} style={hasJourney ? { cursor: 'pointer' } : undefined}>
+                        <td style={{ ...td, fontWeight: 600, color: INK }}>{r.name}</td>
+                        <td style={{ ...td, color: MUTE, whiteSpace: 'nowrap' }}>{r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
+                        <td style={{ ...td, color: '#374151', whiteSpace: 'nowrap' }}>{r.site ?? '—'}</td>
+                        <td style={{ ...td, color: '#374151' }}>{r.source ?? '—'}</td>
+                        <td style={{ ...td, color: r.channel ? GOLD_DEEP : FAINT, fontWeight: r.channel ? 600 : 400 }}>{r.channel ?? 'not recorded'}</td>
+                        <td style={{ ...td, color: '#374151' }}>{r.campaign ?? '—'}</td>
+                        <td style={{ ...td, color: MUTE, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.landing_page ?? ''}>{r.landing_page ?? '—'}</td>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                          {hasJourney ? (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(open ? null : i); }}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, color: GOLD_DEEP, fontWeight: 600 }}>
+                              {pv} {pv === 1 ? 'page' : 'pages'}{dur ? ` · ${dur}` : ''} <span style={{ color: FAINT }}>{open ? '▾' : '▸'}</span>
+                            </button>
+                          ) : dur ? <span style={{ color: MUTE }}>{dur}</span> : <span style={{ color: FAINT }}>—</span>}
+                        </td>
+                      </tr>
+                      {open && hasJourney && (
+                        <tr>
+                          <td colSpan={8} style={{ padding: '0 10px 12px 0', borderBottom: '1px solid #f5f5f5', background: '#fcfbf8' }}>
+                            <div style={{ fontSize: 11, color: MUTE, margin: '2px 0 6px' }}>
+                              Entered on <strong style={{ color: '#374151' }}>{r.journey![0].p}</strong>
+                              {dur ? ` · ${dur} on site before submitting` : ''}
+                            </div>
+                            <JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

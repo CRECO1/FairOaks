@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
-import { trackEvent, trackFormStart, attributionPayload } from '@/lib/attribution';
+import { trackEvent, trackFormStart, attributionPayload, identifyLead } from '@/lib/attribution';
 
 /**
  * The submit engine every Fair Oaks capture shares.
@@ -56,14 +56,22 @@ export function useCaptureSubmit(opts: CaptureSubmitOptions): CaptureSubmitState
     setSubmitting(true);
     try {
       const recaptchaToken = await getRecaptchaToken(opts.recaptchaAction);
+      // Attribution first, caller's explicit fields second so they always win
+      // on any key collision. This is why the listing-alert signups (footer +
+      // save-search) land with utm/referrer/channel: the API's buildLeadContext
+      // reads exactly these keys off the body — they were arriving empty before.
+      const payload = { ...attributionPayload(opts.surface), ...opts.buildPayload({ recaptchaToken }) };
+      // Tag the Clarity session with this lead while it is still live, so their
+      // full session replay is findable by email/name in Clarity.
+      identifyLead(
+        typeof payload.email === 'string' ? payload.email : null,
+        typeof payload.name === 'string' ? payload.name : null,
+        opts.surface,
+      );
       const res = await fetch(opts.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Attribution first, caller's explicit fields second so they always win
-        // on any key collision. This is why the listing-alert signups (footer +
-        // save-search) land with utm/referrer/channel: the API's buildLeadContext
-        // reads exactly these keys off the body — they were arriving empty before.
-        body: JSON.stringify({ ...attributionPayload(opts.surface), ...opts.buildPayload({ recaptchaToken }) }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

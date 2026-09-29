@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
         referrer: attr.referrer, landing_page: attr.landing_page,
         page_path: attr.page_path, page_url: attr.page_url, page_title: attr.page_title,
         surface: attr.surface, geo: attr.geo, device: attr.device, channel: attr.channel,
+        journey: attr.journey, time_on_site_sec: attr.time_on_site_sec, page_views: attr.page_views,
         // Stamp the site here too. crm_clients already carried it; leaving it off
         // the raw row meant the dashboard had to infer the site from the source
         // text for every FORG lead instead of reading it.
@@ -187,6 +188,7 @@ export async function POST(req: NextRequest) {
               page_path: attr.page_path, page_title: attr.page_title,
               surface: attr.surface, geo: attr.geo, device: attr.device,
               channel: attr.channel,
+              journey: attr.journey, time_on_site_sec: attr.time_on_site_sec, page_views: attr.page_views,
               lead_site: 'fairoaksrealtygroup.com',
             }]).select('id').single();
 

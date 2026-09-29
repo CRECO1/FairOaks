@@ -36,7 +36,7 @@ export default function ContactPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // Attribution: what brought this lead (utm/referrer/page/device).
-          ...attributionPayload('contact-page'),
+          ...attributionPayload('contact-page', { email: data.get('email'), name: data.get('name') }),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name: data.get('name'),
           email: data.get('email'),

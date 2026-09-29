@@ -34,7 +34,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           // Attribution: what brought this lead (utm/referrer/page/device).
-          ...attributionPayload('listing-detail'),
+          ...attributionPayload('listing-detail', { email, name }),
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name, email,
           phone: phone || undefined,
