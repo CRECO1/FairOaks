@@ -4575,10 +4575,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   return true;
                 }).sort((a, b) => {
                   if (contactSort === 'recent') {
-                    if (!a.last_touched_at && !b.last_touched_at) return 0;
-                    if (!a.last_touched_at) return 1;
-                    if (!b.last_touched_at) return -1;
-                    return new Date(b.last_touched_at).getTime() - new Date(a.last_touched_at).getTime();
+                    // Most recent activity, where being added counts as activity. Sorting
+                    // never-touched contacts last put a fresh import of 103 contacts on
+                    // pages 4–5, behind every contact anyone had ever touched.
+                    const recency = (c: Client) => new Date(c.last_touched_at ?? c.created_at).getTime();
+                    return recency(b) - recency(a);
                   }
                   if (contactSort === 'never') {
                     if (!a.last_touched_at && !b.last_touched_at) return 0;
