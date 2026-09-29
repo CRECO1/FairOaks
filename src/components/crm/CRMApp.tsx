@@ -4479,7 +4479,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           className={`cf-select${activeList ? ' active' : ''}`}
                           style={{ width: isMobile ? '100%' : 300, maxWidth: '100%' }}>
                           <option value="">{activeList ? 'All contacts (clear list)' : `📋 Saved lists (${smartLists.length})`}</option>
-                          {smartLists.map(sl => <option key={sl.id} value={sl.id}>{sl.name} ({countFor(sl)})</option>)}
+                          {smartLists.map(sl => {
+                            // Only the super-admin receives other people's lists; name the owner so
+                            // Zack can tell Brian's list from his own.
+                            const owner = sl.created_by !== profile.id ? profiles.find(p => p.id === sl.created_by)?.first_name : null;
+                            return <option key={sl.id} value={sl.id}>{sl.name}{owner ? ` · ${owner}` : ''} ({countFor(sl)})</option>;
+                          })}
                         </select>
                         {activeList && (
                           <>
@@ -4487,11 +4492,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               style={{ fontSize: 13, color: '#6b7280', background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                               ✕ Clear list
                             </button>
-                            {/* Deleting was the ✕ on each chip; now it needs the list selected and a confirm. */}
-                            <button onClick={() => { if (confirm(`Delete the saved list "${activeList.name}"? The contacts are not affected.`)) deleteSmartList(activeList.id); }}
-                              style={{ fontSize: 12.5, color: '#94a3b8', background: 'none', border: 'none', padding: '5px 4px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                              Delete list
-                            </button>
+                            {/* Deleting a saved list is super-admin only (also enforced by the API and RLS). */}
+                            {isSuperAdmin && (
+                              <button onClick={() => { if (confirm(`Delete the saved list "${activeList.name}"? The contacts are not affected.`)) deleteSmartList(activeList.id); }}
+                                style={{ fontSize: 12.5, color: '#94a3b8', background: 'none', border: 'none', padding: '5px 4px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                Delete list
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
