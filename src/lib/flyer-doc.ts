@@ -96,6 +96,15 @@ function drawContain(page: PDFPage, img: PDFImage, x: number, y: number, w: numb
   page.drawImage(img, { x: ix, y: iy, width: iw, height: ih });
   return { x: ix, y: iy, w: iw, h: ih };
 }
+// Contained, but pinned to the top of the box: on page 2 a block's title sits right
+// above it, and a centred image leaves a gap that reads as a missing element.
+function drawContainTop(page: PDFPage, img: PDFImage, x: number, y: number, w: number, h: number): Rect {
+  const scale = Math.min(w / img.width, h / img.height);
+  const iw = img.width * scale, ih = img.height * scale;
+  const ix = x + (w - iw) / 2, iy = y + h - ih;
+  page.drawImage(img, { x: ix, y: iy, width: iw, height: ih });
+  return { x: ix, y: iy, w: iw, h: ih };
+}
 // Street names over the aerial. Labels arrive in image pixels; the image was drawn
 // contained (one uniform scale), so a single factor maps them onto the page. White
 // text over a dark halo reads on any imagery — pdf-lib has no text stroke, so the
@@ -376,7 +385,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     p2blocks.push({
       title: 'PHOTOS', weight: 2.2, border: true,
       natural: (w) => w * (g.height / g.width),
-      draw: (x, y, w, h) => drawContain(p2!, g, x, y, w, h),
+      draw: (x, y, w, h) => drawContainTop(p2!, g, x, y, w, h),
     });
   } else if (gallery.length) p2blocks.push({
     title: 'PHOTOS', weight: 1.9, border: false,
@@ -387,7 +396,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   });
   // Floor plan is the key page-2 visual — weight it to fill most of the width so the
   // site plan is actually legible rather than a small centred letterbox.
-  if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContain(p2!, floor!, x, y, w, h) });
+  if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContainTop(p2!, floor!, x, y, w, h) });
   // Where it sits. A hand-made aerial (lot outlined) wins over the generated one, and
   // there is only ever one: a single aerial at full width reads; two at half size don't.
   const siteAerial = (await Promise.all((input.siteAerials || []).slice(0, 1).map(embed))).find((g): g is PDFImage => !!g);
@@ -395,10 +404,10 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     p2blocks.push({
       title: 'SITE AERIAL', weight: 1.6, border: true,
       natural: (w) => w * (siteAerial.height / siteAerial.width),
-      draw: (x, y, w, h) => drawContain(p2!, siteAerial, x, y, w, h),
+      draw: (x, y, w, h) => drawContainTop(p2!, siteAerial, x, y, w, h),
     });
   } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
-    const r = drawContain(p2!, aerial!, x, y, w, h);
+    const r = drawContainTop(p2!, aerial!, x, y, w, h);
     drawMapLabels(p2!, r, aerial!, input.aerialLabels, labelFont);
     return r;
   } });
