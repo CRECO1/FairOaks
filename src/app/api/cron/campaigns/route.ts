@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { unsubscribeUrlFor } from '@/lib/email-tracking';
 import { agentTitle } from '@/lib/agent-title';
+import { marketingDailyCap, type CapDecision } from '@/lib/email-volume';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -83,26 +84,13 @@ function computeNextSend(frequency: string): string | null {
 }
 
 /**
- * Daily email cap, per workspace.
+ * Daily email cap, per workspace — see lib/email-volume.ts.
  *
- * The CRECO Resend account is on the free plan: 100 emails a DAY, and that quota is
- * shared with everything else CRECO sends — website lead alerts, the auto-reply to an
- * inquiry, e-signature requests. A campaign blast that spends the whole allowance can
- * make a lead alert or a lease signature request fail. So campaigns stop at a cap that
- * leaves headroom, and whatever is left over rolls to the next business morning on its
- * own: that is what "send in batches" means here, with nobody having to remember it.
- *
- * Override per workspace with CAMPAIGN_DAILY_CAP_COMMERCIAL / _RESIDENTIAL (0 = no cap).
- * Raise or remove the commercial cap when the Resend plan is upgraded.
+ * Campaigns stop at a daily cap that ramps up with list health (150 → 250 → 400,
+ * braking to 75 when bounces or complaints spike); whatever is left over rolls to the
+ * next business morning on its own, so "send in batches" needs nobody to remember it.
+ * The cap only ever applies here — transactional mail never passes through it.
  */
-const DAILY_EMAIL_CAP: Record<string, number> = { commercial: 75 };
-
-function dailyCapFor(businessUnit: string | null | undefined): number | null {
-  const unit = String(businessUnit ?? '');
-  const env = process.env[`CAMPAIGN_DAILY_CAP_${unit.toUpperCase()}`];
-  const n = env !== undefined && env !== '' ? Number(env) : DAILY_EMAIL_CAP[unit];
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
 
 /**
  * The same time of day on the next business day (Mon–Fri, Central). Keeping the time
@@ -198,9 +186,12 @@ export async function GET(req: NextRequest) {
   // How many campaign emails each capped workspace has already sent today. Resend's
   // daily allowance runs on the UTC day, so the count does too.
   const sentToday = new Map<string, number>();
+  const capByUnit = new Map<string, CapDecision>();
   const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
   for (const unit of new Set((enrollments as any[]).map(e => String(e.campaign?.business_unit ?? '')))) {
-    if (dailyCapFor(unit) === null) continue;
+    const decision = await marketingDailyCap(supabase, unit);
+    capByUnit.set(unit, decision);
+    if (decision.cap === null) continue;
     const { count } = await supabase
       .from('crm_campaign_sends')
       .select('id, campaign:crm_campaigns!inner(business_unit)', { count: 'exact', head: true })
@@ -276,7 +267,7 @@ export async function GET(req: NextRequest) {
     // business morning instead of sending. Nothing is logged as a send because
     // nothing was attempted.
     const unit = String(campaign.business_unit ?? '');
-    const cap = dailyCapFor(unit);
+    const cap = capByUnit.get(unit)?.cap ?? null;
     if (cap !== null && campaign.type === 'email' && client.email && !withinWindow && (sentToday.get(unit) ?? 0) >= cap) {
       await supabase.from('crm_campaign_enrollments')
         .update({ next_send_at: deferToNextSendDay(enrollment.next_send_at) }).eq('id', enrollment.id);
@@ -403,5 +394,8 @@ export async function GET(req: NextRequest) {
     else if (status === 'failed') failed++;
   }
 
-  return NextResponse.json({ processed: enrollments.length, sent, failed, deferred });
+  return NextResponse.json({
+    processed: enrollments.length, sent, failed, deferred,
+    caps: Object.fromEntries([...capByUnit].map(([u, d]) => [u, { cap: d.cap, reason: d.reason, sentToday: sentToday.get(u) ?? 0 }])),
+  });
 }

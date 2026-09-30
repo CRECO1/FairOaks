@@ -62,10 +62,11 @@ async function recordCampaignEvent(
   status: string,
   svixId: string,
 ) {
-  // The table's CHECK allows only 'open' and 'click'; delivered/bounced/etc are
-  // e-sign-only states and must not be written here.
-  const eventType = status === 'clicked' ? 'click' : status === 'opened' ? 'open' : null;
-  if (!eventType) return NextResponse.json({ ok: true, ignored: 'not an open/click' });
+  // Bounces and complaints are recorded too: they are the health signal the campaign
+  // volume ramp reads (lib/email-volume.ts). Delivered/delayed/failed are not.
+  const eventType = status === 'clicked' ? 'click' : status === 'opened' ? 'open'
+    : status === 'bounced' ? 'bounce' : status === 'complained' ? 'complaint' : null;
+  if (!eventType) return NextResponse.json({ ok: true, ignored: 'not a tracked campaign event' });
 
   const { data: send } = await supabase.from('crm_campaign_sends')
     .select('id, campaign_id, client_id, tracking_id, org_id')
@@ -89,6 +90,12 @@ async function recordCampaignEvent(
   if (error && (error as { code?: string }).code !== '23505') {
     console.error('[webhooks/resend] campaign event insert failed', error);
     return NextResponse.json({ error: 'insert failed' }, { status: 500 });
+  }
+  // Someone who marked a campaign as spam is never mailed by a campaign again. Only
+  // stamps a contact that isn't already unsubscribed, so the original date survives.
+  if (eventType === 'complaint' && send.client_id) {
+    await supabase.from('crm_clients').update({ unsubscribed_at: new Date().toISOString() })
+      .eq('id', send.client_id).is('unsubscribed_at', null);
   }
   return NextResponse.json({ ok: true, campaign: send.campaign_id, event: eventType, duplicate: !!error });
 }
