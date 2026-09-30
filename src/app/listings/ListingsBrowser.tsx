@@ -17,6 +17,7 @@ import { formatPrice } from '@/lib/utils';
 import type { Listing } from '@/lib/supabase';
 import { trackViewItemList, trackSearch, trackSelectItem } from '@/lib/analytics';
 import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
+import { FORG } from '@/lib/site-identity';
 
 /** Compute days on market from a listing date string. */
 function calcDaysOnMarket(listingDate: string | null | undefined): number | null {
@@ -106,6 +107,8 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
   const hasInitial = !!initialListings && initialListings.length > 0;
 
   const [listings, setListings]     = useState<Listing[]>(initialListings ?? []);
+  // A failed fetch is not "no homes match": say so, and offer a person instead.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [total, setTotal]           = useState<number | null>(hasInitial ? initialTotal : null);
   const [totalPages, setTotalPages] = useState(hasInitial ? initialTotalPages : 1);
   const [page, setPage]             = useState(1);
@@ -164,17 +167,19 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
     params.set('limit', String(PAGE_LIMIT));
 
     fetch(`/api/listings?${params.toString()}`)
-      .then(r => r.json())
+      .then(r => { if (!r.ok) throw new Error(`listings ${r.status}`); return r.json(); })
       .then(d => {
         setListings(d.listings ?? []);
         setTotal(d.total ?? 0);
         setTotalPages(d.totalPages ?? 1);
+        setLoadFailed(false);
         setLoading(false);
       })
       .catch(() => {
         setListings([]);
         setTotal(0);
         setTotalPages(1);
+        setLoadFailed(true);
         setLoading(false);
       });
   }, []);
@@ -464,13 +469,24 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
             {!loading && listings.length === 0 && (
               <div className="py-24 text-center">
                 <Home className="mx-auto mb-4 h-12 w-12 text-foreground-subtle" />
-                <h2 className="font-heading text-heading font-semibold text-primary">No listings found</h2>
-                <p className="mt-2 text-body text-foreground-muted">Try adjusting your filters or broadening your search.</p>
-                {hasFilters && (
+                <h2 className="font-heading text-heading font-semibold text-primary">
+                  {loadFailed ? 'We couldn’t load listings just now' : 'No listings found'}
+                </h2>
+                <p className="mt-2 text-body text-foreground-muted">
+                  {loadFailed
+                    ? 'Please try again in a moment — or let one of our agents search the MLS for you.'
+                    : 'Try adjusting your filters or broadening your search.'}
+                </p>
+                {hasFilters && !loadFailed && (
                   <button onClick={clearFilters} className="mt-4 text-body-sm text-gold hover:underline">
                     Clear all filters
                   </button>
                 )}
+                {/* Never a dead end: a person can always take it from here. */}
+                <p className="mt-6 text-body-sm text-foreground-muted">
+                  <Link href="/contact?topic=home-search" className="font-semibold text-gold hover:underline">Have an agent search for you</Link>
+                  {' '}or call/text <a href={`tel:${FORG.telephone}`} className="font-semibold text-primary hover:underline">{FORG.phoneDisplay}</a>
+                </p>
               </div>
             )}
 

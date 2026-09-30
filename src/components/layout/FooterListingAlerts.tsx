@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useCaptureSubmit } from '@/lib/use-capture-submit';
+import { Honeypot } from '@/components/Honeypot';
+import { FORG } from '@/lib/site-identity';
 
 /**
  * Compact listing-alert signup for the footer, so every page has one way to
@@ -30,6 +32,7 @@ export function FooterListingAlerts() {
 
   return (
     <form onSubmit={submit} onFocusCapture={onFormFocus} className="mt-2">
+      <Honeypot />
       <label htmlFor="footer-alert-email" className="block text-body-sm text-white/60 mb-2">
         Get emailed the moment a home hits the market.
       </label>
@@ -53,7 +56,7 @@ export function FooterListingAlerts() {
         </button>
       </div>
       {error && (
-        <p className="mt-2 text-caption text-red-300" role="alert">That didn&rsquo;t go through. Please try again or call us.</p>
+        <p className="mt-2 text-caption text-red-300" role="alert">That didn&rsquo;t go through. Please try again or call/text <a href={`tel:${FORG.telephone}`} className="underline">{FORG.phoneDisplay}</a>.</p>
       )}
     </form>
   );

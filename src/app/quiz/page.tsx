@@ -9,6 +9,8 @@ import { Container } from '@/components/ui/Container';
 import Link from 'next/link';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { attributionPayload } from '@/lib/attribution';
+import { Honeypot } from '@/components/Honeypot';
+import { FORG } from '@/lib/site-identity';
 
 interface QuizStep {
   id: string;
@@ -128,8 +130,10 @@ export default function QuizPage() {
     return Array.isArray(v) ? v.includes(value) : v === value;
   }
 
-  async function handleContact(e: React.FormEvent) {
+  async function handleContact(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Honeypot — read before the first await, while currentTarget still exists.
+    const website = (new FormData(e.currentTarget).get('website') as string | null) || undefined;
     setLoading(true);
     setError(null);
     try {
@@ -137,7 +141,7 @@ export default function QuizPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...attributionPayload('quiz', { email, name }), recaptchaToken: await getRecaptchaToken('quiz_lead'), name, email, phone, answers }),
+          ...attributionPayload('quiz', { email, name }), recaptchaToken: await getRecaptchaToken('quiz_lead'), name, email, phone, answers, website }),
       });
       if (!res.ok) throw new Error(`quiz lead POST ${res.status}`);
       // Only show "Results On the Way" on a real success — a dropped submit used
@@ -184,9 +188,13 @@ export default function QuizPage() {
                   })}
                 </ul>
               </div>
+              {/* Not a dead end: the next step is the listings, with a quiet call/text fallback. */}
               <Button size="lg" asChild>
-                <Link href="/">Back to Homepage</Link>
+                <Link href="/listings">Browse homes for sale</Link>
               </Button>
+              <p className="mt-4 text-body-sm text-foreground-muted">
+                Rather talk it through? Call or text <a href={`tel:${FORG.telephone}`} className="font-semibold text-primary underline">{FORG.phoneDisplay}</a>.
+              </p>
             </div>
           </Container>
         </main>
@@ -212,6 +220,7 @@ export default function QuizPage() {
                 </p>
               </div>
               <form onSubmit={handleContact} className="space-y-4 bg-white rounded-2xl shadow-card p-5 sm:p-8">
+                <Honeypot />
                 <div>
                   <label className="label-readable">Your Name *</label>
                   <input required value={name} onChange={e => setName(e.target.value)} placeholder="First & Last Name" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />

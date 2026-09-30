@@ -20,12 +20,15 @@ export default function StickyCTA() {
   }, []);
 
   if (EXCLUDED.some(p => pathname.startsWith(p))) return null;
+  // A listing page has its own mobile bar (StickyContactBar: call + showing request)
+  // pinned to the same spot, so on phones this one steps aside instead of stacking.
+  const isListingDetail = /^\/listings\/[^/]+\/?$/.test(pathname);
 
   return (
     <div
       className={`fixed bottom-0 left-0 right-0 z-50 transition-transform duration-300 ${
         visible ? 'translate-y-0' : 'translate-y-full'
-      }`}
+      }${isListingDetail ? ' hidden lg:block' : ''}`}
     >
       <div className="bg-primary border-t border-gold/20 shadow-2xl">
         <div className="mx-auto flex max-w-screen-xl items-center justify-between gap-3 px-4 py-3">

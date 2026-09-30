@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Bell, X, CheckCircle } from 'lucide-react';
 import { useCaptureSubmit } from '@/lib/use-capture-submit';
+import { Honeypot } from '@/components/Honeypot';
 
 interface Props {
   cities: string[];
@@ -114,6 +115,7 @@ export function SaveSearchButton({ cities, minPrice, maxPrice, minBeds, minBaths
                 </div>
 
                 <form onSubmit={handleSubmit} onFocusCapture={onFormFocus} className="flex flex-col gap-3">
+                  <Honeypot />
                   <input
                     type="text"
                     placeholder="Your name"

@@ -6,6 +6,7 @@ import { Home, ArrowRight } from 'lucide-react';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
+import { FORG } from '@/lib/site-identity';
 
 export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 'dark' | 'light'; surface?: string }) {
   // One form, two grounds: the homepage band is dark, the landing page is light.
@@ -55,7 +56,7 @@ export function HomeValuationForm({ tone = 'dark', surface = 'home' }: { tone?: 
       trackEvent('valuation_form_submitted', { form: surface || 'home-valuation' });
       router.push('/thank-you');
     } catch {
-      setError('Something went wrong. Please try again or call us directly.');
+      setError(`Something went wrong. Please try again, or call/text ${FORG.phoneDisplay}.`);
     } finally {
       setLoading(false);
     }

@@ -6,6 +6,7 @@ import { trackPhoneClick } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
+import { FORG } from '@/lib/site-identity';
 
 interface Props {
   listingTitle: string;
@@ -59,11 +60,11 @@ export function StickyContactBar({ listingTitle, price }: Props) {
           website: (fd.get('website') as string) || undefined,
         }),
       });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? 'Something went wrong.'); return; }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? `Something went wrong. Please try again, or call/text ${FORG.phoneDisplay}.`); return; }
       // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
       trackEvent('showing_request_submitted', { form: 'listing-sticky-bar' });
       setSubmitted(true);
-    } catch { setError('Network error — please try again.'); }
+    } catch { setError(`Network error — please try again, or call/text ${FORG.phoneDisplay}.`); }
     finally { setSending(false); }
   }
 

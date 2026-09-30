@@ -17,8 +17,9 @@ import { trackEvent, trackFormStart, attributionPayload, identifyLead } from '@/
  * inquiry is not a footer alert signup, and flattening them would change what
  * they do. This owns the mechanics only.
  *
- * The CRECO repo has its counterpart at src/lib/use-capture-submit.ts. That one
- * also reads a honeypot field, which this site's forms do not carry.
+ * It also forwards the <Honeypot /> field (`website`) when the form renders one,
+ * so the server's bot guard (lib/bot-guard.ts) sees what a scripted fill put there.
+ * The CRECO repo has its counterpart at src/lib/use-capture-submit.ts.
  */
 export interface CaptureSubmitOptions {
   endpoint: string;
@@ -52,6 +53,8 @@ export function useCaptureSubmit(opts: CaptureSubmitOptions): CaptureSubmitState
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    // Read the honeypot before the first await — currentTarget is gone after it.
+    const website = (new FormData(e.currentTarget).get('website') as string | null) || undefined;
     setError(null);
     setSubmitting(true);
     try {
@@ -60,7 +63,7 @@ export function useCaptureSubmit(opts: CaptureSubmitOptions): CaptureSubmitState
       // on any key collision. This is why the listing-alert signups (footer +
       // save-search) land with utm/referrer/channel: the API's buildLeadContext
       // reads exactly these keys off the body — they were arriving empty before.
-      const payload = { ...attributionPayload(opts.surface), ...opts.buildPayload({ recaptchaToken }) };
+      const payload: Record<string, unknown> = { ...attributionPayload(opts.surface), ...opts.buildPayload({ recaptchaToken }), ...(website ? { website } : {}) };
       // Tag the Clarity session with this lead while it is still live, so their
       // full session replay is findable by email/name in Clarity.
       identifyLead(

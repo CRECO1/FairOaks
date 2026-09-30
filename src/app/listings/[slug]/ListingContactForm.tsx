@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
+import { FORG } from '@/lib/site-identity';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -47,7 +48,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        setError(d.error ?? 'Something went wrong. Please try again.');
+        setError(d.error ?? `Something went wrong. Please try again, or call/text ${FORG.phoneDisplay}.`);
         return;
       }
       // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
@@ -55,7 +56,7 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
       setSubmitted(true);
       form.reset();
     } catch {
-      setError('Network error — please try again.');
+      setError(`Network error — please try again, or call/text ${FORG.phoneDisplay}.`);
     }
   }
 
