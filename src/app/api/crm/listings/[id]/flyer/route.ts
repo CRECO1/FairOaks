@@ -229,10 +229,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const nameOf = (a: Record<string, string> | null) => a ? `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() : '';
+  // A CRECO (commercial) flyer must NEVER show a Fair Oaks email. A broker whose
+  // CRM profile email is their residential (Fair Oaks) address gets mapped to their
+  // CRECO address here; any other @fairoaksrealtygroup.com address is dropped rather
+  // than printed. Residential flyers are left untouched — the Fair Oaks email is
+  // correct there. Add brokers to CRECO_EMAIL as they come online on the CRECO side.
+  const CRECO_EMAIL: Record<string, string> = { 'info@fairoaksrealtygroup.com': 'zack@crecotx.com' };
+  const contactEmail = (email?: string | null): string | null => {
+    if (!email) return null;
+    if (residential) return email;
+    const lower = email.trim().toLowerCase();
+    if (CRECO_EMAIL[lower]) return CRECO_EMAIL[lower];
+    return lower.endsWith('@fairoaksrealtygroup.com') ? null : email;
+  };
   const agentNames = [nameOf(agent), nameOf(coAgent)].filter(Boolean);
   const contacts = (coAgent
-    ? [agent?.email, coAgent?.email, agent?.phone || coAgent?.phone]
-    : [agent?.email, agent?.phone, web]).filter(Boolean) as string[];
+    ? [contactEmail(agent?.email), contactEmail(coAgent?.email), agent?.phone || coAgent?.phone]
+    : [contactEmail(agent?.email), agent?.phone, web]).filter(Boolean) as string[];
 
   const bytes = await renderFlyer({
     badge, address,
