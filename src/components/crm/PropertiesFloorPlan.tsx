@@ -61,7 +61,7 @@ const WALL = '#243140';
 
 const BUILDINGS: { key: BuildingKey; label: string }[] = [
   { key: 'bldg1', label: 'Building 1' },
-  { key: 'bldg2', label: 'Building 2' },
+  { key: 'bldg2', label: 'Building 3' },  // 31xx/32xx suites. The key stays 'bldg2' (suite rows use it); the building is 3.
 ];
 
 const SUITES: SuiteDef[] = [
@@ -81,7 +81,7 @@ const SUITES: SuiteDef[] = [
   { key: 'home_lending', building: 'bldg1', floor: 2, shape: { type: 'rect', x: 375, y: 690, w: 370, h: 220 }, name: { x: 560, y: 806, lines: ['Home Lending'], size: 24 }, num: { x: 560, y: 845 }, defNumber: '208', defColor: 'rose' },
   { key: 'lg_construction', building: 'bldg1', floor: 2, shape: { type: 'rect', x: 745, y: 690, w: 395, h: 220 }, name: { x: 942, y: 806, lines: ['L&G Construction'], size: 24 }, num: { x: 942, y: 845 }, defNumber: '202', defColor: 'cyan' },
 
-  // ───────────────────────── Building 2 · Floor 1 ─────────────────────────
+  // ───────────────────────── Building 3 · Floor 1 ─────────────────────────
   { key: 'ceco_concrete', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 320, y: 170, w: 170, h: 230 }, name: { x: 405, y: 282, lines: ['Ceco', 'Concrete'], size: 21 }, num: { x: 405, y: 341 }, defNumber: '3100', defColor: 'amber' },
   { key: 'suite_3102', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 490, y: 170, w: 140, h: 230 }, name: { x: 560, y: 276, lines: ['Central Texas', 'Tree Service'], size: 15 }, num: { x: 560, y: 339 }, defNumber: '3102', defColor: 'green' },
   { key: 'central_texas', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 830, y: 170, w: 155, h: 230 }, name: { x: 907, y: 276, lines: ['Central Texas', 'Tree Service'], size: 16 }, num: { x: 907, y: 339 }, defNumber: '3102', defColor: 'green' },
@@ -91,7 +91,7 @@ const SUITES: SuiteDef[] = [
   { key: 'fair_oaks_financial', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 715, y: 590, w: 190, h: 320 }, name: { x: 810, y: 690, lines: ['Fair Oaks', 'Financial'], size: 20 }, num: { x: 810, y: 744 }, defNumber: '3109', defColor: 'blue' },
   { key: 'donnelly', building: 'bldg2', floor: 1, shape: { type: 'rect', x: 905, y: 590, w: 235, h: 320 }, name: { x: 1022, y: 690, lines: ['Donnelly &', 'Assoc.'], size: 20 }, num: { x: 1022, y: 744 }, defNumber: '3117', defColor: 'teal' },
 
-  // ───────────────────────── Building 2 · Floor 2 ─────────────────────────
+  // ───────────────────────── Building 3 · Floor 2 ─────────────────────────
   { key: 'kjf_3200', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 110, y: 170, w: 155, h: 210 }, name: { x: 187, y: 275, lines: ['KJF', 'Insurance'], size: 18 }, num: { x: 187, y: 332 }, defNumber: '3200', defColor: 'blue' },
   { key: 'kjf_3204', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 265, y: 170, w: 130, h: 210 }, name: { x: 330, y: 275, lines: ['KJF', 'Insurance'], size: 17 }, num: { x: 330, y: 332 }, defNumber: '3204', defColor: 'blue' },
   { key: 'kjf_3206', building: 'bldg2', floor: 2, shape: { type: 'rect', x: 395, y: 170, w: 115, h: 210 }, name: { x: 452, y: 275, lines: ['KJF', 'Insurance'], size: 16 }, num: { x: 452, y: 332 }, defNumber: '3206', defColor: 'blue' },
