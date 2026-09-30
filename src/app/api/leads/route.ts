@@ -4,7 +4,7 @@ import { fairOaksEmail } from '@/lib/fair-oaks-email';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
+import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
       const resend = new Resend(process.env.RESEND_API_KEY);
 
       // Notify the team
-      await resend.emails.send({
+      await sendMonitored(resend, {
         from: FROM_EMAIL,
         to: NOTIFICATION_EMAIL,
         replyTo: email || undefined,
@@ -267,10 +267,7 @@ export async function POST(req: NextRequest) {
             </p>
           </div>
         `,
-      }).then(() => recordIntegrationSuccess(LEAD_NOTIFY_KEY))
-      .catch(err => recordIntegrationFailure(LEAD_NOTIFY_KEY,
-        `Lead notification email failed from /api/leads: ${err?.message ?? err}. The lead itself was saved.`,
-        { subject: '⚠️ A lead alert did not send' }));  // non-fatal — the lead is already saved
+      }, LEAD_NOTIFY_KEY, { failSubject: '⚠️ A lead alert did not send', label: 'Website lead notification (/api/leads)' });  // failure recorded to integration-health; the lead is already saved
 
       // Auto-reply to the lead (only if they provided an email)
       if (email) await resend.emails.send({

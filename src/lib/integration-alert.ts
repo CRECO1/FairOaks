@@ -17,7 +17,7 @@
  * cron/tracking-health reads the row on its own schedule, so a stuck failure
  * still surfaces even if every alert send failed.
  */
-import { Resend } from 'resend';
+import { Resend, type CreateEmailOptions } from 'resend';
 import { adminClient } from '@/lib/supabase-admin';
 
 const FROM_EMAIL  = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
@@ -94,6 +94,46 @@ export async function recordIntegrationSuccess(key: string): Promise<void> {
     }).catch(() => {});
   } catch (e) {
     console.error(`[integration:${key}] could not record success:`, e);
+  }
+}
+
+/**
+ * Send a transactional email and record the result against a monitor key.
+ *
+ * This is the CORRECT replacement for the pattern that was copied across the
+ * lead-notification routes:
+ *
+ *     resend.emails.send(...).then(() => recordIntegrationSuccess(KEY))
+ *                            .catch(err => recordIntegrationFailure(KEY, ...))
+ *
+ * That pattern is subtly broken: `resend.emails.send()` RESOLVES with `{ error }`
+ * on a 4xx/5xx (a daily/monthly cap 429, an unverified domain, an invalid
+ * recipient) — it does not reject. So `.then()` ran on failed sends and the send
+ * was recorded as a SUCCESS, leaving integration-health falsely green while the
+ * alert never left. Only a thrown/network error hit `.catch()`. This helper
+ * checks `error` and routes to the right recorder. It never throws — a failed
+ * alert must not break the request that saved the lead.
+ */
+export async function sendMonitored(
+  resend: Resend,
+  payload: CreateEmailOptions,
+  monitorKey: string,
+  opts: { failSubject?: string; label?: string } = {},
+): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const label = opts.label ?? monitorKey;
+  try {
+    const { data, error } = await resend.emails.send(payload);
+    if (error) {
+      const msg = `${(error as { name?: string }).name ?? 'error'}: ${(error as { message?: string }).message ?? String(error)}`;
+      await recordIntegrationFailure(monitorKey, `${label} email failed — ${msg}.`, { subject: opts.failSubject });
+      return { ok: false, error: msg };
+    }
+    await recordIntegrationSuccess(monitorKey);
+    return { ok: true, id: (data as { id?: string } | null)?.id };
+  } catch (err) {
+    const msg = (err as { message?: string })?.message ?? String(err);
+    await recordIntegrationFailure(monitorKey, `${label} email threw — ${msg}.`, { subject: opts.failSubject });
+    return { ok: false, error: msg };
   }
 }
 

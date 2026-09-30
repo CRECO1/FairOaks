@@ -30,7 +30,7 @@ import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
+import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { screenSubmission } from '@/lib/bot-guard';
 import { channelFor, parseJourney, intOrNull } from '@/lib/lead-context';
@@ -260,7 +260,7 @@ export async function POST(req: NextRequest) {
   const notifyInternally = body.notify !== false;
   if (process.env.RESEND_API_KEY && notifyInternally) {
     const resend = new Resend(process.env.RESEND_API_KEY);
-    await resend.emails.send({
+    await sendMonitored(resend, {
       from: 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
       to: NOTIFICATION_EMAIL,
       subject: `📬 New Lead from ${esc(source)}: ${esc(first_name)} ${esc(last_name)}`,
@@ -279,10 +279,7 @@ export async function POST(req: NextRequest) {
           <p style="margin-top:16px"><a href="https://www.fairoaksrealtygroup.com/crm" style="background:#c9922c;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold">View in CRM →</a></p>
         </div>
       `,
-    }).then(() => recordIntegrationSuccess(LEAD_NOTIFY_KEY))
-    .catch(err => recordIntegrationFailure(LEAD_NOTIFY_KEY,
-      `Lead notification email failed from webhook/lead: ${err?.message ?? err}. The lead itself was saved.`,
-      { subject: '⚠️ A lead alert did not send' }));  // non-fatal to the request
+    }, LEAD_NOTIFY_KEY, { failSubject: '⚠️ A lead alert did not send', label: 'Website lead notification (webhook/lead)' });  // failure recorded to integration-health; the lead itself was saved
   }
 
   // New website leads can be enrolled in the brand's welcome sequence. Off
