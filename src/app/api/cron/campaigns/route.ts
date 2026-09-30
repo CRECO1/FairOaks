@@ -229,6 +229,9 @@ export async function GET(req: NextRequest) {
       client: {
         first_name: client.first_name,
         last_name: client.last_name,
+        // applyMergeFields greets a company-only contact by business name. Leaving
+        // this out made every such contact render as "Hi there".
+        business_name: client.business_name,
         email: client.email,
         type: client.type,
         unsubscribe_token: client.unsubscribe_token ?? '',
