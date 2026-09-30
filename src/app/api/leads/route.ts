@@ -4,7 +4,7 @@ import { fairOaksEmail } from '@/lib/fair-oaks-email';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
-import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
+import { sendMonitored, recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY, LEAD_WRITE_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
@@ -89,8 +89,19 @@ export async function POST(req: NextRequest) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // must be service role — publishable key is blocked by RLS
 
-    if (!serviceKey) {
-      console.error('[leads] SUPABASE_SERVICE_ROLE_KEY is not set — skipping DB write');
+    if (!supabaseUrl || !serviceKey) {
+      // FAIL LOUD. This route used to just log the missing key and fall through to a
+      // 200 "success", so the form redirected the visitor to /thank-you while nothing
+      // was saved — website leads vanished silently for a MONTH (the Aug 2026 outage).
+      // A 500 surfaces the break immediately (the form shows an error instead of a
+      // phantom success) and recordIntegrationFailure records it to integration-health
+      // and emails an alert. The alert email is best-effort (the status-row write needs
+      // the same service key that is missing), but the 500 is the reliable loud signal.
+      console.error('[leads] SUPABASE_SERVICE_ROLE_KEY/NEXT_PUBLIC_SUPABASE_URL missing — cannot save lead');
+      await recordIntegrationFailure(LEAD_WRITE_KEY,
+        'Lead NOT saved — SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL is missing in this deployment. Every website submission is being lost.',
+        { subject: '⚠️ Lead capture is DOWN — Supabase service-role key missing' });
+      return NextResponse.json({ error: 'We could not save your message right now. Please call or text 210-390-9997.' }, { status: 500 });
     }
 
     if (supabaseUrl && serviceKey) {
@@ -114,7 +125,18 @@ export async function POST(req: NextRequest) {
         // text for every FORG lead instead of reading it.
         lead_site: 'fairoaksrealtygroup.com',
       }]);
-      if (leadsErr) console.error('[leads] leads table insert error:', leadsErr);
+      if (leadsErr) {
+        // FAIL LOUD — the primary lead record did not save. Alert + 500, instead of
+        // the old swallow-and-return-200 that hid the outage behind a phantom success.
+        console.error('[leads] leads table insert error:', leadsErr);
+        await recordIntegrationFailure(LEAD_WRITE_KEY,
+          `Lead NOT saved — public.leads insert failed: ${leadsErr.message ?? JSON.stringify(leadsErr)}`,
+          { subject: '⚠️ Lead capture is failing — public.leads insert error' });
+        return NextResponse.json({ error: 'We could not save your message right now. Please call or text 210-390-9997.' }, { status: 500 });
+      }
+      // Saved. Flip the capture monitor back to healthy (and fire the one-time
+      // recovery note if it had been failing).
+      await recordIntegrationSuccess(LEAD_WRITE_KEY);
     }
 
     // ── Auto-create CRM client from lead ────────────────────────────────────────
@@ -194,6 +216,12 @@ export async function POST(req: NextRequest) {
 
             if (crmInsertErr) {
               console.error('[leads] crm_clients insert error:', JSON.stringify(crmInsertErr));
+              // The lead IS saved (public.leads) and the team is still emailed, so this
+              // does NOT fail the request — but alert (degraded), because the contact is
+              // missing from the CRM dashboard and needs a manual backfill.
+              await recordIntegrationFailure(LEAD_WRITE_KEY,
+                `Lead saved to public.leads but crm_clients insert failed — contact missing from CRM: ${crmInsertErr.message ?? JSON.stringify(crmInsertErr)}`,
+                { severity: 'degraded', subject: '⚠️ Lead saved but CRM contact insert failed' });
             } else {
               console.log(`[leads] CRM client created: ${first_name} ${last_name} (${email ?? phone})`);
               // Speed-to-lead: put it on the owner's list the moment it lands.

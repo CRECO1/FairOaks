@@ -137,5 +137,10 @@ export async function sendMonitored(
   }
 }
 
-/** The key every lead-notification path reports under. */
+/** The key every lead-notification (email) path reports under. */
 export const LEAD_NOTIFY_KEY = 'lead_notifications';
+
+/** The key the lead-CAPTURE (DB write) path reports under — kept distinct from
+ *  LEAD_NOTIFY_KEY so a lead that FAILED TO SAVE is tracked separately from a
+ *  lead that saved but whose notification email failed. */
+export const LEAD_WRITE_KEY = 'lead_capture_db';
