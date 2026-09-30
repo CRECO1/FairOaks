@@ -57,7 +57,7 @@ const RANK: Record<string, number> = { delayed: 1, delivered: 2, opened: 3, clic
  */
 async function recordCampaignEvent(
   supabase: ReturnType<typeof adminClient>,
-  payload: { created_at?: string; data?: { click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string } },
+  payload: { created_at?: string; data?: { click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string; bounce?: { type?: string } } },
   emailId: string,
   status: string,
   svixId: string,
@@ -91,9 +91,15 @@ async function recordCampaignEvent(
     console.error('[webhooks/resend] campaign event insert failed', error);
     return NextResponse.json({ error: 'insert failed' }, { status: 500 });
   }
-  // Someone who marked a campaign as spam is never mailed by a campaign again. Only
-  // stamps a contact that isn't already unsubscribed, so the original date survives.
-  if (eventType === 'complaint' && send.client_id) {
+  // Never mail a spam-complainer again, and never mail an address that HARD-bounced.
+  // Resend classifies a bounce as "Permanent" when the mailbox/domain does not exist;
+  // Transient bounces (full mailbox, greylisting) are left mailable so a temporary
+  // problem does not permanently drop a real prospect. Without this, every send re-mails
+  // the same dead addresses, re-bounces, and keeps the bounce-rate brake on the volume
+  // cap (lib/email-volume.ts). Only stamps a contact that isn't already unsubscribed, so
+  // a genuine opt-out's original date survives.
+  const hardBounce = eventType === 'bounce' && payload.data?.bounce?.type === 'Permanent';
+  if ((eventType === 'complaint' || hardBounce) && send.client_id) {
     await supabase.from('crm_clients').update({ unsubscribed_at: new Date().toISOString() })
       .eq('id', send.client_id).is('unsubscribed_at', null);
   }
@@ -127,6 +133,9 @@ export async function POST(req: NextRequest) {
       // Resend nests click details; the shape has varied, so read defensively.
       click?: { link?: string; ipAddress?: string; userAgent?: string; timestamp?: string };
       link?: string;
+      // Resend's email.bounced payload nests the bounce classification here;
+      // type "Permanent" is a hard bounce (address doesn't exist).
+      bounce?: { type?: string; subType?: string; message?: string };
     };
   };
   try { payload = JSON.parse(body); } catch { return NextResponse.json({ error: 'bad json' }, { status: 400 }); }
