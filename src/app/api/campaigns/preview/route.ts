@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { agentTitle } from '@/lib/agent-title';
+import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -99,6 +100,9 @@ export async function POST(req: NextRequest) {
 
   const renderedSubject = applyMergeFields(subject ?? '(no subject)', agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
   let renderedBody      = applyMergeFields(body ?? '', agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
+  // Same link-tagging the real send applies, so the preview shows exactly the
+  // UTM-tagged links recipients will get.
+  renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaignName));
 
   // Wrap in a preview banner so it's obvious this is a test
   const previewBanner = `

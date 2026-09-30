@@ -4,6 +4,7 @@ import { Resend } from 'resend';
 import { unsubscribeUrlFor } from '@/lib/email-tracking';
 import { agentTitle } from '@/lib/agent-title';
 import { marketingDailyCap, type CapDecision } from '@/lib/email-volume';
+import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -290,6 +291,9 @@ export async function GET(req: NextRequest) {
           const perRecipient = (enrollment as { merge_fields?: Record<string, unknown> | null }).merge_fields ?? null;
           subjectRendered = applyMergeFields(campaign.email_subject || '', ctx, campaign.business_unit, perRecipient);
           let renderedBody = applyMergeFields(campaign.email_body || '', ctx, campaign.business_unit, perRecipient);
+          // Tag on-domain links so GA4 attributes the click to Email + this campaign
+          // (not "direct"). Runs after merge, before the open pixel is injected.
+          renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaign.name, campaign.id));
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
 
           // Inject 1×1 tracking pixel just before </body> (or at end if no body tag)
