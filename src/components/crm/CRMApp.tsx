@@ -3560,7 +3560,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Tools</div>
           <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : calendarFilter === 'month' ? 30 : 90); }}>📅 &nbsp;Calendar</button>
           <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadCampaignProjects(); loadProfiles(); setCampaignAgentFilter(null); }}>📣 &nbsp;Marketing</button>
-          {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); }}>💰 &nbsp;Commissions</button>}
           {/* Billing — links to the CRECO billing surface (crecotx.com),
               which is a separate Next.js app deployed independently. Opens
               in a new tab so CRM state isn't lost. Admin-only because
@@ -3756,7 +3755,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Tools</div>
                 <button className={`crm-nav${page === 'calendar' ? ' active' : ''}`} onClick={() => { setPage('calendar'); loadCalendarEvents(calendarFilter === 'week' ? 7 : 30); setMobileMenuOpen(false); }}>📅 &nbsp;Calendar</button>
                 <button className={`crm-nav${['campaigns', 'action-plans', 'social'].includes(page) ? ' active' : ''}`} onClick={() => { setPage('campaigns'); setCampaignView('list'); loadCampaigns(); loadProfiles(); setCampaignAgentFilter(null); setMobileMenuOpen(false); }}>📣 &nbsp;Marketing</button>
-                {isAdmin && <button className={`crm-nav${page === 'commissions' ? ' active' : ''}`} onClick={() => { setPage('commissions'); loadAllCommissions(); setMobileMenuOpen(false); }}>💰 &nbsp;Commissions</button>}
                 {isAdmin && (
                   <a href="https://www.crecotx.com/billing/" target="_blank" rel="noopener noreferrer" className="crm-nav" onClick={() => setMobileMenuOpen(false)}>
                     🧾 &nbsp;Billing <span style={{ marginLeft: 'auto', fontSize: 10, color: 'rgba(255,255,255,.4)', textTransform: 'uppercase' }}>↗</span>
