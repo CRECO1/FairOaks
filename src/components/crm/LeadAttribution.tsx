@@ -259,6 +259,19 @@ function GaConnected({ label, via, token }: { label: string; via?: string; token
   );
 }
 
+interface LiveFeedItem { sid: string; site: string; path: string; title: string | null; source: string; loc: string | null; device: string | null; at: string }
+interface LiveData { now: string; activeCount: number; activeBySite: { label: string; value: number }[]; last30min: number; feed: LiveFeedItem[] }
+
+/** Relative "time ago" for the live feed — coarse, recomputed on each poll. */
+function ago(iso: string): string {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 10) return 'now';
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
+}
+const siteShort = (host: string) => host.replace(/\.com$/, '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn');
+
 export default function LeadAttribution({ authToken, isMobile }: { authToken: string | null; isMobile: boolean }) {
   const token = authToken;
   const [data, setData] = useState<Payload | null>(null);
@@ -315,6 +328,45 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   // Clear any pending "new lead" flash timer on unmount.
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
+  // ── Live activity ("who's on the site now") — its own faster poll (12s) ──
+  const [live, setLive] = useState<LiveData | null>(null);
+  const [liveFresh, setLiveFresh] = useState<Set<string>>(new Set());
+  const liveTopAtRef = useRef<string>('');
+  const liveFirstRef = useRef(true);
+  const liveFlash = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadLive = useCallback(async (s: string | null) => {
+    try {
+      const qs = s ? `?site=${encodeURIComponent(s)}` : '';
+      const res = await fetch(`/api/crm/live-activity${qs}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+      if (!res.ok) return;
+      const d: LiveData = await res.json();
+      const feed = d.feed ?? [];
+      if (liveFirstRef.current) {
+        liveFirstRef.current = false;
+      } else {
+        const prev = liveTopAtRef.current;
+        const fresh = new Set<string>();
+        for (const f of feed) if (f.at > prev) fresh.add(`${f.sid}|${f.at}`);
+        if (fresh.size) {
+          setLiveFresh(fresh);
+          if (liveFlash.current) clearTimeout(liveFlash.current);
+          liveFlash.current = setTimeout(() => setLiveFresh(new Set()), 6000);
+        }
+      }
+      if (feed[0]?.at) liveTopAtRef.current = feed[0].at;
+      setLive(d);
+    } catch { /* live panel is best-effort */ }
+  }, [token]);
+
+  useEffect(() => {
+    liveFirstRef.current = true;
+    loadLive(site);
+    const t = setInterval(() => loadLive(site), 12000);
+    return () => clearInterval(t);
+  }, [loadLive, site]);
+  useEffect(() => () => { if (liveFlash.current) clearTimeout(liveFlash.current); }, []);
+
   if (loading && !data) return <div style={{ padding: 24, color: MUTE, fontSize: 14 }}>Loading lead attribution…</div>;
   if (err) return <div style={{ ...card, borderLeft: '4px solid #ef4444' }}><div style={{ fontSize: 14, color: '#374151' }}>{err}</div></div>;
   if (!data) return null;
@@ -358,6 +410,47 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
             {loading ? 'updating…' : `updated ${new Date(lastRefreshed).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`}
           </span>
         </span>
+      </div>
+
+      {/* ── RIGHT NOW: live first-party activity feed ── */}
+      <div style={{ background: INK, borderRadius: 12, padding: isMobile ? '16px 16px' : '18px 22px', marginBottom: 14, color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, alignSelf: 'center' }}>
+            <span style={{ width: 9, height: 9, borderRadius: 999, background: '#22c55e', animation: 'laPulse 1.5s infinite' }} />
+            <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.6)', fontWeight: 700 }}>Right now</span>
+          </span>
+          <span style={{ fontFamily: serif, fontSize: isMobile ? 34 : 42, fontWeight: 700, lineHeight: 1, color: '#22c55e' }}>{live?.activeCount ?? 0}</span>
+          <span style={{ fontSize: 13.5, color: 'rgba(255,255,255,.7)', alignSelf: 'center' }}>
+            {(live?.activeCount === 1 ? 'visitor' : 'visitors')} on {site ? siteShort(site) : 'the sites'} now
+          </span>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap', alignSelf: 'center' }}>
+            {(live?.activeBySite ?? []).map(b => (
+              <span key={b.label} style={{ fontSize: 11.5, color: 'rgba(255,255,255,.8)', background: 'rgba(255,255,255,.08)', padding: '3px 9px', borderRadius: 999 }}>{siteShort(b.label)} · {b.value}</span>
+            ))}
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', alignSelf: 'center' }}>{live?.last30min ?? 0} views · 30 min</span>
+          </span>
+        </div>
+        {(!live || live.feed.length === 0) ? (
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,.5)' }}>
+            {live ? 'No activity in the last 30 minutes — pageviews appear here the instant someone browses either site.' : 'Loading live activity…'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: isMobile ? 240 : 290, overflowY: 'auto' }}>
+            {live.feed.map((f, i) => {
+              const fresh = liveFresh.has(`${f.sid}|${f.at}`);
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', borderRadius: 6, background: fresh ? 'rgba(34,197,94,.16)' : 'transparent', borderBottom: '1px solid rgba(255,255,255,.06)', transition: 'background .5s' }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', width: 42, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{ago(f.at)}</span>
+                  <span style={{ fontSize: 9.5, color: 'rgba(255,255,255,.6)', background: 'rgba(255,255,255,.08)', padding: '1px 6px', borderRadius: 4, flexShrink: 0, whiteSpace: 'nowrap' }}>{siteShort(f.site)}</span>
+                  <span style={{ fontSize: 12.5, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 60 }} title={f.title || f.path}>{f.path}</span>
+                  {!isMobile && <span style={{ fontSize: 11.5, color: GOLD, flexShrink: 0, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.source}>{f.source}</span>}
+                  {!isMobile && f.loc && <span style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.loc}</span>}
+                  <span style={{ fontSize: 11, flexShrink: 0 }}>{f.device === 'mobile' ? '📱' : f.device === 'tablet' ? '📲' : '💻'}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── HERO: the answer ── */}

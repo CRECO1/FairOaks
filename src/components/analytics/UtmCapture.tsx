@@ -20,7 +20,7 @@
 
 import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { captureAttribution } from '@/lib/attribution';
+import { captureAttribution, sendPageviewBeacon } from '@/lib/attribution';
 
 const EXCLUDED_PREFIXES = ['/crm', '/manage'];
 
@@ -31,6 +31,7 @@ export default function UtmCapture() {
   useEffect(() => {
     if (EXCLUDED_PREFIXES.some(p => (pathname ?? '').startsWith(p))) return;
     captureAttribution();
+    sendPageviewBeacon();   // live "who's on the site now" feed (fire-and-forget)
   }, [pathname, searchParams]);
 
   return null;

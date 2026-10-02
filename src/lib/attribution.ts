@@ -174,6 +174,50 @@ export function captureAttribution(): void {
   }
 }
 
+// ── Live pageview beacon → /api/track/pageview. Feeds the real-time "who's on
+//    the site now" feed on the CRM Lead Attribution page. Mounted via UtmCapture
+//    so it fires on every marketing-site navigation, never on /crm or /manage. ──
+const SESSION_KEY = 'forg_sid';
+
+/** Anonymous per-tab session id (no PII). Created once, reused for the tab. */
+function sessionId(): string {
+  try {
+    let id = sessionStorage.getItem(SESSION_KEY);
+    if (!id) {
+      id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `s_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(SESSION_KEY, id);
+    }
+    return id;
+  } catch { return `s_${Math.random().toString(36).slice(2, 12)}`; }
+}
+
+/**
+ * Fire-and-forget pageview beacon. sendBeacon so it never delays the page and
+ * survives the navigation that triggered it. Non-PII only (path, title,
+ * referrer, utm, an anon session id); the server adds coarse geo + device.
+ * text/plain keeps it a CORS "simple request" — works cross-origin too.
+ */
+export function sendPageviewBeacon(): void {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return;
+  const host = window.location.hostname;
+  if (/localhost|127\.0\.0\.1|\.local$/.test(host)) return;   // don't log dev traffic
+  try {
+    const a = readAttribution();
+    const payload = JSON.stringify({
+      site: host.replace(/^www\./, ''),
+      session_id: sessionId(),
+      path: window.location.pathname.slice(0, 512),
+      title: (document.title || '').slice(0, 300),
+      referrer: (document.referrer && !document.referrer.includes(host)) ? document.referrer.slice(0, 512) : '',
+      utm_source: a.utm_source, utm_medium: a.utm_medium, utm_campaign: a.utm_campaign,
+      utm_term: a.utm_term, utm_content: a.utm_content,
+    });
+    navigator.sendBeacon('/api/track/pageview', new Blob([payload], { type: 'text/plain' }));
+  } catch { /* analytics must never break a render */ }
+}
+
 /** Fire a GA4 event; mirrors lead submits to `generate_lead`. Never throws. */
 export function trackEvent(name: string, params: Record<string, unknown> = {}): void {
   if (typeof window === 'undefined') return;
