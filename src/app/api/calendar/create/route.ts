@@ -84,6 +84,23 @@ export async function POST(req: NextRequest) {
       'Created by Fair Oaks Realty Group CRM',
     ].filter(l => l !== undefined).join('\n').trim();
 
+    // Duplicate guard: if an all-day event with this exact title already sits on the
+    // date, return it instead of stacking a second one. The Copilot re-calling
+    // schedule_event (or a double-click) would otherwise create duplicate events.
+    try {
+      const dayStart = `${due_date}T00:00:00Z`;
+      const dayEnd = new Date(new Date(`${due_date}T00:00:00Z`).getTime() + 86_400_000).toISOString();
+      const listRes = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(dayStart)}&timeMax=${encodeURIComponent(dayEnd)}&singleEvents=true&maxResults=50`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (listRes.ok) {
+        const list = await safeJson<{ items?: Array<{ id: string; summary?: string; htmlLink?: string }> }>(listRes, 'calendar/create dedupe');
+        const existing = (list?.items ?? []).find(ev => (ev.summary ?? '') === eventTitle);
+        if (existing) return NextResponse.json({ success: true, eventId: existing.id, htmlLink: existing.htmlLink, duplicate: true });
+      }
+    } catch { /* dedupe is best-effort — never block a genuine create over it */ }
+
     // Create all-day event on the due date
     const event = {
       summary: eventTitle,

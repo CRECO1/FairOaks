@@ -163,6 +163,29 @@ export async function POST(req: NextRequest) {
   if (deal_id && deal_id !== sub.deal_id && !(await assertOwnsResource('crm_deals', deal_id, ctx))) return notFound('Deal not found');
   if (listing_id && listing_id !== sub.listing_id && !(await assertCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
 
+  // Idempotency guard: don't create a second LIVE envelope for a document already out
+  // to the same people. The Copilot's send_for_signature (and plain double-clicks or a
+  // retried request) could POST this more than once, which emailed a signer multiple
+  // signature requests. A re-send to the same person should go through Nudge (PATCH),
+  // and a genuinely new round can be sent once the prior request is cancelled/completed.
+  {
+    const wantedEmails = new Set(clean.map((s: { email: string }) => String(s.email).trim().toLowerCase()));
+    const { data: active } = await supabase.from('crm_envelopes')
+      .select('id, crm_envelope_signers(email)')
+      .eq('submission_id', submission_id)
+      .in('status', ['sent', 'in_progress'])
+      .is('archived_at', null);
+    const dupe = (active ?? []).find(e =>
+      ((e.crm_envelope_signers ?? []) as Array<{ email: string }>).some(s => wantedEmails.has(String(s.email).toLowerCase())),
+    );
+    if (dupe) {
+      return NextResponse.json({
+        error: 'This document is already out for signature to one or more of these people — it was NOT sent again. Use Nudge to remind them, or cancel the existing request first if you need to re-send.',
+        envelope_id: dupe.id, already_active: true,
+      }, { status: 409 });
+    }
+  }
+
   // An admin's active workspace wins the brand — 'sending from CRECO must send as CRECO',
   // even for a doc whose own tag or the sender's profile says otherwise.
   const unit = isAdminRole(ctx.role) ? (business_unit || sub.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');

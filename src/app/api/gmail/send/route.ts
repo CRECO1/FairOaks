@@ -155,6 +155,27 @@ export async function POST(req: NextRequest) {
     const gmailEmail = agentEmail ?? '';
     const trackingId = crypto.randomUUID();
 
+    // Prefix subject with Re: if replying and not already prefixed.
+    const finalSubject = inReplyTo && !subject.startsWith('Re:') ? `Re: ${subject}` : subject;
+
+    // Duplicate-send guard: if the IDENTICAL email (same recipient, subject and body) to
+    // this contact/deal already went out in the last 10 minutes, don't send it again. Stops
+    // the Copilot re-calling send_email and plain UI double-clicks from double-emailing.
+    {
+      const incomingPlain = String(body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+      const sinceIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const scope = dealId ? `deal_id=eq.${dealId}` : `client_id=eq.${clientId}`;
+      const recentRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scope}&direction=eq.sent&created_at=gte.${sinceIso}&select=to_email,subject,body`,
+        { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
+      );
+      const recent = await recentRes.json().catch(() => []);
+      if (Array.isArray(recent) && recent.some((e: { to_email?: string; subject?: string; body?: string }) =>
+        (e.to_email ?? '') === to && (e.subject ?? '') === finalSubject && (e.body ?? '') === incomingPlain)) {
+        return NextResponse.json({ error: 'This exact email was just sent to this recipient a moment ago — it was not sent again.', duplicate: true }, { status: 409 });
+      }
+    }
+
     // Look up CC agent emails (exclude the sender)
     let ccEmails: string[] = [];
     if (ccAgentIds?.length) {
@@ -176,9 +197,6 @@ export async function POST(req: NextRequest) {
     const bodyWithPixel = `${body}${pixel}`;
 
     const fromLine = agentName ? `${agentName} <${gmailEmail}>` : gmailEmail;
-
-    // Prefix subject with Re: if replying and not already prefixed
-    const finalSubject = inReplyTo && !subject.startsWith('Re:') ? `Re: ${subject}` : subject;
 
     // Send to client ONLY — no Cc header so the pixel only fires when the client opens it
     const clientHeaderLines = [
