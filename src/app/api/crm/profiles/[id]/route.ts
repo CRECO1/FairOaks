@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, forbidden, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, isSuperAdminRole, forbidden, dbError, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +26,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (key in body && body[key] !== undefined) {
       update[key] = body[key];
     }
+  }
+
+  // Role change is super-admin-only and MUST run here, server-side: RLS limits
+  // authenticated writes on crm_profiles to the caller's OWN row, so the browser
+  // cannot change anyone else's role (the write silently affects 0 rows). The
+  // service client bypasses RLS, and crm_guard_profile_change() defers to the
+  // route for service-role writes — so these checks ARE the guard.
+  if ('role' in body && body.role !== undefined) {
+    if (!isSuperAdminRole(ctx.role)) return forbidden('Only a super admin can change a user\'s role');
+    if (ctx.userId === id) return forbidden('You cannot change your own role');
+    if (body.role !== 'agent' && body.role !== 'admin') {
+      return NextResponse.json({ error: 'Role must be "agent" or "admin"' }, { status: 400 });
+    }
+    const { data: target } = await adminClient().from('crm_profiles').select('role').eq('id', id).single();
+    if (!target) return notFound('Agent not found');
+    if (target.role === 'super_admin') return forbidden('A super admin\'s role cannot be changed here');
+    update.role = body.role;
   }
 
   if (Object.keys(update).length === 0) {

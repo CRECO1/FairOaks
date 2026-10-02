@@ -2588,13 +2588,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Delete agent ──────────────────────────────────────────────────────────────
   async function updateAgentRole(userId: string, firstName: string, newRole: 'admin' | 'agent') {
     // Granting/revoking admin is super-admin-only — stops an admin (e.g. Brian)
-    // from promoting himself/others or demoting the super admin.
+    // from promoting himself/others or demoting the super admin. This goes through
+    // the server route (service-role key): a direct browser write cannot do it,
+    // because RLS restricts crm_profiles writes to the caller's OWN row, so
+    // updating someone else's row silently changed 0 rows and "didn't stick".
     if (!isSuperAdmin) { showToast('Only a super admin can change admin access.'); return; }
     const action = newRole === 'admin' ? `Make ${firstName} an admin?` : `Remove admin access from ${firstName}?`;
     if (!confirm(action)) return;
-    const { error } = await supabase.from('crm_profiles').update({ role: newRole }).eq('id', userId);
-    if (error) showToast('Error: ' + error.message);
-    else { showToast(`${firstName} is now ${newRole === 'admin' ? 'an Admin' : 'an Agent'}`); loadProfiles(); }
+    const res = await fetch(`/api/crm/profiles/${userId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ role: newRole }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast('Error: ' + (json.error || 'could not change role')); return; }
+    showToast(`${firstName} is now ${newRole === 'admin' ? 'an Admin' : 'an Agent'}`);
+    loadProfiles();
   }
 
   async function deleteAgent(userId: string, firstName: string, lastName: string) {
