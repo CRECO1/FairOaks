@@ -19,7 +19,7 @@
  * RPC has EXECUTE revoked from authenticated/anon. The nav gate is cosmetic.
  */
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 
 const GOLD = '#c9922c';
 const GOLD_DEEP = '#9A6E18';
@@ -267,20 +267,53 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   const [site, setSite] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);   // which recent-lead row is showing its visit path
+  // ── Live: poll silently every 15s and flash the leads that arrived since the last poll ──
+  const [newKeys, setNewKeys] = useState<Set<string>>(new Set());
+  const [lastRefreshed, setLastRefreshed] = useState<number>(() => Date.now());
+  const lastTopDateRef = useRef<string>('');   // created_at of the newest lead at the previous poll
+  const firstLoadRef = useRef(true);           // don't flash the whole list on first paint or a window switch
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async (d: number, s: string | null) => {
-    setLoading(true); setErr(null);
+  const load = useCallback(async (d: number, s: string | null, silent = false) => {
+    if (!silent) setLoading(true);
+    setErr(null);
     try {
       const qs = `days=${d}` + (s ? `&site=${encodeURIComponent(s)}` : '');
       const res = await fetch(`/api/crm/lead-attribution?${qs}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
       if (res.status === 403) { setErr('Lead attribution is limited to the account owner.'); setData(null); return; }
-      if (!res.ok) { setErr('Could not load lead attribution.'); setData(null); return; }
-      setData(await res.json());
-    } catch { setErr('Could not load lead attribution.'); }
-    finally { setLoading(false); }
+      if (!res.ok) { if (!silent) { setErr('Could not load lead attribution.'); setData(null); } return; }
+      const payload: Payload = await res.json();
+      const recent = payload.recent ?? [];
+      if (firstLoadRef.current) {
+        firstLoadRef.current = false;
+      } else {
+        const prevTop = lastTopDateRef.current;
+        const fresh = new Set<string>();
+        for (const r of recent) if (r.date && r.date > prevTop) fresh.add(`${r.name}|${r.date}`);
+        if (fresh.size) {
+          setNewKeys(fresh);
+          if (flashTimer.current) clearTimeout(flashTimer.current);
+          flashTimer.current = setTimeout(() => setNewKeys(new Set()), 12000);
+        }
+      }
+      if (recent[0]?.date) lastTopDateRef.current = recent[0].date;
+      setData(payload);
+      setLastRefreshed(Date.now());
+    } catch { if (!silent) setErr('Could not load lead attribution.'); }
+    finally { if (!silent) setLoading(false); }
   }, [token]);
 
-  useEffect(() => { load(days, site); }, [load, days, site]);
+  // Load on mount and whenever the window/site changes — treated as a fresh view (no flash).
+  useEffect(() => { firstLoadRef.current = true; load(days, site); }, [load, days, site]);
+
+  // Live: silent background poll so new leads surface on their own.
+  useEffect(() => {
+    const t = setInterval(() => load(days, site, true), 15000);
+    return () => clearInterval(t);
+  }, [load, days, site]);
+
+  // Clear any pending "new lead" flash timer on unmount.
+  useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []);
 
   if (loading && !data) return <div style={{ padding: 24, color: MUTE, fontSize: 14 }}>Loading lead attribution…</div>;
   if (err) return <div style={{ ...card, borderLeft: '4px solid #ef4444' }}><div style={{ fontSize: 14, color: '#374151' }}>{err}</div></div>;
@@ -314,7 +347,17 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
             {d === 365 ? '1 year' : `${d} days`}
           </button>
         ))}
-        {loading && <span style={{ fontSize: 12, color: FAINT }}>updating…</span>}
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+          <style>{`@keyframes laPulse{0%,100%{opacity:1}50%{opacity:.28}}`}</style>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: '#16a34a', fontWeight: 700 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 999, background: '#16a34a', animation: 'laPulse 1.5s infinite' }} />
+            Live
+          </span>
+          {newKeys.size > 0 && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>· {newKeys.size} just arrived</span>}
+          <span style={{ fontSize: 11, color: FAINT }}>
+            {loading ? 'updating…' : `updated ${new Date(lastRefreshed).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`}
+          </span>
+        </span>
       </div>
 
       {/* ── HERO: the answer ── */}
@@ -503,9 +546,13 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               const dur = fmtDur(r.time_on_site_sec);
               const hasJourney = !!(r.journey && r.journey.length);
               const open = expanded === i;
+              const isNew = newKeys.has(`${r.name}|${r.date}`);
               return (
-                <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 9 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{r.name}</div>
+                <div key={i} style={{ borderBottom: '1px solid #f1f1f1', paddingBottom: 9, ...(isNew ? { background: '#fffbeb', borderLeft: '3px solid #16a34a', paddingLeft: 10, marginLeft: -10 } : {}) }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>
+                    {r.name}
+                    {isNew && <span style={{ marginLeft: 7, fontSize: 9, letterSpacing: 0.5, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '1px 6px', borderRadius: 999 }}>NEW</span>}
+                  </div>
                   <div style={{ fontSize: 12, color: MUTE, marginTop: 2 }}>
                     {r.date ? new Date(r.date).toLocaleDateString() : '—'} · {r.site ?? '—'} · {r.source ?? '—'}
                   </div>
@@ -541,11 +588,15 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                   const dur = fmtDur(r.time_on_site_sec);
                   const hasJourney = !!(r.journey && r.journey.length);
                   const open = expanded === i;
+                  const isNew = newKeys.has(`${r.name}|${r.date}`);
                   const td: React.CSSProperties = { padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5' };
                   return (
                     <Fragment key={i}>
-                      <tr onClick={hasJourney ? () => setExpanded(open ? null : i) : undefined} style={hasJourney ? { cursor: 'pointer' } : undefined}>
-                        <td style={{ ...td, fontWeight: 600, color: INK }}>{r.name}</td>
+                      <tr onClick={hasJourney ? () => setExpanded(open ? null : i) : undefined} style={{ ...(hasJourney ? { cursor: 'pointer' } : {}), ...(isNew ? { background: '#fffbeb' } : {}) }}>
+                        <td style={{ ...td, fontWeight: 600, color: INK, boxShadow: isNew ? 'inset 3px 0 0 #16a34a' : undefined }}>
+                          {r.name}
+                          {isNew && <span style={{ marginLeft: 7, fontSize: 9, letterSpacing: 0.5, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '1px 6px', borderRadius: 999 }}>NEW</span>}
+                        </td>
                         <td style={{ ...td, color: MUTE, whiteSpace: 'nowrap' }}>{r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
                         <td style={{ ...td, color: '#374151', whiteSpace: 'nowrap' }}>{r.site ?? '—'}</td>
                         <td style={{ ...td, color: '#374151' }}>{r.source ?? '—'}</td>
