@@ -117,6 +117,19 @@ const CLIENT_TYPE_COLORS: Record<string, string> = {
   'Broker':   'background:#f1f5f9;color:#334155',
 };
 
+// Avatar gradient by first initial — shared by the Contacts card grid.
+const CONTACT_AVATAR_COLORS: Record<string, string> = {
+  A:'#667eea,#764ba2', B:'#f093fb,#f5576c', C:'#4facfe,#00f2fe',
+  D:'#43e97b,#38f9d7', E:'#fa709a,#fee140', F:'#a18cd1,#fbc2eb',
+  G:'#fccb90,#d57eeb', H:'#a1c4fd,#c2e9fb', I:'#fd7043,#ff8a65',
+  J:'#66bb6a,#43a047', K:'#ab47bc,#8e24aa', L:'#26c6da,#00acc1',
+  M:'#ef5350,#e53935', N:'#7e57c2,#673ab7', O:'#ff7043,#f4511e',
+  P:'#26a69a,#00897b', Q:'#d4ac0d,#b7950b', R:'#5c6bc0,#3949ab',
+  S:'#ec407a,#d81b60', T:'#29b6f6,#039be5', U:'#9ccc65,#7cb342',
+  V:'#ff8a65,#f4511e', W:'#26c6da,#0097a7', X:'#ab47bc,#7b1fa2',
+  Y:'#ffca28,#ffb300', Z:'#78909c,#546e7a',
+};
+
 function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
 function fmtPhone(v: string): string {
@@ -3456,6 +3469,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .cf-tag-input{padding:6px 11px;border-radius:8px;border:1px solid #e2e8f0;font-size:13.5px;font-family:'DM Sans',sans-serif;color:#374151;background:#fff;transition:border-color .15s,box-shadow .15s;outline:none;}
         .cf-tag-input:focus{border-color:#c9922c;box-shadow:0 0 0 3px rgba(201,146,44,.12);}
         .cf-tag-input.active{border-color:#c9922c;background:#fffbf2;}
+        /* ── Contacts reimagined: command-center stats + card grid ── */
+        .ctc-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;}
+        .ctc-stat{background:#fff;border:1px solid #e8eaed;border-radius:12px;padding:15px 16px;position:relative;overflow:hidden;}
+        .ctc-stat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:#c9922c;}
+        .ctc-stat.dark{background:#141414;border-color:#141414;}
+        .ctc-stat .k{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9ca3af;margin-bottom:7px;}
+        .ctc-stat .v{font-size:27px;font-weight:700;color:#111;line-height:1;font-family:'Cormorant Garamond',serif;}
+        .ctc-stat.dark .v{color:#fff;}.ctc-stat.dark .k{color:#c9922c;}
+        .ctc-stat .d{font-size:11.5px;color:#9ca3af;margin-top:6px;}
+        .ctc-stat.click{cursor:pointer;transition:border-color .12s,transform .12s;}
+        .ctc-stat.click:hover{border-color:#c9922c;transform:translateY(-1px);}
+        .ctc-seg{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;}
+        .ctc-chip{background:#fff;border:1px solid #e2e5e9;border-radius:30px;padding:6px 14px;font-size:13px;font-weight:600;color:#4b5563;cursor:pointer;display:flex;align-items:center;gap:7px;font-family:'DM Sans',sans-serif;transition:all .12s;}
+        .ctc-chip:hover{border-color:#c9922c;}
+        .ctc-chip.on{background:#141414;color:#fff;border-color:#141414;}
+        .ctc-chip .n{font-size:11.5px;font-weight:700;background:#eef1f4;color:#6b7280;border-radius:10px;padding:0 7px;}
+        .ctc-chip.on .n{background:#c9922c;color:#111;}
+        .ctc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+        .ctc-card{background:#fff;border:1px solid #e8eaed;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column;position:relative;transition:box-shadow .15s,transform .15s,border-color .15s;}
+        .ctc-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.09);transform:translateY(-2px);border-color:#e0d4b8;}
+        .ctc-card.sel{border-color:#c9922c;background:#fffdf8;}
+        .ctc-chk{position:absolute;top:14px;left:14px;width:16px;height:16px;accent-color:#c9922c;opacity:0;cursor:pointer;z-index:3;}
+        .ctc-card:hover .ctc-chk,.ctc-chk:checked{opacity:1;}
+        .ctc-acts{margin-top:auto;border-top:1px solid #f1f2f4;display:grid;grid-template-columns:repeat(4,1fr);}
+        .ctc-acts button{border:none;background:#fff;padding:11px 0;cursor:pointer;color:#6b7280;display:flex;align-items:center;justify-content:center;gap:5px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:12.5px;position:relative;transition:all .12s;}
+        .ctc-acts button+button{border-left:1px solid #f1f2f4;}
+        .ctc-acts button:hover{background:#fffbf2;color:#c9922c;}
+        .ctc-acts button.hot{background:#fef9f0;color:#92400e;}
+        .ctc-acts .nbadge{position:absolute;top:4px;right:calc(50% - 24px);background:#dc2626;color:#fff;font-size:9px;font-weight:700;border-radius:9px;min-width:15px;height:15px;display:flex;align-items:center;justify-content:center;padding:0 3px;}
+        @media(max-width:1080px){.ctc-grid{grid-template-columns:repeat(2,1fr);}.ctc-stats{grid-template-columns:repeat(3,1fr);}}
         @media(max-width:767px){
           /* Modals → bottom sheet */
           .overlay{padding:0!important;align-items:flex-end!important;overflow:hidden!important;}
@@ -3474,6 +3517,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           input:not(.pdf-fill-input),select,textarea{font-size:16px!important;}
           .cf-select{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
           .cf-tag-input{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
+          .ctc-grid{grid-template-columns:1fr!important;}
+          .ctc-stats{grid-template-columns:repeat(2,1fr)!important;}
+          .ctc-chk{opacity:1!important;}
           /* Table helpers */
           .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;}
           .mobile-table-scroll::-webkit-scrollbar{display:none;}
@@ -4549,6 +4595,38 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* ── Prospects ── */}
           {page === 'contacts' && (
             <div>
+              {/* ── Command-center stats + type segments ── */}
+              {clients.length > 0 && (() => {
+                const now = Date.now();
+                const DAY = 24 * 60 * 60 * 1000;
+                const newThisWeek = clients.filter(c => c.created_at && (now - new Date(c.created_at).getTime()) < 7 * DAY).length;
+                const needFollowUp = clients.filter(c => { const t = c.last_touched_at ? new Date(c.last_touched_at).getTime() : null; return t === null || (now - t) > 30 * DAY; }).length;
+                const activeDealCount = deals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage)).length;
+                const inCampaigns = clients.filter(c => (enrollmentsByClient[c.id]?.length ?? 0) > 0).length;
+                const segs: { label: string; type: string }[] = [
+                  { label: 'All', type: '' }, { label: 'Buyers', type: 'Buyer' }, { label: 'Sellers', type: 'Seller' },
+                  { label: 'Tenants', type: 'Tenant' }, { label: 'Landlords', type: 'Landlord/Investor' },
+                  { label: 'Agents', type: 'Agent' }, { label: 'Brokers', type: 'Broker' },
+                ];
+                return (
+                  <>
+                    <div className="ctc-stats">
+                      <div className="ctc-stat dark"><div className="k">Total</div><div className="v">{clients.length.toLocaleString()}</div><div className="d">across all types</div></div>
+                      <div className="ctc-stat click" onClick={() => setContactSort('added')} title="Sort by newest added"><div className="k">New This Week</div><div className="v">{newThisWeek}</div><div className="d">added in last 7 days</div></div>
+                      <div className="ctc-stat click" onClick={() => setContactSort('never')} title="Show least-recently contacted first"><div className="k">Need Follow-Up</div><div className="v">{needFollowUp}</div><div className="d">no touch in 30+ days</div></div>
+                      <div className="ctc-stat"><div className="k">Active Deals</div><div className="v">{activeDealCount}</div><div className="d">in the pipeline</div></div>
+                      <div className="ctc-stat"><div className="k">In Campaigns</div><div className="v">{inCampaigns}</div><div className="d">currently enrolled</div></div>
+                    </div>
+                    <div className="ctc-seg">
+                      {segs.map(s => {
+                        const count = s.type ? clients.filter(c => c.type === s.type).length : clients.length;
+                        const on = (contactTypeFilter || '') === s.type;
+                        return <div key={s.label} className={`ctc-chip${on ? ' on' : ''}`} onClick={() => setContactTypeFilter(s.type)}>{s.label} <span className="n">{count.toLocaleString()}</span></div>;
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
               {/* Smart Filter Bar */}
               {clients.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
@@ -4706,92 +4784,33 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   // 'added' — newest added first
                   return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                 });
-                return isMobile ? (
-              /* ── Mobile Contact Cards ── */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {filteredContacts.length === 0 && <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</div>}
-                {filteredContacts.map(c => {
-                  const ta = timeAgo(c.last_touched_at);
-                  const clientDeals = deals.filter(d => d.client_id === c.id);
-                  const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
-                  return (
-                    <div key={c.id} onClick={() => setActiveClient(c)}
-                      style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', padding: '14px 16px', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
-                        <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#111', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
-                          {(c.first_name[0] ?? '') + (c.last_name[0] ?? '')}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 15, fontWeight: 700, color: '#111', marginBottom: 2 }}>{c.first_name} {c.last_name}</div>
-                          {c.business_name && <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 4 }}>{c.business_name}</div>}
-                          <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '1px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{c.type}</span>
-                        </div>
-                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: ta.bg, color: ta.color, fontWeight: 700, flexShrink: 0, alignSelf: 'flex-start' }}>{ta.label}</span>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        {c.email && (
-                          <a href={`mailto:${c.email}`} onClick={e => e.stopPropagation()}
-                            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, color: '#c9922c', textDecoration: 'none', padding: '5px 0' }}>
-                            <span>✉️</span> {c.email}
-                          </a>
-                        )}
-                        {(c.phone || c.cell_phone) && (
-                          <a href={`tel:${c.cell_phone || c.phone}`} onClick={e => e.stopPropagation()}
-                            style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, color: '#374151', textDecoration: 'none', padding: '5px 0' }}>
-                            <span>📞</span> {c.cell_phone || c.phone}
-                          </a>
-                        )}
-                      </div>
-                      {(activeDeals.length > 0 || c.budget || (c.asset_types ?? []).length > 0) && (
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f0f0f0', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                          {activeDeals.length > 0 && (
-                            <span style={{ fontSize: 12, background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
-                              {activeDeals.length} active deal{activeDeals.length > 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {c.budget && <span style={{ fontSize: 12, background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>💰 {c.budget}</span>}
-                          {(c.asset_types ?? []).slice(0, 2).map(at => (
-                            <span key={at} style={{ fontSize: 12, background: '#fef3e2', color: '#92400e', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>{at}</span>
-                          ))}
-                          {(c.asset_types ?? []).length > 2 && <span style={{ fontSize: 12, color: '#9ca3af' }}>+{(c.asset_types ?? []).length - 2} more</span>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
+                return (
                 <>
-                {/* Bulk action bar — admin only */}
+                {/* Bulk action bar — admin only (works on all screen sizes now) */}
                 {isAdmin && selectedClientIds.size > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '10px 14px', background: '#fef9f0', border: '1px solid #f0d9a8', borderRadius: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 14px', background: '#fef9f0', border: '1px solid #f0d9a8', borderRadius: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: '#92400e' }}>
                       {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''} selected
                     </span>
-                    <button
-                      onClick={() => { loadCampaigns(); setShowBulkEnrollModal(true); }}
+                    <button onClick={() => { loadCampaigns(); setShowBulkEnrollModal(true); }}
                       style={{ background: '#c9922c', color: '#111', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       📣 Enroll in Campaign
                     </button>
-                    <button
-                      onClick={() => { setBulkReassignTarget(''); setShowBulkReassign(true); }}
+                    <button onClick={() => { setBulkReassignTarget(''); setShowBulkReassign(true); }}
                       style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       👤 Reassign
                     </button>
-                    <button
-                      onClick={() => { setShowBulkTag(v => !v); setBulkTagValue(''); }}
+                    <button onClick={() => { setShowBulkTag(v => !v); setBulkTagValue(''); }}
                       style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                       🏷 Tag
                     </button>
                     {isSuperAdmin && (
-                      <button
-                        onClick={massDeleteClients}
+                      <button onClick={massDeleteClients}
                         style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
                         🗑 Delete
                       </button>
                     )}
-                    <button
-                      onClick={() => setSelectedClientIds(new Set())}
+                    <button onClick={() => setSelectedClientIds(new Set())}
                       style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
                       Clear
                     </button>
@@ -4799,291 +4818,97 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 )}
                 {/* Bulk tag inline form */}
                 {isAdmin && showBulkTag && selectedClientIds.size > 0 && (
-                  <div style={{ marginBottom: 10, padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>
-                      Tag {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''}
-                    </div>
+                  <div style={{ marginBottom: 12, padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>Tag {selectedClientIds.size} contact{selectedClientIds.size !== 1 ? 's' : ''}</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <input
-                        className="crm-input"
-                        placeholder="Tag name (e.g. hot-lead, q1-follow-up)…"
-                        value={bulkTagValue}
-                        onChange={e => setBulkTagValue(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') bulkTagContacts('add'); }}
-                        style={{ flex: 1, minWidth: 200, fontSize: 14 }}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => bulkTagContacts('add')}
-                        disabled={!bulkTagValue.trim()}
-                        className="crm-btn"
-                        style={{ background: '#166534', color: '#fff', border: 'none', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>
-                        + Add Tag
-                      </button>
-                      <button
-                        onClick={() => bulkTagContacts('remove')}
-                        disabled={!bulkTagValue.trim()}
-                        className="crm-btn crm-btn-ghost"
-                        style={{ color: '#dc2626', borderColor: '#fecaca', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>
-                        − Remove Tag
-                      </button>
-                      <button
-                        onClick={() => { setShowBulkTag(false); setBulkTagValue(''); }}
-                        className="crm-btn crm-btn-ghost">
-                        Cancel
-                      </button>
+                      <input className="crm-input" placeholder="Tag name (e.g. hot-lead, q1-follow-up)…" value={bulkTagValue}
+                        onChange={e => setBulkTagValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') bulkTagContacts('add'); }}
+                        style={{ flex: 1, minWidth: 200, fontSize: 14 }} autoFocus />
+                      <button onClick={() => bulkTagContacts('add')} disabled={!bulkTagValue.trim()} className="crm-btn"
+                        style={{ background: '#166534', color: '#fff', border: 'none', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>+ Add Tag</button>
+                      <button onClick={() => bulkTagContacts('remove')} disabled={!bulkTagValue.trim()} className="crm-btn crm-btn-ghost"
+                        style={{ color: '#dc2626', borderColor: '#fecaca', opacity: bulkTagValue.trim() ? 1 : 0.5 }}>− Remove Tag</button>
+                      <button onClick={() => { setShowBulkTag(false); setBulkTagValue(''); }} className="crm-btn crm-btn-ghost">Cancel</button>
                     </div>
                   </div>
                 )}
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="contacts-table">
-                    {/* One <col> per rendered cell. Email/phone/source columns were moved to
-                        the contact card, so their <col>s are gone too — leaving them here left
-                        orphan fixed-width columns that reserved ~425px of dead space on the
-                        right and mis-sized the rest. name + deals flex to fill the width. */}
-                    <colgroup>
-                      <col className="col-check" />
-                      <col className="col-name" />
-                      <col className="col-deals" />
-                      <col className="col-campaigns" />
-                      {isAdmin && <col className="col-owner" />}
-                      <col className="col-touch" />
-                      <col className="col-actions" />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 36, paddingRight: 0 }}>
-                          <input
-                            type="checkbox"
-                            title={selectedClientIds.size === filteredContacts.length ? 'Deselect all' : 'Select all'}
-                            checked={filteredContacts.length > 0 && selectedClientIds.size === filteredContacts.length}
-                            ref={el => { if (el) el.indeterminate = selectedClientIds.size > 0 && selectedClientIds.size < filteredContacts.length; }}
-                            onChange={e => {
-                              if (e.target.checked) setSelectedClientIds(new Set(filteredContacts.map(c => c.id)));
-                              else setSelectedClientIds(new Set());
-                            }}
-                            style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
-                          />
-                        </th>
-                        {/* Email and phone live on the contact's card, not here — the
-                            list is for finding somebody, the card is for reaching them.
-                            Both are still searchable and still in the export. */}
-                        <th>Contact <span style={{ fontWeight: 700, color: '#475569', background: '#eef2f7', borderRadius: 8, padding: '0 6px', letterSpacing: 0, marginLeft: 2 }}>{filteredContacts.length.toLocaleString()}</span></th>
-                        <th>Deals</th>
-                        <th>Campaigns</th>
-                        {isAdmin && <th>Owner</th>}
-                        <th>Last Touch</th>
-                        <th style={{ width: 130 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredContacts.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>No contacts match these filters.</td></tr>}
-                      {filteredContacts.map(c => {
-                        const clientDeals = deals.filter(d => d.client_id === c.id);
-                        const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
-
-                        // Avatar gradient based on first letter
-                        const avatarColors: Record<string, string> = {
-                          A:'#667eea,#764ba2', B:'#f093fb,#f5576c', C:'#4facfe,#00f2fe',
-                          D:'#43e97b,#38f9d7', E:'#fa709a,#fee140', F:'#a18cd1,#fbc2eb',
-                          G:'#fccb90,#d57eeb', H:'#a1c4fd,#c2e9fb', I:'#fd7043,#ff8a65',
-                          J:'#66bb6a,#43a047', K:'#ab47bc,#8e24aa', L:'#26c6da,#00acc1',
-                          M:'#ef5350,#e53935', N:'#7e57c2,#673ab7', O:'#ff7043,#f4511e',
-                          P:'#26a69a,#00897b', Q:'#d4ac0d,#b7950b', R:'#5c6bc0,#3949ab',
-                          S:'#ec407a,#d81b60', T:'#29b6f6,#039be5', U:'#9ccc65,#7cb342',
-                          V:'#ff8a65,#f4511e', W:'#26c6da,#0097a7', X:'#ab47bc,#7b1fa2',
-                          Y:'#ffca28,#ffb300', Z:'#78909c,#546e7a',
-                        };
-                        const rowInitials = (c.first_name[0] ?? '') + (c.last_name[0] ?? '');
-                        const avatarPair = (avatarColors[(c.first_name[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
-                        const avatarG1 = avatarPair[0];
-                        const avatarG2 = avatarPair[1];
-
-                        return (
-                          <tr key={c.id} style={{ background: selectedClientIds.has(c.id) ? '#fffbf2' : undefined }}>
-                            {/* Checkbox */}
-                            <td style={{ paddingRight: 0, width: 36 }} onClick={e => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={selectedClientIds.has(c.id)}
-                                onChange={e => {
-                                  const next = new Set(selectedClientIds);
-                                  e.target.checked ? next.add(c.id) : next.delete(c.id);
-                                  setSelectedClientIds(next);
-                                }}
-                                style={{ cursor: 'pointer', width: 14, height: 14, accentColor: '#c9922c' }}
-                              />
-                            </td>
-                            {/* Name + Type pill inline */}
-                            <td onClick={e => e.stopPropagation()}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: `linear-gradient(135deg, ${avatarG1}, ${avatarG2})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontSize: 14, fontWeight: 700, flexShrink: 0, letterSpacing: .5 }}>
-                                  {rowInitials}
-                                </div>
-                                <div style={{ minWidth: 0 }}>
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setActiveClient(c); }}
-                                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', display: 'block', maxWidth: '100%' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <span title={`${c.first_name} ${c.last_name}`.trim()} style={{ fontWeight: 600, color: '#111', fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        {c.first_name} {c.last_name}
-                                      </span>
-                                      {c.is_shared && <span title="Team contact — visible to all agents" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, background: '#ede9fe', color: '#6d28d9', borderRadius: 6, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase' }}>Team</span>}
-                                    </div>
-                                    {c.business_name && <div title={c.business_name} style={{ fontSize: 12, color: '#9ca3af', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
-                                  </button>
-                                  {/* Type pill — inline select below name */}
-                                  {(() => {
-                                    const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
-                                    return (
-                                      <div style={{ position: 'relative', display: 'inline-block', marginTop: 3 }} title="Change contact type">
-                                        {/* Visual span — matches source pill exactly */}
-                                        <span style={{ ...typeStyle, display: 'inline-block', padding: '2px 7px', borderRadius: 8, fontSize: 11.5, fontWeight: 600, lineHeight: 1.4, pointerEvents: 'none' }}>
-                                          {c.type}
-                                        </span>
-                                        {/* Invisible select overlay for dropdown */}
-                                        <select
-                                          value={c.type}
-                                          onChange={async e => {
-                                            const newType = e.target.value as Client['type'];
-                                            await supabase.from('crm_clients').update({ type: newType }).eq('id', c.id);
-                                            setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: newType } : x));
-                                          }}
-                                          style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
-                                        >
-                                          {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                                        </select>
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Deals — every deal on this contact, plus an always-available add */}
-                            <td style={{ fontSize: 13 }}>
-                              {clientDeals.length === 0 ? (
-                                <button onClick={() => { setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
-                                  style={{ background: 'none', border: '1px dashed #d1d5db', borderRadius: 4, color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '2px 8px' }}>
-                                  + New Deal
-                                </button>
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start' }}>
-                                  {activeDeals.map(d => (
-                                    <button key={d.id} onClick={() => openDeal(d)}
-                                      style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 13, cursor: 'pointer', textAlign: 'left', padding: 0, textDecoration: 'underline' }}>
-                                      {d.property || d.type.split(' ')[0]}
-                                    </button>
-                                  ))}
-                                  {clientDeals.length > activeDeals.length && (
-                                    <span style={{ color: '#9ca3af', fontSize: 12 }}>
-                                      {clientDeals.length - activeDeals.length} inactive
-                                    </span>
-                                  )}
-                                  <button className="cell-add-deal" title="Add another deal for this contact"
-                                    onClick={() => { setNd({ client_id: c.id, client: `${c.first_name} ${c.last_name}`, client_email: c.email, client_phone: c.phone, type: CLIENT_TYPE_TO_DEAL[c.type] || 'Buyer Purchase', property: '', value: 0, notes: '' }); setShowAddDeal(true); }}
-                                    style={{ background: 'none', border: 'none', color: '#c9922c', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: "'DM Sans',sans-serif" }}>
-                                    + Deal
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Campaigns — which marketing campaigns this contact is enrolled in */}
-                            <td style={{ fontSize: 13 }}>
-                              {(() => {
-                                const enrolls = enrollmentsByClient[c.id] ?? [];
-                                if (enrolls.length === 0) return <span style={{ color: '#d1d5db' }}>—</span>;
-                                return (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                                    {enrolls.slice(0, 2).map((en, i) => (
-                                      <span key={i} title={en.campaign_name} style={{ display: 'inline-block', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'middle', background: en.active !== false ? '#f0f7ff' : '#f3f4f6', color: en.active !== false ? '#1e40af' : '#9ca3af', border: `1px solid ${en.active !== false ? '#cfe3fb' : '#e5e7eb'}`, borderRadius: 8, padding: '1px 7px', fontSize: 11.5, fontWeight: 600 }}>
-                                        {en.campaign_name}
-                                      </span>
-                                    ))}
-                                    {enrolls.length > 2 && (
-                                      <span title={enrolls.slice(2).map(en => en.campaign_name).join(', ')} style={{ color: '#9ca3af', fontSize: 11.5, fontWeight: 700 }}>+{enrolls.length - 2}</span>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </td>
-
-                            {/* Owner agent (admin only) — click to reassign */}
-                            {isAdmin && (
-                              <td style={{ fontSize: 13 }} onClick={e => e.stopPropagation()}>
-                                <div style={{ position: 'relative', display: 'inline-block' }} title="Change owner">
-                                  <span style={{ display: 'inline-block', background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 8, fontSize: 12, fontWeight: 600, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-                                    {agentName(c.agent_id)}
-                                  </span>
-                                  <select
-                                    value={c.agent_id}
-                                    onChange={async e => {
-                                      const newOwnerId = e.target.value;
-                                      await supabase.from('crm_clients').update({ agent_id: newOwnerId }).eq('id', c.id);
-                                      setClients(prev => prev.map(x => x.id === c.id ? { ...x, agent_id: newOwnerId } : x));
-                                    }}
-                                    style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}
-                                  >
-                                    {profiles.map(p => (
-                                      <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </td>
-                            )}
-
-                            {/* Date added */}
-                            {/* Last Contact */}
-                            <td>
-                              {(() => {
-                                const ta = timeAgo(c.last_touched_at);
-                                return (
-                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontSize: 12, fontWeight: 600, background: ta.bg, color: ta.color, whiteSpace: 'nowrap' }}>
-                                    {ta.label}
-                                  </span>
-                                );
-                              })()}
-                            </td>
-
-                            {/* Actions — hover-reveal */}
-                            <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
-                              <div className="row-actions" style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
-                                {(() => {
-                                  const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
-                                  return (
-                                    <button
-                                      onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }}
-                                      style={{ position: 'relative', background: pendingCount > 0 ? '#fef3e2' : '#f8fafc', border: `1px solid ${pendingCount > 0 ? '#fde68a' : '#e2e8f0'}`, borderRadius: 7, color: pendingCount > 0 ? '#92400e' : '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 0', width: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans',sans-serif", fontWeight: 700 }}
-                                      title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''} — click to add another` : 'Add a task for this contact'}>
-                                      {pendingCount > 0 ? pendingCount : '＋'}
-                                    </button>
-                                  );
-                                })()}
-                                {isAdmin && (
-                                  <>
-                                    <button onClick={() => openEditClient(c)}
-                                      style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, color: '#6b7280', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Edit contact">
-                                      ✏️
-                                    </button>
-                                    {isSuperAdmin && (
-                                      <button onClick={() => deleteClient(c.id, `${c.first_name} ${c.last_name}`)}
-                                        style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 7, color: '#ef4444', fontSize: 13, cursor: 'pointer', padding: '4px 7px' }} title="Remove contact (super admin only)">
-                                        🗑
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                {/* Select-all helper (desktop) */}
+                {isAdmin && filteredContacts.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 13, color: '#6b7280' }}>
+                    <input type="checkbox"
+                      checked={filteredContacts.length > 0 && selectedClientIds.size === filteredContacts.length}
+                      ref={el => { if (el) el.indeterminate = selectedClientIds.size > 0 && selectedClientIds.size < filteredContacts.length; }}
+                      onChange={e => { if (e.target.checked) setSelectedClientIds(new Set(filteredContacts.map(c => c.id))); else setSelectedClientIds(new Set()); }}
+                      style={{ cursor: 'pointer', width: 15, height: 15, accentColor: '#c9922c' }} />
+                    <span>Select all {filteredContacts.length.toLocaleString()}</span>
+                  </div>
+                )}
+                {/* ── Contact Card Grid ── */}
+                {filteredContacts.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', background: '#fff', borderRadius: 14, border: '1px solid #e8eaed' }}>No contacts match these filters.</div>
+                ) : (
+                <div className="ctc-grid">
+                  {filteredContacts.map(c => {
+                    const clientDeals = deals.filter(d => d.client_id === c.id);
+                    const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
+                    const rowInitials = (c.first_name[0] ?? '') + (c.last_name[0] ?? '');
+                    const avatarPair = (CONTACT_AVATAR_COLORS[(c.first_name[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
+                    const enrolls = enrollmentsByClient[c.id] ?? [];
+                    const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
+                    const ta = timeAgo(c.last_touched_at);
+                    const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
+                    const phone = c.cell_phone || c.phone;
+                    const tags = c.tags ?? [];
+                    return (
+                      <div key={c.id} className={`ctc-card${selectedClientIds.has(c.id) ? ' sel' : ''}`} onClick={() => setActiveClient(c)}>
+                        {isAdmin && (
+                          <input type="checkbox" className="ctc-chk" checked={selectedClientIds.has(c.id)} onClick={e => e.stopPropagation()}
+                            onChange={e => { const next = new Set(selectedClientIds); e.target.checked ? next.add(c.id) : next.delete(c.id); setSelectedClientIds(next); }} />
+                        )}
+                        <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 10.5, fontWeight: 700, borderRadius: 10, padding: '2px 9px', background: ta.bg, color: ta.color, whiteSpace: 'nowrap' }}>{ta.label}</span>
+                        <div style={{ padding: '16px 16px 12px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                          <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${avatarPair[0]}, ${avatarPair[1]})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontWeight: 700, fontSize: 18, flexShrink: 0, letterSpacing: .5, marginLeft: isAdmin ? 16 : 0 }}>{rowInitials}</div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span title={`${c.first_name} ${c.last_name}`.trim()} style={{ fontWeight: 700, color: '#111', fontSize: 16, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.first_name} {c.last_name}</span>
+                              {c.is_shared && <span title="Team contact — visible to all agents" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, background: '#ede9fe', color: '#6d28d9', borderRadius: 6, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase' }}>Team</span>}
+                            </div>
+                            {c.business_name && <div title={c.business_name} style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
+                            <div style={{ position: 'relative', display: 'inline-block', marginTop: 7 }} title="Change contact type" onClick={e => e.stopPropagation()}>
+                              <span style={{ ...typeStyle, display: 'inline-block', padding: '2px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, pointerEvents: 'none' }}>{c.type}</span>
+                              <select value={c.type} onChange={async e => { const nt = e.target.value as Client['type']; await supabase.from('crm_clients').update({ type: nt }).eq('id', c.id); setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: nt } : x)); }}
+                                style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }}>
+                                {CLIENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
+                          {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: 13, color: '#4b5563', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>✉</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</span></a>}
+                          {phone && <a href={`tel:${phone}`} style={{ fontSize: 13, color: '#4b5563', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>☎</span>{fmtPhone(phone)}</a>}
+                          {!c.email && !phone && <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>No contact info yet</span>}
+                        </div>
+                        {(tags.length > 0 || clientDeals.length > 0 || enrolls.length > 0) && (
+                          <div style={{ padding: '0 16px 13px', display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+                            {activeDeals.slice(0, 2).map(d => <button key={d.id} onClick={() => openDeal(d)} style={{ fontSize: 11.5, color: '#1e40af', background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 7, padding: '2px 8px', fontWeight: 600, cursor: 'pointer' }}>{d.property || d.type.split(' ')[0]}</button>)}
+                            {tags.slice(0, 3).map(t => { const gold = t.toLowerCase().includes('kendall') || t.toLowerCase().includes('hot'); return <span key={t} style={{ fontSize: 10.5, fontWeight: 600, background: gold ? '#fdf4e3' : '#f3f4f6', color: gold ? '#92400e' : '#4b5563', borderRadius: 6, padding: '2px 8px' }}>{t}</span>; })}
+                            {enrolls.slice(0, 1).map((en, i) => <span key={i} title={en.campaign_name} style={{ fontSize: 11, color: en.active !== false ? '#1e40af' : '#9ca3af', background: en.active !== false ? '#f0f7ff' : '#f3f4f6', border: `1px solid ${en.active !== false ? '#cfe3fb' : '#e5e7eb'}`, borderRadius: 7, padding: '2px 7px', fontWeight: 600, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📣 {en.campaign_name}</span>)}
+                            {enrolls.length > 1 && <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700 }}>+{enrolls.length - 1}</span>}
+                          </div>
+                        )}
+                        <div className="ctc-acts" onClick={e => e.stopPropagation()}>
+                          <button onClick={() => { if (c.email) window.location.href = `mailto:${c.email}`; }} title={c.email ? `Email ${c.email}` : 'No email on file'} style={{ opacity: c.email ? 1 : .4 }}>✉ Email</button>
+                          <button onClick={() => { if (phone) window.location.href = `tel:${phone}`; }} title={phone ? `Call ${fmtPhone(phone)}` : 'No phone on file'} style={{ opacity: phone ? 1 : .4 }}>☎ Call</button>
+                          <button className={pendingCount > 0 ? 'hot' : ''} onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }} title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''} — add another` : 'Add a task'}>✓ Task{pendingCount > 0 && <span className="nbadge">{pendingCount}</span>}</button>
+                          <button onClick={() => setActiveClient(c)} title="Open contact — notes, history & edit">✎ Open</button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                </> // end desktop view (bulk bar + table)
-                ); // end desktop table return
+                )}
+                </>
+                );
               })() /* end filteredContacts IIFE */}
 
               {/* ── Load More contacts ��─ */}
