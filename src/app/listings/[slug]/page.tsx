@@ -14,6 +14,7 @@ import { MortgageCalculator } from '@/components/sections/MortgageCalculator';
 import { ListingGallery } from '@/components/sections/ListingGallery';
 import { StickyContactBar } from '@/components/listings/StickyContactBar';
 import { ListingViewTracker } from './ListingViewTracker';
+import { ListingSignupPrompt } from '@/components/listings/ListingSignupPrompt';
 import { PhoneLink } from './PhoneLink';
 import { jsonLdScript } from '@/lib/json-ld';
 
@@ -255,6 +256,12 @@ export default async function ListingDetailPage({ params }: Props) {
         beds={listing.bedrooms ?? undefined}
         baths={listing.bathrooms ?? undefined}
         property_type={listing.property_type ?? undefined}
+      />
+      <ListingSignupPrompt
+        listingId={listing.listing_key}
+        city={listing.city}
+        price={listing.price ?? undefined}
+        beds={listing.bedrooms ?? undefined}
       />
       <main className="min-h-screen pt-20">
 

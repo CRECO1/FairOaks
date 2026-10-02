@@ -57,6 +57,9 @@ const LEAD_EVENTS = new Set<string>([
   'listing_alert_submitted',
 ]);
 
+/** Set once any lead event fires in this browser (read by ListingSignupPrompt). */
+export const LEAD_SEEN_KEY = 'forg_lead_seen';
+
 /**
  * The page trail for THIS visit — sessionStorage, per tab. On a lead it answers
  * "what did they look at, and how long were they here before submitting". Kept
@@ -174,6 +177,11 @@ export function captureAttribution(): void {
 /** Fire a GA4 event; mirrors lead submits to `generate_lead`. Never throws. */
 export function trackEvent(name: string, params: Record<string, unknown> = {}): void {
   if (typeof window === 'undefined') return;
+  // Remember that this browser already belongs to a lead, so the listing
+  // sign-up prompt never asks someone who has just written to us.
+  if (LEAD_EVENTS.has(name)) {
+    try { localStorage.setItem(LEAD_SEEN_KEY, '1'); } catch { /* private mode */ }
+  }
   const w = window as unknown as { gtag?: (...a: unknown[]) => void; dataLayer?: unknown[] };
   try {
     if (typeof w.gtag === 'function') {
