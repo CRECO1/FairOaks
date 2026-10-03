@@ -19,10 +19,12 @@ import { ListingContactForm } from './ListingContactForm';
 async function fetchActiveListings(limit = 6) {
   try {
     const filter = `StandardStatus eq ODataService.StandardStatus'ACTIVE'`;
-    const result = await searchProperties({ filter, top: limit, orderby: 'ListPrice desc' });
+    // Cached 30 min: this page is the body of every expired-listing 410, which
+    // crawlers request hundreds of times a day.
+    const result = await searchProperties({ filter, top: limit, orderby: 'ListPrice desc', revalidate: 1800 });
     const props = result.value.slice(0, limit);
     if (props.length === 0) return [];
-    const mediaMap = await getMediaBatch(props.map(p => p.ListingId));
+    const mediaMap = await getMediaBatch(props.map(p => p.ListingId), 1800);
     return props.map(p => resoPropertyToListing(p, mediaMap.get(p.ListingId) ?? []));
   } catch {
     return [];
