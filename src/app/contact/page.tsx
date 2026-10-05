@@ -12,6 +12,7 @@ import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
 import { CONTACT_REASONS, contactContextFromUrl, type ContactContext } from '@/lib/contact-context';
+import { thankYouPath } from '@/lib/thank-you';
 
 export default function ContactPage() {
   const router = useRouter();
@@ -58,7 +59,7 @@ export default function ContactPage() {
       // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror below —
       // a second trackLead() here double-counted the conversion.
       trackEvent('contact_form_submitted', { form: 'contact-page', context: context?.interest });
-      router.push('/thank-you');
+      router.push(thankYouPath('contact'));
     } catch {
       setSubmitError('Something went wrong. Please try again or call us directly.');
     } finally {

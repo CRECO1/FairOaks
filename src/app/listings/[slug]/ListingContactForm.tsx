@@ -1,17 +1,19 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
 import { FORG } from '@/lib/site-identity';
+import { thankYouPath } from '@/lib/thank-you';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
   const [error, setError] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -53,21 +55,10 @@ export function ListingContactForm({ listingTitle }: { listingTitle: string }) {
       }
       // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
       trackEvent('listing_inquiry_submitted', { form: 'listing-detail' });
-      setSubmitted(true);
-      form.reset();
+      router.push(thankYouPath('listing', window.location.pathname));
     } catch {
       setError(`Network error — please try again, or call/text ${FORG.phoneDisplay}.`);
     }
-  }
-
-  if (submitted) {
-    return (
-      <div className="rounded-lg bg-green-50 border border-green-200 p-6 text-center">
-        <div className="text-2xl mb-2">✅</div>
-        <p className="font-semibold text-green-800">Request received!</p>
-        <p className="text-sm text-green-700 mt-1">We&apos;ll be in touch personally.</p>
-      </div>
-    );
   }
 
   return (

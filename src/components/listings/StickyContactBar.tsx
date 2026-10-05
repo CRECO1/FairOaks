@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Phone, MessageSquare, X } from 'lucide-react';
 import { trackPhoneClick } from '@/lib/analytics';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
 import { FORG } from '@/lib/site-identity';
+import { thankYouPath } from '@/lib/thank-you';
 
 interface Props {
   listingTitle: string;
@@ -17,7 +19,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const router = useRouter();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
@@ -63,7 +65,7 @@ export function StickyContactBar({ listingTitle, price }: Props) {
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error ?? `Something went wrong. Please try again, or call/text ${FORG.phoneDisplay}.`); return; }
       // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
       trackEvent('showing_request_submitted', { form: 'listing-sticky-bar' });
-      setSubmitted(true);
+      router.push(thankYouPath('showing', window.location.pathname));
     } catch { setError(`Network error — please try again, or call/text ${FORG.phoneDisplay}.`); }
     finally { setSending(false); }
   }
@@ -76,29 +78,22 @@ export function StickyContactBar({ listingTitle, price }: Props) {
       {/* Quick-form drawer */}
       {showForm && (
         <div className="bg-white border-t border-border px-4 pt-4 pb-2">
-          {submitted ? (
-            <div className="py-4 text-center">
-              <div className="text-2xl mb-1">✅</div>
-              <p className="font-semibold text-green-800 text-sm">Got it! We&apos;ll call you shortly.</p>
+          <form onSubmit={handleSubmit} className="space-y-2">
+            <Honeypot />
+            {error && <p className="text-xs text-red-600 rounded bg-red-50 px-3 py-2">{error}</p>}
+            <div className="grid grid-cols-2 gap-2">
+              <input name="name" required placeholder="Your Name"
+                className="col-span-2 rounded-lg border border-border px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gold" />
+              <input name="phone" type="tel" placeholder="Phone Number"
+                className="rounded-lg border border-border px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gold" />
+              <input name="email" type="email" placeholder="Email Address"
+                className="rounded-lg border border-border px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gold" />
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-2">
-              <Honeypot />
-              {error && <p className="text-xs text-red-600 rounded bg-red-50 px-3 py-2">{error}</p>}
-              <div className="grid grid-cols-2 gap-2">
-                <input name="name" required placeholder="Your Name"
-                  className="col-span-2 rounded-lg border border-border px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gold" />
-                <input name="phone" type="tel" placeholder="Phone Number"
-                  className="rounded-lg border border-border px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gold" />
-                <input name="email" type="email" placeholder="Email Address"
-                  className="rounded-lg border border-border px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-gold" />
-              </div>
-              <button type="submit" disabled={sending}
-                className="w-full rounded-lg bg-primary py-3 text-sm font-bold text-white disabled:opacity-60 transition-opacity">
-                {sending ? 'Sending…' : 'Request a Showing →'}
-              </button>
-            </form>
-          )}
+            <button type="submit" disabled={sending}
+              className="w-full rounded-lg bg-primary py-3 text-sm font-bold text-white disabled:opacity-60 transition-opacity">
+              {sending ? 'Sending…' : 'Request a Showing →'}
+            </button>
+          </form>
         </div>
       )}
 

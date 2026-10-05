@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { CheckCircle, Phone, Search, Home, ArrowRight } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Container } from '@/components/ui/Container';
+import { THANK_YOU_FORMS, safeListingPath, type ThankYouForm } from '@/lib/thank-you';
 
 export const metadata: Metadata = {
   title: 'Thank You | Fair Oaks Realty Group',
@@ -33,7 +34,23 @@ const NEXT_STEPS = [
   },
 ];
 
-export default function ThankYouPage() {
+// The one success page for every lead form (see lib/thank-you.ts). ?form= picks the
+// heading so the visitor sees their request acknowledged in its own terms.
+const HEADLINES: Record<ThankYouForm, { title: string; body: string }> = {
+  contact:   { title: 'You\u2019re all set!',               body: 'We received your message and will be in touch personally. Keep an eye on your phone and email.' },
+  valuation: { title: 'Your valuation request is in',      body: 'Zack will look at recent sales near your home and reach out personally with your valuation. Keep an eye on your phone and email.' },
+  listing:   { title: 'We\u2019ve got your question',       body: 'We received your inquiry about this home and will be in touch personally. Keep an eye on your phone and email.' },
+  showing:   { title: 'Showing request received',          body: 'We\u2019ll call you shortly to find a time that works. Keep an eye on your phone.' },
+  quiz:      { title: 'Your results are on the way!',      body: 'One of our local experts will reach out personally with homes matched to your answers.' },
+};
+
+export default async function ThankYouPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const sp = await searchParams;
+  const formParam = typeof sp.form === 'string' ? sp.form : '';
+  const form: ThankYouForm = (THANK_YOU_FORMS as readonly string[]).includes(formParam) ? formParam as ThankYouForm : 'contact';
+  const backToListing = safeListingPath(typeof sp.from === 'string' ? sp.from : null);
+  const headline = HEADLINES[form];
+
   return (
     <>
       <Header />
@@ -46,12 +63,16 @@ export default function ThankYouPage() {
                 <CheckCircle className="h-10 w-10 text-gold" />
               </div>
               <h1 className="font-heading text-display-sm sm:text-display font-bold mb-4">
-                You&apos;re all set!
+                {headline.title}
               </h1>
               <p className="text-body-lg text-white/75 leading-relaxed">
-                We received your message and will be in touch personally.
-                Keep an eye on your phone and email.
+                {headline.body}
               </p>
+              {backToListing && (
+                <Link href={backToListing} className="mt-6 inline-flex items-center gap-1 text-body-sm font-semibold text-gold hover:text-gold/80 transition-colors">
+                  Back to the home you were viewing <ArrowRight className="h-4 w-4" />
+                </Link>
+              )}
             </div>
           </Container>
         </section>

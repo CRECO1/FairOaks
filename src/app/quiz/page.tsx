@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { ArrowRight, ArrowLeft, CheckCircle, Sparkles } from 'lucide-react';
 import { trackQuizStart, trackQuizStep, trackQuizComplete, trackLead } from '@/lib/analytics';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
-import Link from 'next/link';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { attributionPayload } from '@/lib/attribution';
 import { Honeypot } from '@/components/Honeypot';
-import { FORG } from '@/lib/site-identity';
+import { thankYouPath } from '@/lib/thank-you';
 
 interface QuizStep {
   id: string;
@@ -97,7 +97,7 @@ export default function QuizPage() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>({});
   const [contactStep, setContactStep] = useState(false);
-  const [done, setDone] = useState(false);
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -148,59 +148,12 @@ export default function QuizPage() {
       // to render the confirmation while the lead was never saved.
       trackQuizComplete();
       trackLead({ form_type: 'quiz' });
-      setDone(true);
+      router.push(thankYouPath('quiz'));
     } catch {
       setError('Something went wrong sending your answers. Please try again, or call or text us at 210-390-9997.');
     } finally {
       setLoading(false);
     }
-  }
-
-  if (done) {
-    return (
-      <>
-        <Header variant="minimal" />
-        <main className="min-h-screen pt-20 bg-background-cream">
-          <Container className="py-20">
-            <div className="mx-auto max-w-xl text-center">
-              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-gold">
-                <CheckCircle className="h-10 w-10 text-primary" />
-              </div>
-              <h1 className="mb-4 font-heading text-display-sm font-bold text-primary">
-                Your Results Are On the Way!
-              </h1>
-              <p className="mb-8 text-body text-foreground-muted">
-                Based on your answers, one of our local experts will reach out personally with home recommendations matched to your answers.
-              </p>
-              <div className="rounded-xl bg-white p-6 shadow-card mb-8">
-                <h3 className="font-heading text-heading font-semibold text-primary mb-4">Your Preferences Summary</h3>
-                <ul className="space-y-2 text-left">
-                  {STEPS.map(s => {
-                    const val = answers[s.id];
-                    if (!val) return null;
-                    const display = Array.isArray(val) ? val.join(', ') : val;
-                    return (
-                      <li key={s.id} className="flex items-start gap-2 text-body-sm">
-                        <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
-                        <span className="text-foreground-muted">{s.question.replace('?', '')}: <strong className="text-primary">{display}</strong></span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-              {/* Not a dead end: the next step is the listings, with a quiet call/text fallback. */}
-              <Button size="lg" asChild>
-                <Link href="/listings">Browse homes for sale</Link>
-              </Button>
-              <p className="mt-4 text-body-sm text-foreground-muted">
-                Rather talk it through? Call or text <a href={`tel:${FORG.telephone}`} className="font-semibold text-primary underline">{FORG.phoneDisplay}</a>.
-              </p>
-            </div>
-          </Container>
-        </main>
-        <Footer />
-      </>
-    );
   }
 
   if (contactStep) {
