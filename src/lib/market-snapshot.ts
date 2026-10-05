@@ -129,31 +129,49 @@ const pct = (r: number) => `${Math.round(r * 100)}%`;
 const pct1 = (r: number) => `${(r * 100).toFixed(1)}%`;
 
 export interface MarketStory {
+  /** Narrative, no figures: what the current numbers mean. */
   headline: string;
-  lead: string;
+  /** One narrative sentence under the headline, still without figures. */
+  dek: string;
+  /** The figures behind the headline, in prose. */
+  body: string;
   points: string[];
 }
 
+/** Meteorological season in Central time — the framing word for "this fall". */
+export function seasonOf(d: Date): 'winter' | 'spring' | 'summer' | 'fall' {
+  const m = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', month: 'numeric' }).format(d));
+  return m <= 2 || m === 12 ? 'winter' : m <= 5 ? 'spring' : m <= 8 ? 'summer' : 'fall';
+}
+
 /**
- * Picks the most notable true statement about the headline market. Thresholds only
- * choose which fact leads; every sentence states a figure, never a trend — the feed
- * has no history, so the page never says "rising", "falling" or "tightening".
+ * The story for the headline market. The headline and dek are narrative and carry
+ * no figures; the body states the figures they rest on. Thresholds pick which
+ * reading of the CURRENT numbers leads — the feed has no history, so nothing here
+ * claims a direction ("gaining", "rising", "tightening"), only how things stand.
  */
 export function marketStory(s: MarketSnapshot): MarketStory {
   const [home, ...rest] = s.areas;
   const name = home.area.label;
+  const season = seasonOf(s.asOf);
 
   let headline: string;
-  if (home.priceCutShare !== null && home.priceCutShare >= 0.4) {
-    headline = `${home.priceCutCount} of ${home.forSale} homes for sale in ${name} have cut their asking price`;
+  let dek: string;
+  if (home.priceCutShare !== null && home.priceCutShare > 0.5) {
+    headline = `${name} buyers have room to negotiate this ${season}`;
+    dek = `More than half of the homes for sale in ${name} are now asking less than when they first listed — good news for buyers, and a reminder for sellers that pricing it right from day one matters.`;
+  } else if (home.priceCutShare !== null && home.priceCutShare >= 0.35) {
+    headline = `Price is the conversation in ${name} this ${season}`;
+    dek = `A large share of ${name} listings have trimmed their asking price since they first listed, so buyers have room to negotiate and carefully priced homes stand out.`;
   } else if (home.underContractShare !== null && home.underContractShare >= 0.3) {
-    headline = `${pct(home.underContractShare)} of ${name} homes on the market are already under contract`;
+    headline = `${name} homes are finding buyers this ${season}`;
+    dek = `A healthy share of the ${name} market is already under contract, so well-priced homes are drawing offers and buyers who find the right one should be ready to act.`;
   } else if (home.medianDaysListed !== null && home.medianDaysListed >= 90) {
-    headline = `The typical ${name} home for sale has been listed ${home.medianDaysListed} days`;
-  } else if (home.medianAskingPrice !== null) {
-    headline = `${home.forSale} homes for sale in ${name}, at a median asking price of ${usd(home.medianAskingPrice)}`;
+    headline = `${name} buyers can take their time this ${season}`;
+    dek = `The typical home for sale in ${name} has been on the market for several months, so buyers can compare their options without being rushed.`;
   } else {
-    headline = `${home.forSale} homes for sale in ${name} right now`;
+    headline = `Where the ${name} market stands this ${season}`;
+    dek = `A clear look at what's for sale in ${name} right now, what sellers are asking, and how much is already under contract.`;
   }
 
   const lead: string[] = [];
@@ -190,5 +208,5 @@ export function marketStory(s: MarketSnapshot): MarketStory {
   // Boerne), so a total across them would double-count.
   points.push(`${home.newLast30Days} ${name} ${home.newLast30Days === 1 ? 'home' : 'homes'} came on the market in the last 30 days.`);
 
-  return { headline, lead: lead.join(' '), points };
+  return { headline, dek, body: lead.join(' '), points };
 }

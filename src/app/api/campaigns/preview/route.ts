@@ -15,6 +15,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { agentTitle } from '@/lib/agent-title';
 import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
+import { usesMarketReport, getMarketReportMerge, applyMarketReport } from '@/lib/market-report-email';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -98,8 +99,18 @@ export async function POST(req: NextRequest) {
   const agentTitleStr = agentTitle(sender.role);
   const brokerage  = isCommercial ? 'CRECO' : 'Fair Oaks Realty Group';
 
-  const renderedSubject = applyMergeFields(subject ?? '(no subject)', agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
-  let renderedBody      = applyMergeFields(body ?? '', agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
+  // A market-report campaign's test shows the report as it would go out right now.
+  let reportSubject: string = subject ?? '(no subject)';
+  let reportBody: string = body ?? '';
+  if (usesMarketReport(reportSubject, reportBody)) {
+    const report = await getMarketReportMerge();
+    if (!report) return NextResponse.json({ error: 'The MLS feed is unavailable, so the market report can’t be built right now.' }, { status: 503 });
+    reportSubject = applyMarketReport(reportSubject, report);
+    reportBody = applyMarketReport(reportBody, report);
+  }
+
+  const renderedSubject = applyMergeFields(reportSubject, agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
+  let renderedBody      = applyMergeFields(reportBody, agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
   // Same link-tagging the real send applies, so the preview shows exactly the
   // UTM-tagged links recipients will get.
   renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaignName));

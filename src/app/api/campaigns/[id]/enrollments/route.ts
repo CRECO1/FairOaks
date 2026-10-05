@@ -33,6 +33,12 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
     // Convert Chicago local time → UTC using Intl (handles CDT/CST automatically — no library needed)
     return chicagoLocalToUTC(sendDate, time);
   }
+  // A recurring campaign with a future Send Date starts then (e.g. the monthly market
+  // report's first issue); without one, the first send is one period out.
+  if (sendDate) {
+    const first = chicagoLocalToUTC(sendDate, sendTime || '08:00');
+    if (Date.parse(first) > Date.now()) return first;
+  }
   const now = new Date();
   switch (frequency) {
     case 'monthly':     now.setMonth(now.getMonth() + 1); break;

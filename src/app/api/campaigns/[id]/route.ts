@@ -19,6 +19,12 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
     const time = sendTime || '08:00';
     return new Date(`${sendDate}T${time}:00-05:00`).toISOString();
   }
+  // A recurring campaign with a future Send Date starts then (e.g. the monthly market
+  // report's first issue); without one, the first send is one period out.
+  if (sendDate) {
+    const first = new Date(`${sendDate}T${sendTime || '08:00'}:00-05:00`);
+    if (first.getTime() > Date.now()) return first.toISOString();
+  }
   const now = new Date();
   switch (frequency) {
     case 'monthly':     now.setMonth(now.getMonth() + 1); break;

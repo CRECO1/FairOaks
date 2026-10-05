@@ -61,11 +61,11 @@ function SignupBlock() {
       <Container>
         <div className="mx-auto grid max-w-5xl grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
           <div>
-            <p className="overline mb-3 text-gold">Market Updates by Email</p>
-            <h2 className="font-heading text-display-xs font-bold mb-4">Get the market update in your inbox</h2>
+            <p className="overline mb-3 text-gold">The Monthly Report</p>
+            <h2 className="font-heading text-display-xs font-bold mb-4">Get this report in your inbox each month</h2>
             <p className="text-body text-white/70">
-              The Fair Oaks Ranch and Hill Country numbers, with what they mean for buying or selling — from a local broker,
-              not an algorithm.
+              The same live MLS numbers — homes for sale, asking prices, price cuts and what&apos;s under contract across
+              Fair Oaks Ranch and the Hill Country — emailed by Zack Stovall, broker and owner. Unsubscribe any time.
             </p>
           </div>
           <div className="rounded-2xl bg-white p-5 sm:p-8 text-primary">
@@ -117,13 +117,13 @@ export default async function MarketReportsPage() {
             <div className="max-w-3xl">
               <p className="overline mb-3 text-gold">Market Report · {monthLabel(snapshot.asOf)}</p>
               <h1 className="font-heading text-display-sm sm:text-display font-bold leading-tight">{story.headline}</h1>
-              <p className="mt-5 text-body-lg leading-relaxed text-white/75">{story.lead}</p>
+              <p className="mt-5 text-body-lg leading-relaxed text-white/75">{story.dek}</p>
               <p className="mt-4 text-caption text-white/50">
                 Live from the SABOR MLS · Data as of {asOf} · Residential listings
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
                 <Button size="lg" asChild>
-                  <a href="#updates"><Mail className="mr-2 h-4 w-4" />Get the market update by email</a>
+                  <a href="#updates"><Mail className="mr-2 h-4 w-4" />Get the monthly report by email</a>
                 </Button>
                 <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" asChild>
                   <Link href="/home-valuation?from=market-report">What&apos;s my home worth?</Link>
@@ -142,6 +142,7 @@ export default async function MarketReportsPage() {
                 The Market Right Now
               </h2>
             </div>
+            <p className="mx-auto mb-10 max-w-3xl text-body-lg leading-relaxed text-foreground-muted">{story.body}</p>
             <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
               {headlineStats(home).map(({ icon: Icon, label, value }) => (
                 <div key={label} className="card-luxury p-5 sm:p-6 text-center">

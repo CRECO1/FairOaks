@@ -5,6 +5,7 @@ import { unsubscribeUrlFor } from '@/lib/email-tracking';
 import { agentTitle } from '@/lib/agent-title';
 import { marketingDailyCap, type CapDecision } from '@/lib/email-volume';
 import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
+import { usesMarketReport, getMarketReportMerge, applyMarketReport, type MarketReportMerge } from '@/lib/market-report-email';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -183,6 +184,15 @@ export async function GET(req: NextRequest) {
   let sent = 0;
   let failed = 0;
   let deferred = 0;
+  let held = 0;
+
+  // A campaign carrying {{market_report}} gets a report built from the live MLS feed,
+  // once per run, at send time (lib/market-report-email.ts).
+  const needsReport = (c: { type?: string; email_subject?: string | null; email_body?: string | null }) =>
+    c.type === 'email' && usesMarketReport(c.email_subject, c.email_body);
+  const marketReport: MarketReportMerge | null = (enrollments as any[]).some(e => e.campaign && needsReport(e.campaign))
+    ? await getMarketReportMerge()
+    : null;
 
   // How many campaign emails each capped workspace has already sent today. Resend's
   // daily allowance runs on the UTC day, so the count does too.
@@ -279,6 +289,15 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
+    // The market report couldn't be built (feed unreachable): hold the send — the
+    // enrollment stays due and the next run tries again — rather than mailing a report
+    // with no figures. Nothing is logged as a send because nothing was attempted.
+    if (needsReport(campaign) && !marketReport && !withinWindow && client.email) {
+      console.warn(`[cron/campaigns] market report unavailable — holding ${campaign.id} for ${client.id}`);
+      held++;
+      continue;
+    }
+
     try {
       if (withinWindow) {
         status = 'skipped';
@@ -289,8 +308,9 @@ export async function GET(req: NextRequest) {
           errorMessage = 'No email address';
         } else {
           const perRecipient = (enrollment as { merge_fields?: Record<string, unknown> | null }).merge_fields ?? null;
-          subjectRendered = applyMergeFields(campaign.email_subject || '', ctx, campaign.business_unit, perRecipient);
-          let renderedBody = applyMergeFields(campaign.email_body || '', ctx, campaign.business_unit, perRecipient);
+          const withReport = (t: string) => (marketReport && needsReport(campaign) ? applyMarketReport(t, marketReport) : t);
+          subjectRendered = applyMergeFields(withReport(campaign.email_subject || ''), ctx, campaign.business_unit, perRecipient);
+          let renderedBody = applyMergeFields(withReport(campaign.email_body || ''), ctx, campaign.business_unit, perRecipient);
           // Tag on-domain links so GA4 attributes the click to Email + this campaign
           // (not "direct"). Runs after merge, before the open pixel is injected.
           renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaign.name, campaign.id));
@@ -402,7 +422,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    processed: enrollments.length, sent, failed, deferred,
+    processed: enrollments.length, sent, failed, deferred, held,
     caps: Object.fromEntries([...capByUnit].map(([u, d]) => [u, { cap: d.cap, reason: d.reason, sentToday: sentToday.get(u) ?? 0 }])),
   });
 }

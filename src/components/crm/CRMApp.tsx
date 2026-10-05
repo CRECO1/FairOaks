@@ -33,6 +33,15 @@ const EsignDashboard = dynamic(() => import('@/components/crm/EsignDashboard'), 
 const LeadAttribution = dynamic(() => import('@/components/crm/LeadAttribution'), { ssr: false });
 const CallingLog = dynamic(() => import('@/components/crm/CallingLog'), { ssr: false });
 const LeaseExpirationsSection = dynamic(() => import('@/components/crm/LeaseExpirationsSection'), { ssr: false });
+
+/**
+ * A campaign carrying the market-report tokens (lib/market-report-email.ts) is filled
+ * from the live MLS feed at send time, so its preview comes from the server route that
+ * does the same rendering — the stored body alone would show a raw {{market_report}}.
+ */
+const usesMarketReport = (c: { email_subject?: string | null; email_body?: string | null }) =>
+  /\{\{(market_report|report_month|report_headline)\}\}/.test(`${c.email_subject ?? ''}${c.email_body ?? ''}`);
+const marketReportPreviewUrl = (id: string) => `/api/campaigns/market-report-preview?campaign=${encodeURIComponent(id)}`;
 const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSection'), { ssr: false });
 const ActivitySection = dynamic(() => import('@/components/crm/ActivitySection'), { ssr: false });
 const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: false });
@@ -6655,7 +6664,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {/* Email body */}
                     <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-                      {previewCampaign.email_body ? (
+                      {usesMarketReport(previewCampaign) ? (
+                        <iframe
+                          src={marketReportPreviewUrl(previewCampaign.id)}
+                          style={{ width: '100%', border: 'none', display: 'block' }}
+                          height={600}
+                          title="Market report preview"
+                          sandbox="allow-same-origin"
+                        />
+                      ) : previewCampaign.email_body ? (
                         <iframe
                           srcDoc={previewCampaign.email_body
                             .replace(/\{\{first_name\}\}/g, 'Jane')
@@ -7084,6 +7101,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   From: {businessUnit === 'commercial' ? 'CRECO <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>'}
                                 </div>
                               </div>
+                              {usesMarketReport(activeCampaign) ? (
+                              <iframe
+                                sandbox="allow-same-origin"
+                                src={marketReportPreviewUrl(activeCampaign.id)}
+                                style={{ width: '100%', border: 'none', minHeight: 900, display: 'block', background: '#fff' }}
+                                title="Market Report Preview"
+                              />
+                              ) : (
                               <iframe
                                 sandbox="allow-same-origin"
                                 srcDoc={(() => {
@@ -7097,6 +7122,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 }}
                                 title="Email Preview"
                               />
+                              )}
                             </div>
                           ) : (
                             <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', background: '#f9fafb', borderRadius: 12, border: '1px dashed #e5e7eb' }}>

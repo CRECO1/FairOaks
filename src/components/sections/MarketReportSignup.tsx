@@ -35,8 +35,8 @@ export function MarketReportSignup() {
           recaptchaToken: await getRecaptchaToken('lead_form'),
           name: data.get('name'),
           email: data.get('email'),
-          message: 'Signed up for market updates on /market-reports.',
-          property_interest: 'Market updates — Fair Oaks Ranch & Hill Country',
+          message: 'Signed up for the monthly market report on /market-reports.',
+          property_interest: 'Monthly market report — Fair Oaks Ranch & Hill Country',
           source: 'market-report',
           business_unit: 'residential',
           website: (data.get('website') as string) || undefined,
@@ -62,7 +62,7 @@ export function MarketReportSignup() {
         <input name="email" type="email" required autoComplete="email" placeholder="you@example.com" aria-label="Email address" className={field} />
       </div>
       {error && <p role="alert" className="text-body-sm text-red-600">{error}</p>}
-      <Button type="submit" size="lg" fullWidth loading={loading}>Send me the market updates</Button>
+      <Button type="submit" size="lg" fullWidth loading={loading}>Email me the monthly report</Button>
       <p className="text-caption text-foreground-muted">
         No spam, and unsubscribe any time. We never share your details.
       </p>
