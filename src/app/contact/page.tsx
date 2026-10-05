@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FORG } from '@/lib/site-identity';
 import { useRouter } from 'next/navigation';
 import { Phone, Mail, MapPin, Clock, Calendar } from 'lucide-react';
@@ -11,19 +11,24 @@ import { Container } from '@/components/ui/Container';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
-
-const CONTACT_REASONS = [
-  'Schedule a Showing',
-  'Home Valuation',
-  'Buyer Consultation',
-  'Seller Consultation',
-  'Relocation Help',
-];
+import { CONTACT_REASONS, contactContextFromUrl, type ContactContext } from '@/lib/contact-context';
 
 export default function ContactPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  // Context from the link that brought them here (?area=, ?service=, ?district=, ?topic=).
+  // Read after mount: useSearchParams would make this page bail out of static rendering.
+  const [context, setContext] = useState<ContactContext | null>(null);
+  const [reason, setReason] = useState('');
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    const ctx = contactContextFromUrl(window.location.search);
+    if (!ctx) return;
+    setContext(ctx);
+    setReason(ctx.reason);
+    setMessage(ctx.message);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -42,6 +47,8 @@ export default function ContactPage() {
           email: data.get('email'),
           phone: data.get('phone'),
           message: `Reason: ${data.get('reason')}\n\n${data.get('message')}`,
+          // Where the inquiry started (e.g. "Area: The Dominion"); shown on the CRM contact.
+          property_interest: context?.interest,
           source: 'contact',
           business_unit: 'residential',
           website: (data.get('website') as string) || undefined,
@@ -50,7 +57,7 @@ export default function ContactPage() {
       if (!res.ok) throw new Error('Server error');
       // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror below —
       // a second trackLead() here double-counted the conversion.
-      trackEvent('contact_form_submitted', { form: 'contact-page' });
+      trackEvent('contact_form_submitted', { form: 'contact-page', context: context?.interest });
       router.push('/thank-you');
     } catch {
       setSubmitError('Something went wrong. Please try again or call us directly.');
@@ -180,7 +187,7 @@ export default function ContactPage() {
                         </div>
                         <div>
                           <label className="label-readable">How can we help?</label>
-                          <select name="reason" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold">
+                          <select name="reason" value={reason} onChange={e => setReason(e.target.value)} className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold">
                             <option value="">Select a reason…</option>
                             {CONTACT_REASONS.map(r => <option key={r}>{r}</option>)}
                           </select>
@@ -190,6 +197,8 @@ export default function ContactPage() {
                           <textarea
                             name="message"
                             rows={4}
+                            value={message}
+                            onChange={e => setMessage(e.target.value)}
                             placeholder="Tell us a bit about what you're looking for, your timeline, or any questions you have…"
                             className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold resize-none"
                           />
