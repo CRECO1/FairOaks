@@ -7,6 +7,7 @@ import { Honeypot } from '@/components/Honeypot';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
 import { thankYouPath } from '@/lib/thank-you';
+import { BrokerTrustCard } from '@/components/sections/BrokerTrustCard';
 
 /**
  * Inline lead capture for the home page.
@@ -87,6 +88,7 @@ export default function HomeInlineLeadForm() {
           </div>
 
           <div className="mt-8 rounded-2xl bg-white p-5 shadow-card sm:p-8">
+            <BrokerTrustCard surface="home_inline" className="mb-6" />
             <form
               onSubmit={onSubmit}
               className="space-y-4"

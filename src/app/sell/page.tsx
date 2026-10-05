@@ -11,6 +11,7 @@ import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent } from '@/lib/attribution';
+import { BrokerTrustCard } from '@/components/sections/BrokerTrustCard';
 
 const STEPS = [
   { number: '01', title: 'Free Home Valuation', description: 'We analyze recent sales, market trends, and your home\'s unique features to establish the ideal listing price.' },
@@ -147,6 +148,7 @@ export default function SellPage() {
               {/* Valuation Form */}
               <RevealOnScroll direction="right">
                 <div id="valuation" className="rounded-2xl bg-background-cream p-5 sm:p-8 lg:p-10">
+                  <BrokerTrustCard surface="sell_page" className="mb-6" />
                   {submitted ? (
                     <div className="text-center py-8">
                       <CheckCircle className="mx-auto mb-4 h-14 w-14 text-gold" />

@@ -10,6 +10,7 @@ import { Container } from '@/components/ui/Container';
 import { searchProperties, getMediaBatch, resoPropertyToListing } from '@/lib/sabor-reso';
 import { formatPrice } from '@/lib/utils';
 import { ListingContactForm } from './ListingContactForm';
+import { BrokerTrustCard } from '@/components/sections/BrokerTrustCard';
 import { MortgageCalculator } from '@/components/sections/MortgageCalculator';
 import { ListingGallery } from '@/components/sections/ListingGallery';
 import { StickyContactBar } from '@/components/listings/StickyContactBar';
@@ -403,6 +404,7 @@ export default async function ListingDetailPage({ params }: Props) {
                 <p className="mb-6 text-body-sm text-foreground-muted">
                   Contact us to schedule a private showing or ask any questions.
                 </p>
+                <BrokerTrustCard surface="listing_detail" className="mb-6" />
                 <ListingContactForm listingTitle={listing.title} />
                 {/* A mortgage estimate on monthly rent is meaningless. */}
                 {!isLease && <MortgageCalculator listingPrice={listing.price} />}

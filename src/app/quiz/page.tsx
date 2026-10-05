@@ -11,6 +11,7 @@ import { getRecaptchaToken } from '@/lib/recaptcha-client';
 import { attributionPayload } from '@/lib/attribution';
 import { Honeypot } from '@/components/Honeypot';
 import { thankYouPath } from '@/lib/thank-you';
+import { BrokerTrustCard } from '@/components/sections/BrokerTrustCard';
 
 interface QuizStep {
   id: string;
@@ -172,6 +173,7 @@ export default function QuizPage() {
                   Tell us how to reach you and we&apos;ll send personalized home recommendations.
                 </p>
               </div>
+              <BrokerTrustCard surface="quiz" className="mb-4" />
               <form onSubmit={handleContact} className="space-y-4 bg-white rounded-2xl shadow-card p-5 sm:p-8">
                 <Honeypot />
                 <div>

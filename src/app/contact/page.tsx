@@ -13,6 +13,7 @@ import { Honeypot } from '@/components/Honeypot';
 import { attributionPayload, trackEvent, trackFormStart } from '@/lib/attribution';
 import { CONTACT_REASONS, contactContextFromUrl, type ContactContext } from '@/lib/contact-context';
 import { thankYouPath } from '@/lib/thank-you';
+import { BrokerTrustCard } from '@/components/sections/BrokerTrustCard';
 
 export default function ContactPage() {
   const router = useRouter();
@@ -168,6 +169,7 @@ export default function ContactPage() {
               <div className="lg:col-span-2">
                 <div className="rounded-2xl bg-white p-5 sm:p-8 shadow-card lg:p-10">
                   <>
+                      <BrokerTrustCard surface="contact_page" className="mb-6" />
                       <h2 className="mb-2 font-heading text-heading-xl font-bold text-primary">Send Us a Message</h2>
                       <p className="mb-6 text-body-sm text-foreground-muted">We read every message ourselves and reply personally.</p>
                       <form onSubmit={handleSubmit} onFocusCapture={() => trackFormStart('contact-page')} className="space-y-5">

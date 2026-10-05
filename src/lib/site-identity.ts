@@ -28,6 +28,18 @@ export const PEOPLE = [
   { id: AGENT_ID, name: 'Brian Blanco', jobTitle: 'Director of Leasing', trecLicense: '848449' },
 ] as const;
 
+/**
+ * The broker as shown in the trust card beside lead forms: the same name, title and
+ * headshot the /team roster shows (agents table, order 1), and his individual TREC
+ * licence from PEOPLE. Calls and texts go to the brokerage line.
+ */
+export const BROKER_CARD = {
+  name: 'Zachary A. Stovall',
+  jobTitle: PEOPLE[0].jobTitle,
+  trecLicense: PEOPLE[0].trecLicense,
+  photo: 'https://bnqdzgypesoythpbeujk.supabase.co/storage/v1/object/public/images/1777405682366-28jgzdwclkv.jpeg',
+} as const;
+
 export const FORG = {
   id: ORG_ID,
   name: 'Fair Oaks Realty Group',
