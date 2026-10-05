@@ -7,7 +7,8 @@ import { Container } from '@/components/ui/Container';
 import { THANK_YOU_FORMS, safeListingPath, type ThankYouForm } from '@/lib/thank-you';
 
 export const metadata: Metadata = {
-  title: 'Thank You | Fair Oaks Realty Group',
+  // The root layout's title template appends " | Fair Oaks Realty Group".
+  title: 'Thank You',
   description: 'Thank you for contacting Fair Oaks Realty Group. A member of our team will be in touch personally.',
   robots: 'noindex, nofollow',
 };
