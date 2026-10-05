@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
 import { TrendingUp, Clock, DollarSign, Users, CheckCircle, ArrowRight, Phone } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { ValuationCta } from '@/components/sections/ValuationCta';
@@ -8,9 +8,6 @@ import { trackPhoneClick } from '@/lib/analytics';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
-import { getRecaptchaToken } from '@/lib/recaptcha-client';
-import { Honeypot } from '@/components/Honeypot';
-import { attributionPayload, trackEvent } from '@/lib/attribution';
 import { BrokerTrustCard } from '@/components/sections/BrokerTrustCard';
 
 const STEPS = [
@@ -22,45 +19,6 @@ const STEPS = [
 ];
 
 export default function SellPage() {
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    const data = new FormData(e.currentTarget);
-    try {
-      const res = await fetch('/api/leads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          // Attribution: what brought this lead (utm/referrer/page/device).
-          ...attributionPayload('sell-page', { email: data.get('email'), name: data.get('name') }),
-          recaptchaToken: await getRecaptchaToken('lead_form'),
-          name: data.get('name'),
-          email: data.get('email'),
-          phone: data.get('phone'),
-          message: `Address: ${data.get('address')}\nTimeline: ${data.get('timeline')}\nAdditional info: ${data.get('notes')}`,
-          source: 'valuation',
-          business_unit: 'residential',
-          website: (data.get('website') as string) || undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(`lead POST ${res.status}`);
-      // Only a real 200 counts — a dropped valuation request (the highest-value
-      // lead) used to render "Request Received!" while nothing was saved.
-      // generate_lead is emitted once by trackEvent's LEAD_EVENTS mirror above.
-      trackEvent('valuation_form_submitted', { form: 'sell-page' });
-      setSubmitted(true);
-    } catch {
-      setError('Something went wrong sending your request. Please try again, or call or text us at 210-390-9997.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <>
       <Header />
@@ -80,7 +38,7 @@ export default function SellPage() {
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <Button size="lg" className="w-full sm:w-auto" asChild>
-                    <a href="#valuation">Get My Free Valuation</a>
+                    <Link href="/home-valuation?from=sell">Get My Free Valuation</Link>
                   </Button>
                   <Button size="lg" variant="outline" className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10" asChild>
                     <a href="tel:+12103909997" onClick={() => trackPhoneClick('sell_page')}><Phone className="mr-2 h-4 w-4" />210-390-9997</a>
@@ -145,47 +103,21 @@ export default function SellPage() {
                 </ul>
               </RevealOnScroll>
 
-              {/* Valuation Form */}
+              {/* Valuation CTA */}
               <RevealOnScroll direction="right">
                 <div id="valuation" className="rounded-2xl bg-background-cream p-5 sm:p-8 lg:p-10">
                   <BrokerTrustCard surface="sell_page" className="mb-6" />
-                  {submitted ? (
-                    <div className="text-center py-8">
-                      <CheckCircle className="mx-auto mb-4 h-14 w-14 text-gold" />
-                      <h3 className="font-heading text-heading-xl font-bold text-primary mb-2">Request Received!</h3>
-                      <p className="text-body text-foreground-muted">
-                        One of our agents will reach out personally to discuss your home&apos;s value.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <h3 className="mb-2 font-heading text-heading-xl font-bold text-primary">Get Your Free Home Valuation</h3>
-                      <p className="mb-6 text-body-sm text-foreground-muted">No obligations. We&apos;ll prepare a detailed market analysis of your home.</p>
-                      <form onSubmit={handleSubmit} className="space-y-4">
-                        <Honeypot />
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <input name="name" required placeholder="Your Name" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
-                          <input name="phone" type="tel" placeholder="Phone Number" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
-                        </div>
-                        <input name="email" type="email" required placeholder="Email Address" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
-                        <input name="address" required placeholder="Property Address" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold" />
-                        <select name="timeline" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold">
-                          <option value="">When are you looking to sell?</option>
-                          <option>ASAP (within 30 days)</option>
-                          <option>1–3 months</option>
-                          <option>3–6 months</option>
-                          <option>6–12 months</option>
-                          <option>Just exploring</option>
-                        </select>
-                        <textarea name="notes" rows={3} placeholder="Anything else we should know about your home?" className="w-full rounded-lg border border-border px-4 py-3 text-body-sm text-primary focus:outline-none focus:ring-2 focus:ring-gold resize-none" />
-                        {error && <p role="alert" className="text-body-sm text-red-600">{error}</p>}
-                        <Button type="submit" size="lg" fullWidth loading={loading}>
-                          Request Free Valuation
-                          <ArrowRight className="ml-2 h-5 w-5" />
-                        </Button>
-                      </form>
-                    </>
-                  )}
+                  {/* One valuation flow site-wide: /home-valuation, the page built for it. */}
+                  <h3 className="mb-2 font-heading text-heading-xl font-bold text-primary">Get Your Free Home Valuation</h3>
+                  <p className="mb-6 text-body-sm text-foreground-muted">
+                    No obligation. Zack prepares it personally from recent sales near your home — four details and you&apos;re done.
+                  </p>
+                  <Button size="lg" fullWidth asChild>
+                    <Link href="/home-valuation?from=sell">
+                      Request My Free Valuation
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Link>
+                  </Button>
                 </div>
               </RevealOnScroll>
             </div>

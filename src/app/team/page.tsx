@@ -1,5 +1,7 @@
-import { CheckCircle2 } from 'lucide-react';
+import Link from 'next/link';
+import { CheckCircle2, Search, Home } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
+import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
 import { RevealOnScroll } from '@/hooks/useScrollReveal';
 import { supabase } from '@/lib/supabase';
@@ -149,6 +151,30 @@ export default async function TeamPage() {
               </div>
             </RevealOnScroll>
             <TeamRoster agents={agents} />
+          </Container>
+        </section>
+
+        {/* ── Buyer / Seller CTA ─────────────────────────────────────
+            The page's next step for clients. Hiring stays below as the secondary ask. */}
+        <section className="section-compact bg-background-cream border-t border-border">
+          <Container>
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="overline mb-3">Work With Us</p>
+              <h2 className="font-heading text-display-xs font-bold text-primary mb-4">
+                Buying or selling in the Hill Country?
+              </h2>
+              <p className="text-body text-foreground-muted mb-8">
+                Tell us which, and the broker will take it from there personally.
+              </p>
+              <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
+                <Button size="lg" className="w-full sm:w-auto" asChild>
+                  <Link href="/home-valuation?from=team"><Home className="mr-2 h-4 w-4" />Selling: Get My Home&apos;s Value</Link>
+                </Button>
+                <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
+                  <Link href="/contact?topic=home-search"><Search className="mr-2 h-4 w-4" />Buying: Have an Agent Search for Me</Link>
+                </Button>
+              </div>
+            </div>
           </Container>
         </section>
 
