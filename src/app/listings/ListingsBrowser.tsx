@@ -18,6 +18,7 @@ import type { Listing } from '@/lib/supabase';
 import { trackViewItemList, trackSearch, trackSelectItem } from '@/lib/analytics';
 import { SaveSearchButton } from '@/components/sections/SaveSearchModal';
 import { FORG } from '@/lib/site-identity';
+import { COMMUNITIES, DISTRICTS, LUXURY_MIN_PRICE, newConstructionMinYear } from '@/lib/listing-filters';
 
 /** Compute days on market from a listing date string. */
 function calcDaysOnMarket(listingDate: string | null | undefined): number | null {
@@ -47,7 +48,7 @@ function domBadge(days: number | null): { label: string; cls: string } | null {
 }
 
 const FEATURED_AREAS = ['Fair Oaks Ranch', 'Boerne', 'Dominion', 'Cordillera Ranch'];
-const MORE_AREAS = ['San Antonio', 'Helotes', 'Bulverde', 'New Braunfels', 'Kerrville', 'Fredericksburg'];
+const MORE_AREAS = ['San Antonio', 'Helotes', 'Bulverde', 'Spring Branch', 'Canyon Lake', 'New Braunfels', 'Kerrville', 'Fredericksburg'];
 
 const STATUS_OPTIONS = [
   { label: 'Any Status',     value: '' },
@@ -64,6 +65,90 @@ const PRICE_RANGES = [
   { label: '$900K – $1.2M', min: 900000,  max: 1200000  },
   { label: '$1.2M+',        min: 1200000, max: Infinity  },
 ];
+
+type PriceRange = { min: number; max: number };
+const ANY_PRICE: PriceRange = { min: 0, max: Infinity };
+
+/** A preset's label, or one built for a range that arrived in a link (e.g. $500K – $750K). */
+function priceLabel(p: PriceRange): string {
+  const preset = PRICE_RANGES.find(r => r.min === p.min && r.max === p.max);
+  if (preset) return preset.label;
+  const k = (n: number) => n >= 1_000_000 ? `$${+(n / 1_000_000).toFixed(2)}M` : `$${Math.round(n / 1000)}K`;
+  if (p.max === Infinity) return `${k(p.min)}+`;
+  if (p.min === 0) return `Under ${k(p.max)}`;
+  return `${k(p.min)} – ${k(p.max)}`;
+}
+
+/** Everything the search sends to /api/listings. */
+interface Filters {
+  search: string;
+  city: string;
+  price: PriceRange;
+  minBeds: number;
+  minBaths: number;
+  status: string;
+  community: string;
+  district: string;
+  newConstruction: boolean;
+}
+
+function filterParams(f: Filters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (f.search)                            params.set('search',    f.search);
+  if (f.city && f.city !== 'All Areas')    params.set('city',      f.city);
+  if (f.community)                         params.set('community', f.community);
+  if (f.district)                          params.set('district',  f.district);
+  if (f.newConstruction)                   params.set('newConstruction', '1');
+  if (f.price.min > 0)                     params.set('minPrice',  String(f.price.min));
+  if (f.price.max < Infinity)              params.set('maxPrice',  String(f.price.max));
+  if (f.minBeds > 0)                       params.set('minBeds',   String(f.minBeds));
+  if (f.minBaths > 0)                      params.set('minBaths',  String(f.minBaths));
+  if (f.status)                            params.set('status',    f.status);
+  return params;
+}
+
+/**
+ * Filters carried in the page URL by links across the site — area, neighborhood and
+ * school pages, price-band pages, the footer. Unknown values are ignored rather than
+ * guessed at. Returns null when the URL carries none.
+ */
+function filtersFromUrl(search: string): Partial<Filters> & { note?: string } | null {
+  const q = new URLSearchParams(search);
+  const out: Partial<Filters> & { note?: string } = {};
+  const allAreas = [...FEATURED_AREAS, ...MORE_AREAS];
+
+  const city = q.get('city');
+  if (city && allAreas.includes(city)) out.city = city;
+
+  const community = COMMUNITIES[q.get('community') ?? ''];
+  if (community) {
+    if (community.filter) out.community = q.get('community')!;
+    else if (community.fallbackCity) {
+      out.city = community.fallbackCity;
+      out.note = `The MLS doesn't list homes under "${community.label}", so these are all homes for sale in ${community.fallbackCity}.`;
+    }
+  }
+
+  const district = q.get('district') ?? '';
+  if (DISTRICTS[district]) out.district = district;
+
+  if (q.get('type') === 'new-construction') out.newConstruction = true;
+
+  const min = Number(q.get('minPrice'));
+  const max = Number(q.get('maxPrice'));
+  if (q.get('price') === 'luxury') out.price = { min: LUXURY_MIN_PRICE, max: Infinity };
+  else if ((min > 0 && Number.isFinite(min)) || (max > 0 && Number.isFinite(max))) {
+    out.price = { min: min > 0 && Number.isFinite(min) ? min : 0, max: max > 0 && Number.isFinite(max) ? max : Infinity };
+  }
+
+  const beds = Number(q.get('minBeds'));
+  if (Number.isInteger(beds) && beds > 0 && beds <= 5) out.minBeds = beds;
+
+  const status = q.get('status') ?? '';
+  if (STATUS_OPTIONS.some(o => o.value === status && status)) out.status = status;
+
+  return Object.keys(out).length ? out : null;
+}
 
 const PAGE_LIMIT = 24;
 
@@ -122,21 +207,36 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
 
   const [search,     setSearch]     = useState('');
   const [city,       setCity]       = useState('All Areas');
-
-  // Pre-populate city from ?city= (e.g. "View all" on a listing detail page). Read
-  // after mount rather than via useSearchParams, which would force the whole page
-  // to render client-side only and drop the listings from the server HTML.
-  useEffect(() => {
-    const all = ['All Areas', ...FEATURED_AREAS, ...MORE_AREAS];
-    const param = new URLSearchParams(window.location.search).get('city');
-    if (param && all.includes(param)) setCity(param);
-  }, []);
-  const [priceRange, setPriceRange] = useState(0);
+  const [price,      setPrice]      = useState<PriceRange>(ANY_PRICE);
   const [minBeds,    setMinBeds]    = useState(0);
   const [minBaths,   setMinBaths]   = useState(0);
   const [status,     setStatus]     = useState('');
+  const [community,  setCommunity]  = useState('');
+  const [district,   setDistrict]   = useState('');
+  const [newConstruction, setNewConstruction] = useState(false);
+  // Why the results differ from what the link promised, when they must (see filtersFromUrl).
+  const [urlNote,    setUrlNote]    = useState<string | null>(null);
   const [viewMode,   setViewMode]   = useState<'list' | 'map'>('list');
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Apply filters carried in the URL (?city=, ?community=, ?district=, price bands…).
+  // Read after mount rather than via useSearchParams, which would force the whole page
+  // to render client-side only and drop the listings from the server HTML. The server
+  // HTML is the unfiltered first page, so show the skeleton until the filtered fetch
+  // lands instead of flashing the wrong homes and count.
+  useEffect(() => {
+    const f = filtersFromUrl(window.location.search);
+    if (!f) return;
+    setLoading(true);
+    if (f.city)            setCity(f.city);
+    if (f.price)           setPrice(f.price);
+    if (f.minBeds)         setMinBeds(f.minBeds);
+    if (f.status)          setStatus(f.status);
+    if (f.community)       setCommunity(f.community);
+    if (f.district)        setDistrict(f.district);
+    if (f.newConstruction) setNewConstruction(true);
+    if (f.note)            setUrlNote(f.note);
+  }, []);
 
   // Map-specific state: large batch loaded once when entering map view
   const [mapListings, setMapListings] = useState<Listing[]>([]);
@@ -144,25 +244,13 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchListings = useCallback((
-    searchVal: string,
-    cityVal: string,
-    priceIdx: number,
-    minBedsVal: number,
-    pageVal: number,
-    minBathsVal: number,
-    statusVal: string,
-  ) => {
+  const filters: Filters = { search, city, price, minBeds, minBaths, status, community, district, newConstruction };
+  // The filters object is rebuilt every render; effects key on its serialized form.
+  const filtersKey = filterParams(filters).toString();
+
+  const fetchListings = useCallback((f: Filters, pageVal: number) => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (searchVal)                          params.set('search',   searchVal);
-    if (cityVal && cityVal !== 'All Areas') params.set('city',     cityVal);
-    const range = PRICE_RANGES[priceIdx];
-    if (range.min > 0)          params.set('minPrice', String(range.min));
-    if (range.max < Infinity)   params.set('maxPrice', String(range.max));
-    if (minBedsVal > 0)         params.set('minBeds',  String(minBedsVal));
-    if (minBathsVal > 0)        params.set('minBaths', String(minBathsVal));
-    if (statusVal)              params.set('status',   statusVal);
+    const params = filterParams(f);
     params.set('page',  String(pageVal));
     params.set('limit', String(PAGE_LIMIT));
 
@@ -184,25 +272,10 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
       });
   }, []);
 
-  const fetchMapListings = useCallback((
-    cityVal: string,
-    priceIdx: number,
-    minBedsVal: number,
-    searchVal: string,
-    minBathsVal: number,
-    statusVal: string,
-  ) => {
+  const fetchMapListings = useCallback((f: Filters) => {
     setMapLoading(true);
-    const params = new URLSearchParams();
+    const params = filterParams(f);
     params.set('mapMode', '1');
-    if (searchVal)                          params.set('search',   searchVal);
-    if (cityVal && cityVal !== 'All Areas') params.set('city',     cityVal);
-    const range = PRICE_RANGES[priceIdx];
-    if (range.min > 0)        params.set('minPrice', String(range.min));
-    if (range.max < Infinity) params.set('maxPrice', String(range.max));
-    if (minBedsVal > 0)       params.set('minBeds',  String(minBedsVal));
-    if (minBathsVal > 0)      params.set('minBaths', String(minBathsVal));
-    if (statusVal)            params.set('status',   statusVal);
     fetch(`/api/listings?${params.toString()}`)
       .then(r => r.json())
       .then(d => { setMapListings(d.listings ?? []); setMapLoading(false); })
@@ -212,8 +285,9 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
   // Load map listings when entering map view or when filters change in map mode
   useEffect(() => {
     if (viewMode !== 'map') return;
-    fetchMapListings(city, priceRange, minBeds, search, minBaths, status);
-  }, [viewMode, city, priceRange, minBeds, search, minBaths, status, fetchMapListings]);
+    fetchMapListings(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, filtersKey, fetchMapListings]);
 
   // Debounced fetch when filters change — reset to page 1
   useEffect(() => {
@@ -221,37 +295,47 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setPage(1);
-      fetchListings(search, city, priceRange, minBeds, 1, minBaths, status);
+      fetchListings(filters, 1);
     }, 400);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, city, priceRange, minBeds, minBaths, status, fetchListings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey, fetchListings]);
 
   // Fetch immediately when page changes (no debounce needed)
   useEffect(() => {
     if (skipFirstPageFetch.current) { skipFirstPageFetch.current = false; return; }
-    fetchListings(search, city, priceRange, minBeds, page, minBaths, status);
+    fetchListings(filters, page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const hasFilters = city !== 'All Areas' || priceRange !== 0 || minBeds !== 0 || minBaths !== 0 || status !== '' || search !== '';
+  const hasPrice = price.min !== 0 || price.max !== Infinity;
+  const hasFilters = city !== 'All Areas' || hasPrice || minBeds !== 0 || minBaths !== 0 || status !== ''
+    || search !== '' || community !== '' || district !== '' || newConstruction;
 
   // Count of non-search active filters for the badge
   const activeFilterCount = [
     city !== 'All Areas',
-    priceRange !== 0,
+    hasPrice,
     minBeds !== 0,
     minBaths !== 0,
     status !== '',
+    community !== '',
+    district !== '',
+    newConstruction,
   ].filter(Boolean).length;
 
   const clearFilters = () => {
     setSearch('');
     setCity('All Areas');
-    setPriceRange(0);
+    setPrice(ANY_PRICE);
     setMinBeds(0);
     setMinBaths(0);
     setStatus('');
+    setCommunity('');
+    setDistrict('');
+    setNewConstruction(false);
+    setUrlNote(null);
   };
 
   const pageList = buildPageList(page, totalPages);
@@ -274,7 +358,7 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
 
               <select
                 value={city}
-                onChange={e => { setCity(e.target.value); trackViewItemList({ list_name: 'Search Results', city: e.target.value }); }}
+                onChange={e => { setCity(e.target.value); setUrlNote(null); trackViewItemList({ list_name: 'Search Results', city: e.target.value }); }}
                 className="h-11 w-full sm:w-auto rounded-lg border border-border px-3 text-body-sm text-primary"
               >
                 <option value="All Areas">All Areas</option>
@@ -309,11 +393,11 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
                 <div>
                   <p className="label-readable">Price Range</p>
                   <div className="flex flex-wrap gap-2">
-                    {PRICE_RANGES.map((r, i) => (
+                    {PRICE_RANGES.map(r => (
                       <button
                         key={r.label}
-                        onClick={() => { setPriceRange(i); trackViewItemList({ list_name: 'Search Results', city, price_min: r.min > 0 ? r.min : undefined, price_max: r.max < Infinity ? r.max : undefined }); }}
-                        className={`rounded-full border px-4 py-1.5 text-caption transition-colors ${priceRange === i ? 'border-gold bg-gold text-primary' : 'border-border text-foreground-muted hover:border-gold'}`}
+                        onClick={() => { setPrice({ min: r.min, max: r.max }); trackViewItemList({ list_name: 'Search Results', city, price_min: r.min > 0 ? r.min : undefined, price_max: r.max < Infinity ? r.max : undefined }); }}
+                        className={`rounded-full border px-4 py-1.5 text-caption transition-colors ${price.min === r.min && price.max === r.max ? 'border-gold bg-gold text-primary' : 'border-border text-foreground-muted hover:border-gold'}`}
                       >
                         {r.label}
                       </button>
@@ -377,13 +461,31 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
                 {city !== 'All Areas' && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
                     <MapPin className="h-3 w-3" />{city}
-                    <button onClick={() => setCity('All Areas')} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove city filter"><X className="h-3 w-3" /></button>
+                    <button onClick={() => { setCity('All Areas'); setUrlNote(null); }} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove city filter"><X className="h-3 w-3" /></button>
                   </span>
                 )}
-                {priceRange !== 0 && (
+                {community && COMMUNITIES[community] && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
-                    {PRICE_RANGES[priceRange].label}
-                    <button onClick={() => setPriceRange(0)} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove price filter"><X className="h-3 w-3" /></button>
+                    <Home className="h-3 w-3" />{COMMUNITIES[community].label}
+                    <button onClick={() => setCommunity('')} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove neighborhood filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {district && DISTRICTS[district] && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    {DISTRICTS[district].label}
+                    <button onClick={() => setDistrict('')} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove school district filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {newConstruction && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    New construction (built {newConstructionMinYear()}+)
+                    <button onClick={() => setNewConstruction(false)} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove new construction filter"><X className="h-3 w-3" /></button>
+                  </span>
+                )}
+                {hasPrice && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-caption font-medium text-primary">
+                    {priceLabel(price)}
+                    <button onClick={() => setPrice(ANY_PRICE)} className="ml-0.5 hover:text-gold transition-colors" aria-label="Remove price filter"><X className="h-3 w-3" /></button>
                   </span>
                 )}
                 {minBeds !== 0 && (
@@ -440,6 +542,10 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
               </div>
             </div>
 
+            {urlNote && (
+              <p className="mb-4 rounded-lg border border-border bg-background-cream px-4 py-3 text-body-sm text-foreground-muted">{urlNote}</p>
+            )}
+
             {/* Listing alerts CTA — always visible, pre-filled with current filters */}
             <div className="mb-6 flex items-center justify-between rounded-xl border border-gold/30 bg-gold/5 px-5 py-3.5">
               <div>
@@ -448,8 +554,8 @@ export function ListingsBrowser({ initialListings, initialTotal, initialTotalPag
               </div>
               <SaveSearchButton
                 cities={city === 'All Areas' ? ['All Areas'] : [city]}
-                minPrice={PRICE_RANGES[priceRange].min > 0 ? PRICE_RANGES[priceRange].min : undefined}
-                maxPrice={PRICE_RANGES[priceRange].max < Infinity ? PRICE_RANGES[priceRange].max : undefined}
+                minPrice={price.min > 0 ? price.min : undefined}
+                maxPrice={price.max < Infinity ? price.max : undefined}
                 minBeds={minBeds > 0 ? minBeds : undefined}
                 minBaths={minBaths > 0 ? minBaths : undefined}
                 search={search || undefined}

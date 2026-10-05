@@ -351,6 +351,7 @@ export function resoPropertyToListing(p: ResoProperty, images: string[] = []) {
     FREDERICKS:   'Fredericksburg',
     UNIVERSALC:   'Universal City',
     SPRINGBRAN:   'Spring Branch',
+    CANYONLAKE:   'Canyon Lake',
     CASTROVILL:   'Castroville',
     LIVEOAK:      'Live Oak',
     STONEOAK:     'Stone Oak',

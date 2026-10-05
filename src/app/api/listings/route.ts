@@ -4,7 +4,8 @@
  * IDX: serves listings directly from SABOR's RESO Web API — no database sync required.
  * Accepts the same query params as before so /listings page needs no changes.
  *
- * Params: city, minPrice, maxPrice, minBeds, search, page, limit
+ * Params: city, community, district, newConstruction, minPrice, maxPrice, minBeds,
+ *         minBaths, status, search, page, limit (see lib/listing-filters.ts)
  *
  * SABOR City field notes (confirmed via debug):
  *  - Type: ODataService.City_Lkp_1 — an enum lookup, NOT a string.
@@ -21,6 +22,7 @@ import {
   resoPropertyToListing,
   statusFilter,
 } from '@/lib/sabor-reso';
+import { COMMUNITIES, districtFilter, newConstructionMinYear } from '@/lib/listing-filters';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +40,15 @@ const CITY_ENUM: Record<string, string> = {
   'KERRVILLE':       'KERRVILLE',
   'NEW BRAUNFELS':   'NEWBRAUNFE',  // 10-char truncation
   'FREDERICKSBURG':  'FREDERICKS',  // 10-char truncation
+  'CANYON LAKE':     'CANYONLAKE',
+  'SPRING BRANCH':   'SPRINGBRAN',  // 10-char truncation
 };
 
-// Areas that are SubdivisionName values, not cities.
-// Values use partial matches that work across mixed-case SABOR data.
-const SUBDIVISION_SEARCH: Record<string, string> = {
-  'DOMINION':        'ominion',     // matches 'Dominion', 'THE DOMINION', 'DOMINION HEIGHTS'
-  'CORDILLERA RANCH': 'CORDILLERA', // stored all-caps in SABOR
+// Areas in the city dropdown that are SubdivisionName values, not cities.
+// contains() is case-sensitive, so these reuse the casing-aware community filters.
+const SUBDIVISION_SEARCH: Record<string, string | null> = {
+  'DOMINION':         COMMUNITIES['the-dominion'].filter,
+  'CORDILLERA RANCH': COMMUNITIES['cordillera-ranch'].filter,
 };
 
 function buildCityFilter(city: string): string | null {
@@ -54,9 +58,7 @@ function buildCityFilter(city: string): string | null {
     return `City eq ODataService.City_Lkp_1'${enumVal}'`;
   }
   const subdivMatch = SUBDIVISION_SEARCH[c];
-  if (subdivMatch) {
-    return `contains(SubdivisionName,'${subdivMatch}')`;
-  }
+  if (subdivMatch) return subdivMatch;
   // Unknown city — reject instead of building a raw filter to prevent OData injection
   return null;
 }
@@ -71,6 +73,9 @@ export async function GET(req: NextRequest) {
   const minBaths = sp.get('minBaths') ? Number(sp.get('minBaths')) : null;
   const statusParam = sp.get('status') ?? ''; // 'active' | 'under_contract' | 'coming_soon'
   const search   = sp.get('search')   ?? '';
+  const community = sp.get('community') ?? '';
+  const district  = sp.get('district')  ?? '';
+  const newConstruction = sp.get('newConstruction') === '1';
   const page     = Math.max(1, Number(sp.get('page')  ?? '1'));
   // mapMode=1 fetches a larger batch for the map view (no pagination needed)
   const isMapMode = sp.get('mapMode') === '1';
@@ -96,6 +101,13 @@ export async function GET(req: NextRequest) {
       const cityFilter = buildCityFilter(city);
       if (cityFilter) filters.push(cityFilter);
     }
+
+    // Known slugs only — the OData comes from lib/listing-filters, never from the URL.
+    const communityFilter = COMMUNITIES[community]?.filter;
+    if (communityFilter) filters.push(communityFilter);
+    const schoolFilter = district ? districtFilter(district) : null;
+    if (schoolFilter) filters.push(schoolFilter);
+    if (newConstruction) filters.push(`YearBuilt ge ${newConstructionMinYear()}`);
 
     if (minPrice !== null && Number.isFinite(minPrice)) filters.push(`ListPrice ge ${minPrice}`);
     if (maxPrice !== null && Number.isFinite(maxPrice)) filters.push(`ListPrice le ${maxPrice}`);
