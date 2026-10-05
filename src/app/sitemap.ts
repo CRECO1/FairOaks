@@ -76,7 +76,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     {
       url: `${BASE_URL}/market-reports`,
       lastModified: new Date(),
-      changeFrequency: 'monthly',
+      // Recomputed from the live MLS feed every six hours.
+      changeFrequency: 'daily',
       priority: 0.75,
     },
     {

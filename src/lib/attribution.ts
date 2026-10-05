@@ -55,6 +55,7 @@ const LEAD_EVENTS = new Set<string>([
   'showing_request_submitted',
   'home_inline_submitted',
   'listing_alert_submitted',
+  'market_report_signup',
 ]);
 
 /** Set once any lead event fires in this browser (read by ListingSignupPrompt). */

@@ -43,6 +43,7 @@ const HEADLINES: Record<ThankYouForm, { title: string; body: string }> = {
   listing:   { title: 'We\u2019ve got your question',       body: 'We received your inquiry about this home and will be in touch personally. Keep an eye on your phone and email.' },
   showing:   { title: 'Showing request received',          body: 'We\u2019ll call you shortly to find a time that works. Keep an eye on your phone.' },
   quiz:      { title: 'Your results are on the way!',      body: 'One of our local experts will reach out personally with homes matched to your answers.' },
+  'market-report': { title: 'You\u2019re on the list',      body: 'We\u2019ll send you the Fair Oaks Ranch & Hill Country market update. In the meantime, the live numbers are always on our market report page.' },
 };
 
 export default async function ThankYouPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

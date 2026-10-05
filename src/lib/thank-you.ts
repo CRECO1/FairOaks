@@ -7,7 +7,7 @@
  * redirect, so nothing double-counts and no event is lost.
  */
 
-export const THANK_YOU_FORMS = ['contact', 'valuation', 'listing', 'showing', 'quiz'] as const;
+export const THANK_YOU_FORMS = ['contact', 'valuation', 'listing', 'showing', 'quiz', 'market-report'] as const;
 export type ThankYouForm = (typeof THANK_YOU_FORMS)[number];
 
 /** Only a listing detail path is accepted as ?from= — never an arbitrary URL. */

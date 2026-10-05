@@ -168,6 +168,9 @@ export async function POST(req: NextRequest) {
             // and hinting they may sell — tag it so it never sits in the
             // general pile.
             const isValuation = source === 'valuation' && unit !== 'commercial';
+            // A /market-reports sign-up joins the "Market Report Subscribers" list,
+            // which filters on the "Market Report" tag.
+            const isMarketReport = source === 'market-report';
 
             // Map source → client type
             const clientType = source === 'valuation' ? 'Seller'
@@ -195,11 +198,15 @@ export async function POST(req: NextRequest) {
               assigned_agent_ids: [],
               lead_source: isValuation
                 ? 'Home valuation — fairoaksrealtygroup.com/home-valuation'
-                : 'Website',
+                : isMarketReport
+                  ? 'Market report — fairoaksrealtygroup.com/market-reports'
+                  : 'Website',
               prospect_status: 'new',
               business_unit: unit,
               tags: isValuation
                 ? ['New Lead', 'Website Lead', 'Valuation', 'Seller', 'Fair Oaks']
+                : isMarketReport
+                  ? ['New Lead', 'Website Lead', 'Market Report', 'Fair Oaks']
                 : unit === 'commercial' ? ['New Lead', 'Website Lead', 'CRECO'] : ['New Lead', 'Website Lead'],
               unsubscribe_token,
               // Attribution travels with the contact, not just the raw lead row —
@@ -254,6 +261,15 @@ export async function POST(req: NextRequest) {
             }
           } else {
             console.log(`[leads] CRM client already exists for email: ${email}`);
+            // An existing contact signing up for market updates still joins the list.
+            if (source === 'market-report') {
+              const { data: cur } = await supabaseAdmin.from('crm_clients').select('tags').eq('id', existing.id).maybeSingle();
+              const tags: string[] = Array.isArray(cur?.tags) ? cur.tags : [];
+              if (!tags.includes('Market Report')) {
+                const { error: tagErr } = await supabaseAdmin.from('crm_clients').update({ tags: [...tags, 'Market Report'] }).eq('id', existing.id);
+                if (tagErr) console.error('[leads] market-report tag on existing client failed:', tagErr);
+              }
+            }
           }
         } else {
           console.error('[leads] No admin profile found in crm_profiles — cannot assign CRM client');
