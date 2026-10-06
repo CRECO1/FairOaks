@@ -2843,12 +2843,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Campaigns ─────────────────────────────────────────────────────────────────
+  // The list's own counts skip Gmail (replies, and our replies back) to stay fast.
+  // The call-list endpoint includes it, so once it answers (a few seconds), its
+  // numbers replace the quick ones on the summary card and the campaign rows —
+  // the card, the badges and the list then all agree.
+  async function refreshEngagementCounts() {
+    try {
+      const r = await fetch('/api/campaigns/engagement', { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+      if (!r.ok) return;
+      const j = await r.json();
+      const people = (j.people ?? []) as { contacted_at: string | null; campaigns: { id: string }[] }[];
+      const by = new Map<string, { engaged: number; to_call: number }>(((j.campaigns ?? []) as { id: string }[]).map(c => [c.id, { engaged: 0, to_call: 0 }]));
+      for (const p of people) for (const c of p.campaigns) {
+        const b = by.get(c.id); if (!b) continue;
+        b.engaged++; if (!p.contacted_at) b.to_call++;
+      }
+      setEngagementTotals({ engaged: people.length, to_call: people.filter(p => !p.contacted_at).length });
+      setCampaigns(prev => prev.map(c => { const b = by.get(c.id); return b ? { ...c, engaged_count: b.engaged, to_call_count: b.to_call } : c; }));
+    } catch { /* keep the quick counts */ }
+  }
+
   async function loadCampaigns() {
     setCampaignLoading(true);
     try {
       const res = await fetch(`/api/campaigns?unit=${businessUnit}`);
       const j = await res.json();
-      if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); }
+      if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); refreshEngagementCounts(); }
       else { showToast(`Could not load campaigns: ${j.error ?? res.status}`); }
     } catch (err) {
       showToast('Network error loading campaigns');
