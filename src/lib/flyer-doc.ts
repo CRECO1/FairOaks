@@ -56,6 +56,16 @@ export interface FlyerInput {
   // Page-2 block headings, when the defaults don't describe the image (e.g. a site plan
   // supplied as the "floor plan", or a suite plan in the aerial slot).
   titles?: { photos?: string; floorPlan?: string; siteAerial?: string } | null;
+  // Property sub-brand (e.g. Elkhorn Point's campaign-email look): a two-tone wordmark
+  // and headline over a darkened cover, in the brand's own gold. Absent = CRECO default.
+  brand?: {
+    wordmark: [string, string];    // ["ELKHORN", "POINT"] — second word in gold
+    tag?: string;                  // top-right of the cover, e.g. "Retail · Fair Oaks Ranch, TX"
+    kicker?: string;               // small caps line above the headline (replaces the badge)
+    headline?: string;             // large white headline over the cover
+    gold?: string;                 // hex accent, e.g. "#C9922C"
+    kickerColor?: string;          // hex, e.g. "#F2C879"
+  } | null;
 }
 
 function sanitize(s: unknown): string {
@@ -83,6 +93,19 @@ function wrapText(text: string, font: PDFFont, size: number, maxW: number): stri
     if (line) out.push(line);
   }
   return out;
+}
+function hexRgb(hex: string): RGB {
+  const h = hex.replace('#', '');
+  return rgb(parseInt(h.slice(0, 2), 16) / 255, parseInt(h.slice(2, 4), 16) / 255, parseInt(h.slice(4, 6), 16) / 255);
+}
+// Letter-spaced text (pdf-lib has no tracking): draws glyph by glyph, returns the width.
+function spacedWidth(text: string, font: PDFFont, size: number, track: number): number {
+  return [...text].reduce((w, ch) => w + font.widthOfTextAtSize(ch, size) + track, 0) - (text ? track : 0);
+}
+function drawSpaced(page: PDFPage, text: string, x: number, y: number, size: number, font: PDFFont, color: RGB, track: number): number {
+  let cx = x;
+  for (const ch of text) { page.drawText(ch, { x: cx, y, size, font, color }); cx += font.widthOfTextAtSize(ch, size) + track; }
+  return cx - x - (text ? track : 0);
 }
 // Draw an image to COVER a box (fill + crop-overflow); caller paints over any spill.
 function drawCover(page: PDFPage, img: PDFImage, x: number, y: number, w: number, h: number) {
@@ -166,7 +189,7 @@ function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w:
 // an optional source/value-prop caption underneath. Drawn top-aligned in its box.
 function drawTradeArea(
   page: PDFPage, ta: { tiles: Array<{ value: string; label: string }>; caption?: string },
-  x: number, y: number, w: number, h: number, osw: PDFFont, body: PDFFont,
+  x: number, y: number, w: number, h: number, osw: PDFFont, body: PDFFont, accent: RGB = GOLD,
 ): Rect {
   const barH = 60;
   const barY = y + h - barH;                       // top-align the bar within the block box
@@ -178,7 +201,7 @@ function drawTradeArea(
     if (i > 0) page.drawRectangle({ x: cx, y: barY + 11, width: 1, height: barH - 22, color: rgb(0.3, 0.31, 0.34) });
     const val = sanitize(t.value) || '—';
     const vs = fitSize(val, osw, cw - 16, 20, 10);
-    page.drawText(val, { x: cx + (cw - osw.widthOfTextAtSize(val, vs)) / 2, y: barY + barH - 27, size: vs, font: osw, color: GOLD });
+    page.drawText(val, { x: cx + (cw - osw.widthOfTextAtSize(val, vs)) / 2, y: barY + barH - 27, size: vs, font: osw, color: accent });
     const lab = sanitize(t.label).toUpperCase();
     const ls = fitSize(lab, body, cw - 8, 7.5, 5);
     page.drawText(lab, { x: cx + (cw - body.widthOfTextAtSize(lab, ls)) / 2, y: barY + 11, size: ls, font: body, color: WHITE });
@@ -201,6 +224,8 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const italic = await pdf.embedFont(StandardFonts.HelveticaOblique);
   const labelFont = await pdf.embedFont(StandardFonts.HelveticaBold);   // map street names
   const logo = await pdf.embedPng(input.logoPng).catch(() => null);
+  const brand = input.brand?.wordmark?.length === 2 ? input.brand : null;
+  const gold = brand?.gold ? hexRgb(brand.gold) : GOLD;
 
   const embed = async (a?: { bytes: Uint8Array; png: boolean } | null): Promise<PDFImage | null> => {
     if (!a) return null;
@@ -226,18 +251,51 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   else { p1.drawRectangle({ x: 0, y: heroY, width: W, height: heroH, color: rgb(0.9, 0.91, 0.93) }); p1.drawText('Add a property photo', { x: W / 2 - 70, y: heroY + heroH / 2, size: 12, font: body, color: rgb(0.6, 0.63, 0.67) }); }
   p1.drawRectangle({ x: 0, y: 0, width: W, height: heroY, color: WHITE });
 
-  // FOR LEASE badge (top-left over hero)
   const badge = sanitize(input.badge).toUpperCase();
-  const bSize = 30, bW = osw.widthOfTextAtSize(badge, bSize);
-  p1.drawRectangle({ x: 0, y: H - 62, width: bW + 30, height: 62, color: BLACK, opacity: 0.82 });
-  p1.drawText(badge, { x: 15, y: H - 45, size: bSize, font: osw, color: WHITE });
+  const drawWordmark = (pg: PDFPage, x: number, y: number, size: number, track: number) => {
+    const [a, b] = brand!.wordmark.map(t => sanitize(t).toUpperCase());
+    const w1 = drawSpaced(pg, a, x, y, size, labelFont, WHITE, track);
+    drawSpaced(pg, b, x + w1 + size * 0.55, y, size, labelFont, gold, track);
+  };
+  if (brand) {
+    // The property's campaign-email header: two-tone wordmark + tag across the top,
+    // kicker + headline bottom-left, gold rule where the cover meets the banner. The
+    // caller supplies the cover already shaded (dark top and foot, lighter middle) —
+    // a raster gradient; stacked translucent bands here show seams in some viewers.
+    drawWordmark(p1, 30, H - 38, 17, 3.4);
+    if (brand.tag) {
+      const tag = sanitize(brand.tag).toUpperCase();
+      drawSpaced(p1, tag, W - 30 - spacedWidth(tag, labelFont, 8, 1.1), H - 36, 8, labelFont, rgb(0.89, 0.89, 0.89), 1.1);
+    }
+    // Headline: two lines at most — shrink to fit rather than drop words.
+    let hs = 36, hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470);
+    while (hl.length > 2 && hs > 18) { hs -= 1; hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470); }
+    // Balance a two-line headline: narrow the measure until one more step would need a
+    // third line, so it never ends on a single orphaned word.
+    if (hl.length === 2) for (let w = 460; w > 160; w -= 10) {
+      const t = wrapText(sanitize(brand.headline || ''), osw, hs, w);
+      if (t.length > 2) break;
+      hl = t;
+    }
+    const lead = hs * 1.12;
+    let hy = heroY + 30 + (hl.length - 1) * lead;
+    const kick = sanitize(brand.kicker || badge).toUpperCase();
+    drawSpaced(p1, kick, 30, hy + hs + 10, 9.5, labelFont, brand.kickerColor ? hexRgb(brand.kickerColor) : gold, 2.2);
+    for (const line of hl) { p1.drawText(line, { x: 30, y: hy, size: hs, font: osw, color: WHITE }); hy -= lead; }
+    p1.drawRectangle({ x: 0, y: heroY - 1.5, width: W, height: 3, color: gold });
+  } else {
+    // FOR LEASE badge (top-left over hero)
+    const bSize = 30, bW = osw.widthOfTextAtSize(badge, bSize);
+    p1.drawRectangle({ x: 0, y: H - 62, width: bW + 30, height: 62, color: BLACK, opacity: 0.82 });
+    p1.drawText(badge, { x: 15, y: H - 45, size: bSize, font: osw, color: WHITE });
+  }
 
   // Address banner (black bar, gold text)
-  const bannerY = heroY - 50, bannerH = 50;
+  const bannerY = heroY - 50 - (brand ? 1.5 : 0), bannerH = 50;
   p1.drawRectangle({ x: 0, y: bannerY, width: W, height: bannerH, color: BLACK });
   const addr = sanitize(input.address);
   const aSize = fitSize(addr, osw, W - 44, 27, 13);
-  p1.drawText(addr, { x: 22, y: bannerY + bannerH / 2 - aSize * 0.34, size: aSize, font: osw, color: GOLD });
+  p1.drawText(addr, { x: 22, y: bannerY + bannerH / 2 - aSize * 0.34, size: aSize, font: osw, color: gold });
 
   // ── Two-column body ──
   const M = 34;
@@ -287,7 +345,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     hl.forEach((h, i) => {
       if (ly - hlHeights[i] < FLOOR - 14) return;
       const lines = wrapText(h, body, HL_SIZE, leftW - 16);
-      p1.drawEllipse({ x: leftX + 3, y: ly + 3.2, xScale: 2.2, yScale: 2.2, color: GOLD });
+      p1.drawEllipse({ x: leftX + 3, y: ly + 3.2, xScale: 2.2, yScale: 2.2, color: gold });
       lines.forEach((ln, j) => { p1.drawText(ln, { x: leftX + 14, y: ly, size: HL_SIZE, font: body, color: INK }); if (j < lines.length - 1) ly -= HL_WRAP; });
       ly -= HL_ROW;
     });
@@ -314,16 +372,16 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     // Vector icon (drawSvgPath anchors at the top-left, SVG y points down from there).
     const ix = cx + 12, iyTop = cy + tileH / 2 + 7.5;
     if (kind === 'price') {
-      p1.drawSvgPath('M6 1 L15 1 L15 15 L6 15 L1 8 Z', { x: ix, y: iyTop, color: GOLD });
+      p1.drawSvgPath('M6 1 L15 1 L15 15 L6 15 L1 8 Z', { x: ix, y: iyTop, color: gold });
       p1.drawEllipse({ x: ix + 5, y: iyTop - 8, xScale: 1.5, yScale: 1.5, color: BLACK });
     } else if (kind === 'size') {
-      p1.drawSvgPath('M1 1 L15 1 L15 15 L1 15 Z M1 8 L15 8 M8 1 L8 15', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
+      p1.drawSvgPath('M1 1 L15 1 L15 15 L1 15 Z M1 8 L15 8 M8 1 L8 15', { x: ix, y: iyTop, borderColor: gold, borderWidth: 1.4 });
     } else if (kind === 'lot') {
       // a parcel: an irregular outline
-      p1.drawSvgPath('M2 4 L13 1 L15 12 L5 15 Z', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
+      p1.drawSvgPath('M2 4 L13 1 L15 12 L5 15 Z', { x: ix, y: iyTop, borderColor: gold, borderWidth: 1.4 });
     } else {
       // zoning: a stacked-layers mark
-      p1.drawSvgPath('M8 1 L15 5 L8 9 L1 5 Z M1 9 L8 13 L15 9', { x: ix, y: iyTop, borderColor: GOLD, borderWidth: 1.4 });
+      p1.drawSvgPath('M8 1 L15 5 L8 9 L1 5 Z M1 9 L8 13 L15 9', { x: ix, y: iyTop, borderColor: gold, borderWidth: 1.4 });
     }
     const v = sanitize(value) || '—';
     const vs = fitSize(v, osw, cw - 44, 15, 8);
@@ -348,7 +406,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     pg.drawLine({ start: { x: M, y: FOOT_RULE_Y }, end: { x: W - M, y: FOOT_RULE_Y }, thickness: 2.4, color: BLACK });
     centre(pg, FOOT_TAG, FOOT_RULE_Y - 13, 8.5, italic, rgb(0.35, 0.37, 0.4));
     centre(pg, FOOT_CONTACT, FOOT_RULE_Y - 24, 7.5, body, rgb(0.45, 0.47, 0.5));
-    pg.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: GOLD });
+    pg.drawRectangle({ x: 0, y: 0, width: W, height: 8, color: gold });
   };
 
   // Page 1 also names the agent to call, sitting just above that footer.
@@ -361,7 +419,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     p1.drawLine({ start: { x: 188, y: 72 }, end: { x: 188, y: 114 }, thickness: 1, color: LINE });
     let cy = 106;
     for (const c of input.contacts.filter(Boolean).slice(0, 3)) {
-      p1.drawEllipse({ x: 206, y: cy + 3, xScale: 2.2, yScale: 2.2, color: GOLD });
+      p1.drawEllipse({ x: 206, y: cy + 3, xScale: 2.2, yScale: 2.2, color: gold });
       p1.drawText(sanitize(c), { x: 216, y: cy, size: 10.5, font: body, color: INK });
       cy -= 17;
     }
@@ -379,7 +437,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     p2blocks.push({
       title: 'BY THE NUMBERS', weight: 1.0, border: false,
       natural: () => 60 + (ta.caption ? 17 : 0),
-      draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body),
+      draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body, gold),
     });
   }
   if (gallery.length === 1) {
@@ -421,9 +479,10 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     p2.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
     const b2H = 72, b2Y = H - b2H;
     p2.drawRectangle({ x: 0, y: b2Y, width: W, height: b2H, color: BLACK });
-    p2.drawText(badge, { x: 22, y: b2Y + b2H - 24, size: 13, font: osw, color: WHITE });
+    if (brand) drawWordmark(p2, 22, b2Y + b2H - 26, 12.5, 2.6);
+    else p2.drawText(badge, { x: 22, y: b2Y + b2H - 24, size: 13, font: osw, color: WHITE });
     const a2 = fitSize(addr, osw, W - 44, 24, 12);
-    p2.drawText(addr, { x: 22, y: b2Y + 14, size: a2, font: osw, color: GOLD });
+    p2.drawText(addr, { x: 22, y: b2Y + 14, size: a2, font: osw, color: gold });
 
     const gap = 16, titleH = 18, usableTop = b2Y - gap, usableBottom = FOOT_RULE_Y + 14;
     const totalWt = p2blocks.reduce((s, b) => s + b.weight, 0);
