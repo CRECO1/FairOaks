@@ -761,6 +761,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignActivating, setCampaignActivating] = useState(false);
   // Campaign quick preview modal
   const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(null);
+  // Real enrolled recipients for the preview modal, so per-recipient lines
+  // (merge_fields) render the way that person will actually receive them.
+  const [previewRecipients, setPreviewRecipients] = useState<{ client: { first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null } | null; merge_fields: Record<string, unknown> | null }[]>([]);
+  const [previewIdx, setPreviewIdx] = useState(0);
   // View sent campaign email modal (from contact activity feed)
   const [viewCampaignSendModal, setViewCampaignSendModal] = useState<{ send: CampaignSend & { campaign_name?: string }; contact: Client } | null>(null);
   // Campaign projects (folders)
@@ -2982,6 +2986,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setCampaignEnrollmentsLoading(false);
   }
 
+  // Open the email preview for a campaign, previewed as its real recipients:
+  // enrolled contacts (personalized ones first), not a "Jane Smith" sample.
+  async function openCampaignPreview(camp: Campaign) {
+    setPreviewCampaign(camp);
+    setPreviewRecipients([]);
+    setPreviewIdx(0);
+    try {
+      const res = await fetch(`/api/campaigns/${camp.id}/enrollments`, { headers: { 'Authorization': `Bearer ${session!.access_token}` } });
+      if (!res.ok) return;
+      const j = await res.json();
+      const rows = ((j.enrollments ?? []) as { client: { unsubscribed_at?: string | null } | null; merge_fields: Record<string, unknown> | null }[])
+        .filter(e => e.client && !e.client.unsubscribed_at)
+        .sort((a, b) => Object.keys(b.merge_fields ?? {}).length - Object.keys(a.merge_fields ?? {}).length)
+        .slice(0, 50);
+      setPreviewRecipients(rows as typeof previewRecipients);
+    } catch { /* preview still works with sample data */ }
+  }
+
   async function loadCampaignSends(campaignId: string) {
     const { data } = await supabase.from('crm_campaign_sends').select('*').eq('campaign_id', campaignId).order('sent_at', { ascending: false }).limit(100);
     setCampaignSends(data ?? []);
@@ -3348,7 +3370,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     template: string,
     senderAgentId?: string | null,
     contact?: { first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null } | null,
+    perRecipient?: Record<string, unknown> | null,
   ): string => {
+    // Per-recipient values (crm_campaign_enrollments.merge_fields) first, escaped —
+    // same order and rules as the cron, so the preview matches the real send.
+    const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    for (const [key, val] of Object.entries(perRecipient ?? {})) {
+      if (/^[a-z_]{1,40}$/.test(key) && typeof val === 'string' && val.trim()) template = (template ?? '').replaceAll(`{{${key}}}`, esc(val.trim()));
+    }
     const commercial = businessUnit === 'commercial';
     const sender = (senderAgentId ? profiles.find(p => p.id === senderAgentId) : null) || profile;
     const domain = commercial ? '@crecotx.com' : '@fairoaksrealtygroup.com';
@@ -3371,7 +3400,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .replaceAll('{{agent_phone}}', agentPhone)
       .replaceAll('{{brokerage}}', commercial ? 'CRECO' : 'Fair Oaks Realty Group')
       .replaceAll('{{unsubscribe_url}}', '#preview')
-      .replaceAll('{{property}}', 'your recent transaction');
+      .replaceAll('{{property}}', 'your recent transaction')
+      // Anything still unfilled (a per-recipient field this contact lacks) shows
+      // as a labeled placeholder instead of a raw {{token}}.
+      .replace(/href="\{\{([a-z_]{1,40})\}\}"/g, 'href="#preview-$1"')
+      .replace(/\{\{([a-z_]{1,40})\}\}/g, '[$1]');
   };
 
   // Campaigns list ordering — newest activity first: the most recent of
@@ -6395,13 +6428,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           {isAdmin && camp.status === 'active' && (
                             <button className="crm-btn crm-btn-ghost crm-btn-sm" disabled={busyCampaignId === camp.id} style={isMobile ? { flex: 1, minHeight: 44 } : undefined} onClick={() => setCampaignStatusFromList(camp.id, 'paused', camp.name)}>{busyCampaignId === camp.id ? '…' : '⏸ Pause'}</button>
                           )}
+                          {camp.type === 'email' && (
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" title="See exactly what recipients get" onClick={() => openCampaignPreview(camp)} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>👁 Preview</button>
+                          )}
                           <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignTab('enrolled'); setSelectedEnrollIds([]); setEnrollTypeFilter(''); setEnrollAssetFilter(''); setEnrollTagFilter(''); setEnrollClientSearch(''); setCampaignView('detail'); }} style={isMobile ? { flex: 1, minHeight: 44 } : undefined}>Manage</button>
                           <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="More actions" title="More" onClick={() => setOpenRowMenuId(openRowMenuId === camp.id ? null : camp.id)} style={isMobile ? { minHeight: 44, width: 48 } : { padding: '4px 11px' }}>⋯</button>
                           {openRowMenuId === camp.id && (
                             <>
                               <div onClick={() => setOpenRowMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', zIndex: 41, minWidth: 190, overflow: 'hidden', fontSize: 13 }}>
-                                <button onClick={() => { setPreviewCampaign(camp); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>👁 Preview email</button>
+                                <button onClick={() => { openCampaignPreview(camp); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>👁 Preview email</button>
                                 {isAdmin && <button onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '' }); setCampaignView('builder'); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>✎ Edit campaign</button>}
                                 {isAdmin && campaignProjects.length > 0 && (
                                   <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 14px' }}>
@@ -6648,7 +6684,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{previewCampaign.name}</div>
-                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>Email preview — sample data</div>
+                        <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          {previewRecipients.length ? (() => {
+                            const c = previewRecipients[previewIdx]?.client;
+                            const who = [c?.first_name, c?.last_name].filter(Boolean).join(' ').trim();
+                            const label = who && c?.business_name ? `${who} · ${c.business_name}` : (who || c?.business_name || 'Recipient');
+                            return (<>
+                              <span>Previewing as <strong style={{ color: '#374151' }}>{label}</strong> ({previewIdx + 1} of {previewRecipients.length})</span>
+                              {previewRecipients.length > 1 && (
+                                <button onClick={() => setPreviewIdx((previewIdx + 1) % previewRecipients.length)} style={{ border: '1px solid #e5e7eb', background: '#fff', borderRadius: 6, padding: '2px 8px', fontSize: 12, cursor: 'pointer', color: '#374151' }}>Next example →</button>
+                              )}
+                            </>);
+                          })() : <span>Email preview — sample data</span>}
+                        </div>
                       </div>
                       <button onClick={() => setPreviewCampaign(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
                     </div>
@@ -6656,10 +6704,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ padding: '12px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'baseline' }}>
                       <span style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Subject</span>
                       <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
-                        {(previewCampaign.email_subject ?? '(no subject)')
-                          .replace(/\{\{first_name\}\}/g, 'Jane')
-                          .replace(/\{\{last_name\}\}/g, 'Smith')
-                          .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())}
+                        {previewMerge(previewCampaign.email_subject ?? '(no subject)', previewCampaign.sender_agent_id, previewRecipients[previewIdx]?.client ?? null, previewRecipients[previewIdx]?.merge_fields ?? null)
+                          .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')}
                       </span>
                     </div>
                     {/* Email body */}
@@ -6674,15 +6720,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         />
                       ) : previewCampaign.email_body ? (
                         <iframe
-                          srcDoc={previewCampaign.email_body
-                            .replace(/\{\{first_name\}\}/g, 'Jane')
-                            .replace(/\{\{last_name\}\}/g, 'Smith')
-                            .replace(/\{\{full_name\}\}/g, 'Jane Smith')
-                            .replace(/\{\{agent_name\}\}/g, `${profile?.first_name ?? 'Your'} ${profile?.last_name ?? 'Agent'}`.trim())
-                            .replace(/\{\{agent_email\}\}/g, profile?.email ?? 'agent@example.com')
-                            .replace(/\{\{agent_phone\}\}/g, profile?.phone ?? '210-390-9997')
-                            .replace(/\{\{brokerage\}\}/g, businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group')
-                            .replace(/\{\{unsubscribe_url\}\}/g, '#')}
+                          srcDoc={previewMerge(previewCampaign.email_body, previewCampaign.sender_agent_id, previewRecipients[previewIdx]?.client ?? null, previewRecipients[previewIdx]?.merge_fields ?? null)}
+                          // Fit the frame to the email so it reads like the inbox, not a 600px window.
+                          onLoad={e => { try { const d = e.currentTarget.contentDocument; if (d?.body) e.currentTarget.style.height = `${Math.max(400, d.documentElement.scrollHeight)}px`; } catch { /* keep default */ } }}
                           style={{ width: '100%', border: 'none', display: 'block' }}
                           height={600}
                           title="Email preview"

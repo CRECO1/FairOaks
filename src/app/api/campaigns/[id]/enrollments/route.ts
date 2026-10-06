@@ -58,7 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const supabase = adminClient();
   const { data, error } = await supabase
     .from('crm_campaign_enrollments')
-    .select(`*, client:crm_clients(id, first_name, last_name, email, phone, cell_phone, type, unsubscribed_at)`)
+    .select(`*, client:crm_clients(id, first_name, last_name, business_name, email, phone, cell_phone, type, unsubscribed_at)`)
     .eq('campaign_id', id)
     .order('enrolled_at', { ascending: false });
   if (error) return dbError('api/campaigns/[id]/enrollments', error);
