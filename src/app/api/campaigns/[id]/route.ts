@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { chicagoLocalToUTC } from '@/lib/chicago-time';
 
 // Fields an agent is allowed to set on a campaign (prevents mass-assignment)
 const ALLOWED_PATCH_FIELDS = new Set([
@@ -17,13 +18,14 @@ const ADMIN_ONLY_PATCH_FIELDS = new Set(['created_by', 'sender_agent_id']);
 function computeNextSend(frequency: string, sendDate?: string | null, sendTime?: string | null): string {
   if (frequency === 'one-time' && sendDate) {
     const time = sendTime || '08:00';
-    return new Date(`${sendDate}T${time}:00-05:00`).toISOString();
+    // Was a fixed -05:00 (CDT), which sent every campaign an hour early all winter.
+    return chicagoLocalToUTC(sendDate, time);
   }
   // A recurring campaign with a future Send Date starts then (e.g. the monthly market
   // report's first issue); without one, the first send is one period out.
   if (sendDate) {
-    const first = new Date(`${sendDate}T${sendTime || '08:00'}:00-05:00`);
-    if (first.getTime() > Date.now()) return first.toISOString();
+    const first = chicagoLocalToUTC(sendDate, sendTime || '08:00');
+    if (Date.parse(first) > Date.now()) return first;
   }
   const now = new Date();
   switch (frequency) {

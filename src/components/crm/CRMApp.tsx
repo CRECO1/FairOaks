@@ -15,6 +15,8 @@ import { agentTitle } from '@/lib/agent-title';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
+import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
+import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import MentionTextarea, { parseMentionContactIds } from '@/components/crm/MentionTextarea';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
@@ -70,7 +72,7 @@ interface DealEmail { id: string; deal_id: string | null; client_id?: string | n
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; send_as_sender?: boolean | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
@@ -765,6 +767,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // (merge_fields) render the way that person will actually receive them.
   const [previewRecipients, setPreviewRecipients] = useState<{ client: { first_name?: string | null; last_name?: string | null; business_name?: string | null; email?: string | null; type?: string | null } | null; merge_fields: Record<string, unknown> | null }[]>([]);
   const [previewIdx, setPreviewIdx] = useState(0);
+  // Phone-width toggle on the preview (Zack's rule: check every email at phone width).
+  const [previewPhone, setPreviewPhone] = useState(false);
+  // "Who engaged" call list: one campaign, or null = every campaign (last 90 days).
+  const [engagedFor, setEngagedFor] = useState<{ campaign: { id: string; name: string } | null } | null>(null);
+  // Pre-send check — every activation path opens this instead of a bare confirm().
+  const [preflightFor, setPreflightFor] = useState<{ id: string; name: string; type?: string }[] | null>(null);
   // View sent campaign email modal (from contact activity feed)
   const [viewCampaignSendModal, setViewCampaignSendModal] = useState<{ send: CampaignSend & { campaign_name?: string }; contact: Client } | null>(null);
   // Campaign projects (folders)
@@ -2891,7 +2899,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       || newCampaign.email_body;
     setSaving(true);
     try {
-      const body = { ...newCampaign, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
+      // Going live from the editor runs the pre-send check first: save with the
+      // current status, then the check activates it (or explains why it can't).
+      const goingLive = newCampaign.status === 'active' && activeCampaign?.status !== 'active';
+      const body = { ...newCampaign, ...(goingLive ? { status: activeCampaign?.status ?? 'draft' } : {}), email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify(body) });
@@ -2899,6 +2910,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       if (!res.ok) { showToast('Error: ' + (j.error ?? 'Save failed')); }
       else {
         showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
+        if (goingLive && j.campaign?.id) setPreflightFor([{ id: j.campaign.id, name: j.campaign.name ?? newCampaign.name, type: j.campaign.type ?? newCampaign.type }]);
         setEmailEditorMode('rich');
         setCampaignView('list');
         setActiveCampaign(null);
@@ -2925,7 +2937,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // back-fills next_send_at on the enrollments; pause stops it). Cookie-authed like the
   // detail view's Activate button, with the Bearer token too when we have a session.
   async function setCampaignStatusFromList(id: string, status: 'active' | 'paused', name?: string) {
-    if (status === 'active' && !confirm(`Activate "${name ?? 'this campaign'}"? This schedules real emails to every enrolled contact.`)) return;
+    if (status === 'active') { setPreflightFor([{ id, name: name ?? 'Campaign', type: campaigns.find(c => c.id === id)?.type }]); return; }
     setBusyCampaignId(id);
     try {
       await fetch(`/api/campaigns/${id}`, {
@@ -2933,7 +2945,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
         body: JSON.stringify({ status }),
       });
-      showToast(status === 'active' ? 'Campaign activated ✓' : 'Campaign paused');
+      showToast('Campaign paused');
       await loadCampaigns();
     } finally {
       setBusyCampaignId(null);
@@ -2943,7 +2955,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Bulk status change for the multi-select action bar.
   async function bulkSetCampaignStatus(ids: string[], status: 'active' | 'paused') {
     if (ids.length === 0) return;
-    if (status === 'active' && !confirm(`Activate ${ids.length} campaign${ids.length !== 1 ? 's' : ''}? This schedules real emails to every enrolled contact.`)) return;
+    if (status === 'active') { setPreflightFor(ids.map(id => { const c = campaigns.find(x => x.id === id); return { id, name: c?.name ?? 'Campaign', type: c?.type }; })); return; }
     for (const id of ids) {
       await fetch(`/api/campaigns/${id}`, {
         method: 'PATCH',
@@ -2951,7 +2963,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         body: JSON.stringify({ status }),
       });
     }
-    showToast(`${ids.length} campaign${ids.length !== 1 ? 's' : ''} ${status === 'active' ? 'activated ✓' : 'paused'}`);
+    showToast(`${ids.length} campaign${ids.length !== 1 ? 's' : ''} paused`);
     setSelectedCampaignIds(new Set());
     await loadCampaigns();
   }
@@ -2988,8 +3000,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Open the email preview for a campaign, previewed as its real recipients:
   // enrolled contacts (personalized ones first), not a "Jane Smith" sample.
-  async function openCampaignPreview(camp: Campaign) {
+  async function openCampaignPreview(camp: Campaign, phone = false) {
     setPreviewCampaign(camp);
+    setPreviewPhone(phone);
     setPreviewRecipients([]);
     setPreviewIdx(0);
     try {
@@ -6359,7 +6372,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                     // Helper: render a single campaign row
                     const renderCampaignRow = (camp: Campaign) => {
-                      const rateColor = camp.open_rate == null ? '#9ca3af' : camp.open_rate >= 40 ? '#16a34a' : camp.open_rate >= 20 ? '#c9922c' : '#ef4444';
                       const fmtD = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                       // Honest scheduling: a send_date only means "will send" when the campaign
                       // is active — a dated draft won't go out until it's activated, so say so.
@@ -6406,18 +6418,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ fontSize: 14, color: '#374151', fontWeight: 600 }}>{camp.enrollment_count ?? 0}</div>
                           <div style={{ fontSize: 11, color: '#9ca3af' }}>enrolled</div>
                         </div>
-                        {/* Performance column */}
-                        <div style={{ width: isMobile ? 'auto' : 116, flexShrink: 0, ...(isMobile ? { marginLeft: 'auto' } : {}) }}>
-                          {sent > 0 && camp.open_rate != null ? (
+                        {/* Performance column — leads with people, not opens. Apple Mail
+                            "opens" everything it delivers, so the open rate is shown small;
+                            engaged = real clicks / report views / calls (lib/campaign-engagement). */}
+                        <div style={{ width: isMobile ? 'auto' : 150, flexShrink: 0, textAlign: 'right', ...(isMobile ? { marginLeft: 'auto' } : {}) }}>
+                          {sent > 0 ? (
                             <div>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: rateColor, textAlign: 'right' }}>{camp.open_rate}% open{camp.click_rate != null && camp.click_rate > 0 ? ` · ${camp.click_rate}% click` : ''}</div>
-                              <div style={{ height: 4, borderRadius: 2, background: '#f0f0f0', marginTop: 4, overflow: 'hidden' }}>
-                                <div style={{ width: `${Math.min(100, Math.max(0, camp.open_rate))}%`, height: '100%', background: rateColor }} />
-                              </div>
-                              <div style={{ fontSize: 11, color: '#9ca3af', textAlign: 'right', marginTop: 2 }}>{sent} sent</div>
+                              {(camp.engaged_count ?? 0) > 0 ? (
+                                <button onClick={() => setEngagedFor({ campaign: { id: camp.id, name: camp.name } })} title="See who engaged and who still needs a call"
+                                  style={{ border: 'none', cursor: 'pointer', borderRadius: 14, padding: isMobile ? '6px 11px' : '3px 10px', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', background: (camp.to_call_count ?? 0) > 0 ? '#fee2e2' : '#dcfce7', color: (camp.to_call_count ?? 0) > 0 ? '#991b1b' : '#166534' }}>
+                                  {(camp.to_call_count ?? 0) > 0 ? `🔥 ${camp.to_call_count} to call` : `✓ ${camp.engaged_count} engaged`}
+                                </button>
+                              ) : (
+                                <div style={{ fontSize: 12, color: '#9ca3af' }}>No one engaged yet</div>
+                              )}
+                              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3, whiteSpace: 'nowrap' }}>{sent} sent → {camp.engaged_count ?? 0} engaged</div>
+                              {camp.open_rate != null && <div title="Apple Mail opens every email it delivers, so opens overstate real reads" style={{ fontSize: 11, color: '#b0b0b0', whiteSpace: 'nowrap' }}>{camp.open_rate}% opened{camp.click_rate != null ? ` · ${camp.click_rate}% clicked` : ''}</div>}
                             </div>
                           ) : (
-                            <div style={{ fontSize: 12, color: '#c4c4c4', textAlign: 'right' }}>Not sent yet</div>
+                            <div style={{ fontSize: 12, color: '#c4c4c4' }}>Not sent yet</div>
                           )}
                         </div>
                         {/* Actions: Activate/Pause · Manage · overflow menu */}
@@ -6479,8 +6498,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const scheduledDrafts = campaigns.filter(c => c.status === 'draft' && c.send_date && parseD(c.send_date)! >= today0);
                     const armed = campaigns.filter(c => c.status === 'active' && c.send_date && parseD(c.send_date)! >= today0);
                     const totalSent = campaigns.reduce((s, c) => s + (c.send_count ?? 0), 0);
-                    const ratedAll = campaigns.filter(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
-                    const avgOpenAll = ratedAll.length ? Math.round(ratedAll.reduce((s, c) => s + (c.open_rate ?? 0), 0) / ratedAll.length) : null;
+                    const engagedAll = campaigns.reduce((s, c) => s + (c.engaged_count ?? 0), 0);
+                    const toCallAll = campaigns.reduce((s, c) => s + (c.to_call_count ?? 0), 0);
                     const nextArmed = armed.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
                     const nextDraft = scheduledDrafts.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
                     return (
@@ -6497,13 +6516,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {scheduledDrafts.length > 0 ? <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginTop: 1 }}>{scheduledDrafts.length} not activated</div> : armed.length > 0 ? <div style={{ fontSize: 11, color: '#16a34a', marginTop: 1 }}>{armed.length} armed</div> : null}
                           </div>
                           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
-                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Emails sent</div>
-                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{totalSent.toLocaleString()}</div>
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Sent → engaged</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{totalSent.toLocaleString()} <span style={{ color: '#c4c4c4', fontWeight: 400 }}>→</span> {engagedAll}</div>
+                            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>real clicks, report views, calls</div>
                           </div>
-                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
-                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Avg open rate</div>
-                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{avgOpenAll != null ? `${avgOpenAll}%` : '—'}</div>
-                          </div>
+                          <button onClick={() => setEngagedFor({ campaign: null })} title="Everyone who engaged in the last 90 days, uncontacted first"
+                            style={{ textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", background: toCallAll > 0 ? '#fef2f2' : '#fafafa', border: `1px solid ${toCallAll > 0 ? '#fecaca' : '#f0f0f0'}`, borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 12, color: toCallAll > 0 ? '#b91c1c' : '#9ca3af' }}>🔥 To call</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: toCallAll > 0 ? '#991b1b' : '#111' }}>{toCallAll}</div>
+                            <div style={{ fontSize: 11, color: toCallAll > 0 ? '#b91c1c' : '#9ca3af', marginTop: 1 }}>{toCallAll > 0 ? 'Open the call list →' : 'Everyone engaged has been contacted'}</div>
+                          </button>
                         </div>
 
                         {/* Needs-attention banner: dated drafts that won't send */}
@@ -6531,17 +6553,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </button>
                           ))}
                           {(() => {
-                            const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
+                            // Real click rate across sent campaigns: human clickers / emails sent
+                            // (spam-filter link checks excluded). Replaces "avg open rate", which
+                            // Apple Mail inflates.
+                            const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.click_rate != null);
                             if (!rated.length) return null;
-                            const avg = Math.round(rated.reduce((s, c) => s + (c.open_rate ?? 0), 0) / rated.length);
-                            return <span style={{ marginLeft: isMobile ? 0 : 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>Avg open rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
+                            const sentN = rated.reduce((s, c) => s + (c.send_count ?? 0), 0);
+                            const clickN = rated.reduce((s, c) => s + (c.click_count ?? 0), 0);
+                            const avg = sentN ? Math.round((clickN / sentN) * 1000) / 10 : 0;
+                            return <span title="People who clicked ÷ emails sent. Spam-filter link checks are excluded." style={{ marginLeft: isMobile ? 0 : 'auto', fontSize: 13, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap' }}>Real click rate <span style={{ color: '#111', fontWeight: 700 }}>{avg}%</span></span>;
                           })()}
                           {(campaignProjects.length > 0 || visibleCampaigns.some(c => !c.project_id)) && (() => {
                             const allKeys = [...campaignProjects.map(p => p.id), '__ungrouped__'];
                             const anyOpen = allKeys.some(k => expandedProjects.has(k));
                             // The open-rate note above already claims the auto margin; a second
                             // one would split the gap and drag it away from the right edge.
-                            const hasAvg = allFiltered.some(c => (c.send_count ?? 0) > 0 && c.open_rate != null);
+                            const hasAvg = allFiltered.some(c => (c.send_count ?? 0) > 0 && c.click_rate != null);
                             return (
                               <button onClick={() => setExpandedProjects(anyOpen ? new Set() : new Set(allKeys))}
                                 style={{ marginLeft: isMobile ? 'auto' : (hasAvg ? 12 : 'auto'), background: 'none', border: 'none', fontSize: 12.5, color: '#9ca3af', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: isMobile ? '8px 4px' : '2px 4px', minHeight: isMobile ? 38 : undefined, whiteSpace: 'nowrap' }}>
@@ -6677,10 +6704,37 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
               )}
 
+              {engagedFor && (
+                <CampaignEngagedPanel
+                  campaign={engagedFor.campaign}
+                  authToken={session?.access_token}
+                  isMobile={isMobile}
+                  showToast={showToast}
+                  onClose={() => setEngagedFor(null)}
+                  onOpenContact={(id) => { const c = clients.find(x => x.id === id); if (c) { setEngagedFor(null); setPage('contacts'); setActiveClient(c); } else showToast('Contact not loaded in this workspace'); }}
+                />
+              )}
+              {preflightFor && (
+                <CampaignPreflight
+                  campaigns={preflightFor}
+                  authToken={session?.access_token}
+                  isMobile={isMobile}
+                  showToast={showToast}
+                  onClose={() => setPreflightFor(null)}
+                  onPreview={(id) => { const c = campaigns.find(x => x.id === id); if (c) openCampaignPreview(c, true); }}
+                  onActivated={async (ids) => {
+                    setPreflightFor(null);
+                    setSelectedCampaignIds(new Set());
+                    if (activeCampaign && ids.includes(activeCampaign.id)) setActiveCampaign({ ...activeCampaign, status: 'active' });
+                    await loadCampaigns();
+                  }}
+                />
+              )}
+
               {/* Detail view */}
               {/* Campaign quick preview modal */}
               {previewCampaign && (
-                <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setPreviewCampaign(null)}>
+                <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', zIndex: 1002, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 20px', overflowY: 'auto' }} onClick={() => setPreviewCampaign(null)}>
                   <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 680, boxShadow: '0 24px 80px rgba(0,0,0,.3)', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
                     {/* Modal header */}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
@@ -6700,7 +6754,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           })() : <span>Email preview — sample data</span>}
                         </div>
                       </div>
-                      <button onClick={() => setPreviewCampaign(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        {!isMobile && (
+                          <button onClick={() => setPreviewPhone(v => !v)} title="Show the email at phone width (375px)" style={{ border: '1px solid #e5e7eb', background: previewPhone ? '#111' : '#fff', color: previewPhone ? '#fff' : '#374151', borderRadius: 6, padding: '3px 9px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>📱 Phone</button>
+                        )}
+                        <button onClick={() => setPreviewCampaign(null)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1, padding: '0 4px' }}>×</button>
+                      </div>
                     </div>
                     {/* Subject */}
                     <div style={{ padding: '12px 20px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 10, alignItems: 'baseline' }}>
@@ -6710,8 +6769,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')}
                       </span>
                     </div>
-                    {/* Email body */}
-                    <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                    {/* Email body — in phone mode, a 375px column on a grey ground like a handset. */}
+                    <div style={{ maxHeight: '70vh', overflowY: 'auto', ...(previewPhone && !isMobile ? { background: '#e5e7eb', padding: '16px 0' } : {}) }}>
+                      <div style={previewPhone && !isMobile ? { width: 375, margin: '0 auto', background: '#fff', borderRadius: 12, overflow: 'hidden', boxShadow: '0 2px 12px rgba(0,0,0,.12)' } : undefined}>
                       {usesMarketReport(previewCampaign) ? (
                         <iframe
                           src={marketReportPreviewUrl(previewCampaign.id)}
@@ -6733,6 +6793,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       ) : (
                         <div style={{ padding: 40, textAlign: 'center', color: '#9ca3af' }}>No email body yet.</div>
                       )}
+                      </div>
                     </div>
                     <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafafa' }}>
                       <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => setPreviewCampaign(null)}>Close</button>
@@ -6802,7 +6863,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '', project_id: activeCampaign.project_id ?? '' }); setCampaignView('builder'); }}>Edit</button>
-                        {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated ✓'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '▶ Activate'}</button>}
+                        {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
                       </div>
@@ -6817,7 +6878,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 13, color: '#92400e', marginTop: 2 }}>Click &quot;Activate&quot; to schedule sends for all enrolled contacts.</div>
                       </div>
                       <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: campaignActivating ? 0.7 : 1 }}
-                        onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) }); showToast('Campaign activated — sends scheduled!'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'active' }); setCampaignActivating(false); }}>{campaignActivating ? 'Activating…' : '▶ Activate Now'}</button>
+                        onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? 'Activating…' : '▶ Activate Now'}</button>
                     </div>
                   )}
 

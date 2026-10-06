@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { computeEngagement, fetchAll, type CampaignFunnel } from '@/lib/campaign-engagement';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -20,25 +21,26 @@ export async function GET(req: NextRequest) {
     campaignQuery = campaignQuery.eq('business_unit', ctx.businessUnit);
   }
 
-  const [{ data, error }, { data: sends }, { data: clickEvents }] = await Promise.all([
-    campaignQuery,
-    supabase
+  const { data, error } = await campaignQuery;
+  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+  const rows = (data ?? []) as any[];
+  const ids = rows.map(c => c.id as string);
+
+  // Paged: PostgREST stops at 1000 rows, and this table passed that in Oct 2026 —
+  // every stat on this page was quietly computed from a truncated list.
+  const sends: { campaign_id: string; sent_at: string; opened_at: string | null; tracking_id: string | null; status: string; type: string }[] = [];
+  for (let i = 0; i < ids.length; i += 80) {
+    sends.push(...await fetchAll<typeof sends[number]>((a, b) => supabase
       .from('crm_campaign_sends')
       .select('campaign_id, sent_at, opened_at, tracking_id, status, type')
-      .order('sent_at', { ascending: false }),
-    // Clicks come from Resend's webhook, not our pixel, so they live in their
-    // own table. client_id lets us count unique clickers rather than raw clicks.
-    supabase
-      .from('email_tracking_events')
-      .select('campaign_id, client_id')
-      .eq('event_type', 'click'),
-  ]);
-
-  if (error) { console.error("[api] db error:", error); return NextResponse.json({ error: "Internal server error." }, { status: 500 }); }
+      .in('campaign_id', ids.slice(i, i + 80))
+      .order('sent_at', { ascending: false })
+      .range(a, b)));
+  }
 
   // Build per-campaign stats: last_sent_at, send_count, open_rate
   const statsMap: Record<string, { lastSent: string | null; sentCount: number; openedCount: number; trackedCount: number }> = {};
-  for (const s of (sends ?? [])) {
+  for (const s of sends) {
     if (!statsMap[s.campaign_id]) statsMap[s.campaign_id] = { lastSent: null, sentCount: 0, openedCount: 0, trackedCount: 0 };
     const st = statsMap[s.campaign_id];
     if (!st.lastSent) st.lastSent = s.sent_at;
@@ -49,32 +51,35 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Unique clickers per campaign — one person clicking three links is one
-  // click-through, which is what a CTR is supposed to mean.
-  const clickers: Record<string, Set<string>> = {};
-  for (const e of (clickEvents ?? [])) {
-    if (!e.campaign_id) continue;
-    (clickers[e.campaign_id] ??= new Set()).add(e.client_id ?? 'unknown');
+  // Engaged people per campaign (human clicks, owner-report views, calls in) and
+  // how many of them nobody has contacted yet — lib/campaign-engagement.ts. Only
+  // campaigns that have sent are worth the queries.
+  const sentCampaigns = rows.filter(c => statsMap[c.id]?.sentCount);
+  let funnels = new Map<string, CampaignFunnel>();
+  try {
+    funnels = (await computeEngagement(supabase, sentCampaigns.map(c => ({ id: c.id, email_body: c.email_body })))).funnels;
+  } catch (e) {
+    // The list must still load if the engagement read fails.
+    console.error('[api/campaigns] engagement failed', e);
   }
-  // If we have no click events at all, click tracking is not reaching us yet
-  // (Resend webhook not subscribed, or nothing clicked since it was). Reporting
-  // "0% CTR" then would read as "nobody clicked", which is a different and
-  // wrong claim — so the rate stays null and the UI says "no click data".
-  const clickTrackingLive = (clickEvents ?? []).length > 0;
 
-  const campaigns = (data ?? []).map((c: any) => {
+  const campaigns = rows.map((c: any) => {
     const st = statsMap[c.id];
+    const f = funnels.get(c.id);
     const openRate = st && st.trackedCount > 0 ? Math.round((st.openedCount / st.trackedCount) * 100) : null;
-    const clickCount = clickers[c.id]?.size ?? 0;
-    const clickRate = clickTrackingLive && st && st.trackedCount > 0 ? Math.round((clickCount / st.trackedCount) * 100) : null;
     return {
       ...c,
       enrollment_count: c.enrollment_count?.[0]?.count ?? 0,
       last_sent_at: st?.lastSent ?? null,
       send_count: st?.sentCount ?? 0,
       open_rate: openRate,
-      click_count: clickCount,
-      click_rate: clickRate,
+      // Human clickers only — mail-scanner link checks are filtered out.
+      click_count: f?.clickers ?? 0,
+      click_rate: f?.click_rate ?? null,
+      engaged_count: f?.engaged ?? 0,
+      responded_count: f?.responded ?? 0,
+      to_call_count: f?.to_call ?? 0,
+      scanner_clickers: f?.scanner_clickers ?? 0,
     };
   });
   return NextResponse.json({ campaigns });
