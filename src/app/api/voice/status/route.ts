@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { twiml, twilioConfigured, twilioParams, verifyTwilioSignature } from '@/lib/twilio';
 import { flattenTranscript, loadSettings, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
+import { junkKind, tidyCallLog } from '@/lib/call-routing';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -54,7 +55,11 @@ export async function POST(req: Request) {
     updated_at: new Date().toISOString(),
   };
   if (s?.caller_name && (!call.caller_name || call.caller_name === contact?.name)) patch.caller_name = s.caller_name;
+  // Silent calls and robocalls are not call-backs: no queue entry, no email.
+  if (junkKind({ intent: patch.intent as string | null, summary: patch.summary as string })) patch.needs_follow_up = false;
   await db.from('crm_call_log').update(patch).eq('id', call.id);
+  // Owner + due time for a real call-back; links the caller to a contact if one exists.
+  try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }
 
   if (patch.needs_follow_up) {
     const settings = await loadSettings(db, call.business_unit);

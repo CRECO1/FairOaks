@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { sendMonitored } from '@/lib/integration-alert';
+import { runCallbackSla } from '@/lib/call-sla';
 
 /**
  * GET /api/cron/lead-sla — every 15 minutes.
@@ -84,6 +85,9 @@ export async function GET(req: NextRequest) {
   }
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
+  // Phone call-backs get the same 30-min / 2-hour treatment (lib/call-sla.ts).
+  let calls: unknown;
+  try { calls = await runCallbackSla(db); } catch (e) { calls = { error: e instanceof Error ? e.message : String(e) }; console.error('[lead-sla] calls', e); }
   const now = Date.now();
   const since = new Date(Math.max(new Date(SLA_START).getTime(), now - LOOKBACK_HOURS * 3600_000)).toISOString();
   const nudgeBefore = new Date(now - NUDGE_MIN * 60_000).toISOString();
@@ -100,7 +104,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'fetch failed' }, { status: 500 });
   }
   const leads = (rows as Lead[]).filter(isInboundWebLead);
-  if (!leads.length) return NextResponse.json({ checked: 0, sent: 0 });
+  if (!leads.length) return NextResponse.json({ checked: 0, sent: 0, calls });
 
   const { data: profileRows } = await db.from('crm_profiles').select('id, email, first_name, last_name, role');
   const profiles = new Map((profileRows as Profile[] ?? []).map(p => [p.id, p]));
@@ -196,5 +200,5 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(`[lead-sla] checked ${leads.length}, sent ${sent}`, JSON.stringify(results));
-  return NextResponse.json({ checked: leads.length, sent, results });
+  return NextResponse.json({ checked: leads.length, sent, results, calls });
 }

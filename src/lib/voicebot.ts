@@ -259,7 +259,7 @@ ${transcript}
 
 Write the note an agent needs before calling back. Respond with ONLY JSON:
 {"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high"}
-needs_follow_up is false only for wrong numbers, spam/sales calls, or callers who explicitly said no callback is needed. urgency is high for building emergencies or a caller ready to transact now.` }],
+needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is high for building emergencies or a caller ready to transact now.` }],
     });
     if (res.stop_reason === 'refusal') return null;
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');

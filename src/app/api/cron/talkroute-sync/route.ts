@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { syncTalkroute, syncTexts, talkrouteConfigured } from '@/lib/talkroute';
 import { dbError } from '@/lib/crm-auth';
+import { tidyCallLog } from '@/lib/call-routing';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -25,7 +26,10 @@ export async function GET(req: NextRequest) {
     const r = await syncTalkroute(db, { sinceHours: 48, maxPages: 5 });
     let texts: Record<string, unknown> = {};
     try { texts = await syncTexts(db, { sinceHours: 48 }); } catch (e) { texts = { error: e instanceof Error ? e.message : String(e) }; }
-    return NextResponse.json({ ok: true, ...r, texts });
+    // Owners, due times, contact links, junk and already-returned call-backs (lib/call-routing).
+    let tidy: Record<string, unknown> = {};
+    try { tidy = await tidyCallLog(db); } catch (e) { tidy = { error: e instanceof Error ? e.message : String(e) }; }
+    return NextResponse.json({ ok: true, ...r, texts, tidy });
   } catch (e) {
     console.error('[cron/talkroute-sync]', e);
     return dbError('cron/talkroute-sync', e);

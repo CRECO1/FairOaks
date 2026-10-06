@@ -4,6 +4,7 @@
 // bot answered on the Twilio line, and calls agents log by hand. The point is the
 // follow-up queue: who still needs a call back, and what they wanted.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
 
 export interface CallRow {
   id: string; source: string; kind: string; direction: string; result: string | null;
@@ -14,9 +15,10 @@ export interface CallRow {
   needs_follow_up: boolean; follow_up_due: string | null; follow_up_assignee: string | null; assignee_name?: string | null;
   handled_at: string | null; handled_by: string | null; handled_by_name?: string | null;
   notes: string | null; ai_meta: Record<string, unknown> | null; created_at: string;
+  outcome?: string | null; wrapped_at?: string | null; wrapped_by_name?: string | null; answered_by_name?: string | null; answered_by_bot?: boolean;
 }
 interface Agent { id: string; first_name: string; last_name: string }
-interface Stats { today: number; week: number; bot: number; missed: number; voicemail: number; follow_up: number; overdue: number }
+interface Stats { today: number; week: number; bot: number; missed: number; voicemail: number; follow_up: number; overdue: number; wrapup?: number }
 interface Settings {
   business_unit: string; enabled: boolean; bot_name: string; company_name: string | null; greeting: string | null; instructions: string | null;
   transfer_number: string | null; notify_emails: string[]; twilio_number: string | null; talkroute_numbers: string[];
@@ -89,6 +91,9 @@ const toLocalInput = (iso: string | null): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 const fromLocalInput = (v: string): string | null => (v ? new Date(v).toISOString() : null);
+// A conversation someone had (answered or outbound) that has no wrap-up yet.
+const needsWrap = (c: CallRow) => c.source === 'talkroute' && c.kind === 'call' && !c.wrapped_at && !c.answered_by_bot
+  && ((c.direction !== 'outbound' && c.result === 'answered') || c.direction === 'outbound');
 // Quick due presets, in local time.
 function preset(kind: 'hour' | 'eod' | 'tmrw'): string {
   const d = new Date();
@@ -102,7 +107,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts'>('all');
+  const [filter, setFilter] = useState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup'>('all');
+  const [wrapFor, setWrapFor] = useState<string | null>(null);   // call id whose wrap-up panel is open
   const [threads, setThreads] = useState<Thread[]>([]);
   const [textsNeedReply, setTextsNeedReply] = useState(false);   // within the Texts view: only unanswered
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -218,22 +224,6 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     finally { setBusy(null); }
   }
 
-  async function addContact(c: CallRow) {
-    const name = window.prompt('Name for the new contact:', c.caller_name || '');
-    if (name == null) return;
-    const parts = name.trim().split(/\s+/);
-    setBusy(c.id);
-    try {
-      const r = await fetch('/api/crm/contacts', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) },
-        body: JSON.stringify({ first_name: parts[0] || 'Caller', last_name: parts.slice(1).join(' '), cell_phone: c.callback_number || c.from_number || '', type: 'Buyer', lead_source: c.source === 'voicebot' ? 'Phone (voice bot)' : 'Phone' }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.contact) { showToast?.(j.error || 'Could not add the contact'); return; }
-      await patch(c, { contact_id: j.contact.id });
-      setCalls(cs => cs.map(x => x.id === c.id ? { ...x, contact: { id: j.contact.id, name: name.trim() } } : x));
-      showToast?.(`Added ${name.trim()} to contacts ✓`);
-    } finally { setBusy(null); }
-  }
-
   async function remove(c: CallRow) {
     if (!window.confirm('Permanently delete this call record? This cannot be undone.')) return;
     setBusy(c.id);
@@ -347,6 +337,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
           {[
             { label: 'Needs call back', value: stats.follow_up, sub: stats.overdue ? `${stats.overdue} overdue now` : 'open follow-ups', tone: stats.follow_up ? '#b91c1c' : '#15803d', pick: 'follow_up' as const },
+            { label: 'Needs a note', value: stats.wrapup ?? 0, sub: 'answered calls, 30 days', tone: stats.wrapup ? '#a06a12' : '#15803d', pick: 'wrapup' as const },
             { label: 'Today', value: stats.today, sub: 'calls', pick: 'all' as const },
             { label: 'This week', value: stats.week, sub: 'calls', pick: 'all' as const },
             { label: 'Bot answered', value: stats.bot, sub: 'last 7 days', tone: '#6d28d9', pick: 'bot' as const },
@@ -429,7 +420,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
 
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['texts', '💬 Texts']] as const).map(([k, t]) => (
+        {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['wrapup', '📝 Needs a note'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['texts', '💬 Texts']] as const).map(([k, t]) => (
           <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : '#fff', color: filter === k ? '#fff' : '#374151', borderColor: filter === k ? '#111' : '#e5e7eb' }}>{t}</button>
         ))}
         <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
@@ -518,7 +509,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         : list.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{filter === 'follow_up' ? 'Nobody is waiting on a call back.' : 'No calls match.'}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{filter === 'follow_up' ? 'Nobody is waiting on a call back.' : filter === 'wrapup' ? 'Every answered call has a note.' : 'No calls match.'}</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -545,15 +536,19 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? '#b91c1c' : aH >= 24 ? '#a06a12' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
                         {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', background: '#e0e7ff', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
                         {c.handled_at && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
+                        {(() => { const o = outcomeMeta(c.outcome); return o ? <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} title={c.wrapped_by_name ? `Wrapped up by ${c.wrapped_by_name}` : 'Change'} style={{ fontSize: 11, fontWeight: 700, color: o.fg, background: o.bg, border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>{o.label}</button> : null; })()}
+                        {needsWrap(c) && <span style={{ fontSize: 11, fontWeight: 700, color: '#a06a12', background: '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>📝 No note yet</span>}
                       </div>
                       <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>
-                        {when(c.started_at)}{c.duration_sec ? ` · ${dur(c.duration_sec)}` : ''}{num && (c.contact || c.caller_name) ? ` · ${pretty(num)}` : ''}{c.callback_number && c.callback_number !== num ? ` · call back ${pretty(c.callback_number)}` : ''}
+                        {when(c.started_at)}{c.duration_sec ? ` · ${dur(c.duration_sec)}` : ''}{c.answered_by_name ? ` · ${c.answered_by_name.split(' ')[0]} answered` : ''}{num && (c.contact || c.caller_name) ? ` · ${pretty(num)}` : ''}{c.callback_number && c.callback_number !== num ? ` · call back ${pretty(c.callback_number)}` : ''}
                         {c.ai_meta?.property ? <span style={{ color: '#374151', fontWeight: 600 }}> · 🏢 {String(c.ai_meta.property)}</span> : ''}
                         {c.intent ? <span style={{ color: '#a06a12', fontWeight: 600 }}> · {c.intent}</span> : ''}
                       </div>
                       {(c.summary || c.transcript) && !openNow && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary || c.transcript}</div>}
+                      {!c.summary && !c.transcript && c.notes && !openNow && wrapFor !== c.id && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {c.notes}</div>}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
+                      {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
                       {num && <a href={`tel:${num}`} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
                       {c.has_recording && <button onClick={() => play(c)} disabled={busy === c.id} style={mini} title="Play recording">{audio[c.id] ? '🔊' : '▶'}</button>}
                       {(c.summary || c.transcript || c.source === 'voicebot' || c.notes) && <button onClick={() => toggleOpen(c)} style={mini}>{openNow ? '▾ Less' : '▸ Details'}</button>}
@@ -561,7 +556,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         ? <button onClick={() => patch(c, { handled: true }, 'Marked as handled ✓')} disabled={busy === c.id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>✓ Handled</button>
                         : c.handled_at ? <button onClick={() => patch(c, { handled: false, needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Put it back in the queue">↩</button>
                         : <button onClick={() => patch(c, { needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a call back">🔔</button>}
-                      {!c.contact && (c.from_number || c.callback_number) && <button onClick={() => addContact(c)} disabled={busy === c.id} style={mini} title="Create a CRM contact from this caller">＋ Contact</button>}
+                      {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={mini} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }} title="Delete this record">✕</button>}
                     </div>
                   </div>
@@ -580,6 +575,19 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         </select>
                       )}
                     </div>
+                  )}
+                  {wrapFor === c.id && (
+                    <CallWrapUp
+                      call={c}
+                      authToken={authToken}
+                      businessUnit={businessUnit}
+                      showToast={showToast}
+                      onClose={() => setWrapFor(null)}
+                      onSaved={p => {
+                        setCalls(cs => cs.map(x => x.id === c.id ? { ...x, ...(p as Partial<CallRow>), has_recording: x.has_recording } : x));
+                        fetch(`/api/crm/calls?stats=1&business_unit=${businessUnit}`, { headers: auth(authToken) }).then(r => r.json()).then(sj => sj.stats && setStats(sj.stats)).catch(() => {});
+                      }}
+                    />
                   )}
                   {audio[c.id] && <audio controls autoPlay src={audio[c.id]} style={{ width: '100%', marginTop: 10, height: 36 }} />}
                   {openNow && (

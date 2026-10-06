@@ -6,14 +6,23 @@ import { toE164 } from '@/lib/phone';
 // The Calling Log: Talkroute calls + voicemails, calls the voice bot answered, and
 // calls agents log by hand — one list, scoped to the caller's workspace.
 
-const COLS = 'id, business_unit, source, kind, external_id, direction, result, from_number, to_number, caller_name, contact_id, deal_id, started_at, duration_sec, recording_url, transcript, summary, intent, callback_number, needs_follow_up, follow_up_due, follow_up_assignee, handled_at, handled_by, notes, ai_meta, created_at';
+const COLS = 'id, business_unit, source, kind, external_id, direction, result, from_number, to_number, caller_name, contact_id, deal_id, started_at, duration_sec, recording_url, transcript, summary, intent, callback_number, needs_follow_up, follow_up_due, follow_up_assignee, handled_at, handled_by, notes, ai_meta, created_at, outcome, wrapped_at, wrapped_by, answered_by, answered_by_bot';
 
 function scopedUnit(req: NextRequest, ctx: { role: string | null; businessUnit: string | null }): string {
   if (isAdminRole(ctx.role)) return req.nextUrl.searchParams.get('business_unit') ?? ctx.businessUnit ?? 'commercial';
   return ctx.businessUnit ?? 'commercial';
 }
 
-// GET /api/crm/calls?filter=all|follow_up|voicemail|bot|missed&q=&days=&limit=
+const OUTCOMES = ['new_lead', 'client', 'tenant', 'vendor', 'spam', 'personal', 'other'] as const;
+const OUTCOME_LABEL: Record<string, string> = { new_lead: 'New lead', client: 'Client', tenant: 'Tenant', vendor: 'Vendor', spam: 'Spam', personal: 'Personal', other: 'Other' };
+
+/** Talkroute/hand-logged calls a person had a conversation on — the ones that need a wrap-up. */
+function needsWrapup<Q extends { eq: Function; is: Function; in: Function; or: Function }>(q: Q): Q {
+  return q.eq('source', 'talkroute').eq('kind', 'call').is('wrapped_at', null).eq('answered_by_bot', false)
+    .or('and(direction.eq.inbound,result.eq.answered),direction.eq.outbound') as Q;
+}
+
+// GET /api/crm/calls?filter=all|follow_up|voicemail|bot|missed|wrapup&q=&days=&limit=
 // GET /api/crm/calls?stats=1
 // GET /api/crm/calls?turns=<call id>   → the bot conversation for one call
 export async function GET(req: NextRequest) {
@@ -35,8 +44,10 @@ export async function GET(req: NextRequest) {
   if (sp.get('stats')) {
     const since7 = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const startToday = new Date(); startToday.setHours(0, 0, 0, 0);
-    const base = () => supabase.from('crm_call_log').select('id', { count: 'exact', head: true }).eq('business_unit', unit);
-    const [today, week, bot, missed, voicemail, followUp, overdue] = await Promise.all([
+    // answered_by_bot rows are the Talkroute leg of a call the bot took — counted once, as the bot's.
+    const base = () => supabase.from('crm_call_log').select('id', { count: 'exact', head: true }).eq('business_unit', unit).eq('answered_by_bot', false);
+    const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const [today, week, bot, missed, voicemail, followUp, overdue, wrapup] = await Promise.all([
       base().gte('started_at', startToday.toISOString()),
       base().gte('started_at', since7),
       base().gte('started_at', since7).eq('source', 'voicebot'),
@@ -45,10 +56,11 @@ export async function GET(req: NextRequest) {
       base().eq('needs_follow_up', true).is('handled_at', null),
       // Overdue = an open call-back whose due time has passed. (Nulls are excluded by lte.)
       base().eq('needs_follow_up', true).is('handled_at', null).lte('follow_up_due', new Date().toISOString()),
+      needsWrapup(base().gte('started_at', since30)),
     ]);
     return NextResponse.json({ stats: {
       today: today.count ?? 0, week: week.count ?? 0, bot: bot.count ?? 0, missed: missed.count ?? 0,
-      voicemail: voicemail.count ?? 0, follow_up: followUp.count ?? 0, overdue: overdue.count ?? 0,
+      voicemail: voicemail.count ?? 0, follow_up: followUp.count ?? 0, overdue: overdue.count ?? 0, wrapup: wrapup.count ?? 0,
     } });
   }
 
@@ -58,7 +70,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(500, Math.max(1, Number(sp.get('limit') ?? 200) || 200));
   const contactId = sp.get('contact_id');
 
-  let query = supabase.from('crm_call_log').select(COLS).eq('business_unit', unit).limit(limit);
+  let query = supabase.from('crm_call_log').select(COLS).eq('business_unit', unit).eq('answered_by_bot', false).limit(limit);
   if (contactId) {
     // Linked rows plus any whose number is one of the contact's — covers calls that
     // came in before the card existed.
@@ -73,6 +85,7 @@ export async function GET(req: NextRequest) {
   else if (filter === 'voicemail') query = query.eq('kind', 'voicemail');
   else if (filter === 'bot') query = query.eq('source', 'voicebot');
   else if (filter === 'missed') query = query.in('result', ['missed', 'voicemail']);
+  else if (filter === 'wrapup') query = needsWrapup(query);
   if (q) {
     const like = `%${q.replace(/[%,()*]/g, ' ')}%`;
     const d = q.replace(/\D/g, '');
@@ -91,7 +104,7 @@ export async function GET(req: NextRequest) {
   const rows = data ?? [];
   const contactIds = Array.from(new Set(rows.map(r => r.contact_id).filter(Boolean))) as string[];
   // One profile lookup covers both who handled a call and who a call-back is assigned to.
-  const profileIds = Array.from(new Set(rows.flatMap(r => [r.handled_by, r.follow_up_assignee]).filter(Boolean))) as string[];
+  const profileIds = Array.from(new Set(rows.flatMap(r => [r.handled_by, r.follow_up_assignee, r.answered_by, r.wrapped_by]).filter(Boolean))) as string[];
   const [contacts, profiles] = await Promise.all([
     contactIds.length ? supabase.from('crm_clients').select('id, first_name, last_name, business_name, type').in('id', contactIds).eq('business_unit', unit) : Promise.resolve({ data: [] as Array<{ id: string; first_name: string | null; last_name: string | null; business_name: string | null; type: string | null }> }),
     profileIds.length ? supabase.from('crm_profiles').select('id, first_name, last_name').in('id', profileIds) : Promise.resolve({ data: [] as Array<{ id: string; first_name: string | null; last_name: string | null }> }),
@@ -103,6 +116,8 @@ export async function GET(req: NextRequest) {
     contact: r.contact_id ? (cById.get(r.contact_id) ?? null) : null,
     handled_by_name: r.handled_by ? (pById.get(r.handled_by) ?? null) : null,
     assignee_name: r.follow_up_assignee ? (pById.get(r.follow_up_assignee) ?? null) : null,
+    answered_by_name: r.answered_by ? (pById.get(r.answered_by) ?? null) : null,
+    wrapped_by_name: r.wrapped_by ? (pById.get(r.wrapped_by) ?? null) : null,
     // Never ship provider-signed links or Twilio SIDs to the browser; the audio route resolves them.
     has_recording: !!r.recording_url, recording_url: undefined,
   })) });
@@ -134,7 +149,7 @@ export async function PATCH(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   const supabase = adminClient();
-  const { data: existing } = await supabase.from('crm_call_log').select('id, business_unit, contact_id').eq('id', id).maybeSingle();
+  const { data: existing } = await supabase.from('crm_call_log').select('id, business_unit, contact_id, direction, needs_follow_up, handled_at, summary').eq('id', id).maybeSingle();
   if (!existing || (!isAdminRole(ctx.role) && existing.business_unit !== ctx.businessUnit)) return notFound('Call not found');
   const b = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -142,6 +157,14 @@ export async function PATCH(req: NextRequest) {
   if (b.handled === false) { patch.handled_at = null; patch.handled_by = null; }
   if (b.needs_follow_up !== undefined) patch.needs_follow_up = !!b.needs_follow_up;
   if (b.notes !== undefined) patch.notes = b.notes || null;
+  // The wrap-up: what the call was. Spam also closes any open call-back.
+  if (b.outcome !== undefined) {
+    if (b.outcome !== null && !(OUTCOMES as readonly string[]).includes(b.outcome)) return NextResponse.json({ error: 'Unknown outcome' }, { status: 400 });
+    patch.outcome = b.outcome;
+    patch.wrapped_at = b.outcome ? new Date().toISOString() : null;
+    patch.wrapped_by = b.outcome ? ctx.userId : null;
+    if (b.outcome === 'spam' && existing.needs_follow_up && !existing.handled_at) { patch.handled_at = new Date().toISOString(); patch.handled_by = ctx.userId; }
+  }
   if (b.caller_name !== undefined) patch.caller_name = b.caller_name || null;
   if (b.callback_number !== undefined) patch.callback_number = toE164(b.callback_number);
   if (b.contact_id !== undefined) {
@@ -174,6 +197,16 @@ export async function PATCH(req: NextRequest) {
   if ((patch.follow_up_due || patch.follow_up_assignee) && b.needs_follow_up !== false && b.handled !== true) patch.needs_follow_up = true;
   const { data, error } = await supabase.from('crm_call_log').update(patch).eq('id', id).select(COLS).single();
   if (error) return dbError('api/crm/calls PATCH', error);
+
+  // A wrap-up on a real conversation goes on the contact's timeline too.
+  const contactId = data.contact_id || existing.contact_id;
+  if (b.outcome && !['spam', 'personal'].includes(b.outcome) && contactId && b.handled !== true) {
+    const dir = existing.direction === 'outbound' ? 'Outbound call' : 'Inbound call';
+    await supabase.from('crm_activity').insert({
+      client_id: contactId, agent_id: ctx.userId, type: 'call', business_unit: existing.business_unit,
+      notes: `${dir} · ${OUTCOME_LABEL[b.outcome]}${data.notes ? ` — ${String(data.notes).slice(0, 500)}` : ''}`,
+    });
+  }
 
   // Marking a call handled is a touch on the contact — record it on their timeline.
   if (b.handled === true && (data.contact_id || existing.contact_id)) {

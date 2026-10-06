@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { syncTalkroute, syncTexts, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
+import { tidyCallLog } from '@/lib/call-routing';
 
 export const maxDuration = 60;
 
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
     const r = await syncTalkroute(db, { sinceHours: days * 24, maxPages: 10 });
     let texts: Record<string, unknown> = {};
     try { texts = await syncTexts(db, { sinceHours: days * 24 }); } catch (e) { console.warn('[calls/sync] texts', e); texts = { error: 'texts failed' }; }
+    try { await tidyCallLog(db); } catch (e) { console.warn('[calls/sync] tidy', e); }
     return NextResponse.json({ ok: true, ...r, texts });
   } catch (e) {
     console.error('[api/crm/calls/sync]', e);

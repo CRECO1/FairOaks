@@ -287,13 +287,17 @@ export async function computeEngagement(
   // ── Contacted since they engaged? ───────────────────────────────────────────
   const engagedIds = [...people.keys()];
   for (const part of chunk(engagedIds, 150)) {
-    const [{ data: acts }, { data: tasks }] = await Promise.all([
+    // Two activity tables are in use: crm_client_activities, and crm_activity (the
+    // contact timeline — where call wrap-ups and returned calls are logged).
+    const [{ data: acts1 }, { data: acts2 }, { data: tasks }] = await Promise.all([
       db.from('crm_client_activities').select('client_id, type, created_at').in('client_id', part)
+        .in('type', ['call', 'email', 'note', 'meeting']).gte('created_at', since),
+      db.from('crm_activity').select('client_id, type, created_at').in('client_id', part)
         .in('type', ['call', 'email', 'note', 'meeting']).gte('created_at', since),
       db.from('crm_tasks').select('client_id, type, status, completed_at, created_at').in('client_id', part)
         .in('type', ['call', 'follow_up']),
     ]);
-    for (const a of acts ?? []) {
+    for (const a of [...(acts1 ?? []), ...(acts2 ?? [])]) {
       const p = people.get(a.client_id);
       if (p && a.created_at >= p.first_signal_at && (!p.contacted_at || a.created_at > p.contacted_at)) {
         p.contacted_at = a.created_at; p.contacted_how = a.type === 'note' ? 'note logged' : a.type;
