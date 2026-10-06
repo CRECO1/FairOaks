@@ -2,6 +2,7 @@
 
 import { tenancies, shortDate } from '@/lib/rent-roll-tenancy';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import EmailProspects from '@/components/crm/EmailProspects';
 
 // The property's rent roll — one editable row per suite, replacing the Excel master
 // (rent roll + suite directory + mailbox/key log were all keyed by suite, so they're
@@ -533,6 +534,9 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
         </div>
         <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>Backup / prospective tenants are tracked here only — not counted in the totals above, and never shown on the Floor Plan.</div>
       </div>
+
+      {/* Who this property's campaigns have reached, and who opened (live). */}
+      <EmailProspects listingId={listingId} authToken={authToken} />
 
       {/* Vendors */}
       <div style={{ marginTop: 26 }}>
