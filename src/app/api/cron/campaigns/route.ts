@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at, merge_fields,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, business_unit, org_id),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, business_unit, org_id),
       client:crm_clients!inner(id, first_name, last_name, business_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -333,8 +333,14 @@ export async function GET(req: NextRequest) {
             ? `${agent.first_name} ${agent.last_name} <${agent.email}>`
             : `${brandName} <${agent.email}>`;
 
+          // Opt-in personal From (crm_campaigns.send_as_sender): the email comes
+          // from the sender agent rather than the brand noreply. agent.email is
+          // already forced onto this brand's verified domain above.
+          const personalFrom = campaign.send_as_sender && senderAgent
+            ? `${`${agent.first_name ?? ''} ${agent.last_name ?? ''}`.trim() || brandName} <${agent.email}>`
+            : null;
           const emailResult = await resend.emails.send({
-            from: `${brandName} <noreply@${brandDomain}>`,
+            from: personalFrom ?? `${brandName} <noreply@${brandDomain}>`,
             to: client.email,
             subject: subjectRendered,
             html: renderedBody,

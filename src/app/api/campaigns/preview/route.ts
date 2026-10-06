@@ -109,11 +109,17 @@ export async function POST(req: NextRequest) {
     reportBody = applyMarketReport(reportBody, report);
   }
 
-  const renderedSubject = applyMergeFields(reportSubject, agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
+  const renderedSubject = applyMergeFields(reportSubject, agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr)
+    .replace(/\{\{([a-z_]{1,40})\}\}/g, '[$1]');
   let renderedBody      = applyMergeFields(reportBody, agentFirst, agentLast, agentEmail, agentPhone, brokerage, agentTitleStr);
   // Same link-tagging the real send applies, so the preview shows exactly the
   // UTM-tagged links recipients will get.
   renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaignName));
+  // Per-recipient merge fields (crm_campaign_enrollments.merge_fields) have no
+  // value in a preview — show a labeled placeholder instead of a raw {{token}}.
+  renderedBody = renderedBody
+    .replace(/href="\{\{([a-z_]{1,40})\}\}"/g, 'href="#preview-$1"')
+    .replace(/\{\{([a-z_]{1,40})\}\}/g, '[$1]');
 
   // Wrap in a preview banner so it's obvious this is a test
   const previewBanner = `
