@@ -57,7 +57,9 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
   const [note, setNote] = useState(call.notes ?? '');
   const [mode, setMode] = useState<'new' | 'link'>('new');
   const g = guessName(call.caller_name);
-  const theirs = call.callback_number || (call.direction === 'outbound' ? call.to_number : call.from_number) || '';
+  const raw = call.callback_number || (call.direction === 'outbound' ? call.to_number : call.from_number) || '';
+  const d10 = raw.replace(/\D/g, '').slice(-10);
+  const theirs = d10.length === 10 ? `(${d10.slice(0, 3)}) ${d10.slice(3, 6)}-${d10.slice(6)}` : raw;
   const [form, setForm] = useState({ first_name: g.first, last_name: g.last, business_name: g.company, email: '', phone: theirs, type: 'Tenant' });
   const [typeTouched, setTypeTouched] = useState(false);
   const [q, setQ] = useState('');
