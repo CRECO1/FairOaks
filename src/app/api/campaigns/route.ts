@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { computeEngagement, fetchAll, type CampaignFunnel } from '@/lib/campaign-engagement';
+import { computeEngagement, fetchAll, tenantNoticeIds, type CampaignFunnel } from '@/lib/campaign-engagement';
 
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -56,8 +56,11 @@ export async function GET(req: NextRequest) {
   // campaigns that have sent are worth the queries.
   const sentCampaigns = rows.filter(c => statsMap[c.id]?.sentCount);
   let funnels = new Map<string, CampaignFunnel>();
+  let notices = new Set<string>();
   try {
-    funnels = (await computeEngagement(supabase, sentCampaigns.map(c => ({ id: c.id, email_body: c.email_body })))).funnels;
+    // Notices to our own tenants aren't prospecting — no call list for them.
+    notices = await tenantNoticeIds(supabase, sentCampaigns.map(c => c.id));
+    funnels = (await computeEngagement(supabase, sentCampaigns.filter(c => !notices.has(c.id)).map(c => ({ id: c.id, email_body: c.email_body })))).funnels;
   } catch (e) {
     // The list must still load if the engagement read fails.
     console.error('[api/campaigns] engagement failed', e);
@@ -80,6 +83,7 @@ export async function GET(req: NextRequest) {
       responded_count: f?.responded ?? 0,
       to_call_count: f?.to_call ?? 0,
       scanner_clickers: f?.scanner_clickers ?? 0,
+      is_tenant_notice: notices.has(c.id),
     };
   });
   return NextResponse.json({ campaigns });

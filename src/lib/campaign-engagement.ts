@@ -338,3 +338,31 @@ export async function computeEngagement(
   }
   return { funnels, people };
 }
+
+/** The tag on current 8000 Fair Oaks Pkwy tenants (see fairoaks-plaza-tenants). */
+export const PLAZA_TENANT_TAG = '8000 Fair Oaks';
+
+/**
+ * Campaigns that are notices to our own tenants (trash, noise, door locks), not
+ * prospecting: at least half the recipients carry the Plaza tenant tag. A tenant
+ * replying about the building isn't a lead, so these stay off the call list. Keyed
+ * on the recipients rather than a project name, so a new notice is caught without
+ * anyone filing it, and "Tenant Rep Outreach" (prospects) is never mistaken for one.
+ */
+export async function tenantNoticeIds(db: SupabaseClient, campaignIds: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const part of chunk(campaignIds, 80)) {
+    const rows = await fetchAll<{ campaign_id: string; client: { tags: string[] | null } | null }>((a, b) =>
+      db.from('crm_campaign_enrollments').select('campaign_id, client:crm_clients(tags)')
+        .in('campaign_id', part).order('id').range(a, b) as unknown as PromiseLike<{ data: { campaign_id: string; client: { tags: string[] | null } | null }[] | null; error: unknown }>);
+    const tally = new Map<string, { n: number; tenants: number }>();
+    for (const r of rows) {
+      const t = tally.get(r.campaign_id) ?? { n: 0, tenants: 0 };
+      t.n++;
+      if (r.client?.tags?.includes(PLAZA_TENANT_TAG)) t.tenants++;
+      tally.set(r.campaign_id, t);
+    }
+    for (const [id, t] of tally) if (t.n > 0 && t.tenants / t.n >= 0.5) out.add(id);
+  }
+  return out;
+}

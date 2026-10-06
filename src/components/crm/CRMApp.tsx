@@ -72,7 +72,7 @@ interface DealEmail { id: string; deal_id: string | null; client_id?: string | n
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; send_as_sender?: boolean | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
@@ -6422,7 +6422,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             "opens" everything it delivers, so the open rate is shown small;
                             engaged = real clicks / report views / calls (lib/campaign-engagement). */}
                         <div style={{ width: isMobile ? 'auto' : 150, flexShrink: 0, textAlign: 'right', ...(isMobile ? { marginLeft: 'auto' } : {}) }}>
-                          {sent > 0 ? (
+                          {sent > 0 && camp.is_tenant_notice ? (
+                            <div title="Notice to current tenants — not part of the call list">
+                              <div style={{ fontSize: 12, color: '#6b7280' }}>Tenant notice</div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3, whiteSpace: 'nowrap' }}>{sent} sent{camp.open_rate != null ? ` · ${camp.open_rate}% opened` : ''}</div>
+                            </div>
+                          ) : sent > 0 ? (
                             <div>
                               {(camp.engaged_count ?? 0) > 0 ? (
                                 <button onClick={() => setEngagedFor({ campaign: { id: camp.id, name: camp.name } })} title="See who engaged and who still needs a call"
@@ -6497,7 +6502,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     // Dated drafts that will NOT send until activated — the trap we flag.
                     const scheduledDrafts = campaigns.filter(c => c.status === 'draft' && c.send_date && parseD(c.send_date)! >= today0);
                     const armed = campaigns.filter(c => c.status === 'active' && c.send_date && parseD(c.send_date)! >= today0);
-                    const totalSent = campaigns.reduce((s, c) => s + (c.send_count ?? 0), 0);
+                    // Tenant notices go to our own tenants — they'd only dilute the prospecting funnel.
+                    const totalSent = campaigns.filter(c => !c.is_tenant_notice).reduce((s, c) => s + (c.send_count ?? 0), 0);
                     const engagedAll = campaigns.reduce((s, c) => s + (c.engaged_count ?? 0), 0);
                     const toCallAll = campaigns.reduce((s, c) => s + (c.to_call_count ?? 0), 0);
                     const nextArmed = armed.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
@@ -6556,7 +6562,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             // Real click rate across sent campaigns: human clickers / emails sent
                             // (spam-filter link checks excluded). Replaces "avg open rate", which
                             // Apple Mail inflates.
-                            const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.click_rate != null);
+                            const rated = allFiltered.filter(c => (c.send_count ?? 0) > 0 && c.click_rate != null && !c.is_tenant_notice);
                             if (!rated.length) return null;
                             const sentN = rated.reduce((s, c) => s + (c.send_count ?? 0), 0);
                             const clickN = rated.reduce((s, c) => s + (c.click_count ?? 0), 0);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
-import { computeEngagement, fetchAll, type Signal } from '@/lib/campaign-engagement';
+import { computeEngagement, fetchAll, tenantNoticeIds, type Signal } from '@/lib/campaign-engagement';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -121,6 +121,9 @@ export async function GET(req: NextRequest) {
     }
     inScope = visible.filter(c => recent.has(c.id));
   }
+  // Tenant notices (trash, noise, door locks) are never on the call list.
+  const notices = await tenantNoticeIds(db, inScope.map(c => c.id));
+  inScope = inScope.filter(c => !notices.has(c.id));
   if (!inScope.length) return NextResponse.json({ people: [], campaigns: [], replies_checked: [] });
 
   // ── Gmail replies ─────────────────────────────────────────────────────────
