@@ -163,6 +163,15 @@ export async function POST(req: NextRequest) {
     const { data: named } = await supabase.from('crm_profiles').select('id').eq('id', requestedAgentId).maybeSingle();
     adminId = named?.id;
   }
+  // crecotx.com names the lead's owner and backup by CRM login (Zack owns his
+  // own listings, Brian the rest, each backing up the other).
+  const profileIdByEmail = async (v: unknown): Promise<string | undefined> => {
+    if (typeof v !== 'string' || !/^[^@\s]+@[^@\s]+$/.test(v)) return undefined;
+    const { data } = await supabase.from('crm_profiles').select('id').ilike('email', v.trim()).limit(1).maybeSingle();
+    return data?.id;
+  };
+  if (!adminId) adminId = await profileIdByEmail(body.owner_email);
+  const backupId = await profileIdByEmail(body.backup_email);
   if (!adminId) {
     const { data: superAdmin } = await supabase.from('crm_profiles').select('id').eq('role', 'super_admin').limit(1).maybeSingle();
     adminId = superAdmin?.id;
@@ -213,7 +222,7 @@ export async function POST(req: NextRequest) {
       type: clientType,
       notes: noteLines,
       agent_id: adminId,
-      assigned_agent_ids: [],
+      assigned_agent_ids: backupId && backupId !== adminId ? [backupId] : [],
       lead_source: source,
       business_unit: unit,
       tags: unit === 'commercial'
@@ -251,6 +260,7 @@ export async function POST(req: NextRequest) {
       source,
       businessUnit: unit,
       detail: typeof message === 'string' && message ? `Message: ${message}` : null,
+      ownerId: adminId,
     });
   }
 

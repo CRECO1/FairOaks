@@ -46,6 +46,11 @@ export interface LeadFollowUpInput {
   businessUnit?: string | null;
   /** Message or search criteria — what they actually asked for. */
   detail?: string | null;
+  /**
+   * Who the call-back belongs to: the contact's owner (Zack for his own
+   * listings, Brian for the rest). Falls back to the super_admin when unset.
+   */
+  ownerId?: string | null;
 }
 
 /** Today in US-Central, as a date string. A same-day SLA in the wrong timezone is not a SLA. */
@@ -85,21 +90,22 @@ export async function createLeadFollowUpTask(db: SupabaseClient<any, any, any>, 
       .maybeSingle();
     if (existing?.id) return;
 
-    const { data: owner } = await db
-      .from('crm_profiles').select('id').eq('role', 'super_admin').limit(1).maybeSingle();
+    const { data: owner } = input.ownerId
+      ? await db.from('crm_profiles').select('id').eq('id', input.ownerId).maybeSingle()
+      : await db.from('crm_profiles').select('id').eq('role', 'super_admin').limit(1).maybeSingle();
     if (!owner?.id) {
-      console.error('[lead-followup] no super_admin to assign to — no task created');
+      console.error('[lead-followup] no owner to assign to — no task created');
       return;
     }
 
     const site = input.leadSite || 'the website';
     const channel = input.channel || 'web';
     const who = (input.name || input.email || 'New lead').trim();
-    const title = `Follow up: ${who} — ${channel} lead from ${site}`
+    const title = `Call ${who} — ${channel} lead from ${site}`
       + (input.campaign ? ` (${input.campaign})` : '');
 
     const notes = [
-      `🔔 New inbound lead — respond today.`,
+      `🔔 New inbound lead — call within 15 minutes. If you can't reach them, log the attempt (or complete this task) so the lead-SLA reminder stops.`,
       input.email ? `Email: ${input.email}` : '',
       input.phone ? `Phone: ${input.phone}` : '',
       input.source ? `Source: ${input.source}` : '',
