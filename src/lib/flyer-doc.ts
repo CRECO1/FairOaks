@@ -65,6 +65,7 @@ export interface FlyerInput {
     headline?: string;             // large white headline over the cover
     gold?: string;                 // hex accent, e.g. "#C9922C"
     kickerColor?: string;          // hex, e.g. "#F2C879"
+    headlineAt?: 'top' | 'bottom'; // 'top' tucks kicker + headline under the wordmark, clear of a building low in the frame
   } | null;
 }
 
@@ -268,7 +269,8 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
       drawSpaced(p1, tag, W - 30 - spacedWidth(tag, labelFont, 8, 1.1), H - 36, 8, labelFont, rgb(0.89, 0.89, 0.89), 1.1);
     }
     // Headline: two lines at most — shrink to fit rather than drop words.
-    let hs = 36, hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470);
+    // At the top the headline shares the sky with the canopy, so it starts a size smaller.
+    let hs = brand.headlineAt === 'top' ? 31 : 36, hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470);
     while (hl.length > 2 && hs > 18) { hs -= 1; hl = wrapText(sanitize(brand.headline || ''), osw, hs, 470); }
     // Balance a two-line headline: narrow the measure until one more step would need a
     // third line, so it never ends on a single orphaned word.
@@ -278,9 +280,10 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
       hl = t;
     }
     const lead = hs * 1.12;
-    let hy = heroY + 30 + (hl.length - 1) * lead;
     const kick = sanitize(brand.kicker || badge).toUpperCase();
-    drawSpaced(p1, kick, 30, hy + hs + 10, 9.5, labelFont, brand.kickerColor ? hexRgb(brand.kickerColor) : gold, 2.2);
+    const kickY = brand.headlineAt === 'top' ? H - 64 : heroY + 30 + (hl.length - 1) * lead + hs + 10;
+    let hy = kickY - 10 - hs;
+    drawSpaced(p1, kick, 30, kickY, 9.5, labelFont, brand.kickerColor ? hexRgb(brand.kickerColor) : gold, 2.2);
     for (const line of hl) { p1.drawText(line, { x: 30, y: hy, size: hs, font: osw, color: WHITE }); hy -= lead; }
     p1.drawRectangle({ x: 0, y: heroY - 1.5, width: W, height: 3, color: gold });
   } else {
