@@ -83,7 +83,9 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
   // so they say nothing about the business — keep only tags that actually segment it.
   const tagCount = new Map<string, number>();
   for (const id of people.keys()) for (const t of clients.get(id)?.tags ?? []) if (cats.has(t)) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
-  const umbrella = new Set([...tagCount].filter(([, n]) => n > people.size * 0.4).map(([t]) => t));
+  const { data: listing } = await db.from('crm_listings').select('name').eq('id', listingId).maybeSingle();
+  const own = String(listing?.name ?? '').toLowerCase().split(/\s+[—–-]\s+/)[0].trim();   // "Elkhorn Point"
+  const umbrella = new Set([...tagCount].filter(([t, n]) => n > people.size * 0.4 || (own && t.toLowerCase().startsWith(own))).map(([t]) => t));
 
   const prospects = [...people.entries()].map(([id, p]) => {
     const c = clients.get(id);
