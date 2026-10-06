@@ -53,6 +53,9 @@ export interface FlyerInput {
   fontBold: Uint8Array;          // Oswald-Bold TTF
   logoPng: Uint8Array;           // CRECO letterhead PNG
   iabsPdf?: Uint8Array | null;   // Information About Brokerage Services — appended last (required in TX)
+  // Page-2 block headings, when the defaults don't describe the image (e.g. a site plan
+  // supplied as the "floor plan", or a suite plan in the aerial slot).
+  titles?: { photos?: string; floorPlan?: string; siteAerial?: string } | null;
 }
 
 function sanitize(s: unknown): string {
@@ -304,7 +307,8 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const tilesBottom = tileTop - tileRows * tileH;
   p1.drawRectangle({ x: rightX, y: tilesBottom, width: rightW, height: tileRows * tileH, color: BLACK });
   const hair = rgb(0.3, 0.31, 0.34);
-  for (let r = 0; r < tileRows; r++) p1.drawRectangle({ x: rightX + half - 0.5, y: tileTop - (r + 1) * tileH + 8, width: 1, height: tileH - 16, color: hair });
+  // A lone second-row tile spans the full width, so that row gets no divider.
+  for (let r = 0; r < (extra.length === 1 ? 1 : tileRows); r++) p1.drawRectangle({ x: rightX + half - 0.5, y: tileTop - (r + 1) * tileH + 8, width: 1, height: tileH - 16, color: hair });
   if (tileRows === 2) p1.drawRectangle({ x: rightX + 12, y: tileY - 0.5, width: rightW - 24, height: 1, color: hair });
   const tile = (cx: number, cy: number, cw: number, kind: 'price' | 'size' | 'lot' | 'zoning', value: string) => {
     // Vector icon (drawSvgPath anchors at the top-left, SVG y points down from there).
@@ -383,12 +387,12 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     // its own aspect) than as a small centred 4:3 cell — so the rendering is legible.
     const g = gallery[0];
     p2blocks.push({
-      title: 'PHOTOS', weight: 2.2, border: true,
+      title: input.titles?.photos || 'PHOTOS', weight: 2.2, border: true,
       natural: (w) => w * (g.height / g.width),
       draw: (x, y, w, h) => drawContainTop(p2!, g, x, y, w, h),
     });
   } else if (gallery.length) p2blocks.push({
-    title: 'PHOTOS', weight: 1.9, border: false,
+    title: input.titles?.photos || 'PHOTOS', weight: 1.9, border: false,
     // The grid holds the photos' 4:3, so it can't use a taller box — say so up front
     // and the leftover goes to the map instead of becoming a hole in the page.
     natural: (w) => photoGridHeight(gallery.length, w),
@@ -396,13 +400,13 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   });
   // Floor plan is the key page-2 visual — weight it to fill most of the width so the
   // site plan is actually legible rather than a small centred letterbox.
-  if (floor) p2blocks.push({ title: 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContainTop(p2!, floor!, x, y, w, h) });
+  if (floor) p2blocks.push({ title: input.titles?.floorPlan || 'FLOOR PLAN', weight: 2.6, border: true, natural: (w) => w * (floor.height / floor.width), draw: (x, y, w, h) => drawContainTop(p2!, floor!, x, y, w, h) });
   // Where it sits. A hand-made aerial (lot outlined) wins over the generated one, and
   // there is only ever one: a single aerial at full width reads; two at half size don't.
   const siteAerial = (await Promise.all((input.siteAerials || []).slice(0, 1).map(embed))).find((g): g is PDFImage => !!g);
   if (siteAerial) {
     p2blocks.push({
-      title: 'SITE AERIAL', weight: 1.6, border: true,
+      title: input.titles?.siteAerial || 'SITE AERIAL', weight: 1.6, border: true,
       natural: (w) => w * (siteAerial.height / siteAerial.width),
       draw: (x, y, w, h) => drawContainTop(p2!, siteAerial, x, y, w, h),
     });
