@@ -57,10 +57,21 @@ export async function GET(req: NextRequest) {
   const sentCampaigns = rows.filter(c => statsMap[c.id]?.sentCount);
   let funnels = new Map<string, CampaignFunnel>();
   let notices = new Set<string>();
+  // Unique people (a person engaged by two campaigns is one call), over the same
+  // 90-day window as the workspace call list, so the card and the list agree.
+  const totals = { engaged: 0, to_call: 0 };
   try {
     // Notices to our own tenants aren't prospecting — no call list for them.
     notices = await tenantNoticeIds(supabase, sentCampaigns.map(c => c.id));
-    funnels = (await computeEngagement(supabase, sentCampaigns.filter(c => !notices.has(c.id)).map(c => ({ id: c.id, email_body: c.email_body })))).funnels;
+    const eng = await computeEngagement(supabase, sentCampaigns.filter(c => !notices.has(c.id)).map(c => ({ id: c.id, email_body: c.email_body })));
+    funnels = eng.funnels;
+    const since = new Date(Date.now() - 90 * 86400_000).toISOString();
+    const recent = new Set(sentCampaigns.filter(c => (statsMap[c.id]?.lastSent ?? '') >= since).map(c => c.id as string));
+    for (const p of eng.people.values()) {
+      if (!p.campaign_ids.some(id => recent.has(id))) continue;
+      totals.engaged++;
+      if (!p.contacted_at) totals.to_call++;
+    }
   } catch (e) {
     // The list must still load if the engagement read fails.
     console.error('[api/campaigns] engagement failed', e);
@@ -86,7 +97,7 @@ export async function GET(req: NextRequest) {
       is_tenant_notice: notices.has(c.id),
     };
   });
-  return NextResponse.json({ campaigns });
+  return NextResponse.json({ campaigns, engagement_totals: totals });
 }
 
 export async function POST(req: NextRequest) {

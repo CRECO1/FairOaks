@@ -769,6 +769,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [previewIdx, setPreviewIdx] = useState(0);
   // Phone-width toggle on the preview (Zack's rule: check every email at phone width).
   const [previewPhone, setPreviewPhone] = useState(false);
+  // Unique engaged / to-call people across campaigns (last 90 days) — matches the call list.
+  const [engagementTotals, setEngagementTotals] = useState<{ engaged: number; to_call: number } | null>(null);
   // "Who engaged" call list: one campaign, or null = every campaign (last 90 days).
   const [engagedFor, setEngagedFor] = useState<{ campaign: { id: string; name: string } | null } | null>(null);
   // Pre-send check — every activation path opens this instead of a bare confirm().
@@ -2846,7 +2848,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     try {
       const res = await fetch(`/api/campaigns?unit=${businessUnit}`);
       const j = await res.json();
-      if (res.ok) { setCampaigns(j.campaigns ?? []); }
+      if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); }
       else { showToast(`Could not load campaigns: ${j.error ?? res.status}`); }
     } catch (err) {
       showToast('Network error loading campaigns');
@@ -6504,8 +6506,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const armed = campaigns.filter(c => c.status === 'active' && c.send_date && parseD(c.send_date)! >= today0);
                     // Tenant notices go to our own tenants — they'd only dilute the prospecting funnel.
                     const totalSent = campaigns.filter(c => !c.is_tenant_notice).reduce((s, c) => s + (c.send_count ?? 0), 0);
-                    const engagedAll = campaigns.reduce((s, c) => s + (c.engaged_count ?? 0), 0);
-                    const toCallAll = campaigns.reduce((s, c) => s + (c.to_call_count ?? 0), 0);
+                    const engagedAll = engagementTotals?.engaged ?? campaigns.reduce((s, c) => s + (c.engaged_count ?? 0), 0);
+                    const toCallAll = engagementTotals?.to_call ?? campaigns.reduce((s, c) => s + (c.to_call_count ?? 0), 0);
                     const nextArmed = armed.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
                     const nextDraft = scheduledDrafts.map(c => parseD(c.send_date)!).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
                     return (
