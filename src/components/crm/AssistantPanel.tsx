@@ -20,7 +20,20 @@ const SUGGESTIONS = [
   'Create a task to follow up with…',
   'Add a new contact to the CRM',
   'Fill this contract in from a contact',
+  'Look up a property or business online',
 ];
+
+// Web answers carry source links; make them tappable. Only http(s) — anything else in
+// the model's text stays plain text, never an href.
+const URL_RE = /(https?:\/\/[^\s<>"')\]]+)/g;
+function linkify(text: string): React.ReactNode[] {
+  return text.split(URL_RE).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const url = part.replace(/[.,;:!?]+$/, '');
+    const tail = part.slice(url.length);
+    return <React.Fragment key={i}><a href={url} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline', wordBreak: 'break-all' }}>{url}</a>{tail}</React.Fragment>;
+  });
+}
 
 function textOf(content: string | Block[]): string {
   if (typeof content === 'string') return content;
@@ -104,7 +117,7 @@ export default function AssistantPanel({ token, onClose, onNavigate }: {
           {txt && (
             <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55, padding: '9px 13px', borderRadius: 12,
               background: m.role === 'user' ? GOLD : '#fff', color: m.role === 'user' ? '#fff' : '#1f2937',
-              border: m.role === 'user' ? 'none' : '1px solid #e5e7eb', borderBottomRightRadius: m.role === 'user' ? 3 : 12, borderBottomLeftRadius: m.role === 'user' ? 12 : 3 }}>{txt}</div>
+              border: m.role === 'user' ? 'none' : '1px solid #e5e7eb', borderBottomRightRadius: m.role === 'user' ? 3 : 12, borderBottomLeftRadius: m.role === 'user' ? 12 : 3 }}>{m.role === 'assistant' ? linkify(txt) : txt}</div>
           )}
         </div>
       </div>

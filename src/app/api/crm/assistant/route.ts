@@ -7,9 +7,11 @@ import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
 import { signPendingWrite, verifyPendingWrite } from '@/lib/copilot-confirm';
+import { WEB_TOOLS, compactWebTurns } from '@/lib/copilot-web';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Web research adds server-side search/fetch rounds inside each Claude call.
+export const maxDuration = 120;
 
 const MODEL = process.env.CRM_ASSISTANT_MODEL || 'claude-sonnet-5';
 
@@ -129,16 +131,26 @@ export async function POST(req: NextRequest) {
     for (let round = 0; round < 6; round++) {
       const res = await client.messages.create({
         model: MODEL,
-        max_tokens: 1500,
+        max_tokens: 4000,
         system: systemPrompt(ctx, prof?.first_name || 'the agent'),
-        tools: TOOLS,
+        tools: [...TOOLS, ...WEB_TOOLS],
         messages,
       });
       messages.push({ role: 'assistant', content: res.content });
 
+      // A long web search can pause mid-turn. Re-sending the conversation as it stands
+      // resumes it — no "continue" message, the trailing server_tool_use is the cue.
+      if (res.stop_reason === 'pause_turn') continue;
+
       if (res.stop_reason !== 'tool_use') {
-        const reply = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('\n').trim();
-        return NextResponse.json({ messages, reply, pendingWrites, clientActions, confirmed });
+        // Web answers arrive as many small text blocks (one per citation), so join
+        // them without separators — a newline here would break sentences apart.
+        const reply = res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map(b => b.text).join('').trim();
+        const history = compactWebTurns(messages);
+        const last = history[history.length - 1];
+        const shown = typeof last?.content === 'string' ? last.content
+          : (last?.content as Anthropic.ContentBlockParam[] | undefined)?.filter((b): b is Anthropic.TextBlockParam => b.type === 'text').map(b => b.text).join('\n').trim();
+        return NextResponse.json({ messages: history, reply: shown || reply, pendingWrites, clientActions, confirmed });
       }
 
       // Execute each requested tool. Reads run immediately. Writes never run here: they
@@ -176,7 +188,7 @@ export async function POST(req: NextRequest) {
       messages.push({ role: 'user', content: toolResults });
     }
     // Loop guard hit.
-    return NextResponse.json({ messages, reply: "I ran out of steps on that one — could you narrow it down a bit?", pendingWrites, clientActions, confirmed });
+    return NextResponse.json({ messages: compactWebTurns(messages), reply: "I ran out of steps on that one — could you narrow it down a bit?", pendingWrites, clientActions, confirmed });
   } catch (e) {
     console.error('[crm-assistant]', e);
     return NextResponse.json({ error: 'The assistant hit an error. Try again.' }, { status: 500 });
