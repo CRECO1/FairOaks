@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
-import { gather, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin, startRecording } from '@/lib/twilio';
+import { gather, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin, startRecordingWhenLive } from '@/lib/twilio';
 import { defaultGreeting, loadSettings, matchContact, unitForNumber } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
 
@@ -43,8 +43,12 @@ export async function POST(req: Request) {
   }).select('id').single();
   if (call?.id) await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: greeting });
 
-  // Record the whole call for the log. Fire-and-forget; the greeting must not wait on it.
-  void startRecording(callSid);
+  // Record the whole call for the log, without holding up the greeting: after() keeps
+  // the function alive until Twilio has accepted, a beat after the call goes live.
+  // The RecordingSid is stored at once; /api/voice/recording confirms it when done.
+  after(() => startRecordingWhenLive(callSid, async sid => {
+    await db.from('crm_call_log').update({ recording_url: `twilio:${sid}` }).eq('source', 'voicebot').eq('external_id', callSid).is('recording_url', null);
+  }));
 
   return twiml(gather(greeting, `${voiceOrigin()}/api/voice/turn`));
 }

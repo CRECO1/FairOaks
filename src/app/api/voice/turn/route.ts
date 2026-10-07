@@ -1,6 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
-import { holdThenRedirect, renderReply, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
+import { holdThenRedirect, renderReply, say, startRecordingWhenLive, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
 import { loadSettings, nextReply, type BotReply, type Turn } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
 
@@ -20,8 +20,16 @@ export async function POST(req: Request) {
   if (!verifyTwilioSignature(req, p)) return NextResponse.json({ error: 'bad signature' }, { status: 401 });
 
   const db = adminClient();
-  const { data: call } = await db.from('crm_call_log').select('id, business_unit, from_number, contact_id, caller_name, ai_meta').eq('source', 'voicebot').eq('external_id', p.CallSid).maybeSingle();
+  const { data: call } = await db.from('crm_call_log').select('id, business_unit, from_number, contact_id, caller_name, ai_meta, recording_url').eq('source', 'voicebot').eq('external_id', p.CallSid).maybeSingle();
   if (!call) return twiml(`${say("Sorry, something went wrong on our end. Please call back in a moment.")}<Hangup/>`);
+
+  // Backstop: if the recording still hasn't started by the caller's first words, the
+  // call is certainly live now — start it (one try, in the background).
+  if (!call.recording_url) {
+    after(() => startRecordingWhenLive(p.CallSid, async sid => {
+      await db.from('crm_call_log').update({ recording_url: `twilio:${sid}` }).eq('id', call.id).is('recording_url', null);
+    }, [0]));
+  }
 
   const heard = (p.SpeechResult || '').trim();
   // Every round trip here is on the caller's clock — run them together, and build the

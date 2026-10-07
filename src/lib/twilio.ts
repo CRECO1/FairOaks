@@ -75,8 +75,8 @@ function authHeader(): string {
 }
 
 /** Start recording the live call; Twilio tells /api/voice/recording when the file is ready. */
-export async function startRecording(callSid: string): Promise<void> {
-  if (!twilioConfigured()) return;
+export async function startRecording(callSid: string): Promise<{ ok: boolean; sid?: string }> {
+  if (!twilioConfigured()) return { ok: false };
   const sid = process.env.TWILIO_ACCOUNT_SID!;
   const body = new URLSearchParams({
     RecordingStatusCallback: `${voiceOrigin()}/api/voice/recording`,
@@ -85,10 +85,32 @@ export async function startRecording(callSid: string): Promise<void> {
     Trim: 'trim-silence',
   });
   try {
-    await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${encodeURIComponent(callSid)}/Recordings.json`, {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls/${encodeURIComponent(callSid)}/Recordings.json`, {
       method: 'POST', headers: { Authorization: authHeader(), 'Content-Type': 'application/x-www-form-urlencoded' }, body,
     });
-  } catch (e) { console.warn('[twilio] startRecording', e); }
+    const j = await r.json().catch(() => ({})) as { sid?: string; code?: number; message?: string };
+    if (r.ok && j.sid) return { ok: true, sid: j.sid };
+    // Twilio refuses while the call isn't live yet (still ringing into our webhook).
+    console.warn('[twilio] startRecording refused', r.status, j.code, j.message);
+    return { ok: false };
+  } catch (e) { console.warn('[twilio] startRecording', e); return { ok: false }; }
+}
+
+/**
+ * Start the whole-call recording once the call is live, retrying a refusal.
+ * Run it inside next/server's after(): a bare un-awaited promise gets frozen when
+ * the webhook returns, and asking the instant the call arrives (before our TwiML
+ * has even been read) is refused — between them, 13 of the first 24 bot calls
+ * were never recorded. onStarted gets the RecordingSid as soon as Twilio accepts.
+ */
+export async function startRecordingWhenLive(callSid: string, onStarted: (recordingSid: string) => Promise<void>, delaysMs: number[] = [1500, 3000]): Promise<boolean> {
+  for (const d of delaysMs) {
+    if (d) await new Promise(res => setTimeout(res, d));
+    const r = await startRecording(callSid);
+    if (r.ok && r.sid) { await onStarted(r.sid); return true; }
+  }
+  console.error('[twilio] call recording never started', callSid);
+  return false;
 }
 
 /** Media URL for a recording, playable by the CRM through our authed proxy. */
