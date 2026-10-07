@@ -18,6 +18,7 @@ import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
 import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
+import CallTapPrompt from '@/components/crm/CallTapPrompt';
 import MentionTextarea, { parseMentionContactIds } from '@/components/crm/MentionTextarea';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
@@ -12091,6 +12092,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <button onClick={() => setAssistantOpen(true)} title="CRECO Copilot" aria-label="Open CRECO Copilot"
           style={{ position: 'fixed', bottom: 'calc(22px + env(safe-area-inset-bottom))', right: 'calc(18px + env(safe-area-inset-right))', zIndex: 1150, width: 56, height: 56, borderRadius: '50%', background: '#1a1a1a', color: '#fff', border: '2px solid #c9922c', boxShadow: '0 4px 16px rgba(0,0,0,.28)', cursor: 'pointer', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✨</button>
       )}
+      {/* After you tap a phone number anywhere in the CRM and come back: "How did the call go?" */}
+      <CallTapPrompt
+        businessUnit={businessUnit}
+        authToken={session?.access_token}
+        isMobile={isMobile}
+        // Today's Calls (Tasks) runs its own connected / voicemail / no-answer flow.
+        suppress={page === 'tasks' && tasksSubTab === 'calls'}
+        showToast={showToast}
+        findByPhone={d => {
+          const hit = clients.find(c => [c.phone, c.cell_phone].some(n => (n ?? '').replace(/\D/g, '').slice(-10) === d));
+          return hit ? { id: hit.id, name: `${hit.first_name ?? ''} ${hit.last_name ?? ''}`.trim() || hit.business_name || 'Contact' } : null;
+        }}
+      />
       {assistantOpen && (
         <AssistantPanel
           token={session?.access_token}

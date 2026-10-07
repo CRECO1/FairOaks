@@ -210,7 +210,7 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
 
     if (tail.length === 10) {
       const later = all.find(o => o.id !== r.id && o.started_at > r.started_at && last10(theirNumber(o)) === tail
-        && (o.direction === 'outbound' || (o.result === 'answered' && !!o.answered_by)));
+        && ((o.direction === 'outbound' && !['left_voicemail', 'no_answer', 'wrong_number'].includes(o.result ?? '')) || (o.result === 'answered' && !!o.answered_by)));
       if (later) {
         const who = later.answered_by ? profiles.find(p => p.id === later.answered_by) : null;
         const what = later.direction === 'outbound' ? 'Called back' : `They called again and reached ${who?.first_name ?? 'the team'}`;

@@ -67,6 +67,9 @@ function resultBadge(c: CallRow): { text: string; bg: string; fg: string } {
   if (c.source === 'voicebot') return r === 'in_progress' ? { text: 'On the line', bg: '#dbeafe', fg: '#1d4ed8' } : { text: 'Bot answered', bg: '#ede9fe', fg: '#6d28d9' };
   if (c.kind === 'voicemail') return { text: 'Voicemail', bg: '#fef3c7', fg: '#92400e' };
   if (r === 'missed') return { text: 'Missed', bg: '#fee2e2', fg: '#b91c1c' };
+  if (r === 'left_voicemail') return { text: 'We left a voicemail', bg: '#fef3c7', fg: '#92400e' };
+  if (r === 'no_answer') return { text: 'We called · no answer', bg: '#f3f4f6', fg: '#6b7280' };
+  if (r === 'wrong_number') return { text: 'Wrong number', bg: '#fee2e2', fg: '#991b1b' };
   if (r === 'answered') return { text: c.direction === 'outbound' ? 'Outbound' : 'Answered', bg: '#dcfce7', fg: '#15803d' };
   if (r === 'hangup') return c.direction !== 'outbound' && c.duration_sec != null && c.duration_sec < 60 ? { text: 'Gave up waiting', bg: '#ffedd5', fg: '#9a3412' } : { text: 'Hung up', bg: '#f3f4f6', fg: '#6b7280' };
   return { text: r || (c.direction === 'outbound' ? 'Outbound' : 'Call'), bg: '#f3f4f6', fg: '#6b7280' };
@@ -162,6 +165,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     } catch { /* list is the point */ }
   }, [authToken, filter, days, q, businessUnit, showInternal]);
   useEffect(() => { load(); }, [load]);
+  // The "How did the call go?" prompt logs calls from anywhere in the CRM — refresh when it does.
+  useEffect(() => { const h = () => load(); window.addEventListener('crm:calls-changed', h); return () => window.removeEventListener('crm:calls-changed', h); }, [load]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -568,7 +573,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flexShrink: 0 }}>
                       {needsWrap(c) && wrapFor !== c.id && <button onClick={() => setWrapFor(c.id)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }} title="Ten seconds: what it was, a note, and who it was">📝 Wrap up</button>}
-                      {num && <a href={`tel:${num}`} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
+                      {num && <a href={`tel:${num}`} data-call-id={c.id} data-contact-id={c.contact?.id ?? ''} data-name={c.contact?.name || c.caller_name || ''} data-pending={pending ? '1' : '0'} style={{ ...mini, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} title="Call back">📞</a>}
                       {c.has_recording && <button onClick={() => play(c)} disabled={busy === c.id} style={mini} title="Play recording">{audio[c.id] ? '🔊' : '▶'}</button>}
                       {(c.summary || c.transcript || c.source === 'voicebot' || c.notes) && <button onClick={() => toggleOpen(c)} style={mini}>{openNow ? '▾ Less' : '▸ Details'}</button>}
                       {pending

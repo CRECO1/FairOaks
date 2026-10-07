@@ -29,14 +29,21 @@ export const otherParty = (c: Pick<HistoryCall, 'direction' | 'from_number' | 't
 const lastLabel = (c: HistoryCall): string => {
   if (c.source === 'voicebot') return 'talked to the receptionist';
   if (c.kind === 'voicemail') return 'left a voicemail';
-  if (c.direction === 'outbound') return (c.duration_sec ?? 0) >= 20 ? 'we called them' : 'we tried them';
+  if (c.direction === 'outbound') {
+    if (c.result === 'left_voicemail') return 'we left a voicemail';
+    if (c.result === 'no_answer') return 'we called, no answer';
+    if (c.result === 'wrong_number') return 'wrong number';
+    return (c.duration_sec ?? 0) >= 20 || c.result === 'answered' ? 'we called them' : 'we tried them';
+  }
   if (c.result === 'missed') return 'missed';
   if (c.result === 'hangup') return 'hung up';
   return 'answered';
 };
+const NOT_REACHED = ['left_voicemail', 'no_answer', 'wrong_number'];
 const humanReached = (c: HistoryCall) =>
   (c.direction === 'inbound' && c.result === 'answered' && !!c.answered_by) ||
-  (c.direction === 'outbound' && (c.duration_sec ?? 0) >= 20) || c.source === 'manual' ||
+  (c.direction === 'outbound' && (c.result === 'answered' || ((c.duration_sec ?? 0) >= 20 && !NOT_REACHED.includes(c.result ?? '')))) ||
+  (c.source === 'manual' && !NOT_REACHED.includes(c.result ?? '')) ||
   // Someone marked it handled — they returned the call from their own phone, which the log never sees.
   !!c.handled_by;
 

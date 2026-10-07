@@ -141,23 +141,67 @@ export async function GET(req: NextRequest) {
   })), internal_hidden: internalHidden });
 }
 
-// POST /api/crm/calls — log a call by hand.
+// POST /api/crm/calls — log a call by hand, or from the "How did the call go?" prompt.
+//   { number, caller_name?, direction, result, contact_id?, notes?, started_at?, duration_sec?,
+//     needs_follow_up?, resolves_call_id?, retry_at? }
+// result for outbound calls: answered | left_voicemail | no_answer | wrong_number.
+// resolves_call_id = the inbound call-back this call returns: talking to them (or a wrong
+// number) closes it; a voicemail / no answer keeps it open and moves its due time to retry_at.
+const NOT_REACHED = ['left_voicemail', 'no_answer', 'wrong_number'];
+const RESULT_LABEL: Record<string, string> = { answered: 'Talked to them', left_voicemail: 'Left a voicemail', no_answer: 'No answer', wrong_number: 'Wrong number' };
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const b = await req.json().catch(() => ({}));
   const unit = isAdminRole(ctx.role) ? (b.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
   const number = toE164(b.number);
-  const { data, error } = await adminClient().from('crm_call_log').insert({
-    business_unit: unit, source: 'manual', kind: 'call', direction: b.direction === 'outbound' ? 'outbound' : 'inbound',
-    result: b.result || 'answered', from_number: b.direction === 'outbound' ? null : number, to_number: b.direction === 'outbound' ? number : null,
-    caller_name: b.caller_name || null, contact_id: b.contact_id || null, deal_id: b.deal_id || null,
-    started_at: b.started_at || new Date().toISOString(), duration_sec: b.duration_sec ? Number(b.duration_sec) : null,
-    summary: b.summary || null, notes: b.notes || null, needs_follow_up: !!b.needs_follow_up,
-    handled_at: b.needs_follow_up ? null : new Date().toISOString(), handled_by: b.needs_follow_up ? null : ctx.userId,
+  const outbound = b.direction === 'outbound';
+  const result = typeof b.result === 'string' && b.result ? b.result : 'answered';
+  const supabase = adminClient();
+  const now = new Date().toISOString();
+
+  if (b.contact_id) {
+    const { data: c } = await supabase.from('crm_clients').select('id').eq('id', b.contact_id).eq('business_unit', unit).maybeSingle();
+    if (!c) return notFound('Contact not found');
+  }
+  let resolves: { id: string; contact_id: string | null } | null = null;
+  if (b.resolves_call_id) {
+    const { data: r } = await supabase.from('crm_call_log').select('id, contact_id').eq('id', b.resolves_call_id).eq('business_unit', unit).maybeSingle();
+    resolves = r ?? null;
+  }
+  let retry: string | null = null;
+  if (b.retry_at) { const d = new Date(b.retry_at); if (!Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 60_000) retry = d.toISOString(); }
+
+  // A plain "try again" with no call-back to attach it to becomes its own call-back; with one,
+  // the reminder moves onto that call-back instead (below).
+  const queued = !!b.needs_follow_up || (!!retry && !resolves && (result === 'no_answer' || result === 'left_voicemail'));
+  const { data, error } = await supabase.from('crm_call_log').insert({
+    business_unit: unit, source: 'manual', kind: 'call', direction: outbound ? 'outbound' : 'inbound',
+    result, from_number: outbound ? null : number, to_number: outbound ? number : null,
+    caller_name: b.caller_name || null, contact_id: b.contact_id || resolves?.contact_id || null, deal_id: b.deal_id || null,
+    started_at: b.started_at || now, duration_sec: b.duration_sec ? Number(b.duration_sec) : null,
+    summary: b.summary || null, notes: b.notes || null, needs_follow_up: queued,
+    follow_up_due: queued ? retry : null, follow_up_assignee: queued ? ctx.userId : null,
+    handled_at: queued ? null : now, handled_by: queued ? null : ctx.userId,
   }).select(COLS).single();
   if (error) return dbError('api/crm/calls POST', error);
-  return NextResponse.json({ call: data });
+
+  if (resolves) {
+    if (result === 'answered' || result === 'wrong_number') {
+      await supabase.from('crm_call_log').update({ handled_at: now, handled_by: ctx.userId, needs_follow_up: true, updated_at: now }).eq('id', resolves.id);
+    } else if (retry) {
+      await supabase.from('crm_call_log').update({ follow_up_due: retry, follow_up_assignee: ctx.userId, needs_follow_up: true, handled_at: null, updated_at: now }).eq('id', resolves.id);
+    }
+  }
+  // On the contact's timeline — which is also what the campaign call list reads as "contacted".
+  const contactId = b.contact_id || resolves?.contact_id;
+  if (contactId && outbound) {
+    await supabase.from('crm_activity').insert({
+      client_id: contactId, agent_id: ctx.userId, type: 'call', business_unit: unit,
+      notes: `Outbound call · ${RESULT_LABEL[result] ?? result}${b.notes ? ` — ${String(b.notes).slice(0, 400)}` : ''}`,
+    });
+  }
+  return NextResponse.json({ call: data, not_reached: NOT_REACHED.includes(result) });
 }
 
 // PATCH /api/crm/calls?id=  { handled?: boolean; notes?; contact_id?; deal_id?; needs_follow_up?; caller_name?; callback_number? }
