@@ -1,4 +1,4 @@
--- STATUS: NOT YET APPLIED to production — awaiting owner approval (and not dry-run tested yet).
+-- STATUS: dry-run tested 2026-10-07 (simulated logins: owner, agent, allow-listed admin, stranger); applied on owner's go-ahead.
 -- Security lockdown (audit 2026-10-07).
 -- Problem: Supabase Auth signups are open, and many RLS policies only checked "is logged in"
 -- (auth.role()='authenticated' / auth.uid() is not null / true). Any stranger who signed up could
@@ -80,3 +80,15 @@ alter policy "auth delete receipts" on storage.objects using (bucket_id = 'recei
 -- ── Profiles: only INVITED users may create their own (agent-only) profile ───────────────────────
 alter policy "crm_profiles self-insert as agent only" on public.crm_profiles
   with check (auth.uid() = id and role = 'agent' and public.crm_user_invited() and business_unit in ('commercial','residential'));
+
+-- Profile directory: the "role is admin/super_admin" branch let ANY logged-in user (incl. a stranger who
+-- just signed up) read the admin profile rows. Require a profile of your own on top of the old rule.
+do $$
+declare q text;
+begin
+  select pg_get_expr(polqual, polrelid) into q from pg_policy
+   where polrelid = 'public.crm_profiles'::regclass and polname = 'profiles_unit_select';
+  if q is not null and q not like '%crm_has_profile%' then
+    execute format('alter policy profiles_unit_select on public.crm_profiles using (id = auth.uid() or (public.crm_has_profile() and (%s)))', q);
+  end if;
+end $$;
