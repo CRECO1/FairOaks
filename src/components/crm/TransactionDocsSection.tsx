@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRememberedSelection } from '@/lib/view-memory';
 import { specForForm } from '@/lib/loi-doc';
 import dynamic from 'next/dynamic';
 
@@ -73,6 +74,12 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
   }, [authHeaders, onToast]);
 
   useEffect(() => { load(); }, [load]);
+  // Reopen the form you were filling in before a refresh, on the same deal (lib/view-memory).
+  useRememberedSelection(`${businessUnit}:txdoc`, editing ? `${editing.form.id}|${editing.dealId ?? ''}` : null, !loading && forms.length > 0, key => {
+    const [formId, dealId] = key.split('|');
+    const form = forms.find(f => f.id === formId);
+    if (form) openForm(form, dealId || undefined);
+  });
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();

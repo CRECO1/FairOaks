@@ -5,6 +5,7 @@
 // follow-up queue: who still needs a call back, and what they wanted.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
+import { useRememberedState } from '@/lib/view-memory';
 
 export interface CallRow {
   id: string; source: string; kind: string; direction: string; result: string | null;
@@ -107,7 +108,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup'>('all');
+  const [filter, setFilter] = useRememberedState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup'>('calls-filter', 'all', ['all', 'follow_up', 'voicemail', 'bot', 'missed', 'texts', 'wrapup']);
   const [wrapFor, setWrapFor] = useState<string | null>(null);   // call id whose wrap-up panel is open
   const [threads, setThreads] = useState<Thread[]>([]);
   const [textsNeedReply, setTextsNeedReply] = useState(false);   // within the Texts view: only unanswered

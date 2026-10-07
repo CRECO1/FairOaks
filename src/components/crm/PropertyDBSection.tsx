@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import dynamic from 'next/dynamic';
 
 const PropertyMap = dynamic(() => import('./PropertyMap'), {
@@ -240,7 +241,7 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   const [assetFilter, setAssetFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [active, setActive]     = useState<Property | null>(null);
-  const [view, setView]         = useState<'rows' | 'cards' | 'map'>('rows');
+  const [view, setView]         = useRememberedState<'rows' | 'cards' | 'map'>('propertydb-view', 'rows', ['rows', 'cards', 'map']);
   const [sort, setSort]         = useState<{ key: string; dir: 1 | -1 }>({ key: '', dir: 1 });
   const [sourceFilter, setSourceFilter]   = useState('');
   const [listingFilter, setListingFilter] = useState('');
@@ -272,6 +273,11 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
   }, [businessUnit, authHeaders, onToast, onCount]);
 
   useEffect(() => { load(); }, [load]);
+  // Reopen the property card you had open before a refresh (lib/view-memory).
+  useRememberedSelection(`${businessUnit}:propertydb`, active?.id, !loading && properties.length > 0, id => {
+    const p = properties.find(x => x.id === id);
+    if (p) setActive(p);
+  });
 
   const assetTypes = useMemo(
     () => Array.from(new Set(properties.map(p => p.asset_type).filter(Boolean))).sort() as string[],

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
@@ -289,6 +290,18 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   }, [businessUnit, authToken]); // eslint-disable-line
 
   useEffect(() => { loadListings(); }, [loadListings]);
+
+  // Reopen the property you had open before a refresh, on the same tab (lib/view-memory).
+  useRememberedSelection(`${businessUnit}:listing`, active?.id, !loading && listings.length > 0, id => {
+    const l = listings.find(x => x.id === id);
+    if (!l) return;
+    openListing(l);
+    const tab = recallView(`${businessUnit}:listing-tab`);
+    const tabs = ['info', 'documents', 'rentroll', 'recon', 'deals', 'photos', 'contacts', 'team'] as const;
+    const saved = tabs.find(t => t === tab);
+    if (saved) setActiveTab(saved);
+  });
+  useEffect(() => { if (active) rememberView(`${businessUnit}:listing-tab`, activeTab); }, [active, activeTab, businessUnit]);
 
   const loadFiles = useCallback(async (listingId: string) => {
     setFilesLoading(true);

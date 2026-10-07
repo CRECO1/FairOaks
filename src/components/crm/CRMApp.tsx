@@ -12,6 +12,7 @@ import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope a
 import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import { agentTitle } from '@/lib/agent-title';
+import { recallView, rememberView, useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
@@ -694,7 +695,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Admins can view/work another agent's Call Queue ('' = your own).
   const [callViewAgentId, setCallViewAgentId] = useState('');
   const [callViewTasks, setCallViewTasks] = useState<CRMTask[]>([]);
-  const [tasksSubTab, setTasksSubTab] = useState<'tasks' | 'calls' | 'leases'>('tasks');
+  const [tasksSubTab, setTasksSubTab] = useRememberedState<'tasks' | 'calls' | 'leases'>('tasks-sub', 'tasks', ['tasks', 'calls', 'leases']);
   // Dashboard: the reporting charts collapse into a "Numbers" section so the
   // action center (what needs attention today/this week) leads. Default closed.
   const [showNumbers, setShowNumbers] = useState(false);
@@ -755,7 +756,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [enrollmentsByClient, setEnrollmentsByClient] = useState<Record<string, { campaign_name: string; active: boolean; campaign_status?: string }[]>>({});
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
   const [campaignView, setCampaignView] = useState<'list' | 'builder' | 'detail'>('list');
-  const [campaignTab, setCampaignTab] = useState<'enrolled' | 'history' | 'preview' | 'settings'>('enrolled');
+  const [campaignTab, setCampaignTab] = useRememberedState<'enrolled' | 'history' | 'preview' | 'settings'>('campaign-tab', 'enrolled', ['enrolled', 'history', 'preview', 'settings']);
   const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
   const [campaignEnrollmentsLoading, setCampaignEnrollmentsLoading] = useState(false);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
@@ -827,7 +828,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
   const [activeActionPlan, setActiveActionPlan] = useState<ActionPlan | null>(null);
   const [actionPlanView, setActionPlanView] = useState<'list' | 'builder' | 'detail'>('list');
-  const [actionPlanTab, setActionPlanTab] = useState<'enrolled' | 'history' | 'preview' | 'settings'>('enrolled');
+  const [actionPlanTab, setActionPlanTab] = useRememberedState<'enrolled' | 'history' | 'preview' | 'settings'>('action-plan-tab', 'enrolled', ['enrolled', 'history', 'preview', 'settings']);
   const [actionPlanEnrollments, setActionPlanEnrollments] = useState<ActionPlanEnrollment[]>([]);
   const [actionPlanLoading, setActionPlanLoading] = useState(false);
   const [planSteps, setPlanSteps] = useState<ActionPlanStep[]>([]);
@@ -1078,6 +1079,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (typeof window !== 'undefined') window.location.hash = page;
   }, [page]);
 
+  // ── Reopen what was open inside the page before a refresh (lib/view-memory) ──
+  // The hash brings back the page; these bring back the contact card, campaign or
+  // action plan you had open, instead of dropping you on the list.
+  useRememberedSelection(`${businessUnit}:contact`, activeClient?.id, clients.length > 0, id => {
+    const c = clients.find(x => x.id === id);
+    if (c) setActiveClient(c);
+  });
+  useRememberedSelection(`${businessUnit}:campaign`, campaignView === 'detail' ? activeCampaign?.id : null, campaigns.length > 0, id => {
+    const camp = campaigns.find(c => c.id === id);
+    if (!camp) return;
+    setActiveCampaign(camp); loadCampaignEnrollments(camp.id); loadCampaignSends(camp.id); setCampaignView('detail');
+  });
+  useRememberedSelection(`${businessUnit}:action-plan`, actionPlanView === 'detail' ? activeActionPlan?.id : null, actionPlans.length > 0, id => {
+    const plan = actionPlans.find(x => x.id === id);
+    if (!plan) return;
+    setActiveActionPlan(plan); loadActionPlanEnrollments(plan.id); setPreviewStepIdx(0);
+    fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setDetailSteps(j.plan?.steps ?? [])).catch(() => {});
+    setActionPlanView('detail');
+  });
+  // The open deal's tab (the deal itself comes back in loadDeals via activeDealId).
+  useEffect(() => { if (activeDeal) rememberView('deal-tab', dealTab); }, [activeDeal, dealTab]);
+
   // Export-approval queue. Loaded whenever the contacts page is opened, which
   // is both where the owner answers requests and where an agent finds out
   // whether theirs was answered.
@@ -1244,8 +1267,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         // openDeal loads everything the modal shows (forms, envelopes, commission) —
         // loading only emails + uploads left the Docs tab without its forms after a refresh.
         openDeal(saved);
-        setDealTab('emails');
-        sessionStorage.removeItem('activeDealId');
+        // Back on the tab you were on (it used to always jump to Emails).
+        const tab = recallView('deal-tab');
+        const tabs = ['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const;
+        setDealTab(tabs.find(t => t === tab) ?? 'overview');
+        // Not removed here: openDeal re-saves it, and removing it made a SECOND refresh
+        // drop you out of the deal. Closing the deal clears it.
       }
     }
   }, [businessUnit]); // eslint-disable-line
