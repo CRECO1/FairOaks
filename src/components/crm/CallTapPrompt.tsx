@@ -119,7 +119,7 @@ export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppr
   );
   return (
     <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1100, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 20 }} onClick={dismiss}>
-      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, width: '100%', maxWidth: 440, padding: '18px 18px 20px', boxShadow: '0 24px 80px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
+      <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: isMobile ? '16px 16px 0 0' : 16, width: '100%', maxWidth: 440, padding: isMobile ? '18px 18px 78px' : '18px 18px 20px', boxShadow: '0 24px 80px rgba(0,0,0,.3)', fontFamily: "'DM Sans',sans-serif" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#111' }}>How did the call go?</div>
