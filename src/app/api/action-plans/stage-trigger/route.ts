@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
   try {
     const { stage, clientId, agentId, businessUnit } = await req.json();
     if (!stage || !clientId) return NextResponse.json({ enrolled: 0 });
+    // A closed deal's congratulations / review-request email is the AGENT's to send — they press
+    // Enroll in the "Deal Closed!" popup. It must never go out on its own when a card moves
+    // (it used to fire here on a board drag but not from the deal card, and then again from the popup).
+    if (/^closed$/i.test(String(stage).trim())) return NextResponse.json({ enrolled: 0, skipped: 'closed deals are agent-initiated' });
 
     const supabase = db();
 

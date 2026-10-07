@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
+import { resolveActionPlanFrom } from '@/lib/action-plan-from';
+import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 
 function fromAddress(businessUnit?: string) {
   return businessUnit === 'commercial'
@@ -19,9 +21,9 @@ function resendClient(businessUnit?: string) {
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
-}): string {
-  const BASE_URL = 'https://www.fairoaksrealtygroup.com';
-  const unsubscribeUrl = `${BASE_URL}/api/campaigns/unsubscribe?token=${ctx.client.unsubscribe_token}`;
+}, businessUnit?: string): string {
+  // CRECO (commercial) emails unsubscribe on crecotx.com; this used to hard-code the Fair Oaks URL.
+  const unsubscribeUrl = unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token);
   return template
     .replaceAll('{{first_name}}', ctx.client.first_name || '')
     .replaceAll('{{last_name}}', ctx.client.last_name || '')
@@ -76,7 +78,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Fetch the plan
   const { data: plan } = await supabase
     .from('crm_action_plans')
-    .select('id, name, status, business_unit')
+    .select('id, name, status, business_unit, from_name, from_email')
     .eq('id', planId)
     .single();
 
@@ -125,6 +127,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ skipped: true, reason: 'no steps in plan' });
   }
 
+  // The same email must not go to the same person twice in a week (e.g. the agent clicks Enroll
+  // again). The enrollment POST just reset this enrollment to "active, step 1, due now", so a plain
+  // skip would let the 15-minute cron send it anyway — close the enrollment out as well.
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const { data: dup } = await supabase.from('crm_action_plan_sends').select('sent_at')
+    .eq('plan_id', planId).eq('client_id', client.id).eq('step_id', step.id).eq('status', 'sent').gte('sent_at', weekAgo)
+    .order('sent_at', { ascending: false }).limit(1).maybeSingle();
+  if (dup) {
+    await supabase.from('crm_action_plan_enrollments').update({ active: false, completed_at: now, next_step_at: null }).eq('id', enrollment.id);
+    return NextResponse.json({ sent: false, skipped: true, reason: 'already_sent', sent_at: dup.sent_at });
+  }
+
   const ctx = {
     client: {
       first_name: client.first_name,
@@ -143,18 +157,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   let status: 'sent' | 'skipped' | 'failed' = 'sent';
   let errorMsg: string | null = null;
+  let trackingId: string | null = null, sentSubject: string | null = null, providerId: string | null = null;
 
   try {
     if (step.type === 'email') {
-      const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx);
-      const body = applyMergeFields(step.body || '', ctx);
+      const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx, plan.business_unit);
+      trackingId = newTrackingId();
+      sentSubject = subject;
+      const body = withOpenPixel(applyMergeFields(step.body || '', ctx, plan.business_unit), trackingId);   // open tracking
       const result = await resendClient(plan.business_unit).emails.send({
-        from: fromAddress(plan.business_unit),
+        // Sends as the plan's named sender (e.g. Brian Blanco) when one is set, else the brand address.
+        from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),
         to: client.email,
         subject,
         html: body,
       });
       if (result.error) throw new Error(result.error.message);
+      providerId = result.data?.id ?? null;
     } else if (step.type === 'sms') {
       status = 'skipped';
       errorMsg = 'SMS not yet configured';
@@ -178,6 +197,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     agent_id: agentLookupId,
     type: step.type === 'email' ? 'email' : step.type === 'sms' ? 'sms' : 'note',
     notes: `[Action Plan: ${plan.name} — Step ${stepOrder}] ${status === 'failed' ? 'FAILED: ' + errorMsg : status === 'skipped' ? 'Skipped: ' + errorMsg : 'Sent immediately on enrollment'}`,
+  }]);
+
+  // Record the send (the automatic path always did; this one didn't, so it was invisible to open
+  // tracking, the "already sent" check, and the plan's send counts).
+  await supabase.from('crm_action_plan_sends').insert([{
+    plan_id: planId, client_id: client.id, step_id: step.id, enrollment_id: enrollment.id, type: step.type,
+    status, subject: sentSubject, tracking_id: trackingId, provider_id: providerId, error_message: errorMsg,
   }]);
 
   if (status === 'sent') {

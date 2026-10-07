@@ -66,7 +66,7 @@ interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; t
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
-interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
+interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; audience?: string | null; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
 interface ActionPlanStep { id?: string; plan_id?: string; step_order: number; type: 'email' | 'sms' | 'task' | 'note'; delay_days: number; subject?: string; body: string; }
 interface ActionPlanEnrollment { id: string; plan_id: string; client_id: string; current_step: number; next_step_at: string | null; active: boolean; started_at: string; client?: Client; }
 interface Deal { id: string; client_id?: string; tagged_contact_ids?: string[]; tags?: string[]; client: string; client_email: string; client_phone: string; type: string; property: string; value: number; earned_commission?: number | null; agent_id: string; assigned_agent_ids: string[]; stage: string; notes: string; lost_reason?: string; listing_id?: string | null; representation_side?: string | null; created_at: string; last_touch: string; emails?: DealEmail[]; }
@@ -888,6 +888,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [closedEnrollPlanIds, setClosedEnrollPlanIds] = useState<string[]>([]);
   const [closedEnrollCampaignIds, setClosedEnrollCampaignIds] = useState<string[]>([]);
   const [closedEnrolling, setClosedEnrolling] = useState(false);
+  const [closedSentPlans, setClosedSentPlans] = useState<Record<string, string>>({}); // planId → ISO of the last send to this client (30d)
 
   // Action plan step preview tabs (idx → 'code' | 'preview')
   const [stepViewMode, setStepViewMode] = useState<Record<number, 'code' | 'preview'>>({});
@@ -3330,7 +3331,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (!deal.client_id) return;
     setClosedEnrollPlanIds([]);
     setClosedEnrollCampaignIds([]);
+    setClosedSentPlans({});
     setClosedDealPrompt(deal);
+    // Which plans already went to this client recently — so the agent can't double-send by accident.
+    fetch(`/api/action-plans/sent-to?client_id=${encodeURIComponent(deal.client_id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!j?.sent) return;
+        const m: Record<string, string> = {};
+        for (const x of j.sent as { plan_id: string; sent_at: string }[]) m[x.plan_id] = x.sent_at;
+        setClosedSentPlans(m);
+      })
+      .catch(() => {});
   }
 
   async function handleClosedEnroll() {
@@ -3339,20 +3351,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const clientId = closedDealPrompt.client_id;
     const agentId = session!.user.id;
 
-    // Enroll in action plans, then immediately fire step 1 (don't wait for cron)
+    // Enroll in action plans, then immediately fire step 1 (don't wait for cron). The agent pressing
+    // Enroll IS the send — closed-deal emails never go out on their own.
+    let planSent = 0, planAlready = 0, planFailed = 0;
     await Promise.all(
       closedEnrollPlanIds.map(async planId => {
-        await fetch(`/api/action-plans/${planId}/enrollments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_ids: [clientId], agent_id: agentId }),
-        });
-        // Send step 1 right now instead of waiting up to 15 min for the cron
-        await fetch(`/api/action-plans/${planId}/send-now`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: clientId, agent_id: agentId }),
-        });
+        try {
+          await fetch(`/api/action-plans/${planId}/enrollments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_ids: [clientId], agent_id: agentId }),
+          });
+          const r = await fetch(`/api/action-plans/${planId}/send-now`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: clientId, agent_id: agentId }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (j?.skipped && j?.reason === 'already_sent') planAlready++;
+          else if (r.ok && j?.sent !== false) planSent++;
+          else planFailed++;
+        } catch { planFailed++; }
       })
     );
 
@@ -3367,8 +3386,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       )
     );
 
-    const total = closedEnrollPlanIds.length + closedEnrollCampaignIds.length;
-    if (total > 0) showToast(`✅ Enrolled in ${total} item${total !== 1 ? 's' : ''}`);
+    const parts: string[] = [];
+    if (planSent) parts.push(`${planSent} email${planSent !== 1 ? 's' : ''} sent`);
+    if (planAlready) parts.push(`${planAlready} already sent recently — skipped`);
+    if (closedEnrollCampaignIds.length) parts.push(`enrolled in ${closedEnrollCampaignIds.length} campaign${closedEnrollCampaignIds.length !== 1 ? 's' : ''}`);
+    if (planFailed) parts.push(`${planFailed} failed — check the Action Plans log`);
+    if (parts.length) showToast(`${planFailed ? '⚠️' : '✅'} ${parts.join(' · ')}`);
     setClosedEnrolling(false);
     setClosedDealPrompt(null);
   }
@@ -3381,8 +3404,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (deal) {
       if (newStage === 'Closed') triggerClosedPrompt({ ...deal, stage: newStage });
       if (newStage === 'Lost') triggerLostPrompt({ ...deal, stage: newStage });
-      // Fire stage-change action plans
-      if (deal.client_id) {
+      // Fire stage-change action plans — but never for Closed: that email is the agent's to push via
+      // the "Deal Closed!" popup above, so a card drag can't send a congratulations on its own.
+      if (deal.client_id && newStage !== 'Closed') {
         fetch('/api/action-plans/stage-trigger', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -11777,28 +11801,47 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
 
             <div style={{ padding: '20px 24px', maxHeight: 400, overflowY: 'auto' }}>
-              {/* Action Plans */}
-              {actionPlans.filter(p => p.status === 'active').length > 0 && (
-                <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>⚡ Action Plans</div>
-                  {actionPlans.filter(p => p.status === 'active').map(plan => (
-                    <label key={plan.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: 'pointer', borderBottom: '1px solid #f3f4f6' }}>
-                      <input
-                        type="checkbox"
-                        checked={closedEnrollPlanIds.includes(plan.id)}
-                        onChange={e => setClosedEnrollPlanIds(prev =>
-                          e.target.checked ? [...prev, plan.id] : prev.filter(id => id !== plan.id)
-                        )}
-                        style={{ marginTop: 2, accentColor: '#16a34a', width: 15, height: 15, flexShrink: 0 }}
-                      />
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{plan.name}</div>
-                        {plan.description && <div style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{plan.description}</div>}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
+              {/* Action Plans — only plans that fit this client's type; the matching Closed & Won plan is
+                  suggested first but never pre-checked (the agent decides what goes out). */}
+              {(() => {
+                const ct = String(clients.find(c => c.id === closedDealPrompt.client_id)?.type || '').toLowerCase();
+                const fits = (p: ActionPlan) => !p.audience || p.audience.split(',').map(x => x.trim().toLowerCase()).filter(Boolean).includes(ct);
+                const suggested = (p: ActionPlan) => p.trigger_type === 'stage_change' && /^closed$/i.test(p.trigger_value || '') && !!p.audience && fits(p);
+                const list = actionPlans
+                  .filter(p => p.status === 'active' && fits(p))
+                  .sort((x, y) => Number(suggested(y)) - Number(suggested(x)));
+                if (!list.length) return null;
+                return (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>⚡ Action Plans</div>
+                    {list.map(plan => {
+                      const sentAt = closedSentPlans[plan.id];
+                      const recent = !!sentAt && Date.now() - new Date(sentAt).getTime() < 7 * 86400000;
+                      return (
+                        <label key={plan.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', cursor: recent ? 'not-allowed' : 'pointer', opacity: recent ? 0.55 : 1, borderBottom: '1px solid #f3f4f6' }}>
+                          <input
+                            type="checkbox"
+                            disabled={recent}
+                            checked={!recent && closedEnrollPlanIds.includes(plan.id)}
+                            onChange={e => setClosedEnrollPlanIds(prev =>
+                              e.target.checked ? [...prev, plan.id] : prev.filter(id => id !== plan.id)
+                            )}
+                            style={{ marginTop: 2, accentColor: '#16a34a', width: 15, height: 15, flexShrink: 0 }}
+                          />
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>
+                              {plan.name}
+                              {suggested(plan) && !recent && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#dcfce7', borderRadius: 999, padding: '2px 8px' }}>Suggested</span>}
+                              {recent && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', borderRadius: 999, padding: '2px 8px' }}>✓ Sent {new Date(sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                            </div>
+                            {plan.description && <div style={{ fontSize: 13, color: '#6b7280', marginTop: 1 }}>{plan.description}</div>}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
 
               {/* Campaigns */}
               {campaigns.filter(c => c.status === 'active').length > 0 && (
