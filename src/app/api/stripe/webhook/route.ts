@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { stripe, STRIPE_WEBHOOK_SECRET } from '@/lib/stripe';
 import { adminClient, SUPABASE_URL } from '@/lib/supabase-admin';
+import { recordIntegrationFailure } from '@/lib/integration-alert';
 
 // Stripe signature verification needs the raw body + the Node runtime.
 export const runtime = 'nodejs';
@@ -57,6 +58,22 @@ async function provisionFromCheckout(session: Stripe.Checkout.Session) {
     typeof session.subscription === 'string' ? session.subscription : session.subscription?.id;
   if (!subscriptionId) {
     console.warn('[provision] checkout.session.completed with no subscription — skipping');
+    return;
+  }
+
+  // SAFETY GATE. Provisioning drops a brand-new customer into THIS database as an 'admin' of a new org —
+  // but org isolation only exists on office_suites, and admins bypass every business-unit check, so a paying
+  // stranger would see the brokerage's own contacts, deals and documents. Until the CRM is genuinely
+  // multi-tenant, don't provision here: raise an alert so the order is handled by hand (or in a separate
+  // project), and return normally so Stripe doesn't retry. Opt back in with ALLOW_TENANT_PROVISIONING=true.
+  if (process.env.ALLOW_TENANT_PROVISIONING !== 'true') {
+    await recordIntegrationFailure(
+      'stripe_provisioning',
+      `Stripe checkout.session.completed for ${session.customer_details?.email ?? session.customer_email ?? 'unknown email'} ` +
+      `(subscription ${subscriptionId}) was NOT auto-provisioned — tenant provisioning is disabled because this CRM ` +
+      `database is not tenant-isolated. Handle this order manually.`,
+      { subject: 'Stripe order needs manual provisioning' },
+    );
     return;
   }
 

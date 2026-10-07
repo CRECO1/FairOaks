@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, runTool, describeWrite, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
+import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
-import { signPendingWrite, verifyPendingWrite } from '@/lib/copilot-confirm';
+import { signPendingWrite, verifyPendingWrite, consumePendingWrite } from '@/lib/copilot-confirm';
 import { WEB_TOOLS, compactWebTurns } from '@/lib/copilot-web';
 
 export const runtime = 'nodejs';
@@ -101,6 +101,8 @@ export async function POST(req: NextRequest) {
     for (const token of confirm.slice(0, 5)) {
       const call = verifyPendingWrite(token, toolCtx);
       if (!call) { confirmed.push({ summary: 'One action could not be confirmed', ok: false, error: 'That confirmation expired or was not valid — ask me again.' }); continue; }
+      // Single-use: a replayed confirm must not run an outward action a second time.
+      if (!(await consumePendingWrite(call.nonce))) { confirmed.push({ summary: 'One action was not run', ok: false, error: 'That confirmation was already used — ask me again if you want it done again.' }); continue; }
       const summary = describeWrite(call.name, call.input);
       const result = await runTool(call.name, call.input, toolCtx);
       await logToolCall(toolCtx, req, call.name, call.input, 'executed', result);
@@ -176,7 +178,7 @@ export async function POST(req: NextRequest) {
           }
           await logToolCall(toolCtx, req, block.name, input, 'executed', content);
         } else if (WRITE_TOOLS.has(block.name)) {
-          pendingWrites.push({ id: signPendingWrite(toolCtx, block.name, input), name: block.name, summary: describeWrite(block.name, input) });
+          pendingWrites.push({ id: signPendingWrite(toolCtx, block.name, input), name: block.name, summary: await describeWriteRich(block.name, input, toolCtx) });
           content = JSON.stringify({ status: 'NOT_EXECUTED', reason: 'Queued for the agent\'s one-click confirmation in the app. In one short line, restate what will happen. Do not ask a yes/no question and do not retry.' });
           await logToolCall(toolCtx, req, block.name, input, 'queued_for_confirmation');
         } else {

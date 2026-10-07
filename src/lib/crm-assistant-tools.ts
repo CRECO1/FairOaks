@@ -735,6 +735,27 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
   }
 }
 
+/**
+ * The confirmation text the agent actually APPROVES. For anything that emails a real person this must show WHO and WHAT —
+ * the plain describeWrite only named the subject, so an injected or mistaken draft to the wrong address (or with a
+ * different body than the agent read in chat) could be approved blind. Resolves the real recipient from the record and
+ * prints the full body. Everything else falls through to describeWrite.
+ */
+export async function describeWriteRich(name: string, input: Record<string, any>, ctx: AgentCtx): Promise<string> {
+  if (name === 'send_email') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const { data: c } = await db.from('crm_clients').select('first_name, last_name, business_name, email, business_unit').eq('id', input.contact_id).maybeSingle();
+      if (c && (!ctx.businessUnit || c.business_unit === ctx.businessUnit)) {
+        const who = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || 'contact';
+        const body = String(input.body ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>\nSubject: ${input.subject}\n\n${body.slice(0, 1200)}${body.length > 1200 ? '…' : ''}`;
+      }
+    } catch { /* fall through to the generic text */ }
+  }
+  return describeWrite(name, input);
+}
+
 // A short human-readable summary of a proposed write, for the confirmation prompt.
 export function describeWrite(name: string, input: Record<string, any>): string {
   switch (name) {
@@ -744,7 +765,7 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'start_form': return `Start a new form document`;
-    case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => s.name || s.email).join(', ')} — this emails them the document`;
+    case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;
     case 'send_email': return `📧 Send the email “${input.subject}” from your Gmail — this emails the contact`;
     case 'schedule_event': return `📅 Add “${input.title}” to your calendar on ${input.date}`;
     case 'create_contact': return `Add contact ${input.business_name || `${input.first_name ?? ''} ${input.last_name ?? ''}`.trim()} (${input.type})`;

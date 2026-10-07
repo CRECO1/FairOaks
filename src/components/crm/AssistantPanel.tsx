@@ -155,7 +155,7 @@ export default function AssistantPanel({ token, onClose, onNavigate }: {
       {pending.length > 0 && !loading && (
         <div style={{ padding: '12px 16px', background: '#fffbeb', borderTop: '1px solid #fde68a', flexShrink: 0 }}>
           <div style={{ fontSize: 13, color: '#92400e', fontWeight: 600, marginBottom: 8 }}>Confirm to run:</div>
-          {pending.map((p, i) => <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 6 }}>• {p.summary}</div>)}
+          {pending.map((p, i) => <div key={i} style={{ fontSize: 13, color: '#78350f', marginBottom: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>• {p.summary}</div>)}
           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
             <button onClick={() => send('', pending.map(p => p.id))} style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 8, padding: '11px 18px', fontWeight: 700, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Confirm &amp; run</button>
             <button onClick={() => { setPending([]); send('Actually, don’t do that.'); }} style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, padding: '11px 18px', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
