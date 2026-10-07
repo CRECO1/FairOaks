@@ -20,6 +20,8 @@
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import SiteEngagement from '@/components/crm/SiteEngagement';
+import SiteActivity from '@/components/crm/SiteActivity';
 
 const GOLD = '#c9922c';
 const GOLD_DEEP = '#9A6E18';
@@ -38,6 +40,12 @@ interface RecentRow {
   journey: JourneyStep[] | null;
   time_on_site_sec: number | null;
   page_views: number | null;
+  client_id?: string | null;
+  visitor_id?: string | null;
+  visit_count?: number | null;
+  first_touch?: Record<string, unknown> | null;
+  click_ids?: Record<string, string> | null;
+  env?: Record<string, unknown> | null;
 }
 interface Ga {
   status: { connected: boolean; reason?: string; detail?: string; via?: 'oauth' | 'service_account'; actionUrl?: string };
@@ -260,7 +268,7 @@ function GaConnected({ label, via, token }: { label: string; via?: string; token
 }
 
 interface LiveFeedItem { sid: string; site: string; path: string; title: string | null; source: string; loc: string | null; device: string | null; at: string }
-interface LiveData { now: string; activeCount: number; activeBySite: { label: string; value: number }[]; last30min: number; feed: LiveFeedItem[] }
+interface LiveData { now: string; activeCount: number; activeBySite: { label: string; value: number }[]; last30min: number; feed: LiveFeedItem[]; events?: { at: string; site: string; type: string; label: string | null; path: string | null; contact: string | null }[] }
 
 /** Relative "time ago" for the live feed — coarse, recomputed on each poll. */
 function ago(iso: string): string {
@@ -430,6 +438,20 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
             <span style={{ fontSize: 11, color: 'rgba(255,255,255,.4)', alignSelf: 'center' }}>{live?.last30min ?? 0} views · 30 min</span>
           </span>
         </div>
+        {live?.events && live.events.length > 0 && (
+          <div style={{ marginBottom: 10, padding: '8px 10px', background: 'rgba(201,146,44,.14)', border: '1px solid rgba(201,146,44,.35)', borderRadius: 8 }}>
+            <div style={{ fontSize: 10, letterSpacing: 1.4, textTransform: 'uppercase', color: GOLD, fontWeight: 800, marginBottom: 4 }}>High-intent actions</div>
+            {live.events.slice(0, 6).map((e, i) => (
+              <div key={i} style={{ fontSize: 12.5, color: '#fff', padding: '2px 0' }}>
+                <span style={{ color: 'rgba(255,255,255,.5)', fontSize: 11, display: 'inline-block', width: 40 }}>{ago(e.at)}</span>
+                <strong>{e.contact ?? 'A visitor'}</strong>{' '}
+                {({ phone_tap: 'tapped to call', email_tap: 'tapped to email', text_tap: 'tapped to text', download: 'downloaded', cta_click: 'clicked', lead_form_started: 'started a form', email_click_identified: 'clicked through from an email' } as Record<string, string>)[e.type] ?? e.type}
+                {e.label && e.type !== 'email_click_identified' ? ` “${e.label}”` : ''}
+                <span style={{ color: 'rgba(255,255,255,.5)' }}> · {siteShort(e.site)}{e.path ? ` ${e.path}` : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
         {(!live || live.feed.length === 0) ? (
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,.5)' }}>
             {live ? 'No activity in the last 30 minutes — pageviews appear here the instant someone browses either site.' : 'Loading live activity…'}
@@ -499,6 +521,9 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
           </div>
         )}
       </div>
+
+      {/* ── Visitor engagement (first-party tracker v2) ── */}
+      <SiteEngagement authToken={token} isMobile={isMobile} site={site} days={days} />
 
       {/* ── Attribution health — demoted to a strip ── */}
       <div style={{ ...card, padding: '12px 18px' }}>
@@ -638,6 +663,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
               const pv = r.page_views ?? (r.journey ? r.journey.length : null);
               const dur = fmtDur(r.time_on_site_sec);
               const hasJourney = !!(r.journey && r.journey.length);
+              const canOpen = hasJourney || !!r.client_id;
               const open = expanded === i;
               const isNew = newKeys.has(`${r.name}|${r.date}`);
               return (
@@ -652,14 +678,17 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                   <div style={{ fontSize: 12, color: r.channel ? GOLD_DEEP : FAINT, marginTop: 2, fontWeight: r.channel ? 600 : 400 }}>
                     {r.channel ?? 'no source recorded'}{r.campaign ? ` · ${r.campaign}` : ''}
                   </div>
-                  {(hasJourney || dur) && (
-                    <button type="button" onClick={() => hasJourney && setExpanded(open ? null : i)}
-                      style={{ marginTop: 5, background: 'none', border: 'none', padding: 0, cursor: hasJourney ? 'pointer' : 'default', fontSize: 12, color: GOLD_DEEP, fontWeight: 600 }}>
-                      {pv != null ? `${pv} ${pv === 1 ? 'page' : 'pages'}` : ''}{dur ? `${pv != null ? ' · ' : ''}${dur} on site` : ''}{hasJourney ? ` ${open ? '▾' : '▸'}` : ''}
+                  {(canOpen || dur) && (
+                    <button type="button" onClick={() => canOpen && setExpanded(open ? null : i)}
+                      style={{ marginTop: 5, background: 'none', border: 'none', padding: 0, cursor: canOpen ? 'pointer' : 'default', fontSize: 12, color: GOLD_DEEP, fontWeight: 600 }}>
+                      {pv != null ? `${pv} ${pv === 1 ? 'page' : 'pages'}` : ''}{dur ? `${pv != null ? ' · ' : ''}${dur} on site` : ''}{!pv && !dur ? 'Website activity' : ''}{canOpen ? ` ${open ? '▾' : '▸'}` : ''}
                     </button>
                   )}
-                  {open && hasJourney && (
-                    <div style={{ marginTop: 6 }}><JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} /></div>
+                  {open && canOpen && (
+                    <div style={{ marginTop: 6 }}>
+                      {hasJourney && <JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} />}
+                      {r.client_id && <div style={{ marginTop: hasJourney ? 10 : 0 }}><SiteActivity clientId={r.client_id} authToken={token} compact /></div>}
+                    </div>
                   )}
                 </div>
               );
@@ -680,12 +709,13 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                   const pv = r.page_views ?? (r.journey ? r.journey.length : null);
                   const dur = fmtDur(r.time_on_site_sec);
                   const hasJourney = !!(r.journey && r.journey.length);
+                  const canOpen = hasJourney || !!r.client_id;
                   const open = expanded === i;
                   const isNew = newKeys.has(`${r.name}|${r.date}`);
                   const td: React.CSSProperties = { padding: '7px 10px 7px 0', borderBottom: '1px solid #f5f5f5' };
                   return (
                     <Fragment key={i}>
-                      <tr onClick={hasJourney ? () => setExpanded(open ? null : i) : undefined} style={{ ...(hasJourney ? { cursor: 'pointer' } : {}), ...(isNew ? { background: '#fffbeb' } : {}) }}>
+                      <tr onClick={canOpen ? () => setExpanded(open ? null : i) : undefined} style={{ ...(canOpen ? { cursor: 'pointer' } : {}), ...(isNew ? { background: '#fffbeb' } : {}) }}>
                         <td style={{ ...td, fontWeight: 600, color: INK, boxShadow: isNew ? 'inset 3px 0 0 #16a34a' : undefined }}>
                           {r.name}
                           {isNew && <span style={{ marginLeft: 7, fontSize: 9, letterSpacing: 0.5, fontWeight: 800, color: '#fff', background: '#16a34a', padding: '1px 6px', borderRadius: 999 }}>NEW</span>}
@@ -697,22 +727,27 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
                         <td style={{ ...td, color: '#374151' }}>{r.campaign ?? '—'}</td>
                         <td style={{ ...td, color: MUTE, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.landing_page ?? ''}>{r.landing_page ?? '—'}</td>
                         <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                          {hasJourney ? (
+                          {canOpen ? (
                             <button type="button" onClick={(e) => { e.stopPropagation(); setExpanded(open ? null : i); }}
                               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, color: GOLD_DEEP, fontWeight: 600 }}>
-                              {pv} {pv === 1 ? 'page' : 'pages'}{dur ? ` · ${dur}` : ''} <span style={{ color: FAINT }}>{open ? '▾' : '▸'}</span>
+                              {hasJourney ? `${pv} ${pv === 1 ? 'page' : 'pages'}${dur ? ` · ${dur}` : ''}` : 'Website activity'} <span style={{ color: FAINT }}>{open ? '▾' : '▸'}</span>
                             </button>
                           ) : dur ? <span style={{ color: MUTE }}>{dur}</span> : <span style={{ color: FAINT }}>—</span>}
                         </td>
                       </tr>
-                      {open && hasJourney && (
+                      {open && canOpen && (
                         <tr>
-                          <td colSpan={8} style={{ padding: '0 10px 12px 0', borderBottom: '1px solid #f5f5f5', background: '#fcfbf8' }}>
-                            <div style={{ fontSize: 11, color: MUTE, margin: '2px 0 6px' }}>
-                              Entered on <strong style={{ color: '#374151' }}>{r.journey![0].p}</strong>
-                              {dur ? ` · ${dur} on site before submitting` : ''}
-                            </div>
-                            <JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} />
+                          <td colSpan={8} style={{ padding: '4px 10px 12px 0', borderBottom: '1px solid #f5f5f5', background: '#fcfbf8' }}>
+                            {hasJourney && (
+                              <>
+                                <div style={{ fontSize: 11, color: MUTE, margin: '2px 0 6px' }}>
+                                  Entered on <strong style={{ color: '#374151' }}>{r.journey![0].p}</strong>
+                                  {dur ? ` · ${dur} on site before submitting` : ''}
+                                </div>
+                                <JourneyTrail steps={r.journey!} totalSec={r.time_on_site_sec} />
+                              </>
+                            )}
+                            {r.client_id && <div style={{ marginTop: hasJourney ? 12 : 4 }}><SiteActivity clientId={r.client_id} authToken={token} /></div>}
                           </td>
                         </tr>
                       )}

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx, plan.business_unit);
       trackingId = newTrackingId();
       sentSubject = subject;
-      const body = withOpenPixel(applyMergeFields(step.body || '', ctx, plan.business_unit), trackingId);   // open tracking
+      const body = withOpenPixel(tagCampaignLinks(applyMergeFields(step.body || '', ctx, plan.business_unit), `plan-${campaignSlug(plan.name, plan.id)}`, client_id), trackingId);   // utm + signed contact token, then open tracking
       const result = await resendClient(plan.business_unit).emails.send({
         // Sends as the plan's named sender (e.g. Brian Blanco) when one is set, else the brand address.
         from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),

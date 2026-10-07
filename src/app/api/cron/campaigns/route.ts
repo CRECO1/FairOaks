@@ -313,7 +313,7 @@ export async function GET(req: NextRequest) {
           let renderedBody = applyMergeFields(withReport(campaign.email_body || ''), ctx, campaign.business_unit, perRecipient);
           // Tag on-domain links so GA4 attributes the click to Email + this campaign
           // (not "direct"). Runs after merge, before the open pixel is injected.
-          renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaign.name, campaign.id));
+          renderedBody = tagCampaignLinks(renderedBody, campaignSlug(campaign.name, campaign.id), client.id);
           bodyPreview = renderedBody.replace(/<[^>]*>/g, '').slice(0, 200);
 
           // Inject 1×1 tracking pixel just before </body> (or at end if no body tag)

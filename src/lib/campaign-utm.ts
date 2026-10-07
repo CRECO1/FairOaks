@@ -14,6 +14,8 @@
  * re-parsed/re-encoded), so an existing query string or #fragment is untouched.
  */
 
+import { signClientToken } from '@/lib/track-link';
+
 const OWNED_HOST = /^(?:www\.)?(?:crecotx\.com|fairoaksrealtygroup\.com|elkhornpoint\.com)$/i;
 
 /** "Quarterly Market Report" -> "quarterly-market-report" — the utm_campaign value. */
@@ -27,9 +29,17 @@ export function campaignSlug(name?: string | null, id?: string | null): string {
   return s || (id ? `id-${String(id).slice(0, 8)}` : 'campaign');
 }
 
-export function tagCampaignLinks(html: string, utmCampaign: string): string {
+/**
+ * @param clientId  when given, every on-domain link also carries `ctk` — a SIGNED token for this recipient. When
+ *                  they click through, the site's tracker sends it and the server links the visitor to the
+ *                  contact, so their website activity shows on the contact card. (Skips the same links the
+ *                  utm tagging skips — unsubscribe and /api/ endpoints never get either.)
+ */
+export function tagCampaignLinks(html: string, utmCampaign: string, clientId?: string | null): string {
   if (!html) return html;
   const campaign = encodeURIComponent(utmCampaign || 'campaign');
+  let ctk = '';
+  try { ctk = clientId ? signClientToken(clientId) : ''; } catch { ctk = ''; }
   return html.replace(/href=(["'])(https?:\/\/[^"'\s>]+)\1/gi, (match, quote: string, url: string) => {
     let host: string, path: string;
     try {
@@ -42,12 +52,16 @@ export function tagCampaignLinks(html: string, utmCampaign: string): string {
     if (!OWNED_HOST.test(host)) return match;                    // only domains we own
     if (/(^|\/)unsubscribe(\/|$)/i.test(path)) return match;     // never tag unsubscribe
     if (path.startsWith('/api/')) return match;                  // skip pixel / click-tracking
-    if (/[?&]utm_[a-z]+=/i.test(url)) return match;              // respect a hand-tagged link
+    const handTagged = /[?&]utm_[a-z]+=/i.test(url);             // respect a hand-tagged link's utm
+    if (handTagged && !ctk) return match;
+    if (/[?&]ctk=/i.test(url)) return match;
 
     const hashIdx = url.indexOf('#');
     const base = hashIdx >= 0 ? url.slice(0, hashIdx) : url;
     const frag = hashIdx >= 0 ? url.slice(hashIdx) : '';
     const sep = base.includes('?') ? '&' : '?';
-    return `href=${quote}${base}${sep}utm_source=email&utm_medium=email&utm_campaign=${campaign}${frag}${quote}`;
+    const utm = handTagged ? '' : `utm_source=email&utm_medium=email&utm_campaign=${campaign}`;
+    const parts = [utm, ctk ? `ctk=${ctk}` : ''].filter(Boolean).join('&');
+    return `href=${quote}${base}${sep}${parts}${frag}${quote}`;
   });
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
@@ -176,7 +177,7 @@ export async function GET(req: NextRequest) {
           errorMessage = 'No email address';
         } else {
           emailSubject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx, plan.business_unit);
-          const body = withOpenPixel(applyMergeFields(step.body || '', ctx, plan.business_unit), trackingId); // open-tracking pixel
+          const body = withOpenPixel(tagCampaignLinks(applyMergeFields(step.body || '', ctx, plan.business_unit), `plan-${campaignSlug(plan.name, plan.id)}`, client.id), trackingId); // utm + signed contact token, then open-tracking pixel
           // The Resend SDK RETURNS { error } rather than throwing — treating "no throw" as sent hid every
           // rejected send (rate limit, bad address, domain/key problem) as a success.
           const emailResult = await resendClient(plan.business_unit).emails.send({

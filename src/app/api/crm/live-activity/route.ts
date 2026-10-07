@@ -78,11 +78,36 @@ export async function GET(req: NextRequest) {
       at: r.created_at,
     }));
 
+    // High-intent actions in the same window (phone / email taps, downloads, button clicks, form starts,
+    // and known contacts arriving from our emails) — shown above the pageview feed.
+    let eventsOut: { at: string; site: string; type: string; label: string | null; path: string | null; contact: string | null }[] = [];
+    try {
+      let eq = adminClient().from('site_events')
+        .select('site, visitor_id, type, label, path, created_at')
+        .in('type', ['phone_tap', 'email_tap', 'text_tap', 'download', 'cta_click', 'lead_form_started', 'email_click_identified'])
+        .gte('created_at', since).order('created_at', { ascending: false }).limit(25);
+      if (site) eq = eq.eq('site', site);
+      const { data: evs } = await eq;
+      const vids = [...new Set((evs ?? []).map(e => e.visitor_id).filter(Boolean))] as string[];
+      const nameByVisitor = new Map<string, string>();
+      if (vids.length) {
+        const { data: links } = await adminClient().from('site_visitor_links').select('visitor_id, client_id').in('visitor_id', vids);
+        const cids = [...new Set((links ?? []).map(l => l.client_id as string))];
+        if (cids.length) {
+          const { data: cs } = await adminClient().from('crm_clients').select('id, first_name, last_name, business_name').in('id', cids);
+          const nm = new Map((cs ?? []).map(k => [k.id as string, [k.first_name, k.last_name].filter(Boolean).join(' ') || (k.business_name as string) || 'Contact']));
+          for (const l of links ?? []) { const n = nm.get(l.client_id as string); if (n) nameByVisitor.set(l.visitor_id as string, n); }
+        }
+      }
+      eventsOut = (evs ?? []).map(e => ({ at: e.created_at as string, site: e.site as string, type: e.type as string, label: (e.label as string) ?? null, path: (e.path as string) ?? null, contact: e.visitor_id ? (nameByVisitor.get(e.visitor_id as string) ?? null) : null }));
+    } catch { /* events are a bonus — never fail the live feed over them */ }
+
     return NextResponse.json({
       now: new Date(now).toISOString(),
       activeCount: activeSessions.size,
       activeBySite: [...bySite.entries()].map(([label, s]) => ({ label, value: s.size })).sort((a, b) => b.value - a.value),
       last30min: rows.length,
+      events: eventsOut,
       feed,
     });
   } catch (e) {

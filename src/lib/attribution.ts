@@ -28,6 +28,8 @@
  * party, 30-day TTL, no cross-site sync.
  */
 
+import { initTracker, trackPageview, trackBehavior, trackerPayload } from '@/lib/tracker';
+
 const COOKIE_NAME = 'forg_attr';
 const COOKIE_TTL_DAYS = 30;
 const MAX_FIELD = 200;
@@ -201,22 +203,11 @@ function sessionId(): string {
  * text/plain keeps it a CORS "simple request" — works cross-origin too.
  */
 export function sendPageviewBeacon(): void {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return;
-  const host = window.location.hostname;
-  if (/localhost|127\.0\.0\.1|\.local$/.test(host)) return;   // don't log dev traffic
-  try {
-    const a = readAttribution();
-    const payload = JSON.stringify({
-      site: host.replace(/^www\./, ''),
-      session_id: sessionId(),
-      path: window.location.pathname.slice(0, 512),
-      title: (document.title || '').slice(0, 300),
-      referrer: (document.referrer && !document.referrer.includes(host)) ? document.referrer.slice(0, 512) : '',
-      utm_source: a.utm_source, utm_medium: a.utm_medium, utm_campaign: a.utm_campaign,
-      utm_term: a.utm_term, utm_content: a.utm_content,
-    });
-    navigator.sendBeacon('/api/track/pageview', new Blob([payload], { type: 'text/plain' }));
-  } catch { /* analytics must never break a render */ }
+  if (typeof window === 'undefined') return;
+  // v2: the tracker adds the persistent visitor id, visit number, click ids, environment and the signed
+  // email-link token to the same beacon (see lib/tracker.ts).
+  initTracker('');
+  trackPageview(readAttribution());
 }
 
 /** Fire a GA4 event; mirrors lead submits to `generate_lead`. Never throws. */
@@ -239,6 +230,16 @@ export function trackEvent(name: string, params: Record<string, unknown> = {}): 
   } catch {
     // Analytics must never break the form.
   }
+
+  // First-party mirror: every named site event (form starts/submits, etc.) also lands in site_events so
+  // it shows on the lead's / contact's activity timeline in the CRM, not only in GA4.
+  try {
+    const meta: Record<string, string | number | boolean> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') meta[k] = v;
+    }
+    trackBehavior(name, typeof params.surface === 'string' ? params.surface : undefined, undefined, meta);
+  } catch { /* never break the form */ }
 
   // Mirror into Clarity so session replays can be filtered by the same event
   // names GA charts. Clarity takes a bare string rather than a params object,
@@ -319,6 +320,8 @@ export function attributionPayload(
     journey: steps,
     page_views: steps.length,
     time_on_site_sec: Math.round(Math.max(0, Date.now() - t0) / 1000),
+    // v2 visitor story: persistent visitor id, visit count, first touch, ad click ids, environment.
+    ...trackerPayload(),
     ...(surface ? { surface } : {}),
   };
 }

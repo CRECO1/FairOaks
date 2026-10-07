@@ -33,7 +33,7 @@ import { Resend } from 'resend';
 import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { screenSubmission } from '@/lib/bot-guard';
-import { channelFor, parseJourney, intOrNull } from '@/lib/lead-context';
+import { channelFor, parseJourney, intOrNull, visitorFields } from '@/lib/lead-context';
 import { stripClickTracking } from '@/lib/strip-click-tracking';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -93,6 +93,8 @@ export async function POST(req: NextRequest) {
     const t = stripClickTracking(v).trim();
     return t ? t.slice(0, max) : null;
   };
+  // v2 tracker fields forwarded by the sending site (visitor id, visit count, first touch, click ids, env).
+  const visitor = visitorFields(body as Record<string, unknown>);
   const attrFields: Record<string, string> = {};
   for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
                    'referrer', 'landing_page', 'page_path', 'page_title', 'surface',
@@ -103,7 +105,7 @@ export async function POST(req: NextRequest) {
   // Derive the channel when the sender gave us signals but no bucket, so
   // first-party numbers stay comparable across both sites.
   if (!attrFields.channel && (attrFields.referrer || attrFields.utm_medium || attrFields.utm_source)) {
-    attrFields.channel = channelFor(attrFields.referrer ?? null, attrFields.utm_medium ?? null, attrFields.utm_source ?? null);
+    attrFields.channel = channelFor(attrFields.referrer ?? null, attrFields.utm_medium ?? null, attrFields.utm_source ?? null, visitor.click_ids);
   }
   // Visit journey + dwell — jsonb/int, so they can't ride the string loop above.
   // A sender that forwards none (Crexi/LoopNet/Zapier) simply leaves them null.
@@ -114,6 +116,11 @@ export async function POST(req: NextRequest) {
   if (tos != null) journeyFields.time_on_site_sec = tos;
   const pv = intOrNull(body.page_views, 1000) ?? (journeySteps ? journeySteps.length : null);
   if (pv != null) journeyFields.page_views = pv;
+  if (visitor.visitor_id) journeyFields.visitor_id = visitor.visitor_id;
+  if (visitor.visit_count != null) journeyFields.visit_count = visitor.visit_count;
+  if (visitor.first_touch) journeyFields.first_touch = visitor.first_touch;
+  if (visitor.click_ids) journeyFields.click_ids = visitor.click_ids;
+  if (visitor.env) journeyFields.env = visitor.env;
 
   const extraTags = (body.tags as string[] | undefined) ?? [];
   // Webhook leads are commercial by default (Crexi, LoopNet, CoStar); override with business_unit param
@@ -189,7 +196,7 @@ export async function POST(req: NextRequest) {
   const dedupeCol = email ? 'email' : 'phone';
   const dedupeVal = email ?? phone!;
   const { data: existing } = await supabase.from('crm_clients')
-    .select('id, tags, lead_source, channel').eq(dedupeCol, dedupeVal).maybeSingle();
+    .select('id, tags, lead_source, channel, visitor_id').eq(dedupeCol, dedupeVal).maybeSingle();
 
   let clientId: string;
   let isNew = false;
@@ -205,8 +212,11 @@ export async function POST(req: NextRequest) {
       // knew the person — but a later direct visit must not overwrite the
       // original acquisition source either.
       ...(existing.channel ? {} : { ...attrFields, ...journeyFields }),
+      // A returning contact keeps their original acquisition source, but we still learn this browser's identity.
+      ...(existing.visitor_id ? {} : { ...(visitor.visitor_id ? { visitor_id: visitor.visitor_id } : {}), ...(visitor.env ? { env: visitor.env } : {}) }),
     }).eq('id', existing.id);
     clientId = existing.id;
+    if (visitor.visitor_id) await supabase.from('site_visitor_links').upsert({ visitor_id: visitor.visitor_id, client_id: clientId, source: 'lead_form' }, { onConflict: 'visitor_id' });
   } else {
     isNew = true;
     const unsubscribe_token = crypto.randomUUID();
@@ -248,6 +258,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not save lead' }, { status: 500 });
     }
     clientId = newClient.id;
+    if (visitor.visitor_id) await supabase.from('site_visitor_links').upsert({ visitor_id: visitor.visitor_id, client_id: clientId, source: 'lead_form' }, { onConflict: 'visitor_id' });
 
     // Speed-to-lead. Only for a NEWLY created contact — a repeat enquiry
     // from someone already in the book should not spawn a second chore.

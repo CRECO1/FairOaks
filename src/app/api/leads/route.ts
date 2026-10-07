@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
         page_path: attr.page_path, page_url: attr.page_url, page_title: attr.page_title,
         surface: attr.surface, geo: attr.geo, device: attr.device, channel: attr.channel,
         journey: attr.journey, time_on_site_sec: attr.time_on_site_sec, page_views: attr.page_views,
+        visitor_id: attr.visitor_id, visit_count: attr.visit_count, first_touch: attr.first_touch, click_ids: attr.click_ids, env: attr.env,
         // Stamp the site here too. crm_clients already carried it; leaving it off
         // the raw row meant the dashboard had to infer the site from the source
         // text for every FORG lead instead of reading it.
@@ -218,6 +219,7 @@ export async function POST(req: NextRequest) {
               surface: attr.surface, geo: attr.geo, device: attr.device,
               channel: attr.channel,
               journey: attr.journey, time_on_site_sec: attr.time_on_site_sec, page_views: attr.page_views,
+              visitor_id: attr.visitor_id, visit_count: attr.visit_count, first_touch: attr.first_touch, click_ids: attr.click_ids, env: attr.env,
               lead_site: 'fairoaksrealtygroup.com',
             }]).select('id').single();
 
@@ -231,6 +233,12 @@ export async function POST(req: NextRequest) {
                 { severity: 'degraded', subject: '⚠️ Lead saved but CRM contact insert failed' });
             } else {
               console.log(`[leads] CRM client created: ${first_name} ${last_name} (${email ?? phone})`);
+              // Tie this browser's anonymous visitor id to the new contact, so everything they did on the
+              // site (before AND after the form) shows on the contact card.
+              if (newClient?.id && attr.visitor_id) {
+                await supabaseAdmin.from('site_visitor_links').upsert(
+                  { visitor_id: attr.visitor_id, client_id: newClient.id, source: 'lead_form' }, { onConflict: 'visitor_id' });
+              }
               // Speed-to-lead: put it on the owner's list the moment it lands.
               if (newClient?.id) await createLeadFollowUpTask(supabaseAdmin, {
                 clientId: newClient.id,

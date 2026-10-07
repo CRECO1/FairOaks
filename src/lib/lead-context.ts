@@ -18,6 +18,7 @@
 
 import type { NextRequest } from 'next/server';
 import { stripClickTracking } from '@/lib/strip-click-tracking';
+import { cleanId, cleanClickIds, cleanEnv, cleanFirstTouch, browserFromUA, osFromUA } from '@/lib/track-ingest';
 
 /** One page in a visit: the path plus ms elapsed since the first page view. */
 export interface JourneyStep { p: string; t: number }
@@ -44,6 +45,31 @@ export interface LeadContext {
   time_on_site_sec: number | null;
   /** Distinct pages in the journey (mirrors journey.length when present). */
   page_views: number | null;
+  /** v2 visitor story. */
+  visitor_id: string | null;
+  visit_count: number | null;
+  first_touch: Record<string, unknown> | null;
+  click_ids: Record<string, string> | null;
+  env: Record<string, unknown> | null;
+}
+
+/**
+ * The v2 tracker fields a lead POST may carry (persistent visitor id, visit count, first touch, ad click ids,
+ * environment). Shared by the own-site lead route and the webhook so both store exactly the same shape.
+ */
+export function visitorFields(body: Record<string, unknown>, ua?: string | null): {
+  visitor_id: string | null; visit_count: number | null; first_touch: Record<string, unknown> | null;
+  click_ids: Record<string, string> | null; env: Record<string, unknown> | null;
+} {
+  const env = cleanEnv(body.env) ?? {};
+  if (ua) { const b = browserFromUA(ua), o = osFromUA(ua); if (b && !env.browser) env.browser = b; if (o && !env.os) env.os = o; }
+  return {
+    visitor_id: cleanId(body.visitor_id),
+    visit_count: intOrNull(body.visit_count, 100000),
+    first_touch: cleanFirstTouch(body.first_touch),
+    click_ids: cleanClickIds(body.click_ids),
+    env: Object.keys(env).length ? env : null,
+  };
 }
 
 function str(v: unknown, max = 200): string | null {
@@ -87,20 +113,29 @@ export function parseJourney(v: unknown): JourneyStep[] | null {
  * default channel grouping so our first-party numbers can sit beside GA's
  * without meaning something different.
  */
-export function channelFor(referrer: string | null, utmMedium: string | null, utmSource: string | null): string {
+export function channelFor(
+  referrer: string | null, utmMedium: string | null, utmSource: string | null,
+  clickIds?: Record<string, string> | null,
+): string {
   const m = (utmMedium ?? '').toLowerCase();
-  if (m.includes('cpc') || m.includes('ppc') || m.includes('paid')) return 'Paid Search';
+  const ci = clickIds ?? {};
+  // Ad-platform click ids are the surest paid signal — a Google/Bing ad click often arrives with NO utm at all.
+  if (ci.gclid || ci.gbraid || ci.wbraid || ci.dclid || ci.msclkid) return 'Paid Search';
+  if (ci.ttclid || ci.li_fat_id || ci.twclid) return 'Paid Social';
+  if (m.includes('cpc') || m.includes('ppc') || m.includes('paid')) return m.includes('social') ? 'Paid Social' : 'Paid Search';
   if (m.includes('email')) return 'Email';
+  if (m.includes('sms') || m.includes('text')) return 'SMS';
   if (m.includes('social')) return 'Organic Social';
   if (m.includes('referral')) return 'Referral';
 
   const r = (referrer ?? '').toLowerCase();
   const s = (utmSource ?? '').toLowerCase();
   const hay = `${r} ${s}`;
-  if (!r && !s) return 'Direct';
+  if (!r && !s) return ci.fbclid ? 'Organic Social' : 'Direct';
+  if (/chatgpt|openai|perplexity|claude\.ai|gemini\.google|copilot\.microsoft|you\.com|phind|kagi/.test(hay)) return 'AI Assistant';
   if (/google|bing|yahoo|duckduckgo|ecosia/.test(hay)) return 'Organic Search';
-  if (/facebook|instagram|linkedin|twitter|x\.com|tiktok|youtube|pinterest|nextdoor/.test(hay)) return 'Organic Social';
-  if (/zillow|realtor\.com|redfin|har\.com|trulia|homes\.com|loopnet|crexi/.test(hay)) return 'Listing Portal';
+  if (/facebook|instagram|linkedin|twitter|x\.com|tiktok|youtube|pinterest|nextdoor|reddit/.test(hay)) return 'Organic Social';
+  if (/zillow|realtor\.com|redfin|har\.com|trulia|homes\.com|loopnet|crexi|costar/.test(hay)) return 'Listing Portal';
   if (/mail\.|outlook|gmail/.test(hay)) return 'Email';
   return 'Referral';
 }
@@ -151,9 +186,10 @@ export function buildLeadContext(req: NextRequest, body: Record<string, unknown>
     surface: str(body.surface, 120) ?? str(body.valuation_surface, 120),
     geo: geoParts.length ? geoParts.join(', ') : null,
     device: deviceFrom(h.get('user-agent'), body.viewport_width),
-    channel: channelFor(referrer, utm_medium, utm_source),
+    channel: channelFor(referrer, utm_medium, utm_source, cleanClickIds(body.click_ids)),
     journey,
     time_on_site_sec: intOrNull(body.time_on_site_sec),
     page_views: intOrNull(body.page_views, 1000) ?? (journey ? journey.length : null),
+    ...visitorFields(body, h.get('user-agent')),
   };
 }

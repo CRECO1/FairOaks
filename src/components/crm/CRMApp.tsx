@@ -50,6 +50,7 @@ const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSecti
 const ActivitySection = dynamic(() => import('@/components/crm/ActivitySection'), { ssr: false });
 const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: false });
 const FormAutofillReview = dynamic(() => import('@/components/crm/FormAutofillReview'), { ssr: false });
+import SiteActivity from '@/components/crm/SiteActivity';
 import { fetchAll } from '@/lib/campaign-engagement';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import { deriveSide } from '@/lib/representation-side';
@@ -10287,6 +10288,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       })}
                     </div>
                   )}
+                </div>
+
+                {/* Website activity — everything this person has done on our sites (first touch, visits,
+                    pages, phone/email taps, downloads, time + scroll), from the first-party tracker. */}
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 8 }}>Website activity</div>
+                  <SiteActivity clientId={c.id} authToken={session?.access_token ?? null} compact />
                 </div>
 
                 {/* Documents — leases and forms tied to this person, whether they were
