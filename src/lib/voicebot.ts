@@ -15,6 +15,20 @@ export const VOICEBOT_MODEL = process.env.VOICEBOT_MODEL || 'claude-opus-5';
 // (the post-call summary keeps adaptive thinking; nobody is waiting on it).
 const TURN_THINKING: { thinking?: { type: 'disabled' } } = process.env.VOICEBOT_THINKING === 'off' ? { thinking: { type: 'disabled' } } : {};
 
+/**
+ * The model for LIVE phone turns — a caller is waiting on every one. Opus took a
+ * median 3.3 s (p90 5.1 s) per reply in Sept–Oct 2026, which with speech detection
+ * and TTS left callers in 4–6 s of silence. Tested 2026-10-07 on real call scripts
+ * with the live listing sheet: Opus 5 3.6 s avg, Sonnet 5.5 1.6 s median / 1.9 s avg
+ * with the same accuracy, Haiku 4.5 1.5 s but misstated a listing's acreage — so
+ * Sonnet 5.5. The post-call summary stays on VOICEBOT_MODEL, where nobody is waiting.
+ * Override with VOICEBOT_TURN_MODEL; if that model ever errors, the turn retries
+ * once on VOICEBOT_MODEL rather than dropping the caller.
+ */
+export const VOICEBOT_TURN_MODEL = process.env.VOICEBOT_TURN_MODEL || 'claude-sonnet-5-5';
+// Haiku 4.5 rejects output_config.effort and has no thinking unless asked, so it gets neither.
+const turnOptions = (model: string) => (/haiku/i.test(model) ? {} : { output_config: { effort: 'low' as const } });
+
 export interface VoicebotSettings {
   business_unit: string; enabled: boolean; bot_name: string; company_name: string | null;
   greeting: string | null; instructions: string | null; transfer_number: string | null;
@@ -104,6 +118,9 @@ ${s.transfer_number ? `5. If the caller insists on speaking to a person right no
 
 Rules:
 - Speak like a warm, competent front-desk person: short sentences, plain words, no lists, no markdown, no emojis. One question at a time.
+- ${s.business_unit === 'residential' ? 'The lookup_listings tool is the only thing you can look up, and only within this same reply.' : 'You cannot look anything up and there is no hold: everything you know is in the sheet below.'} Never say "let me check", "let me find that" or "one moment", and never ask the caller to wait.
+- Never ask the caller to confirm something they already told you, and never ask the same question twice.
+- As soon as you have their name, a callback number and what they need, thank them, say in one sentence what the agent will follow up on, and end the call (action "end").
 - Never invent prices, availability, square footage, lease terms, or appointment times beyond what the listing sheet says. Say an agent will confirm.
 - Never promise a specific callback time beyond "as soon as possible" or "during business hours".
 - Do not ask for or repeat sensitive data (card numbers, SSN).
@@ -200,16 +217,28 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     : [{ type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }), cache_control: { type: 'ephemeral' } }];
   try {
     const tools = s.business_unit === 'residential' ? [LOOKUP_TOOL] : undefined;
-    let res = await client.messages.create({
-      model: VOICEBOT_MODEL,
+    let model = VOICEBOT_TURN_MODEL;
+    const ask = () => client.messages.create({
+      model,
       max_tokens: 400,
-      // Phone latency matters more than depth here; low effort keeps replies to a couple of seconds.
-      output_config: { effort: 'low' },
-      ...(tools ? {} : TURN_THINKING),
+      // Phone latency matters more than depth here.
+      ...turnOptions(model),
+      // {type:'disabled'} is a 400 on the x.5 models and unneeded on Haiku. Sonnet 5.5 runs
+      // fastest with its default light thinking at low effort (measured: 1.6 s median vs
+      // 2.2 s with thinking switched off via 'between_tools').
+      ...(tools || /haiku|-5-5/i.test(model) ? {} : TURN_THINKING),
       system,
       messages,
       ...(tools ? { tools } : {}),
     });
+    let res: Anthropic.Message;
+    try { res = await ask(); }
+    catch (e) {
+      if (model === VOICEBOT_MODEL || !(e instanceof Anthropic.APIError)) throw e;
+      console.warn('[voicebot] turn model failed, retrying on', VOICEBOT_MODEL, e.status, e.message);
+      model = VOICEBOT_MODEL;
+      res = await ask();
+    }
     // Manual tool loop, capped: at most two lookups per turn keeps the caller from waiting.
     for (let round = 0; round < 2 && res.stop_reason === 'tool_use'; round++) {
       const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
@@ -221,7 +250,7 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
       }
       messages.push({ role: 'assistant', content: res.content });
       messages.push({ role: 'user', content: results });
-      res = await client.messages.create({ model: VOICEBOT_MODEL, max_tokens: 400, output_config: { effort: 'low' }, system, messages, ...(tools ? { tools } : {}) });
+      res = await ask();
     }
     if (res.stop_reason === 'refusal') return { say: "I'm sorry, I didn't catch that. Could you tell me your name and the best number to reach you?", action: 'continue' };
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
