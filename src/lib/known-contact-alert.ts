@@ -10,7 +10,11 @@
  *   • phone_tap / email_tap / text_tap  — they tapped a contact method        (throttled 20 min per kind)
  *   • download                           — a brochure / flyer / report         (20 min)
  *   • lead_form_started                  — began a contact / inquiry form      (20 min)
- *   • engaged visit                      — ≥ 20 s on a page, 7 am–9 pm Central (once per 12 h)
+ *   • engaged visit                      — ≥ 20 s on a page                     (once per 12 h)
+ *
+ * BUSINESS HOURS ONLY (Mon–Sat 8 am–6 pm Central, same as the call-back SLA clock): nothing is emailed outside
+ * them. An after-hours tap still leaves a 🌙 note on the contact's timeline so it isn't lost — it's there when
+ * the office opens.
  *
  * Never throws: an alert failure must not disturb tracking ingest. Called from /api/track/event after the response.
  */
@@ -18,6 +22,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { sendMonitored } from '@/lib/integration-alert';
 import { prettyPhone } from '@/lib/phone';
+import { isBusinessOpen } from '@/lib/talkroute';
 
 export interface TrackedEvent { type: string; label?: string | null; path?: string | null; value?: number | null }
 
@@ -40,10 +45,6 @@ const WHAT: Record<string, (label: string) => string> = {
   engaged_visit: l => `👀 Browsing${l ? ` ${l}` : ''}`,
 };
 
-function centralHour(): number {
-  return Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(new Date())) % 24;
-}
-
 export async function alertKnownContact(
   db: SupabaseClient,
   opts: { visitorId: string | null; site: string; events: TrackedEvent[]; testTo?: string },
@@ -57,7 +58,7 @@ export async function alertKnownContact(
     const triggers: { kind: string; label: string }[] = [];
     for (const e of opts.events) {
       if (TIER1.has(e.type)) triggers.push({ kind: e.type, label: (e.label ?? '').toString() });
-      else if (e.type === 'page_exit' && (Number(e.value) || 0) >= ENGAGED_MIN_SEC && (opts.testTo || (centralHour() >= 7 && centralHour() < 21))) {
+      else if (e.type === 'page_exit' && (Number(e.value) || 0) >= ENGAGED_MIN_SEC) {
         triggers.push({ kind: 'engaged_visit', label: e.path ?? '' });
       }
     }
@@ -77,10 +78,24 @@ export async function alertKnownContact(
     }
     if (!fresh.length) return { sent: false, reason: 'throttled' };
 
+    const open = opts.testTo ? true : isBusinessOpen();
     const { data: k } = await db.from('crm_clients')
       .select('id, first_name, last_name, business_name, type, email, phone, cell_phone, agent_id, assigned_agent_ids, business_unit')
       .eq('id', link.client_id).maybeSingle();
     if (!k) return { sent: false, reason: 'contact gone' };
+
+    if (!open) {
+      // After hours: no email — just a quiet note on the contact's timeline, once per kind per 20 minutes.
+      const quiet = fresh.filter(t => t.kind !== 'engaged_visit');
+      const since = new Date(Date.now() - TIER1_WINDOW_MIN * 60_000).toISOString();
+      for (const t of quiet) {
+        const { data: prior } = await db.from('site_contact_alerts').select('id').eq('client_id', k.id).eq('kind', `afterhours_${t.kind}`).gte('created_at', since).limit(1);
+        if (prior?.length) continue;
+        await db.from('site_contact_alerts').insert([{ client_id: k.id, kind: `afterhours_${t.kind}`, sent_to: [], detail: t.label.slice(0, 160) }]);
+        await db.from('crm_activity').insert([{ client_id: k.id, agent_id: k.agent_id ?? null, type: 'note', notes: `🌙 Website (after hours): ${(WHAT[t.kind] ?? (() => t.kind))(t.label)} (${siteShort(opts.site)})` }]);
+      }
+      return { sent: false, reason: 'after hours' };
+    }
 
     // Owner + backup(s); fall back to the account owner so an alert is never dropped for lack of an owner.
     const { data: profiles } = await db.from('crm_profiles').select('id, email, first_name, role');
