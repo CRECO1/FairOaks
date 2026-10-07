@@ -17,6 +17,7 @@ export interface CallRow {
   handled_at: string | null; handled_by: string | null; handled_by_name?: string | null;
   notes: string | null; ai_meta: Record<string, unknown> | null; created_at: string;
   outcome?: string | null; wrapped_at?: string | null; wrapped_by_name?: string | null; answered_by_name?: string | null; answered_by_bot?: boolean;
+  history?: { prior: number; first_at: string; reached: boolean; last: { at: string; label: string; by: string | null; note: string | null } } | null;
 }
 interface Agent { id: string; first_name: string; last_name: string }
 interface Stats { today: number; week: number; bot: number; missed: number; voicemail: number; follow_up: number; overdue: number; wrapup?: number }
@@ -110,6 +111,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useRememberedState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup'>('calls-filter', 'all', ['all', 'follow_up', 'voicemail', 'bot', 'missed', 'texts', 'wrapup']);
   const [wrapFor, setWrapFor] = useState<string | null>(null);   // call id whose wrap-up panel is open
+  const [showInternal, setShowInternal] = useState(false);          // calls between us / the team's phones
+  const [internalHidden, setInternalHidden] = useState(0);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [textsNeedReply, setTextsNeedReply] = useState(false);   // within the Texts view: only unanswered
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -147,15 +150,17 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     try {
       const params = new URLSearchParams({ filter: filter === 'texts' ? 'all' : filter, days: String(days), business_unit: businessUnit });
       if (q) params.set('q', q);
+      if (showInternal) params.set('include_internal', '1');
       const j = await fetch(`/api/crm/calls?${params}`, { headers: auth(authToken) }).then(r => r.json());
       setCalls(Array.isArray(j.calls) ? j.calls : []);
+      setInternalHidden(Number(j.internal_hidden) || 0);
     } catch { setCalls([]); }
     finally { setLoading(false); }
     try {
       const sj = await fetch(`/api/crm/calls?stats=1&business_unit=${businessUnit}`, { headers: auth(authToken) }).then(r => r.json());
       setStats(sj.stats ?? null);
     } catch { /* list is the point */ }
-  }, [authToken, filter, days, q, businessUnit]);
+  }, [authToken, filter, days, q, businessUnit, showInternal]);
   useEffect(() => { load(); }, [load]);
 
   const loadSettings = useCallback(async () => {
@@ -425,6 +430,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : '#fff', color: filter === k ? '#fff' : '#374151', borderColor: filter === k ? '#111' : '#e5e7eb' }}>{t}</button>
         ))}
         <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
+        {(internalHidden > 0 || showInternal) && <button onClick={() => setShowInternal(v => !v)} title="Calls between our own lines, the team's phones and the phones Talkroute forwards to" style={{ ...mini, minHeight: 32, padding: '6px 11px', background: showInternal ? '#111' : '#fff', color: showInternal ? '#fff' : '#6b7280', borderColor: showInternal ? '#111' : '#e5e7eb' }}>👥 {showInternal ? 'Hiding none' : `Internal hidden (${internalHidden})`}</button>}
         <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ ...input, width: 'auto', minHeight: 32, padding: '6px 8px', fontSize: 12.5 }}>
           {[7, 30, 90, 365].map(d => <option key={d} value={d}>Last {d} days</option>)}
         </select>
@@ -545,6 +551,18 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         {c.ai_meta?.property ? <span style={{ color: '#374151', fontWeight: 600 }}> · 🏢 {String(c.ai_meta.property)}</span> : ''}
                         {c.intent ? <span style={{ color: '#a06a12', fontWeight: 600 }}> · {c.intent}</span> : ''}
                       </div>
+                      {c.history && (() => {
+                        const h = c.history, n = h.prior + 1;
+                        const ord = n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`;
+                        // Calling and never getting a person is the most urgent kind of repeat caller.
+                        const never = !h.reached;
+                        return (
+                          <div style={{ marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', fontSize: 12.5 }}>
+                            <span style={{ fontWeight: 700, borderRadius: 6, padding: '2px 8px', whiteSpace: 'nowrap', background: never ? '#fee2e2' : '#eef2ff', color: never ? '#b91c1c' : '#3730a3' }}>🔁 {ord} call{never ? ' — never reached' : ''}</span>
+                            <span style={{ color: '#6b7280' }}>last {when(h.last.at)} — {h.last.label}{h.last.by ? ` (${h.last.by})` : ''}{h.last.note ? <span style={{ color: '#374151' }}> · “{h.last.note}”</span> : ''}</span>
+                          </div>
+                        );
+                      })()}
                       {(c.summary || c.transcript) && !openNow && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.summary || c.transcript}</div>}
                       {!c.summary && !c.transcript && c.notes && !openNow && wrapFor !== c.id && <div style={{ fontSize: 13, color: '#374151', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {c.notes}</div>}
                     </div>

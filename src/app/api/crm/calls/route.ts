@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { toE164 } from '@/lib/phone';
+import { buildHistory, internalNumbers, otherParty, type HistoryCall } from '@/lib/call-history';
 
 // The Calling Log: Talkroute calls + voicemails, calls the voice bot answered, and
 // calls agents log by hand — one list, scoped to the caller's workspace.
@@ -100,8 +101,24 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query;
   if (error) return dbError('api/crm/calls GET', error);
 
+  // Calls between us (our lines, team phones, the phones Talkroute forwards to — e.g. the
+  // owner's cell calling the office) are hidden unless asked for; a single contact's own
+  // history is never filtered.
+  const showInternal = sp.get('include_internal') === '1' || !!contactId;
+  const internal = await internalNumbers(supabase, unit);
+  const allRows = data ?? [];
+  const rows = showInternal ? allRows : allRows.filter(r => !internal.has(otherParty(r)));
+  const internalHidden = allRows.length - rows.length;
+
+  // Everything this list's callers did before: one query for the workspace's last year.
+  const { data: histRows } = await supabase.from('crm_call_log')
+    .select('id, direction, result, kind, source, from_number, to_number, started_at, duration_sec, answered_by, answered_by_bot, notes, summary, intent')
+    .eq('business_unit', unit).gte('started_at', new Date(Date.now() - 365 * 86_400_000).toISOString()).order('started_at').limit(5000);
+  const { data: allProfiles } = await supabase.from('crm_profiles').select('id, first_name, last_name');
+  const nameOf = new Map((allProfiles ?? []).map(p => [p.id as string, `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim().split(' ')[0] || 'Agent']));
+  const historyFor = buildHistory((histRows ?? []) as HistoryCall[], nameOf);
+
   // Resolve contact + handler names in one go, scoped to the workspace.
-  const rows = data ?? [];
   const contactIds = Array.from(new Set(rows.map(r => r.contact_id).filter(Boolean))) as string[];
   // One profile lookup covers both who handled a call and who a call-back is assigned to.
   const profileIds = Array.from(new Set(rows.flatMap(r => [r.handled_by, r.follow_up_assignee, r.answered_by, r.wrapped_by]).filter(Boolean))) as string[];
@@ -118,9 +135,10 @@ export async function GET(req: NextRequest) {
     assignee_name: r.follow_up_assignee ? (pById.get(r.follow_up_assignee) ?? null) : null,
     answered_by_name: r.answered_by ? (pById.get(r.answered_by) ?? null) : null,
     wrapped_by_name: r.wrapped_by ? (pById.get(r.wrapped_by) ?? null) : null,
+    history: historyFor(r),
     // Never ship provider-signed links or Twilio SIDs to the browser; the audio route resolves them.
     has_recording: !!r.recording_url, recording_url: undefined,
-  })) });
+  })), internal_hidden: internalHidden });
 }
 
 // POST /api/crm/calls — log a call by hand.
