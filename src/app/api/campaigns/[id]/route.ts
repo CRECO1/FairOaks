@@ -7,7 +7,7 @@ import { chicagoLocalToUTC } from '@/lib/chicago-time';
 const ALLOWED_PATCH_FIELDS = new Set([
   'name', 'description', 'type', 'frequency', 'send_date', 'send_time',
   'send_day_of_month', 'status', 'email_subject', 'email_body',
-  'sms_body', 'project_id',
+  'sms_body', 'project_id', 'listing_id',
 ]);
 
 // Ownership/identity fields. Reassigning an owner or spoofing the "send as" agent is an
@@ -117,8 +117,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // sends it as-is, and Postgres rejects '' for uuid (22P02) — which surfaced to the
   // agent as "Internal error" with the whole edit lost. Empty means null here.
   const uuidFields = patchPayload as Record<string, unknown>;
-  for (const key of ['sender_agent_id', 'project_id', 'created_by']) {
+  for (const key of ['sender_agent_id', 'project_id', 'created_by', 'listing_id']) {
     if (key in uuidFields && (uuidFields[key] === '' || uuidFields[key] === undefined)) uuidFields[key] = null;
+  }
+
+  // The property must be in the campaign's own workspace.
+  if (uuidFields.listing_id) {
+    const { data: l } = await supabase.from('crm_listings').select('id').eq('id', uuidFields.listing_id as string).eq('business_unit', existing.business_unit).maybeSingle();
+    if (!l) return notFound('Property not found');
   }
 
   const { data, error } = await supabase

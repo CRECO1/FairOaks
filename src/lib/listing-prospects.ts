@@ -36,14 +36,25 @@ async function categoryTags(db: SupabaseClient): Promise<Set<string>> {
   return new Set((data ?? []).map(r => (r.filters as { tag?: string } | null)?.tag).filter((t): t is string => !!t));
 }
 
-export async function listingProspects(db: SupabaseClient, listingId: string) {
+/**
+ * The campaigns that market a property: those naming it directly (crm_campaigns.listing_id),
+ * plus campaigns with no listing of their own whose project names it. A campaign
+ * pointed at another property never shows here just because of its project.
+ */
+export async function campaignsForListing(db: SupabaseClient, listingId: string) {
   const { data: projects } = await db.from('crm_campaign_projects').select('id').eq('listing_id', listingId);
   const projectIds = (projects ?? []).map(p => p.id);
-  if (!projectIds.length) return { campaigns: [], prospects: [] };
+  const [{ data: direct }, { data: viaProject }] = await Promise.all([
+    db.from('crm_campaigns').select('id, name, status, created_at').eq('listing_id', listingId),
+    projectIds.length
+      ? db.from('crm_campaigns').select('id, name, status, created_at').in('project_id', projectIds).is('listing_id', null)
+      : Promise.resolve({ data: [] as { id: string; name: string; status: string; created_at: string }[] }),
+  ]);
+  return [...(direct ?? []), ...(viaProject ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
 
-  const { data: camps } = await db.from('crm_campaigns')
-    .select('id, name, status, created_at').in('project_id', projectIds).order('created_at');
-  const campaigns = camps ?? [];
+export async function listingProspects(db: SupabaseClient, listingId: string) {
+  const campaigns = await campaignsForListing(db, listingId);
   const campIds = campaigns.map(c => c.id);
   if (!campIds.length) return { campaigns: [], prospects: [] };
 

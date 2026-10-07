@@ -57,7 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const db = adminClient();
   const { data: camp } = await db.from('crm_campaigns')
-    .select('id, name, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, business_unit')
+    .select('id, name, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, business_unit, listing_id, project_id')
     .eq('id', id).maybeSingle();
   if (!camp || (!isAdminRole(ctx.role) && camp.business_unit !== ctx.businessUnit)) return notFound('Campaign not found');
 
@@ -253,6 +253,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     checks.push(hits.size
       ? { key: 'overlap', label: 'Other campaigns', status: 'warn', detail: 'Some recipients get another email from us within 3 days of this one.', items: [...hits].map(([n, c]) => `${c} also get "${n}"`) }
       : { key: 'overlap', label: 'Other campaigns', status: 'pass', detail: 'Nobody gets another campaign within 3 days.' });
+  }
+
+  // ── Property link ──────────────────────────────────────────────────────────
+  // A campaign about one of our properties should say so, or its recipients never
+  // reach that property's 📬 Prospects tab.
+  {
+    let linked: string | null = camp.listing_id ?? null;
+    if (!linked && camp.project_id) {
+      const { data: pr } = await db.from('crm_campaign_projects').select('listing_id').eq('id', camp.project_id).maybeSingle();
+      linked = (pr?.listing_id as string | null) ?? null;
+    }
+    const { data: ls } = await db.from('crm_listings').select('id, name, address, status').eq('business_unit', camp.business_unit);
+    if (linked) {
+      const l = (ls ?? []).find(x => x.id === linked);
+      checks.push({ key: 'property', label: 'Property', status: 'pass', detail: `Recipients show on ${l?.name ?? 'the property'}'s Prospects tab.` });
+    } else {
+      const text = `${camp.name} ${subject}`.toLowerCase();
+      const hits = (ls ?? []).filter(l => !['sold', 'leased', 'withdrawn'].includes(String(l.status ?? '').toLowerCase())).filter(l => {
+        const m = String(l.address || l.name).toLowerCase().match(/^(\d+)\s+(?:[nsew]\.?\s+)?([a-z]+)/);
+        return !!m && text.includes(m[1]) && text.includes(m[2]);
+      });
+      if (hits.length) checks.push({ key: 'property', label: 'Property', status: 'warn', detail: `Looks like it's about ${hits.map(h => h.name).join(' or ')}, but isn't linked — its recipients won't show on that property's Prospects tab. Set "Property this campaign markets" in Edit.` });
+    }
   }
 
   // ── Sender ─────────────────────────────────────────────────────────────────

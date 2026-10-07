@@ -23,7 +23,7 @@ const who = (p: Prospect) => p.business || p.name || p.email;
 const TH: React.CSSProperties = { textAlign: 'left', fontSize: 10.5, letterSpacing: .6, textTransform: 'uppercase', color: '#6b7280', fontWeight: 800, padding: '8px 10px', borderBottom: '1px solid #e5e7eb', background: '#fafafa', whiteSpace: 'nowrap', position: 'sticky', top: 0 };
 const TD: React.CSSProperties = { fontSize: 12.5, color: '#1f2937', padding: '7px 10px', borderBottom: '1px solid #f3f4f6', verticalAlign: 'top' };
 
-export default function EmailProspects({ listingId, authToken }: { listingId: string; authToken?: string }) {
+export default function EmailProspects({ listingId, authToken, emptyHint = false }: { listingId: string; authToken?: string; emptyHint?: boolean }) {
   const [campaigns, setCampaigns] = useState<Camp[]>([]);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +64,16 @@ export default function EmailProspects({ listingId, authToken }: { listingId: st
     });
   }, [prospects, onlyOpened, q, sort]);
 
-  if (loading) return null;
-  if (!campaigns.length) return null;            // property has no linked campaigns
+  if (loading) return emptyHint ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Loading prospects…</div> : null;
+  // No linked campaigns: hidden inside the Rent Roll; on the Prospects tab, say how to fill it.
+  if (!campaigns.length) return emptyHint ? (
+    <div style={{ padding: '36px 20px', textAlign: 'center', color: '#6b7280', fontSize: 13.5, lineHeight: 1.6 }}>
+      <div style={{ fontSize: 30, marginBottom: 6 }}>📬</div>
+      <div style={{ fontWeight: 700, color: '#374151', marginBottom: 4 }}>No campaigns for this property yet</div>
+      In Marketing, open a campaign about this property and set <strong>Property this campaign markets</strong> to it.<br />
+      Everyone it emails shows up here with their open rate and who to ask for.
+    </div>
+  ) : null;
 
   const exportCsv = () => {
     const head = ['Business', 'Contact', 'Ask for', 'Locations', 'Email', 'Phone', 'Category', 'Emails sent', 'Emails opened', 'Total opens', 'First open', 'Last open', 'Clicks', 'Unsubscribed', 'Dead email'];

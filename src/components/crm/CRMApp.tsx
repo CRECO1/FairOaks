@@ -73,7 +73,7 @@ interface DealEmail { id: string; deal_id: string | null; client_id?: string | n
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; listing_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
@@ -787,6 +787,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [newProjectColor, setNewProjectColor] = useState('#c9922c');
   const [editingProject, setEditingProject] = useState<{ id: string; name: string; description: string; color: string } | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<{ year: number; month: number }>(() => { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() }; });
+  // The property a campaign markets (crm_campaigns.listing_id) — its recipients then
+  // show on that property's 📬 Prospects tab. Kept beside newCampaign rather than in
+  // it, so the many places that reset newCampaign don't all have to know about it.
+  const [campaignListingId, setCampaignListingId] = useState('');
+  const [propertyOptions, setPropertyOptions] = useState<{ id: string; name: string; address: string | null; status: string | null }[]>([]);
   const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string; project_id: string }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
@@ -1098,6 +1103,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     fetch(`/api/action-plans/${plan.id}`).then(r => r.json()).then(j => setDetailSteps(j.plan?.steps ?? [])).catch(() => {});
     setActionPlanView('detail');
   });
+  // Opening the campaign editor: load its property link + the property list once.
+  useEffect(() => {
+    if (campaignView !== 'builder') return;
+    setCampaignListingId(activeCampaign?.listing_id ?? '');
+    if (propertyOptions.length) return;
+    fetch(`/api/crm/listings?business_unit=${businessUnit}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} })
+      .then(r => r.json())
+      .then(j => setPropertyOptions(((j.listings ?? []) as { id: string; name: string; address: string | null; status: string | null }[])
+        .filter(l => !['sold', 'leased', 'withdrawn'].includes(String(l.status ?? '').toLowerCase()))
+        .sort((a, b) => a.name.localeCompare(b.name))))
+      .catch(() => {});
+  }, [campaignView, activeCampaign?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // The open deal's tab (the deal itself comes back in loadDeals via activeDealId).
   useEffect(() => { if (activeDeal) rememberView('deal-tab', dealTab); }, [activeDeal, dealTab]);
 
@@ -2951,7 +2969,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // Going live from the editor runs the pre-send check first: save with the
       // current status, then the check activates it (or explains why it can't).
       const goingLive = newCampaign.status === 'active' && activeCampaign?.status !== 'active';
-      const body = { ...newCampaign, ...(goingLive ? { status: activeCampaign?.status ?? 'draft' } : {}), email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
+      const body = { ...newCampaign, ...(goingLive ? { status: activeCampaign?.status ?? 'draft' } : {}), listing_id: campaignListingId || null, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify(body) });
@@ -7376,6 +7394,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Campaign Name *</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Monthly Market Update" value={newCampaign.name} onChange={e => setNewCampaign({ ...newCampaign, name: e.target.value })} /></div>
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Description</label><input className="crm-input" style={{ marginTop: 4 }} placeholder="Brief description of the campaign purpose" value={newCampaign.description} onChange={e => setNewCampaign({ ...newCampaign, description: e.target.value })} /></div>
+                      {(() => {
+                        // Suggest the property the name/subject is plainly about (street number + street word).
+                        const text = `${newCampaign.name} ${newCampaign.email_subject}`.toLowerCase();
+                        const hits = propertyOptions.filter(l => {
+                          const m = String(l.address || l.name).toLowerCase().match(/^(\d+)\s+(?:[nsew]\.?\s+)?([a-z]+)/);
+                          return !!m && text.includes(m[1]) && text.includes(m[2]);
+                        });
+                        return (
+                          <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Property this campaign markets</label>
+                            <select className="crm-input" style={{ marginTop: 4 }} value={campaignListingId} onChange={e => setCampaignListingId(e.target.value)}>
+                              <option value="">— Not about one property —</option>
+                              {propertyOptions.map(l => <option key={l.id} value={l.id}>{l.name}{l.address && !l.name.includes(l.address.split(' ').slice(0, 2).join(' ')) ? ` · ${l.address}` : ''}</option>)}
+                            </select>
+                            {!campaignListingId && hits.length > 0 && (
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+                                <span style={{ fontSize: 12, color: '#a06a12' }}>Looks like it&apos;s about:</span>
+                                {hits.map(l => <button key={l.id} type="button" onClick={() => setCampaignListingId(l.id)} className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 12 }}>{l.name}</button>)}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>Everyone it emails shows on that property&apos;s 📬 Prospects tab, with their open rate.</div>
+                          </div>
+                        );
+                      })()}
                       {campaignProjects.length > 0 && (
                         <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Project</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.project_id} onChange={e => setNewCampaign({ ...newCampaign, project_id: e.target.value })}>

@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  const { name, description, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, business_unit } = body;
+  const { name, description, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, business_unit, listing_id } = body;
 
   if (!name || !type || !frequency) {
     return NextResponse.json({ error: 'name, type, and frequency are required' }, { status: 400 });
@@ -151,6 +151,8 @@ export async function POST(req: NextRequest) {
     sms_body: sms_body ?? null,
     created_by: ctx.userId,
     sender_agent_id: sender_agent_id || null,
+    // The property this campaign markets — feeds that listing's Prospects tab.
+    listing_id: listing_id || null,
     business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),
   }]).select().single();
 
