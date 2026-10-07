@@ -194,6 +194,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ? { key: 'links', label: 'Links & images', status: 'warn', detail: `${linkIssues.length} problem${linkIssues.length > 1 ? 's' : ''} found${first ? ` (checked as ${name(first.client!)} will get them)` : ''}.`, items: [...linkIssues, ...blocked.map(b => `Couldn't verify (site blocks automated checks): ${b}`)] }
       : { key: 'links', label: 'Links & images', status: 'pass', detail: n ? `All ${n} load${blocked.length ? ` (${blocked.length} couldn't be verified automatically)` : ''}.` : 'No links or images.', items: blocked.length ? blocked.map(b => `Couldn't verify: ${b}`) : undefined });
 
+    // ── Header links to the website ──────────────────────────────────────────
+    // The CRECO/Fair Oaks logo (and the nav under it) should take a reader to the
+    // site — a header that isn't clickable wastes the easiest click in the email.
+    const logo = /<img\b[^>]*(creco-logo|fairoaks[^"']*logo|logo[^"']*(crecotx|fairoaks))[^>]*>/i.exec(body);
+    if (logo) {
+      const before = body.slice(Math.max(0, logo.index - 300), logo.index);
+      const linked = /<a\b[^>]*href=["']https?:\/\/(www\.)?(crecotx|fairoaksrealtygroup|elkhornpoint)\.com[^"']*["'][^>]*>\s*$/i.test(before);
+      checks.push(linked
+        ? { key: 'header', label: 'Header links', status: 'pass', detail: 'The logo links to the website.' }
+        : { key: 'header', label: 'Header links', status: 'warn', detail: 'The logo at the top is not a link to the website. Wrap it in a link to the site (and add the Properties · Owner Services · Contact nav, as in the standard template).' });
+    }
+
     // ── Phone layout ─────────────────────────────────────────────────────────
     const media = /@media[^{]*max-width/i.test(body);
     const wide = [...body.matchAll(/(?<!max-)width\s*(?:=\s*["']?|:\s*)(\d{3,4})(?:px)?/gi)].map(m => Number(m[1])).filter(w => w > 640);
