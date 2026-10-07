@@ -7,7 +7,7 @@ import { chicagoLocalToUTC } from '@/lib/chicago-time';
 const ALLOWED_PATCH_FIELDS = new Set([
   'name', 'description', 'type', 'frequency', 'send_date', 'send_time',
   'send_day_of_month', 'status', 'email_subject', 'email_body',
-  'sms_body', 'project_id', 'listing_id',
+  'sms_body', 'project_id', 'listing_id', 'hold_risky_addresses',
 ]);
 
 // Ownership/identity fields. Reassigning an owner or spoofing the "send as" agent is an
@@ -120,6 +120,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   for (const key of ['sender_agent_id', 'project_id', 'created_by', 'listing_id']) {
     if (key in uuidFields && (uuidFields[key] === '' || uuidFields[key] === undefined)) uuidFields[key] = null;
   }
+
+  if ('hold_risky_addresses' in patchPayload) patchPayload.hold_risky_addresses = patchPayload.hold_risky_addresses === true;
 
   // The property must be in the campaign's own workspace.
   if (uuidFields.listing_id) {
