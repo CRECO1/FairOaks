@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { adminClient } from '@/lib/supabase-admin';
 import { shortHangup, syncTalkroute, syncTexts, talkrouteConfigured, upsertCalls, upsertTexts, type CallRow, type TextRow } from '@/lib/talkroute';
 import { tidyCallLog } from '@/lib/call-routing';
+import { sendMissedCallTexts } from '@/lib/missed-call-text';
 import { matchContact, unitForNumber } from '@/lib/voicebot';
 import { toE164 } from '@/lib/phone';
 
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
     // Pull the authoritative record (with id + recording) straight away rather than waiting for the cron.
     if (talkrouteConfigured()) { try { await syncTalkroute(db, { sinceHours: 2, maxPages: 1 }); } catch (e) { console.warn('[webhooks/talkroute] sync', e); } }
     try { await tidyCallLog(db, { days: 7 }); } catch (e) { console.warn('[webhooks/talkroute] tidy', e); }
+    try { await sendMissedCallTexts(db); } catch (e) { console.warn('[webhooks/talkroute] textback', e); }
     return NextResponse.json({ ok: true });
   }
 
@@ -78,6 +80,7 @@ export async function POST(req: NextRequest) {
     await upsertCalls(db, [row]);
     if (talkrouteConfigured()) { try { await syncTalkroute(db, { sinceHours: 2, maxPages: 1 }); } catch (e) { console.warn('[webhooks/talkroute] sync', e); } }
     try { await tidyCallLog(db, { days: 7 }); } catch (e) { console.warn('[webhooks/talkroute] tidy', e); }
+    try { await sendMissedCallTexts(db); } catch (e) { console.warn('[webhooks/talkroute] textback', e); }
     return NextResponse.json({ ok: true });
   }
 

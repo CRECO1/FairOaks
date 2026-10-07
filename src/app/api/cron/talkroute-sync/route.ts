@@ -3,6 +3,7 @@ import { adminClient } from '@/lib/supabase-admin';
 import { syncTalkroute, syncTexts, talkrouteConfigured } from '@/lib/talkroute';
 import { dbError } from '@/lib/crm-auth';
 import { tidyCallLog } from '@/lib/call-routing';
+import { sendMissedCallTexts } from '@/lib/missed-call-text';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -29,7 +30,10 @@ export async function GET(req: NextRequest) {
     // Owners, due times, contact links, junk and already-returned call-backs (lib/call-routing).
     let tidy: Record<string, unknown> = {};
     try { tidy = await tidyCallLog(db); } catch (e) { tidy = { error: e instanceof Error ? e.message : String(e) }; }
-    return NextResponse.json({ ok: true, ...r, texts, tidy });
+    // "Sorry we missed you" texts (off unless MISSED_CALL_TEXTBACK is set — lib/missed-call-text.ts).
+    let textback: Record<string, unknown> = {};
+    try { textback = await sendMissedCallTexts(db); } catch (e) { textback = { error: e instanceof Error ? e.message : String(e) }; }
+    return NextResponse.json({ ok: true, ...r, texts, tidy, textback });
   } catch (e) {
     console.error('[cron/talkroute-sync]', e);
     return dbError('cron/talkroute-sync', e);
