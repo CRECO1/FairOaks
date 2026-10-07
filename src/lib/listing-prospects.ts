@@ -17,7 +17,18 @@ async function all<T>(q: (from: number, to: number) => PromiseLike<{ data: T[] |
 const chunks = <T,>(a: T[], n = 150) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
 type Send = { campaign_id: string; client_id: string; status: string; sent_at: string | null; opened_at: string | null; open_count: number | null };
-type Client = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; email: string | null; phone: string | null; cell_phone: string | null; tags: string[] | null; unsubscribed_at: string | null };
+type Client = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; email: string | null; phone: string | null; cell_phone: string | null; tags: string[] | null; unsubscribed_at: string | null; notes: string | null };
+
+// Who to ask for on a call. Researched contacts carry a first notes line like
+// "📞 ASK FOR: Robert Godines — Owner & Founder · 13 locations (…) · …"; surface the
+// name/position and the location count, and leave the rest on the contact card.
+function askFor(notes: string | null): { askFor: string; locations: string } {
+  const first = (notes ?? '').split('\n')[0];
+  if (!first.startsWith('📞 ASK FOR:')) return { askFor: '', locations: '' };
+  const parts = first.slice('📞 ASK FOR:'.length).split(' · ').map(s => s.trim());
+  const loc = parts.find(s => /^\d+ locations?\b/.test(s)) ?? '';
+  return { askFor: parts[0].replace(/\s*\[Verified[^\]]*\]\s*$/, ''), locations: loc.match(/^\d+ locations/)?.[0] ?? '' };
+}
 
 async function categoryTags(db: SupabaseClient): Promise<Set<string>> {
   // The tenant-category smart lists ("Elkhorn — Medical", …) define the categories.
@@ -46,7 +57,7 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
   const clients = new Map<string, Client>();
   for (const ids of chunks(clientIds)) {
     const { data } = await db.from('crm_clients')
-      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at').in('id', ids);
+      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes').in('id', ids);
     for (const c of (data ?? []) as Client[]) clients.set(c.id, c);
   }
   const cats = await categoryTags(db);
@@ -97,6 +108,7 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
       email: c?.email ?? '',
       phone: c?.phone || c?.cell_phone || '',
       category: tags.filter(t => cats.has(t) && !umbrella.has(t)).join(', '),
+      ...askFor(c?.notes ?? null),
       emailsSent: p.sends, emailsOpened: p.openedEmails, opens: p.opens,
       firstOpen: p.firstOpen, lastOpen: p.lastOpen, lastSent: p.lastSent,
       clicks: p.clicks, lastClick: p.lastClick,

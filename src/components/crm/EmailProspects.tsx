@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 interface Camp { id: string; name: string; status: string; sent: number; opened: number; clickers: number; openRate: number; lastSent: string | null }
 interface Prospect {
-  client_id: string; name: string; business: string; email: string; phone: string; category: string;
+  client_id: string; name: string; business: string; email: string; phone: string; category: string; askFor: string; locations: string;
   emailsSent: number; emailsOpened: number; opens: number; firstOpen: string | null; lastOpen: string | null; lastSent: string | null;
   clicks: number; lastClick: string | null; unsubscribed: boolean; dead: boolean;
 }
@@ -53,7 +53,7 @@ export default function EmailProspects({ listingId, authToken }: { listingId: st
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const rows = prospects.filter(p => (!onlyOpened || p.emailsOpened > 0) &&
-      (!needle || [p.business, p.name, p.email, p.phone, p.category].some(v => v.toLowerCase().includes(needle))));
+      (!needle || [p.business, p.name, p.email, p.phone, p.category, p.askFor].some(v => v.toLowerCase().includes(needle))));
     const k = sort.key;
     return [...rows].sort((a, b) => {
       const av = k === 'who' ? who(a) : a[k]; const bv = k === 'who' ? who(b) : b[k];
@@ -68,9 +68,9 @@ export default function EmailProspects({ listingId, authToken }: { listingId: st
   if (!campaigns.length) return null;            // property has no linked campaigns
 
   const exportCsv = () => {
-    const head = ['Business', 'Contact', 'Email', 'Phone', 'Category', 'Emails sent', 'Emails opened', 'Total opens', 'First open', 'Last open', 'Clicks', 'Unsubscribed', 'Dead email'];
+    const head = ['Business', 'Contact', 'Ask for', 'Locations', 'Email', 'Phone', 'Category', 'Emails sent', 'Emails opened', 'Total opens', 'First open', 'Last open', 'Clicks', 'Unsubscribed', 'Dead email'];
     const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const csv = [head.join(','), ...visible.map(p => [p.business, p.name, p.email, p.phone, p.category, p.emailsSent, p.emailsOpened, p.opens, day(p.firstOpen), day(p.lastOpen), p.clicks, p.unsubscribed ? 'yes' : '', p.dead ? 'yes' : ''].map(esc).join(','))].join('\n');
+    const csv = [head.join(','), ...visible.map(p => [p.business, p.name, p.askFor, p.locations, p.email, p.phone, p.category, p.emailsSent, p.emailsOpened, p.opens, day(p.firstOpen), day(p.lastOpen), p.clicks, p.unsubscribed ? 'yes' : '', p.dead ? 'yes' : ''].map(esc).join(','))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a'); a.href = url; a.download = onlyOpened ? 'email-prospects-opened.csv' : 'email-prospects.csv'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
@@ -148,7 +148,9 @@ export default function EmailProspects({ listingId, authToken }: { listingId: st
               <tr key={p.client_id} style={{ opacity: p.unsubscribed || p.dead ? .55 : 1 }}>
                 <td style={TD}>
                   <div style={{ fontWeight: 700 }}>{who(p)}</div>
-                  {p.business && p.name && <div style={{ fontSize: 11.5, color: '#6b7280' }}>{p.name}</div>}
+                  {p.askFor
+                    ? <div style={{ fontSize: 11.5, color: '#a06a12', fontWeight: 600 }}>📞 Ask for: {p.askFor}{p.locations && <span style={{ color: '#6b7280', fontWeight: 500 }}> · {p.locations}</span>}</div>
+                    : p.business && p.name && <div style={{ fontSize: 11.5, color: '#6b7280' }}>{p.name}</div>}
                   {(p.unsubscribed || p.dead) && <div style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c' }}>{p.dead ? 'DEAD EMAIL' : 'UNSUBSCRIBED'}</div>}
                 </td>
                 <td style={{ ...TD, color: '#6b7280', maxWidth: 170 }}>{p.category}</td>
