@@ -6,9 +6,10 @@
  * flushes them here in batches via sendBeacon. Stored in site_events; read only through the service-role
  * CRM APIs (lead / contact activity, engagement report, live feed).
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { BOT, deviceFromUA, clip, cleanId } from '@/lib/track-ingest';
+import { alertKnownContact } from '@/lib/known-contact-alert';
 
 export const runtime = 'nodejs';
 const NO_CONTENT = () => new NextResponse(null, { status: 204 });
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
   if (!site || !Array.isArray(body.events) || !body.events.length) return NO_CONTENT();
 
   const device = deviceFromUA(ua);
-  const rows = [];
+  const rows: { site: string; visitor_id: string | null; session_id: string | null; type: string; label: string | null; value: number | null; path: string | null; meta: Record<string, unknown> | null; device: string; created_at: string }[] = [];
   for (const raw of body.events.slice(0, 20)) {
     if (!raw || typeof raw !== 'object') continue;
     const e = raw as Record<string, unknown>;
@@ -58,6 +59,18 @@ export async function POST(req: NextRequest) {
     });
   }
   if (!rows.length) return NO_CONTENT();
-  try { await adminClient().from('site_events').insert(rows); } catch { /* fire-and-forget */ }
+  const db = adminClient();
+  try { await db.from('site_events').insert(rows); } catch { /* fire-and-forget */ }
+
+  // If this browser belongs to a KNOWN contact (form submit or signed email link) and just did something that
+  // signals intent, tell their owner. Runs after the response so tracking stays instant.
+  if (visitor_id && rows.some(r => r.type === 'page_exit' || r.type === 'phone_tap' || r.type === 'email_tap' || r.type === 'text_tap' || r.type === 'download' || r.type === 'lead_form_started')) {
+    after(async () => {
+      await alertKnownContact(db, {
+        visitorId: visitor_id, site,
+        events: rows.map(r => ({ type: r.type, label: r.label, path: r.path, value: r.value })),
+      });
+    });
+  }
   return NO_CONTENT();
 }
