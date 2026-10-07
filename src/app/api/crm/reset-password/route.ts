@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     // mailbox, and anyone who can read it could complete the reset. Same rule,
     // same reasoning, applied to the second door into the same account.
     const roleRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/crm_profiles?email=eq.${encodeURIComponent(email)}&select=role`,
+      `${SUPABASE_URL}/rest/v1/crm_profiles?email=eq.${encodeURIComponent(String(email).trim().toLowerCase())}&select=role`,
       { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
     );
     const roleRows = await roleRes.json().catch(() => []);

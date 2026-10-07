@@ -142,11 +142,15 @@ export async function getCrmContext(req?: NextRequest): Promise<CrmContext | nul
   const user = await getCrmUser(req);
   if (!user) return null;
   const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
-  const { data } = await admin.from('crm_profiles').select('role, business_unit').eq('id', user.id).single();
+  const { data } = await admin.from('crm_profiles').select('role, business_unit').eq('id', user.id).maybeSingle();
+  // A login with no CRM profile is NOT a CRM user. This used to return role=null/businessUnit=null, which
+  // many routes then treated as "no restrictions" (e.g. `businessUnit ?? 'commercial'`), so anyone who signed
+  // up for an auth account could read workspace data through the API. Fail closed.
+  if (!data) return null;
   return {
     userId: user.id,
-    role: (data?.role as string | undefined) ?? null,
-    businessUnit: (data?.business_unit as string | undefined) ?? null,
+    role: (data.role as string | undefined) ?? null,
+    businessUnit: (data.business_unit as string | undefined) ?? null,
   };
 }
 
