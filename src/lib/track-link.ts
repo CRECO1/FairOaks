@@ -7,7 +7,8 @@
 import crypto from 'crypto';
 
 function secret(): string {
-  const s = process.env.TRACK_LINK_SECRET || process.env.COPILOT_CONFIRM_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Deliberately NOT the copilot ticket secret: a rotation of that key must not silently break every email link.
+  const s = process.env.TRACK_LINK_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!s) throw new Error('track-link: no signing secret available');
   return s;
 }
