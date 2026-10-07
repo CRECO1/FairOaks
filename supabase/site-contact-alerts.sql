@@ -11,3 +11,8 @@ create table if not exists public.site_contact_alerts (
 );
 create index if not exists site_contact_alerts_client_kind_idx on public.site_contact_alerts (client_id, kind, created_at desc);
 alter table public.site_contact_alerts enable row level security;   -- service-role only
+
+-- Morning summary: after-hours rows (kind 'afterhours_*') are rolled into one email when the office opens,
+-- then stamped so they're sent once.
+alter table public.site_contact_alerts add column if not exists summarized_at timestamptz;
+create index if not exists site_contact_alerts_pending_idx on public.site_contact_alerts (created_at) where summarized_at is null and kind like 'afterhours_%';

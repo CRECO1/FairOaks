@@ -13,8 +13,8 @@
  *   • engaged visit                      — ≥ 20 s on a page                     (once per 12 h)
  *
  * BUSINESS HOURS ONLY (Mon–Sat 8 am–6 pm Central, same as the call-back SLA clock): nothing is emailed outside
- * them. An after-hours tap still leaves a 🌙 note on the contact's timeline so it isn't lost — it's there when
- * the office opens.
+ * them. After-hours activity is recorded (afterhours_* rows + a 🌙 note on the contact's timeline) and rolled into
+ * ONE morning-summary email per owner when the office opens — see sendKnownContactMorningSummary below.
  *
  * Never throws: an alert failure must not disturb tracking ingest. Called from /api/track/event after the response.
  */
@@ -85,10 +85,11 @@ export async function alertKnownContact(
     if (!k) return { sent: false, reason: 'contact gone' };
 
     if (!open) {
-      // After hours: no email — just a quiet note on the contact's timeline, once per kind per 20 minutes.
-      const quiet = fresh.filter(t => t.kind !== 'engaged_visit');
-      const since = new Date(Date.now() - TIER1_WINDOW_MIN * 60_000).toISOString();
-      for (const t of quiet) {
+      // After hours: no email. Record each trigger once per window (20 min; browsing 12 h) so the morning summary
+      // and the contact's timeline both have it.
+      for (const t of fresh) {
+        const win = t.kind === 'engaged_visit' ? ENGAGED_WINDOW_H * 60 : TIER1_WINDOW_MIN;
+        const since = new Date(Date.now() - win * 60_000).toISOString();
         const { data: prior } = await db.from('site_contact_alerts').select('id').eq('client_id', k.id).eq('kind', `afterhours_${t.kind}`).gte('created_at', since).limit(1);
         if (prior?.length) continue;
         await db.from('site_contact_alerts').insert([{ client_id: k.id, kind: `afterhours_${t.kind}`, sent_to: [], detail: t.label.slice(0, 160) }]);
@@ -151,4 +152,83 @@ export async function alertKnownContact(
     console.error('[known-contact-alert]', e);
     return { sent: false, reason: 'error' };
   }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// MORNING SUMMARY — when the office opens, one email per owner with what their known contacts did while it was
+// closed (the afterhours_* rows). Idempotent: rows are stamped summarized_at, so a re-run sends nothing.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const SUMMARY_LOOKBACK_DAYS = 4;
+
+export async function sendKnownContactMorningSummary(
+  db: SupabaseClient, opts: { force?: boolean; testTo?: string } = {},
+): Promise<{ sent: number; contacts: number; reason?: string }> {
+  if (!opts.force && !opts.testTo && !isBusinessOpen()) return { sent: 0, contacts: 0, reason: 'closed' };
+  const since = new Date(Date.now() - SUMMARY_LOOKBACK_DAYS * 86_400_000).toISOString();
+  const { data: rows } = await db.from('site_contact_alerts')
+    .select('id, client_id, kind, detail, created_at').like('kind', 'afterhours_%').is('summarized_at', null)
+    .gte('created_at', since).order('created_at');
+  if (!rows?.length) return { sent: 0, contacts: 0, reason: 'nothing overnight' };
+
+  const clientIds = [...new Set(rows.map(r => r.client_id as string))];
+  const { data: clients } = await db.from('crm_clients')
+    .select('id, first_name, last_name, business_name, type, phone, cell_phone, agent_id, assigned_agent_ids, business_unit').in('id', clientIds);
+  const cById = new Map((clients ?? []).map(c => [c.id as string, c]));
+  const { data: profiles } = await db.from('crm_profiles').select('id, email, first_name, role');
+  const pById = new Map((profiles ?? []).map(p => [p.id as string, p]));
+  const supers = (profiles ?? []).filter(p => p.role === 'super_admin');
+
+  // Group the overnight activity per contact, then per recipient inbox.
+  type Item = { kind: string; label: string; at: string };
+  const perClient = new Map<string, Item[]>();
+  for (const r of rows) {
+    const list = perClient.get(r.client_id as string) ?? [];
+    list.push({ kind: (r.kind as string).replace(/^afterhours_/, ''), label: (r.detail as string) ?? '', at: r.created_at as string });
+    perClient.set(r.client_id as string, list);
+  }
+  const perInbox = new Map<string, { commercial: boolean; contacts: string[] }>();
+  for (const [cid] of perClient) {
+    const c = cById.get(cid); if (!c) continue;
+    const ids = [c.agent_id, ...((c.assigned_agent_ids ?? []) as string[])].filter(Boolean) as string[];
+    let owners = [...new Set(ids)].map(id => pById.get(id)).filter(Boolean) as { email: string }[];
+    if (!owners.length) owners = supers as { email: string }[];
+    for (const o of owners.slice(0, 3)) {
+      const inbox = opts.testTo ?? (ALERT_INBOX[o.email.toLowerCase()] ?? o.email);
+      const e = perInbox.get(inbox) ?? { commercial: c.business_unit === 'commercial', contacts: [] };
+      e.contacts.push(cid); perInbox.set(inbox, e);
+    }
+  }
+
+  const fmt = (iso: string) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  let sent = 0;
+  for (const [inbox, e] of perInbox) {
+    const key = (e.commercial ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) || process.env.RESEND_API_KEY;
+    if (!key) continue;
+    const from = e.commercial && process.env.RESEND_API_KEY_COMMERCIAL ? 'CRECO Site Alerts <noreply@crecotx.com>' : 'Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>';
+    const cards = e.contacts.map(cid => {
+      const c = cById.get(cid)!; const items = perClient.get(cid)!;
+      const name = [c.first_name, c.last_name].filter(Boolean).join(' ') || (c.business_name as string) || 'A contact';
+      const sub = [c.business_name && c.business_name !== name ? c.business_name : null, c.type].filter(Boolean).join(' · ');
+      const tel = (((c.cell_phone || c.phone) as string | null) ?? '').replace(/\D/g, '').slice(-10);
+      const strong = items.some(i => i.kind !== 'engaged_visit');
+      return `<div style="padding:12px 0;border-bottom:1px solid #eee">
+        <div style="font-size:16px"><strong>${esc(name)}</strong>${strong ? ' <span style="background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px">ACTED</span>' : ''}</div>
+        ${sub ? `<div style="font-size:13px;color:#666">${esc(sub)}</div>` : ''}
+        ${items.map(i => `<div style="font-size:14px;margin-top:4px">${esc((WHAT[i.kind] ?? (() => i.kind))(i.label))} <span style="color:#999;font-size:12px">· ${esc(fmt(i.at))}</span></div>`).join('')}
+        ${tel.length === 10 ? `<div style="margin-top:8px"><a href="tel:${tel}" style="display:inline-block;padding:8px 14px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:700">📞 Call ${esc(String(name).split(' ')[0])}</a></div>` : ''}
+      </div>`;
+    }).join('');
+    const n = e.contacts.length;
+    const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;color:#1A1A1A">
+      <div style="background:#1A1A1A;color:#fff;padding:14px 18px;border-bottom:3px solid #C9922C"><strong style="font-size:16px">${opts.testTo ? 'TEST · ' : ''}Overnight on the websites — ${n} known contact${n === 1 ? '' : 's'}</strong></div>
+      <div style="padding:6px 18px 16px;border:1px solid #E8E5E0;border-top:0">${cards}
+        <p style="margin:14px 0 0"><a href="https://www.fairoaksrealtygroup.com/crm/${e.commercial ? 'commercial' : 'residential'}#contacts" style="display:inline-block;padding:10px 16px;background:#C9922C;color:#1A1A1A;text-decoration:none;border-radius:6px;font-size:14px;font-weight:700">Open the CRM →</a></p>
+        <p style="margin:12px 0 0;font-size:12px;color:#888">Activity from contacts we can identify, while the office was closed. Their full history is on each contact card under “Website activity”.</p>
+      </div></div>`;
+    const res = await sendMonitored(new Resend(key.replace(/[\r\n\s]+$/, '')), { from, to: [inbox], subject: `${opts.testTo ? '[TEST] ' : ''}🌅 Overnight: ${n} known contact${n === 1 ? ' was' : 's were'} on our sites`, html }, 'known_contact_summary', { label: 'Morning website summary' });
+    if (res.ok) sent++;
+  }
+  if (!opts.testTo && sent > 0) await db.from('site_contact_alerts').update({ summarized_at: new Date().toISOString() }).in('id', rows.map(r => r.id as number));
+  return { sent, contacts: perClient.size };
 }

@@ -94,6 +94,10 @@
     {
       "path": "/api/cron/lead-sla",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/known-contact-summary",
+      "schedule": "5 13,14 * * 1-6"
     }
   ]
 }
