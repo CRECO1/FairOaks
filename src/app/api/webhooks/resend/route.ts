@@ -57,7 +57,7 @@ const RANK: Record<string, number> = { delayed: 1, delivered: 2, opened: 3, clic
  */
 async function recordCampaignEvent(
   supabase: ReturnType<typeof adminClient>,
-  payload: { created_at?: string; data?: { click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string; bounce?: { type?: string } } },
+  payload: { created_at?: string; data?: { click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string; bounce?: { type?: string; subType?: string; message?: string } } },
   emailId: string,
   status: string,
   svixId: string,
@@ -84,6 +84,8 @@ async function recordCampaignEvent(
     ip: payload.data?.click?.ipAddress ?? null,
     user_agent: payload.data?.click?.userAgent ?? null,
     org_id: send.org_id ?? null,
+    // Why it bounced (Permanent/Transient, subType, the receiving server's message) — so a pattern is diagnosable.
+    detail: eventType === 'bounce' ? [payload.data?.bounce?.type, payload.data?.bounce?.subType, payload.data?.bounce?.message].filter(Boolean).join(' · ').slice(0, 500) || null : null,
   }]);
 
   // 23505 = unique violation = Resend redelivered an event we already have.

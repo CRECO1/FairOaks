@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { loadRiskContext, addressRisk, bounceChance } from '@/lib/email-risk';
+import { CANARY, BREAKER } from '@/lib/campaign-health';
 import { getCrmContext, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { fetchAll } from '@/lib/campaign-engagement';
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const db = adminClient();
   const { data: camp } = await db.from('crm_campaigns')
-    .select('id, name, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, business_unit, listing_id, project_id')
+    .select('id, name, type, frequency, send_date, send_time, send_day_of_month, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, business_unit, listing_id, project_id, hold_risky_addresses')
     .eq('id', id).maybeSingle();
   if (!camp || (!isAdminRole(ctx.role) && camp.business_unit !== ctx.businessUnit)) return notFound('Campaign not found');
 
@@ -123,6 +125,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   if (deadList.length) {
     checks.push({ key: 'dead', label: 'Dead addresses', status: 'warn', detail: `${deadList.length} recipient${deadList.length > 1 ? 's are' : ' is'} on the dead-email list but not suppressed, so ${deadList.length > 1 ? 'they' : 'it'} would be sent to and bounce. Remove them from the campaign.`, items: sample(deadList) });
+  }
+
+  // ── List health: how many of these addresses are unproven, and what bounce rate to expect ──────────────
+  if (isEmail && deliverable.length) {
+    try {
+      const rctx = await loadRiskContext(db, deliverable.map(e => e.client_id));
+      let never = 0, riskyCount = 0, expected = 0;
+      const riskyItems: string[] = [];
+      for (const e of deliverable) {
+        const c = e.client!;
+        const person = { id: c.id, email: c.email, first_name: c.first_name, last_name: c.last_name };
+        const proven = rctx.proven.has(c.id);
+        if (!proven) never++;
+        expected += bounceChance(person, rctx);
+        const r = addressRisk(person, rctx);
+        if (r && !proven) { riskyCount++; riskyItems.push(`${name(c)} <${c.email}> — ${r === 'guessed-pattern' ? 'guessed-style address' : 'domain has bounced before'}`); }
+      }
+      const pct = expected / deliverable.length;
+      const hold = !!(camp as { hold_risky_addresses?: boolean }).hold_risky_addresses;
+      checks.push({
+        key: 'listhealth', label: 'List health',
+        status: !hold && pct >= 0.08 ? 'warn' : 'pass',
+        detail: `${never} of ${deliverable.length} have never received or opened one of our emails · ${riskyCount} look risky · expect roughly ${Math.round(pct * 100)}% to bounce` +
+          `${hold ? ` — risky unproven addresses are held automatically (not mailed) on this campaign` : riskyCount ? ' — turn on the risky-address hold for this campaign, or verify the list first' : ''}. ` +
+          `Safety nets: the first ${CANARY} go out alone, and the campaign auto-pauses if ${Math.round(BREAKER.maxRate * 100)}% bounce.`,
+        items: sample(riskyItems),
+      });
+    } catch (e) { console.error('[preflight] list health', e); }
   }
 
   if (isEmail) {

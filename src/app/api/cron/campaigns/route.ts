@@ -5,6 +5,9 @@ import { unsubscribeUrlFor } from '@/lib/email-tracking';
 import { agentTitle } from '@/lib/agent-title';
 import { marketingDailyCap, type CapDecision } from '@/lib/email-volume';
 import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
+import { campaignHealth, breakerTripped, BREAKER, CANARY } from '@/lib/campaign-health';
+import { loadRiskContext, addressRisk } from '@/lib/email-risk';
+import { recordIntegrationFailure } from '@/lib/integration-alert';
 import { usesMarketReport, getMarketReportMerge, applyMarketReport, type MarketReportMerge } from '@/lib/market-report-email';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -127,7 +130,7 @@ export async function GET(req: NextRequest) {
     .from('crm_campaign_enrollments')
     .select(`
       id, campaign_id, client_id, next_send_at, merge_fields,
-      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, business_unit, org_id),
+      campaign:crm_campaigns!inner(id, name, type, frequency, send_date, send_time, status, email_subject, email_body, sms_body, sender_agent_id, send_as_sender, hold_risky_addresses, business_unit, org_id),
       client:crm_clients!inner(id, first_name, last_name, business_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
     `)
     .eq('active', true)
@@ -212,10 +215,42 @@ export async function GET(req: NextRequest) {
     sentToday.set(unit, count ?? 0);
   }
 
+  // ── Bounce protection (lib/campaign-health.ts, lib/email-risk.ts) ───────────────────────────────────
+  // Per campaign in this run: (1) circuit breaker — a campaign bouncing at >= 8% over >= 25 recent sends is PAUSED and the
+  // owner alerted; (2) canary — a campaign with < 25 sends so far releases only what's left of its first 25 this run, so a
+  // bad list shows itself on a small sample. Bounce events land within minutes, long before the next 15-minute run.
+  const trippedCampaigns = new Set<string>();
+  const canaryLeft = new Map<string, number>();
+  for (const cid of new Set((enrollments as any[]).map(e => String(e.campaign_id)))) {
+    const camp = (enrollments as any[]).find(e => String(e.campaign_id) === cid)?.campaign;
+    if (!camp || camp.type !== 'email') continue;
+    try {
+      const h = await campaignHealth(supabase, cid);
+      if (breakerTripped(h)) {
+        trippedCampaigns.add(cid);
+        await supabase.from('crm_campaigns').update({ status: 'paused' }).eq('id', cid).eq('status', 'active');
+        await recordIntegrationFailure(`campaign_bounce_${cid}`,
+          `Campaign “${camp.name}” was PAUSED automatically: ${h.bounced} of its last ${h.sends} sends bounced (${Math.round(h.rate * 100)}%, limit ${Math.round(BREAKER.maxRate * 100)}%). ` +
+          `Bad addresses are already suppressed. Review the list (or verify it) before resuming the campaign.`,
+          { subject: `⛔ Campaign paused — ${Math.round(h.rate * 100)}% bounce: ${camp.name}` });
+      } else if (h.allTimeSends < CANARY) {
+        canaryLeft.set(cid, CANARY - h.allTimeSends);
+      }
+    } catch (e) { console.error('[cron/campaigns] campaign health', cid, e); }
+  }
+  // Recipients we have never mailed or who never engaged, and domains that have bounced — for the risky-address hold.
+  const riskCtx = await loadRiskContext(supabase, [...new Set((enrollments as any[]).map(e => String(e.client_id)))]).catch(() => null);
+
   for (const enrollment of (enrollments as any[])) {
     const campaign = enrollment.campaign;
     const client = enrollment.client;
     if (!campaign || !client) continue;
+    if (trippedCampaigns.has(String(campaign.id))) continue;           // paused by the breaker this run
+    if (canaryLeft.has(String(campaign.id))) {                         // first-batch canary
+      const left = canaryLeft.get(String(campaign.id))!;
+      if (left <= 0) continue;                                         // stays due; next run releases more
+      canaryLeft.set(String(campaign.id), left - 1);
+    }
 
     // Use campaign's sender_agent if set, otherwise fall back to client's assigned agent
     const senderAgent = campaign.sender_agent_id
@@ -302,6 +337,12 @@ export async function GET(req: NextRequest) {
       if (withinWindow) {
         status = 'skipped';
         errorMessage = `Already sent ${campaign.frequency} campaign to this recipient on ${priorSend!.slice(0, 10)} — inside the ${windowDays}-day cadence window`;
+      } else if (campaign.type === 'email' && campaign.hold_risky_addresses && riskCtx && client.email
+        && !riskCtx.proven.has(client.id) && addressRisk(client, riskCtx)) {
+        // Held, not deleted: a guessed-style address or one at a domain that has already bounced, that we have never
+        // delivered to. Mailing it is a ~1-in-3 bounce. Verify the address (or mail it one-to-one) to release it.
+        status = 'skipped';
+        errorMessage = `Held to protect deliverability: unverified address (${addressRisk(client, riskCtx) === 'guessed-pattern' ? 'guessed-style' : 'domain has bounced before'})`;
       } else if (campaign.type === 'email') {
         if (!client.email) {
           status = 'skipped';
