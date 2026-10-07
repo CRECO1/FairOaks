@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
 
   // Everything this list's callers did before: one query for the workspace's last year.
   const { data: histRows } = await supabase.from('crm_call_log')
-    .select('id, direction, result, kind, source, from_number, to_number, started_at, duration_sec, answered_by, answered_by_bot, notes, summary, intent')
+    .select('id, direction, result, kind, source, from_number, to_number, started_at, duration_sec, answered_by, answered_by_bot, notes, summary, intent, handled_by')
     .eq('business_unit', unit).gte('started_at', new Date(Date.now() - 365 * 86_400_000).toISOString()).order('started_at').limit(5000);
   const { data: allProfiles } = await supabase.from('crm_profiles').select('id, first_name, last_name');
   const nameOf = new Map((allProfiles ?? []).map(p => [p.id as string, `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim().split(' ')[0] || 'Agent']));

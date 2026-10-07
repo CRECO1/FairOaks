@@ -14,10 +14,11 @@ export interface HistoryCall {
   id: string; direction: string; result: string | null; kind: string; source: string;
   from_number: string | null; to_number: string | null; started_at: string; duration_sec: number | null;
   answered_by: string | null; answered_by_bot: boolean; notes: string | null; summary: string | null; intent: string | null;
+  handled_by?: string | null;
 }
 export interface CallerHistory {
   prior: number; first_at: string;
-  /** A person on our side has actually talked with them before (answered, or we called and connected). */
+  /** A person on our side has dealt with them before (answered, we called and connected, or a call-back was marked handled). */
   reached: boolean;
   last: { at: string; label: string; by: string | null; note: string | null };
 }
@@ -35,7 +36,9 @@ const lastLabel = (c: HistoryCall): string => {
 };
 const humanReached = (c: HistoryCall) =>
   (c.direction === 'inbound' && c.result === 'answered' && !!c.answered_by) ||
-  (c.direction === 'outbound' && (c.duration_sec ?? 0) >= 20) || c.source === 'manual';
+  (c.direction === 'outbound' && (c.duration_sec ?? 0) >= 20) || c.source === 'manual' ||
+  // Someone marked it handled — they returned the call from their own phone, which the log never sees.
+  !!c.handled_by;
 
 export function buildHistory(calls: HistoryCall[], names: Map<string, string>): (row: { id: string; direction: string; from_number: string | null; to_number: string | null; started_at: string }) => CallerHistory | null {
   const byTail = new Map<string, HistoryCall[]>();
