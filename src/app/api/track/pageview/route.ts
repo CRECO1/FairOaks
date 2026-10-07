@@ -14,6 +14,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
+import { stripClickTracking } from '@/lib/strip-click-tracking';
 
 export const runtime = 'nodejs';
 
@@ -32,7 +33,7 @@ function deviceFromUA(ua: string): string {
 
 const clip = (v: unknown, n: number): string | null => {
   if (typeof v !== 'string') return null;
-  const s = v.trim();
+  const s = stripClickTracking(v).trim();
   return s ? s.slice(0, n) : null;
 };
 

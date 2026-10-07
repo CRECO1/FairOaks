@@ -17,6 +17,7 @@
  */
 
 import type { NextRequest } from 'next/server';
+import { stripClickTracking } from '@/lib/strip-click-tracking';
 
 /** One page in a visit: the path plus ms elapsed since the first page view. */
 export interface JourneyStep { p: string; t: number }
@@ -47,7 +48,7 @@ export interface LeadContext {
 
 function str(v: unknown, max = 200): string | null {
   if (typeof v !== 'string') return null;
-  const t = v.trim();
+  const t = stripClickTracking(v).trim();
   return t ? t.slice(0, max) : null;
 }
 

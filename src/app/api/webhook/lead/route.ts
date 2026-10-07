@@ -34,6 +34,7 @@ import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { screenSubmission } from '@/lib/bot-guard';
 import { channelFor, parseJourney, intOrNull } from '@/lib/lead-context';
+import { stripClickTracking } from '@/lib/strip-click-tracking';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
   // would then have to treat as "recorded".
   const attrStr = (v: unknown, max = 200): string | null => {
     if (typeof v !== 'string') return null;
-    const t = v.trim();
+    const t = stripClickTracking(v).trim();
     return t ? t.slice(0, max) : null;
   };
   const attrFields: Record<string, string> = {};
