@@ -12,6 +12,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { last10 } from '@/lib/phone';
 import { isBusinessOpen } from '@/lib/talkroute';
 import { matchContact } from '@/lib/voicebot';
+import { internalNumbers, otherParty } from '@/lib/call-history';
 
 export interface Profile { id: string; email: string | null; first_name: string | null; last_name: string | null; role: string | null }
 
@@ -145,7 +146,7 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
   const rows = (data ?? []) as Row[];
   const { data: profileRows } = await db.from('crm_profiles').select('id, email, first_name, last_name, role');
   const profiles = (profileRows ?? []) as Profile[];
-  const out = { answered: 0, bot_legs: 0, linked: 0, junk_closed: 0, returned_closed: 0, assigned: 0, dated: 0 };
+  const out = { answered: 0, bot_legs: 0, linked: 0, junk_closed: 0, returned_closed: 0, assigned: 0, dated: 0, internal_wrapped: 0 };
   const now = new Date().toISOString();
   const plan: Array<{ id: string; patch: Record<string, unknown> }> = [];
   // dryRun: record what would change instead of writing it.
@@ -166,6 +167,19 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
     if (!a.profileId && !a.bot) continue;
     await write(r.id, a.bot ? { answered_by_bot: true } : { answered_by: a.profileId });
     if (a.bot) { r.answered_by_bot = true; out.bot_legs++; } else { r.answered_by = a.profileId; out.answered++; }
+  }
+
+  // 1b. Calls between us (our lines, team phones, the phone Talkroute forwards to — e.g. the
+  // owner's cell calling the office, which loops back and logs as "answered") never need a note.
+  const units = [...new Set(rows.map(r => r.business_unit))];
+  for (const unit of units) {
+    const internal = await internalNumbers(db, unit);
+    for (const r of rows) {
+      if (r.business_unit !== unit || r.source !== 'talkroute' || r.kind !== 'call' || r.outcome || r.answered_by_bot) continue;
+      if (!internal.has(otherParty(r))) continue;
+      await write(r.id, { outcome: 'other', wrapped_at: now, notes: [r.notes, 'Internal call (between our own lines/phones) — no note needed.'].filter(Boolean).join('\n'), updated_at: now });
+      r.outcome = 'other'; out.internal_wrapped++;
+    }
   }
 
   // 2. Contacts

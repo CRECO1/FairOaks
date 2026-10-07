@@ -5,6 +5,7 @@
 // follow-up queue: who still needs a call back, and what they wanted.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
+import WrapUpQueue from '@/components/crm/WrapUpQueue';
 import { useRememberedState } from '@/lib/view-memory';
 
 export interface CallRow {
@@ -114,6 +115,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useRememberedState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup'>('calls-filter', 'all', ['all', 'follow_up', 'voicemail', 'bot', 'missed', 'texts', 'wrapup']);
   const [wrapFor, setWrapFor] = useState<string | null>(null);   // call id whose wrap-up panel is open
+  const [queueOpen, setQueueOpen] = useState(false);               // the wrap-up queue (step through calls needing a note)
   const [showInternal, setShowInternal] = useState(false);          // calls between us / the team's phones
   const [internalHidden, setInternalHidden] = useState(0);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -233,6 +235,20 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
       setAudio(a => ({ ...a, [c.id]: URL.createObjectURL(blob) }));
     } catch { showToast?.('Could not load the recording'); }
     finally { setBusy(null); }
+  }
+
+  // Calls too old to remember get closed as "not documented" (kept, never deleted).
+  async function skipOld() {
+    const n = list.filter(c => Date.now() - new Date(c.started_at).getTime() > 14 * 86_400_000).length;
+    if (!window.confirm(`Mark every answered call older than 14 days that has no note as done?\n\nThey stay in the log, tagged "not documented". Nothing is deleted.${n ? ` (${n} in view now; older ones outside this view are included too.)` : ''}`)) return;
+    setBusy('skipold');
+    try {
+      const r = await fetch(`/api/crm/calls?bulk=skip_old&days=14&business_unit=${businessUnit}`, { method: 'PATCH', headers: auth(authToken) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast?.(j.error || 'Could not clear them'); return; }
+      showToast?.(`${j.skipped} old call${j.skipped === 1 ? '' : 's'} cleared ✓`);
+      load();
+    } finally { setBusy(null); }
   }
 
   async function remove(c: CallRow) {
@@ -363,6 +379,18 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             </button>
           ))}
         </div>
+      )}
+
+      {queueOpen && (
+        <WrapUpQueue
+          calls={list.filter(needsWrap)}
+          authToken={authToken}
+          businessUnit={businessUnit}
+          isMobile={typeof window !== 'undefined' && window.innerWidth < 768}
+          showToast={showToast}
+          onSaved={(id, p) => setCalls(cs => cs.map(x => x.id === id ? { ...x, ...p, has_recording: x.has_recording } : x))}
+          onClose={() => { setQueueOpen(false); load(); }}
+        />
       )}
 
       {/* ── Setup & voice bot (admins) ── */}
@@ -525,6 +553,16 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {filter === 'wrapup' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#fffdf6', border: '1px solid #e6d3a2', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{list.length} answered call{list.length === 1 ? '' : 's'} with no note</div>
+                  <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>Step through them one at a time — one tap each — or clear the old ones nobody can remember.</div>
+                </div>
+                <button onClick={() => setQueueOpen(true)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none', minHeight: 44, flex: '1 1 150px' }}>▶ Start wrap-up queue</button>
+                <button onClick={skipOld} disabled={busy === 'skipold'} style={{ ...mini, minHeight: 44, flex: '1 1 150px' }} title="Marks calls older than 14 days as done without a note. Nothing is deleted.">{busy === 'skipold' ? 'Working…' : 'Clear ones older than 14 days'}</button>
+              </div>
+            )}
             {list.map(c => {
               const badge = resultBadge(c);
               const openNow = open === c.id;

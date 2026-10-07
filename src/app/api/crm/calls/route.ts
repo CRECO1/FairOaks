@@ -208,6 +208,26 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+
+  // PATCH /api/crm/calls?bulk=skip_old&days=14 — close out wrap-ups nobody can still remember.
+  // Calls older than N days that never got a note are marked done as "not documented", so the
+  // record keeps the call and says plainly that it has no note (nothing is invented or deleted).
+  if (req.nextUrl.searchParams.get('bulk') === 'skip_old') {
+    const days = Math.min(365, Math.max(7, Number(req.nextUrl.searchParams.get('days') ?? 14) || 14));
+    const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+    const supa = adminClient();
+    const { data: old, error: oErr } = await needsWrapup(supa.from('crm_call_log').select('id, notes').eq('business_unit', scopedUnit(req, ctx)).lt('started_at', cutoff)).limit(1000);
+    if (oErr) return dbError('api/crm/calls bulk', oErr);
+    const stamp = new Date().toISOString();
+    for (const r of old ?? []) {
+      await supa.from('crm_call_log').update({
+        outcome: 'other', wrapped_at: stamp, wrapped_by: ctx.userId, updated_at: stamp,
+        notes: [r.notes, `Not documented at the time (older than ${days} days) — marked done without a note.`].filter(Boolean).join('\n'),
+      }).eq('id', r.id);
+    }
+    return NextResponse.json({ skipped: (old ?? []).length, days });
+  }
+
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   const supabase = adminClient();
