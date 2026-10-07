@@ -50,6 +50,7 @@ const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSecti
 const ActivitySection = dynamic(() => import('@/components/crm/ActivitySection'), { ssr: false });
 const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: false });
 const FormAutofillReview = dynamic(() => import('@/components/crm/FormAutofillReview'), { ssr: false });
+import { fetchAll } from '@/lib/campaign-engagement';
 import { specForForm, type LoiSpec } from '@/lib/loi-doc';
 import { deriveSide } from '@/lib/representation-side';
 
@@ -2473,8 +2474,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       let added = 0, errors = 0, dupes = 0;
 
       // Pre-fetch all existing emails in this business unit for fast dupe checking
-      const { data: existingContacts } = await supabase
-        .from('crm_clients').select('email').eq('business_unit', businessUnit);
+      // (paged — a bare select stops at 1000 rows, which left ~70% of existing contacts invisible to the dupe check)
+      const existingContacts = await fetchAll<{ email: string | null }>((a, b) => supabase
+        .from('crm_clients').select('email').eq('business_unit', businessUnit).order('id').range(a, b));
       const existingEmails = new Set(
         (existingContacts ?? []).map(c => (c.email ?? '').toLowerCase().trim()).filter(Boolean)
       );
@@ -3119,10 +3121,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Every campaign enrollment in the current workspace, grouped by contact — one query that
   // powers the Campaigns column on the contacts list (rather than a query per row).
   async function loadAllEnrollments() {
-    const { data } = await supabase
+    // paged — the 1000-row cap used to hide ~27% of enrollments from the Contacts "Campaigns" column
+    const data = await fetchAll<any>((a, b) => supabase
       .from('crm_campaign_enrollments')
       .select('client_id, active, campaign:crm_campaigns!inner(name, status, business_unit)')
-      .eq('campaign.business_unit', businessUnit);
+      .eq('campaign.business_unit', businessUnit).order('id').range(a, b));
     const map: Record<string, { campaign_name: string; active: boolean; campaign_status?: string }[]> = {};
     for (const e of (data ?? []) as any[]) {
       if (!e.client_id) continue;

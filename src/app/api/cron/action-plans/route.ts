@@ -109,7 +109,19 @@ export async function GET(req: NextRequest) {
     const plan = enrollment.plan;
     const client = enrollment.client;
     if (!plan || !client) continue;
-    if (client.unsubscribed_at) continue; // skip unsubscribed
+    if (client.unsubscribed_at) {
+      // Unsubscribed since enrolling — close the enrollment so it doesn't sit "active" forever.
+      await supabase.from('crm_action_plan_enrollments')
+        .update({ active: false, completed_at: now, next_step_at: null }).eq('id', enrollment.id);
+      continue;
+    }
+
+    // Claim this run before sending: push next_step_at out 10 minutes, but only if nobody else already
+    // did. Overlapping cron invocations (or a retry after a crash) can no longer double-send the same step.
+    const { data: claimed } = await supabase.from('crm_action_plan_enrollments')
+      .update({ next_step_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
+      .eq('id', enrollment.id).eq('next_step_at', enrollment.next_step_at as string).select('id');
+    if (!claimed?.length) continue;
 
     const agentId = client.agent_id || enrollment.agent_id;
     const agent = agentMap[agentId ?? ''] ?? { first_name: 'Your', last_name: 'Agent', email: 'info@fairoaksrealtygroup.com', phone: '210-390-9997' };
@@ -155,6 +167,7 @@ export async function GET(req: NextRequest) {
     let errorMessage: string | null = null;
     let emailSubject: string | null = null;
     const trackingId = newTrackingId();
+    let providerId: string | null = null;
 
     try {
       if (step.type === 'email') {
@@ -164,12 +177,16 @@ export async function GET(req: NextRequest) {
         } else {
           emailSubject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx, plan.business_unit);
           const body = withOpenPixel(applyMergeFields(step.body || '', ctx, plan.business_unit), trackingId); // open-tracking pixel
-          await resendClient(plan.business_unit).emails.send({
+          // The Resend SDK RETURNS { error } rather than throwing — treating "no throw" as sent hid every
+          // rejected send (rate limit, bad address, domain/key problem) as a success.
+          const emailResult = await resendClient(plan.business_unit).emails.send({
             from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),
             to: client.email,
             subject: emailSubject,
             html: body,
           });
+          if (emailResult.error) throw new Error(emailResult.error.message || 'Resend rejected the send');
+          providerId = emailResult.data?.id ?? null;
         }
       } else if (step.type === 'sms') {
         // SMS — skipped until Twilio is configured
@@ -201,9 +218,23 @@ export async function GET(req: NextRequest) {
     // Record the email send + its tracking id so the pixel can attribute opens.
     if (step.type === 'email') {
       await supabase.from('crm_action_plan_sends').insert([{
-        plan_id: plan.id, client_id: client.id, step_id: step.id, type: 'email',
+        plan_id: plan.id, client_id: client.id, step_id: step.id, enrollment_id: enrollment.id, type: 'email',
         status: stepStatus, subject: emailSubject, tracking_id: trackingId,
+        provider_id: providerId, error_message: stepStatus === 'sent' ? null : errorMessage,
       }]).then(() => {});
+    }
+
+    // A failed email is retried (hourly, up to 3 attempts) instead of silently advancing past it.
+    if (stepStatus === 'failed' && step.type === 'email') {
+      const { count: failures } = await supabase.from('crm_action_plan_sends')
+        .select('id', { count: 'exact', head: true })
+        .eq('plan_id', plan.id).eq('client_id', client.id).eq('step_id', step.id).eq('status', 'failed');
+      if ((failures ?? 0) < 3) {
+        await supabase.from('crm_action_plan_enrollments')
+          .update({ next_step_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() }).eq('id', enrollment.id);
+        executed++;
+        continue;
+      }
     }
 
     // Stamp last_touched_at on the client for any successfully executed step

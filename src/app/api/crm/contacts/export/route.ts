@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, getCrmSuperAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
+import { fetchAll } from '@/lib/campaign-engagement';
 
 /**
  * Bulk export of the contact database — the one route that hands the book over.
@@ -41,14 +42,19 @@ export async function GET(req: NextRequest) {
   const scope = { ids: ids && ids.length ? ids : null };
 
   const db = adminClient();
-  let q = db.from('crm_clients')
+  // PostgREST silently stops at 1000 rows — page through so "Export all" really exports everyone.
+  const build = (from: number, to: number) => {
+    let q = db.from('crm_clients')
     .select('first_name,last_name,business_name,type,email,phone,cell_phone,budget,size_range,asset_types,address,city,state,zip,brokerage,license,notes,business_unit,lead_source,tags,created_at,last_touched_at')
     .eq('business_unit', unit)
-    .order('last_name');
-  if (scope.ids) q = q.in('id', scope.ids);
+    .order('last_name').order('id');
+    if (scope.ids) q = q.in('id', scope.ids);
+    return q.range(from, to);
+  };
 
-  const { data, error } = await q;
-  if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
+  let data: Awaited<ReturnType<typeof build>>['data'];
+  try { data = await fetchAll<NonNullable<Awaited<ReturnType<typeof build>>['data']>[number]>(build); }
+  catch (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }
 
   // Every export the owner takes is still recorded — who, which unit, how many
   // rows, when. Removing the approval workflow does not remove the trail.
