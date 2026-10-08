@@ -79,22 +79,29 @@ interface CRMActivity { id: string; client_id: string; agent_id: string; type: '
 interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; hold_risky_addresses?: boolean; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; listing_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 /**
- * History order for a campaign: the lead who opened it the MOST is first and it steps down from there —
- * most opens → fewer opens (ties: most recent open first) → opened once → not opened (newest send first) → failed last.
+ * History order for a campaign.
+ *   'opens'  — the lead who opened it the MOST is first and it steps down from there: most opens → fewer opens
+ *              (ties: most recent open first) → not opened (newest send first) → failed last.
+ *   'latest' — whoever opened it MOST RECENTLY is first, stepping back in time → not opened → failed last.
  */
-function historyOrder(a: CampaignSend, b: CampaignSend): number {
+type HistorySort = 'opens' | 'latest';
+function historyOrder(mode: HistorySort) {
   const tier = (x: CampaignSend) => (x.status === 'failed' ? 2 : (x.opened_at || (x.open_count ?? 0) > 0) ? 0 : 1);
-  const ta = tier(a), tb = tier(b);
-  if (ta !== tb) return ta - tb;
-  if (ta === 0) {
-    const oa = Math.max(a.open_count ?? 0, a.opened_at ? 1 : 0), ob = Math.max(b.open_count ?? 0, b.opened_at ? 1 : 0);
-    if (oa !== ob) return ob - oa;
-    return String(b.opened_at ?? '').localeCompare(String(a.opened_at ?? ''));
-  }
-  return String(b.sent_at ?? '').localeCompare(String(a.sent_at ?? ''));
+  const lastOpen = (x: CampaignSend) => String(x.last_open_at ?? x.opened_at ?? '');
+  return (a: CampaignSend, b: CampaignSend): number => {
+    const ta = tier(a), tb = tier(b);
+    if (ta !== tb) return ta - tb;
+    if (ta === 0) {
+      if (mode === 'latest') return lastOpen(b).localeCompare(lastOpen(a));
+      const oa = Math.max(a.open_count ?? 0, a.opened_at ? 1 : 0), ob = Math.max(b.open_count ?? 0, b.opened_at ? 1 : 0);
+      if (oa !== ob) return ob - oa;
+      return lastOpen(b).localeCompare(lastOpen(a));
+    }
+    return String(b.sent_at ?? '').localeCompare(String(a.sent_at ?? ''));
+  };
 }
 
-interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
+interface CampaignSend { last_open_at?: string | null; id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
@@ -779,6 +786,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignEnrollments, setCampaignEnrollments] = useState<CampaignEnrollment[]>([]);
   const [campaignEnrollmentsLoading, setCampaignEnrollmentsLoading] = useState(false);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
+  const [historySort, setHistorySort] = useState<HistorySort>('opens');
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
   // Campaign quick preview modal
@@ -3110,7 +3118,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // and the Sent / Opened / Unopened cards above it count what's loaded.
     const data = await fetchAll<CampaignSend>((a, b) => supabase.from('crm_campaign_sends').select('*').eq('campaign_id', campaignId)
       .order('sent_at', { ascending: false }).order('id').range(a, b));
-    setCampaignSends(data ?? []);
+    // The send row only keeps the FIRST open time; every open (with its time) lands in email_tracking_events via the Resend
+    // webhook — use the newest per person for "latest open".
+    const opens = await fetchAll<{ client_id: string; occurred_at: string }>((a, b) => supabase.from('email_tracking_events')
+      .select('client_id, occurred_at').eq('campaign_id', campaignId).eq('event_type', 'open').order('id').range(a, b));
+    const latest = new Map<string, string>();
+    for (const o of opens) { const cur = latest.get(o.client_id); if (!cur || o.occurred_at > cur) latest.set(o.client_id, o.occurred_at); }
+    setCampaignSends((data ?? []).map(s => ({ ...s, last_open_at: latest.get(s.client_id) ?? null })));
   }
 
   async function enrollClients(campaignId: string) {
@@ -7237,9 +7251,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
 
                             {/* Send rows */}
-                            <div style={{ fontSize: 11.5, color: '#9ca3af', margin: '0 0 8px 2px' }}>Ordered by most opens first — then fewer opens, then not opened{failedCount > 0 ? ', failed last' : ''}.</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px 2px' }}>
+                              <span style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Order</span>
+                              {([['opens', 'Most opens'], ['latest', 'Latest open']] as [HistorySort, string][]).map(([v, l]) => (
+                                <button key={v} onClick={() => setHistorySort(v)} aria-pressed={historySort === v}
+                                  style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${historySort === v ? '#c9922c' : '#e5e7eb'}`, background: historySort === v ? '#c9922c' : '#fff', color: historySort === v ? '#fff' : '#374151' }}>{l}</button>
+                              ))}
+                              <span style={{ fontSize: 11.5, color: '#9ca3af' }}>{historySort === 'opens' ? 'Most-opened lead first, stepping down' : 'Most recent opener first, stepping back in time'} — then not opened{failedCount > 0 ? ', failed last' : ''}.</span>
+                            </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {[...campaignSends].sort(historyOrder).map(s => {
+                              {[...campaignSends].sort(historyOrder(historySort)).map(s => {
                                 const client = clients.find(c => c.id === s.client_id);
                                 const displayName = client ? ([client.first_name, client.last_name].filter(Boolean).join(' ') || client.business_name || client.email || 'Unknown') : 'Unknown';
                                 const subName = client?.business_name && (client.first_name || client.last_name) ? client.business_name : null;
@@ -7266,7 +7287,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       isOpened ? (
                                         <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                           <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}</div>
-                                          {s.opened_at && <div style={{ fontSize: 11, color: '#86efac' }}>{new Date(s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>}
+                                          {s.opened_at && <div style={{ fontSize: 11, color: '#86efac' }}>{new Date(s.last_open_at ?? s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>}
                                         </div>
                                       ) : isTracked ? (
                                         <div style={{ fontSize: 12, color: '#d1d5db', flexShrink: 0 }}>Not opened</div>
