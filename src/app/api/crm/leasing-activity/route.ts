@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLeasingActivity, type TenantRow } from '@/lib/leasing-activity';
 import { toXlsx, summarize } from '@/lib/leasing-activity-xlsx';
 import { listingProspects } from '@/lib/listing-prospects';
+import { syncLeasingLeads } from '@/lib/leasing-leads';
+
+export const maxDuration = 60;
 
 // Leasing Activity report for a property — the owner/developer's weekly sheet as a
 // living document. GET → JSON for the property-card tab; GET ?format=xlsx → the sheet
@@ -32,13 +35,17 @@ export async function GET(req: NextRequest) {
   const listingId = req.nextUrl.searchParams.get('listing_id');
   if (!listingId) return NextResponse.json({ error: 'listing_id required' }, { status: 400 });
   if (!(await assertCanSeeRentRoll(listingId, ctx))) return notFound('Listing not found');
+  // New leads (website inquiries, email replies, calls/texts, deals) land on the report
+  // first, so the tab and the download are always current. Throttled to 10 minutes.
+  const synced = await syncLeasingLeads(adminClient(), listingId, { userId: ctx.userId, admin: isAdminRole(ctx.role) }, { force: req.nextUrl.searchParams.get('sync') === '1' })
+    .catch(e => { console.error('[leasing-activity] lead sync', e); return null; });
   const { db, listing, sections, agent } = await load(listingId);
   if (!listing) return notFound('Listing not found');
   const marketing = await listingProspects(db, listingId);
   const header = { property: listing.name as string, fund: (listing.report_fund as string | null) ?? '', agent };
 
   if (req.nextUrl.searchParams.get('format') !== 'xlsx') {
-    return NextResponse.json({ header, sections, marketing: summarize(marketing) });
+    return NextResponse.json({ header, sections, marketing: summarize(marketing), synced });
   }
   const buf = await toXlsx(header, sections, marketing);
   const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).replace(/-/g, '');

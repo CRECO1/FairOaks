@@ -12,6 +12,7 @@ interface Header { property: string; fund: string; agent: string }
 interface Mk { emailed: number; opened: number; sent: number; openRate: number; campaigns: { name: string; sent: number; opened: number; openRate: number }[] }
 
 const GREEN = '#1f3d2e', GOLD = '#b8972a', MINT = '#d6e4d6';
+const SOURCE_ICON: Record<string, string> = { 'Website inquiry': '🌐', 'Email reply': '✉️', 'Call / text': '📞', Deal: '💼' };
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const money = (n: number | null) => n === null || n === undefined ? '' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const day = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
@@ -94,7 +95,7 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
               {LEASING_STATUSES.map(x => <option key={x}>{x}</option>)}
             </select>
           : l.kind === 'expiring' ? <Edit value={l.status} onSave={p('renewal_status')} placeholder="Renewal status" /> : <span style={{ color: '#6b7280', fontSize: 11.5 }}>Marketing</span>}</td>
-        <td style={TD}>{isProspect ? <Edit value={l.dba} onSave={p('tenant_name')} placeholder="Tenant DBA" /> : l.kind === 'expiring' ? l.dba : ''}</td>
+        <td style={TD}>{isProspect ? <><Edit value={l.dba} onSave={p('tenant_name')} placeholder="Tenant DBA" />{l.source && <span title="How this lead came in" style={{ display: 'inline-block', margin: '0 0 3px 6px', fontSize: 10, fontWeight: 800, letterSpacing: .3, color: '#a06a12', background: '#fff7e6', border: '1px solid #f0e2c4', borderRadius: 6, padding: '1px 6px' }}>{SOURCE_ICON[l.source] ?? '•'} {l.source}</span>}</> : l.kind === 'expiring' ? l.dba : ''}</td>
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit value={l.use} onSave={p('tenant_use')} placeholder="Use" /> : ''}</td>
         <td style={{ ...TD, textAlign: 'center' }}>{isProspect
           ? <select value={l.suite} onChange={e => save(l.rowId, { suite: e.target.value || null, size_sf: vacantSuites.find(v => v.suite === e.target.value)?.sf ?? null })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 2px', color: GREEN, background: '#fff' }}>

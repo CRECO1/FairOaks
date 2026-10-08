@@ -12,6 +12,7 @@ export interface TenantRow {
   is_backup?: boolean | null; renewal_status?: string | null; sort_order?: number | null;
   leasing_status?: string | null; tenant_use?: string | null; activity_date?: string | null; proposed_rent?: number | null;
   proposed_ti?: number | null; is_national?: boolean | null; renewal_type?: string | null; prev_rent_psf?: number | null;
+  lead_source?: string | null;
 }
 
 /** One line of the report, in the template's column order. */
@@ -22,6 +23,7 @@ export interface ReportLine {
   occupant: string; status: string; dba: string; use: string; suite: string; sf: number | null;
   date: string | null; proposedRent: number | null; proposedTi: number | null; national: boolean | null;
   expiration: string | null; renewalType: string; notes: string; prevRentPsf: number | null;
+  source?: string;                   // how the lead arrived (Website inquiry / Email reply / Call / text / Deal)
 }
 export interface ReportSection { title: string; tone: 'vacant' | 'expiring' | 'passed'; lines: ReportLine[] }
 
@@ -37,7 +39,7 @@ function prospectLine(p: TenantRow, suite: TenantRow | null): ReportLine {
     occupant: suite ? 'VACANT' : '', status: p.leasing_status ?? 'Prospect', dba: p.tenant_name ?? '', use: p.tenant_use ?? '',
     suite: p.suite ?? suite?.suite ?? '', sf: p.size_sf ?? suite?.size_sf ?? null, date: p.activity_date ?? null,
     proposedRent: p.proposed_rent ?? null, proposedTi: p.proposed_ti ?? null, national: p.is_national ?? null,
-    expiration: null, renewalType: '', notes: p.notes ?? '', prevRentPsf: null,
+    expiration: null, renewalType: '', notes: p.notes ?? '', prevRentPsf: null, source: p.lead_source ?? '',
   };
 }
 
