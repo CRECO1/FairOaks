@@ -79,7 +79,10 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
     const opened = s.filter(x => x.opened_at).length;
     const clickers = new Set(clicks.filter(k => k.campaign_id === c.id).map(k => k.client_id)).size;
     const last = s.reduce<string | null>((m, x) => (x.sent_at && (!m || x.sent_at > m) ? x.sent_at : m), null);
-    return { id: c.id, name: c.name, status: c.status, sent: s.length, opened, clickers, openRate: s.length ? opened / s.length : 0, lastSent: last };
+    const wk = Date.now() - 7 * 864e5;
+    const sentWeek = s.filter(x => x.sent_at && Date.parse(x.sent_at) >= wk).length;
+    const openedWeek = s.filter(x => x.opened_at && Date.parse(x.opened_at) >= wk).length;
+    return { id: c.id, name: c.name, status: c.status, sent: s.length, opened, sentWeek, openedWeek, clickers, openRate: s.length ? opened / s.length : 0, lastSent: last };
   }).filter(c => c.sent > 0 || c.status === 'active');
 
   // Per person.
@@ -159,4 +162,27 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
   }
 
   return { campaigns: byCamp, prospects: [...emailedRows, ...cold] };
+}
+
+
+/**
+ * Calls tied to a property: calls an agent logged on one of its prospects (every call-list
+ * outcome writes a "call" activity) and inbound/outbound calls the phone system matched to
+ * one of them. Counted to date and over the last 7 days.
+ */
+export async function callsForProspects(db: SupabaseClient, clientIds: string[]) {
+  const wk = Date.now() - 7 * 864e5;
+  const out = { outbound: 0, outboundWeek: 0, inbound: 0, inboundWeek: 0 };
+  for (const ids of chunks([...new Set(clientIds)])) {
+    const [{ data: acts }, { data: log }] = await Promise.all([
+      db.from('crm_client_activities').select('created_at').eq('type', 'call').in('client_id', ids),
+      db.from('crm_call_log').select('direction, started_at').in('contact_id', ids),
+    ]);
+    for (const a of acts ?? []) { out.outbound++; if (Date.parse(a.created_at) >= wk) out.outboundWeek++; }
+    for (const l of log ?? []) {
+      const k = l.direction === 'outbound' ? 'outbound' : 'inbound';
+      out[k]++; if (Date.parse(l.started_at) >= wk) out[`${k}Week` as 'outboundWeek' | 'inboundWeek']++;
+    }
+  }
+  return out;
 }

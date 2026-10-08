@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { REPORT_COLUMNS, type ReportSection } from '@/lib/leasing-activity';
-import type { listingProspects } from '@/lib/listing-prospects';
+import type { listingProspects, callsForProspects } from '@/lib/listing-prospects';
 
 // The Leasing Activity report as an .xlsx in the owner's own layout (Headwall's
 // template: green header band, gold expiration bands, mint vacancy rows, 14 columns),
@@ -9,16 +9,28 @@ import type { listingProspects } from '@/lib/listing-prospects';
 const GREEN = 'FF1F3D2E', GOLD = 'FFB8972A', MINT = 'FFD6E4D6', WHITE = 'FFFFFFFF', LAVENDER = 'FFB4A7D6';
 
 export type Marketing = Awaited<ReturnType<typeof listingProspects>>;
+export type Calls = Awaited<ReturnType<typeof callsForProspects>>;
 export function summarize(m: Marketing) {
   const sent = m.campaigns.reduce((s, c) => s + c.sent, 0);
   const opens = m.campaigns.reduce((s, c) => s + c.opened, 0);
   return {
-    emailed: m.prospects.length, opened: m.prospects.filter(p => p.emailsOpened > 0).length, sent, openRate: sent ? opens / sent : 0,
+    sentWeek: m.campaigns.reduce((s, c) => s + c.sentWeek, 0), openedWeek: m.campaigns.reduce((s, c) => s + c.openedWeek, 0),
+    emailed: m.prospects.filter(p => p.emailsSent > 0).length, opened: m.prospects.filter(p => p.emailsOpened > 0).length, sent, openRate: sent ? opens / sent : 0,
     campaigns: m.campaigns.map(c => ({ name: c.name, sent: c.sent, opened: c.opened, openRate: c.openRate, lastSent: c.lastSent })),
   };
 }
 
-export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing) {
+// The two marketing lines that sit in the report's header band (and the tab's top strip).
+export function marketingLines(m: Marketing, calls: Calls) {
+  const sum = summarize(m);
+  const pct = Math.round(sum.openRate * 100);
+  return {
+    email: `${sum.sent} emails sent to ${sum.emailed} businesses · ${sum.opened} opened · ${pct}% open rate  (this week: ${sum.sentWeek} sent, ${sum.openedWeek} opens)`,
+    calls: `${calls.outbound + calls.inbound} calls logged — ${calls.outbound} outbound, ${calls.inbound} inbound  (this week: ${calls.outboundWeek + calls.inboundWeek})`,
+  };
+}
+
+export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing, calls: Calls) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'CRECO';
   const ws = wb.addWorksheet(header.property.slice(0, 31), {
@@ -47,6 +59,14 @@ export async function toXlsx(header: { property: string; fund: string; agent: st
     ws.getRow(r).height = 14.1;
   });
   for (let r = 2; r <= 5; r++) for (let c = 1; c <= 14; c++) ws.getCell(r, c).fill = fill(GREEN);
+  // Marketing effort, two lines in the header band beside Fund / Agent / Date.
+  const ml = marketingLines(m, calls);
+  ([['Email marketing', ml.email, 3], ['Calls', ml.calls, 4]] as const).forEach(([k, v, row]) => {
+    ws.getCell(row, 4).value = k; ws.getCell(row, 4).font = font({ size: 9, bold: true, color: { argb: GOLD } });
+    ws.mergeCells(row, 5, row, 14);
+    ws.getCell(row, 5).value = v; ws.getCell(row, 5).font = font({ size: 9, color: { argb: WHITE } });
+    ws.getCell(row, 5).alignment = { horizontal: 'left', vertical: 'middle' };
+  });
 
   const head = ws.getRow(6);
   REPORT_COLUMNS.forEach((t, i) => {

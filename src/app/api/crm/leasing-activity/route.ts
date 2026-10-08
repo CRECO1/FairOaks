@@ -3,8 +3,8 @@ import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-au
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLeasingActivity, type TenantRow } from '@/lib/leasing-activity';
-import { toXlsx, summarize } from '@/lib/leasing-activity-xlsx';
-import { listingProspects } from '@/lib/listing-prospects';
+import { toXlsx, summarize, marketingLines } from '@/lib/leasing-activity-xlsx';
+import { listingProspects, callsForProspects } from '@/lib/listing-prospects';
 import { syncLeasingLeads } from '@/lib/leasing-leads';
 
 export const maxDuration = 60;
@@ -42,12 +42,13 @@ export async function GET(req: NextRequest) {
   const { db, listing, sections, agent } = await load(listingId);
   if (!listing) return notFound('Listing not found');
   const marketing = await listingProspects(db, listingId);
+  const calls = await callsForProspects(db, marketing.prospects.map(p => p.client_id));
   const header = { property: listing.name as string, fund: (listing.report_fund as string | null) ?? '', agent };
 
   if (req.nextUrl.searchParams.get('format') !== 'xlsx') {
-    return NextResponse.json({ header, sections, marketing: summarize(marketing), synced });
+    return NextResponse.json({ header, sections, marketing: { ...summarize(marketing), calls, lines: marketingLines(marketing, calls) }, synced });
   }
-  const buf = await toXlsx(header, sections, marketing);
+  const buf = await toXlsx(header, sections, marketing, calls);
   const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).replace(/-/g, '');
   const file = `${stamp} Leasing Activity Report - ${header.property}`.replace(/[^\w .-]+/g, '-') + '.xlsx';
   return new NextResponse(Buffer.from(buf), {
