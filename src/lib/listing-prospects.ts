@@ -105,11 +105,11 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
   // so they say nothing about the business — keep only tags that actually segment it.
   const tagCount = new Map<string, number>();
   for (const id of people.keys()) for (const t of clients.get(id)?.tags ?? []) if (cats.has(t)) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
-  const { data: listing } = await db.from('crm_listings').select('name').eq('id', listingId).maybeSingle();
+  const { data: listing } = await db.from('crm_listings').select('name, business_unit').eq('id', listingId).maybeSingle();
   const own = String(listing?.name ?? '').toLowerCase().split(/\s+[—–-]\s+/)[0].trim();   // "Elkhorn Point"
   const umbrella = new Set([...tagCount].filter(([t, n]) => n > people.size * 0.4 || (own && t.toLowerCase().startsWith(own))).map(([t]) => t));
 
-  const prospects = [...people.entries()].map(([id, p]) => {
+  const emailedRows = [...people.entries()].map(([id, p]) => {
     const c = clients.get(id);
     const tags = c?.tags ?? [];
     return {
@@ -124,8 +124,39 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
       firstOpen: p.firstOpen, lastOpen: p.lastOpen, lastSent: p.lastSent,
       clicks: p.clicks, lastClick: p.lastClick,
       unsubscribed: !!c?.unsubscribed_at, dead: tags.includes('Dead Email'),
+      notEmailed: false,
     };
   }).sort((a, b) => (b.lastOpen ?? '').localeCompare(a.lastOpen ?? '') || b.opens - a.opens);
 
-  return { campaigns: byCamp, prospects };
+  // "Not emailed yet": contacts built for THIS property (their lead source names it — "Elkhorn Back Pad Prospect List",
+  // "Elkhorn Point Expansion Prospect List", …) that no campaign has emailed. They never appear above because that list is
+  // built from sends, but they're exactly who to call cold. Skipped for properties whose name has no usable first word
+  // (e.g. "523 Seventh St") so we never match on something generic.
+  const word = own.split(/\s+/)[0] ?? '';
+  const cold: typeof emailedRows = [];
+  if (/^[a-z]{5,}$/.test(word)) {
+    const extra = await all<Client>((a, b) => db.from('crm_clients')
+      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes')
+      .eq('business_unit', listing?.business_unit ?? 'commercial').ilike('lead_source', `%${word}%`).order('id').range(a, b));
+    for (const c of extra) {
+      if (people.has(c.id)) continue;
+      const tags = c.tags ?? [];
+      cold.push({
+        client_id: c.id,
+        name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
+        business: c.business_name ?? '',
+        email: c.email ?? '',
+        phone: c.phone || c.cell_phone || '',
+        category: tags.filter(t => cats.has(t) && !umbrella.has(t)).join(', '),
+        ...askFor(c.notes ?? null),
+        emailsSent: 0, emailsOpened: 0, opens: 0, firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null,
+        unsubscribed: !!c.unsubscribed_at, dead: tags.includes('Dead Email'),
+        notEmailed: true,
+      });
+    }
+    // Callable first (phone on file), then by business name.
+    cold.sort((a, b) => Number(!!b.phone) - Number(!!a.phone) || (a.business || a.name).localeCompare(b.business || b.name));
+  }
+
+  return { campaigns: byCamp, prospects: [...emailedRows, ...cold] };
 }
