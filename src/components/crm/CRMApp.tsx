@@ -84,11 +84,13 @@ interface CampaignEnrollment { id: string; campaign_id: string; client_id: strin
  *              (ties: most recent open first) → not opened (newest send first) → failed last.
  *   'latest' — whoever opened it MOST RECENTLY is first, stepping back in time → not opened → failed last.
  */
+interface ActionPlanSendRow extends HistoryRow { id: string; step_id: string | null; client_id: string; subject: string | null; error_message: string | null; type: string; tracking_id?: string | null }
 type HistorySort = 'opens' | 'latest';
-function historyOrder(mode: HistorySort) {
-  const tier = (x: CampaignSend) => (x.status === 'failed' ? 2 : (x.opened_at || (x.open_count ?? 0) > 0) ? 0 : 1);
-  const lastOpen = (x: CampaignSend) => String(x.last_open_at ?? x.opened_at ?? '');
-  return (a: CampaignSend, b: CampaignSend): number => {
+interface HistoryRow { status: string; sent_at: string; opened_at?: string | null; open_count?: number | null; last_open_at?: string | null }
+function historyOrder<T extends HistoryRow>(mode: HistorySort) {
+  const tier = (x: T) => (x.status === 'failed' ? 2 : (x.opened_at || (x.open_count ?? 0) > 0) ? 0 : 1);
+  const lastOpen = (x: T) => String(x.last_open_at ?? x.opened_at ?? '');
+  return (a: T, b: T): number => {
     const ta = tier(a), tb = tier(b);
     if (ta !== tb) return ta - tb;
     if (ta === 0) {
@@ -787,6 +789,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignEnrollmentsLoading, setCampaignEnrollmentsLoading] = useState(false);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [historySort, setHistorySort] = useState<HistorySort>('opens');
+  const [planSends, setPlanSends] = useState<ActionPlanSendRow[]>([]);
+  const [planSendsLoading, setPlanSendsLoading] = useState(false);
+  const [planHistorySort, setPlanHistorySort] = useState<HistorySort>('opens');
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [campaignActivating, setCampaignActivating] = useState(false);
   // Campaign quick preview modal
@@ -3112,6 +3117,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setPreviewRecipients(rows as typeof previewRecipients);
     } catch { /* preview still works with sample data */ }
   }
+
+  async function loadPlanSends(planId: string) {
+    setPlanSendsLoading(true);
+    try {
+      const r = await fetch(`/api/action-plans/${planId}/sends`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
+      const j = await r.json();
+      setPlanSends(((j.sends ?? []) as (ActionPlanSendRow & { last_opened_at?: string | null })[]).map(x => ({ ...x, last_open_at: x.last_opened_at ?? x.opened_at ?? null })));
+    } catch { setPlanSends([]); }
+    setPlanSendsLoading(false);
+  }
+  // Load a plan's History whenever that tab is showing for a plan (also covers the refresh-restores-the-tab case).
+  useEffect(() => {
+    if (actionPlanTab === 'history' && activeActionPlan?.id) loadPlanSends(activeActionPlan.id);
+  }, [actionPlanTab, activeActionPlan?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCampaignSends(campaignId: string) {
     // The WHOLE history, not the newest 100: ranking by opens only means something if the top openers are in the list,
@@ -7952,6 +7971,71 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </button>
                     ))}
                   </div>
+
+                  {/* History tab — every email this plan has sent, ordered by who opened it most (or most recently) */}
+                  {actionPlanTab === 'history' && (
+                    <div>
+                      {planSendsLoading && planSends.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', fontSize: 14 }}>Loading…</div>
+                      ) : planSends.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', fontSize: 14 }}>No emails sent by this plan yet.</div>
+                      ) : (() => {
+                        const emails = planSends.filter(x => x.status === 'sent' && x.type === 'email');
+                        const opened = emails.filter(x => x.opened_at).length;
+                        const failed = planSends.filter(x => x.status === 'failed').length;
+                        const card = (label: string, value: number, tint: string) => (
+                          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '12px 10px', textAlign: 'center' }}>
+                            <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>{label}</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: tint }}>{value}</div>
+                          </div>
+                        );
+                        return (
+                          <div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, marginBottom: 16 }}>
+                              {card('Sent', emails.length, '#111')}
+                              {card('Opened', opened, '#15803d')}
+                              {card('Not opened', emails.length - opened, '#6b7280')}
+                              {failed > 0 && card('Failed', failed, '#dc2626')}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px 2px' }}>
+                              <span style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>Order</span>
+                              {([['opens', 'Most opens'], ['latest', 'Latest open']] as [HistorySort, string][]).map(([v, l]) => (
+                                <button key={v} onClick={() => setPlanHistorySort(v)} aria-pressed={planHistorySort === v}
+                                  style={{ fontSize: 12, fontWeight: 700, padding: '5px 11px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${planHistorySort === v ? '#c9922c' : '#e5e7eb'}`, background: planHistorySort === v ? '#c9922c' : '#fff', color: planHistorySort === v ? '#fff' : '#374151' }}>{l}</button>
+                              ))}
+                              <span style={{ fontSize: 11.5, color: '#9ca3af' }}>{planHistorySort === 'opens' ? 'Most-opened lead first, stepping down' : 'Most recent opener first, stepping back in time'} — then not opened{failed > 0 ? ', failed last' : ''}.</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                              {[...planSends].sort(historyOrder<ActionPlanSendRow>(planHistorySort)).map(x => {
+                                const client = clients.find(c => c.id === x.client_id);
+                                const name = client ? ([client.first_name, client.last_name].filter(Boolean).join(' ') || client.business_name || client.email || 'Unknown') : 'Unknown';
+                                const sub = client?.business_name && (client.first_name || client.last_name) ? client.business_name : null;
+                                const isOpened = !!x.opened_at, isFailed = x.status === 'failed';
+                                return (
+                                  <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? '#f0fdf4' : isFailed ? '#fff5f5' : '#fff', borderRadius: 10, borderLeft: `3px solid ${isOpened ? '#16a34a' : isFailed ? '#ef4444' : '#e5e7eb'}` }}>
+                                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOpened ? '#dcfce7' : '#f3f4f6', color: isOpened ? '#16a34a' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flexShrink: 0 }}>{(name[0] ?? '?').toUpperCase()}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+                                      <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[sub, x.subject].filter(Boolean).join(' · ')}</div>
+                                      {isFailed && x.error_message && <div style={{ fontSize: 11, color: '#ef4444', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.error_message}</div>}
+                                    </div>
+                                    {x.status === 'sent' && x.type === 'email' && (isOpened ? (
+                                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>Opened{x.open_count && x.open_count > 1 ? ` ×${x.open_count}` : ''}</div>
+                                        <div style={{ fontSize: 11, color: '#86efac' }}>{new Date(x.last_open_at ?? x.opened_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>
+                                      </div>
+                                    ) : <div style={{ fontSize: 12, color: '#d1d5db', flexShrink: 0 }}>Not opened</div>)}
+                                    {isFailed && <div style={{ fontSize: 12, fontWeight: 600, color: '#ef4444', flexShrink: 0 }}>Failed</div>}
+                                    <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, textAlign: 'right', minWidth: 48 }}>{new Date(x.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                   {/* Enrolled tab */}
                   {actionPlanTab === 'enrolled' && (

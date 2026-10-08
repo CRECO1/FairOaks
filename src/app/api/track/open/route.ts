@@ -70,6 +70,7 @@ export async function GET(req: NextRequest) {
           await supabase.from('crm_action_plan_sends').update({
             open_count: (send.open_count ?? 0) + 1,
             ...(send.opened_at ? {} : { opened_at: now }),
+            last_opened_at: now,       // every open, so the History tab can order by "latest open"
           }).eq('id', send.id);
 
           // First open only: tag the contact
