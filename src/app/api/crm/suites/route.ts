@@ -3,6 +3,9 @@ import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized, forbidden } from
 import { adminClient } from '@/lib/supabase-admin';
 import { tenancies } from '@/lib/rent-roll-tenancy';
 
+// 8000 Fair Oaks Pkwy — the only property the Floor Plans view draws.
+const FLOOR_PLAN_LISTING_ID = '12e83ca0-539f-48d0-bf0e-579503d9a147';
+
 const VALID_UNITS = ['residential', 'commercial'] as const;
 type BusinessUnit = typeof VALID_UNITS[number];
 function toUnit(val: string | null, fallback: BusinessUnit = 'commercial'): BusinessUnit {
@@ -130,6 +133,9 @@ export async function PUT(req: NextRequest) {
     notes: notes ?? null,
     updated_by: caller.id,
     updated_at: new Date().toISOString(),
+    // The Floor Plans view draws one property — 8000 Fair Oaks Pkwy. Tag its suites so
+    // the rent roll's mirror (scoped by listing) can never reach another property's.
+    listing_id: FLOOR_PLAN_LISTING_ID,
   };
 
   const { data, error } = await supabase

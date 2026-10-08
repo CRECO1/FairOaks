@@ -9,6 +9,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';
 import RentRoll from '@/components/crm/RentRoll';
+import LeasingActivity from '@/components/crm/LeasingActivity';
 import EmailProspects from '@/components/crm/EmailProspects';
 import CamReconciliation from '@/components/crm/CamReconciliation';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
@@ -197,7 +198,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // is active by the time it resolves — so A's docs/deals/envelopes can't paint
   // into B's panel.
   const activeListingIdRef = useRef<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'rentroll' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -298,7 +299,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (!l) return;
     openListing(l);
     const tab = recallView(`${businessUnit}:listing-tab`);
-    const tabs = ['info', 'documents', 'rentroll', 'recon', 'prospects', 'deals', 'photos', 'contacts', 'team'] as const;
+    const tabs = ['info', 'documents', 'rentroll', 'leasing', 'recon', 'prospects', 'deals', 'photos', 'contacts', 'team'] as const;
     const saved = tabs.find(t => t === tab);
     if (saved) setActiveTab(saved);
   });
@@ -1234,7 +1235,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {active && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) closePanel(); }}>
           <div style={{ flex: 1 }} onClick={closePanel} />
-          <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' ? 1100 : 560, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
+          <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' || activeTab === 'leasing' ? 1100 : 560, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
 
             {/* Panel header */}
             <div style={{ padding: '20px 24px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: 0 }}>
@@ -1288,12 +1289,14 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <div style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
                 {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' },
                   ...(canSeeRentRoll ? [{ k: 'rentroll', label: '📊 Rent Roll' }] : []),
+                  // The owner's weekly leasing activity report, kept live (LeasingActivity).
+                  ...(canSeeRentRoll ? [{ k: 'leasing', label: '📋 Leasing Activity' }] : []),
                   // Only where there is a rent roll, and only for someone allowed to see it.
                   ...(canSeeRentRoll && hasRentRoll ? [{ k: 'recon', label: '🧾 Reconciliation' }] : []),
                   // Who this property's campaigns emailed + open rates + who to ask for (EmailProspects).
                   ...(canSeeRentRoll ? [{ k: 'prospects', label: '📬 Prospects' }] : []),
                   { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -1513,6 +1516,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
               {activeTab === 'rentroll' && canSeeRentRoll && (
                 <RentRoll listingId={active.id} authToken={authToken} isAdmin={isAdmin} contacts={clients} onToast={onToast} />
+              )}
+
+              {activeTab === 'leasing' && canSeeRentRoll && (
+                <div style={{ padding: '0 20px 20px' }}>
+                  <LeasingActivity listingId={active.id} authToken={authToken} isAdmin={isAdmin} onToast={onToast} />
+                </div>
               )}
 
               {activeTab === 'prospects' && canSeeRentRoll && (

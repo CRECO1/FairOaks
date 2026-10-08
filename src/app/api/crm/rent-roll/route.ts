@@ -13,9 +13,11 @@ import { tenancies } from '@/lib/rent-roll-tenancy';
 // Columns an agent may write. Everything else (ids, timestamps) is server-owned.
 const EDITABLE = ['tenant_name', 'suite', 'building', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration',
   'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'mail_only',
-  'contact_id', 'renewal_status', 'notes', 'sort_order', 'is_backup'] as const;
-const NUMERIC = new Set(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'keys', 'sort_order']);
-const DATE = new Set(['lease_start', 'lease_expiration']);
+  'contact_id', 'renewal_status', 'notes', 'sort_order', 'is_backup',
+  // Leasing Activity report fields (prospect pipeline + the owner's report columns).
+  'leasing_status', 'tenant_use', 'activity_date', 'proposed_rent', 'proposed_ti', 'is_national', 'renewal_type', 'prev_rent_psf'] as const;
+const NUMERIC = new Set(['size_sf', 'monthly_rent', 'annual_rent', 'rent_psf', 'pct_share', 'keys', 'sort_order', 'proposed_rent', 'proposed_ti', 'prev_rent_psf']);
+const DATE = new Set(['lease_start', 'lease_expiration', 'activity_date']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // The suite's Contact is a real CRM contact, joined live so a change on the contact
 // record shows here — contact_name stays as the fallback for people not in the CRM.
@@ -27,6 +29,7 @@ function clean(body: Record<string, unknown>): Record<string, unknown> {
     if (!(k in body)) continue;
     const v = body[k];
     if (k === 'is_backup') { out[k] = v === true || v === 'true' || v === 1 || v === '1'; continue; }
+    if (k === 'is_national') { out[k] = v === null || v === '' || v === undefined ? null : (v === true || v === 'true' || v === 1 || v === '1' || /^y/i.test(String(v))); continue; }
     if (v === '' || v === null || v === undefined) { out[k] = null; continue; }
     if (k === 'contact_id') { const id = String(v).trim(); out[k] = UUID.test(id) ? id : null; continue; }
     if (NUMERIC.has(k)) { const n = Number(v); out[k] = Number.isFinite(n) ? n : null; continue; }
@@ -38,8 +41,10 @@ function clean(body: Record<string, unknown>): Record<string, unknown> {
 
 // Keep the Floor Plans view (office_suites) in step with the rent roll: when a suite's
 // tenant / size / expiration changes here, mirror it onto the matching drawn suite so a
-// tenant move is a single edit. Only updates suites the floor plan already draws.
-async function syncFloorPlan(db: SupabaseClient, unit: string, suite?: string | null, row?: Record<string, unknown>) {
+// tenant move is a single edit. Only updates suites the floor plan already draws, and
+// only THIS property's — office_suites.listing_id scopes it, so another property that
+// reuses a suite number (Elkhorn Point's 102 vs 8000 Fair Oaks' 102) never touches it.
+async function syncFloorPlan(db: SupabaseClient, listingId: string, unit: string, suite?: string | null, row?: Record<string, unknown>) {
   const num = String(suite ?? '').trim();
   if (!num || !row) return;
   const name = String(row.tenant_name ?? '').trim();
@@ -52,7 +57,7 @@ async function syncFloorPlan(db: SupabaseClient, unit: string, suite?: string | 
   if (row.size_sf !== undefined) patch.sq_ft = row.size_sf === null ? null : Math.round(Number(row.size_sf));
   if (row.lease_expiration !== undefined) patch.lease_expiration = row.lease_expiration;
   try {
-    await db.from('office_suites').update(patch).eq('business_unit', unit).eq('suite_number', num);
+    await db.from('office_suites').update(patch).eq('listing_id', listingId).eq('business_unit', unit).eq('suite_number', num);
   } catch (e) { console.error('[rent-roll] floor-plan sync', e); }
 }
 
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
     .select(SELECT).single();
   if (error) { console.error('[rent-roll] POST', error); return NextResponse.json({ error: 'Could not add the suite' }, { status: 500 }); }
   // Backup / prospective tenants never drive the Floor Plan — they aren't occupants.
-  if (!row.is_backup && await isInEffect(supabase, listingId, data.suite, data.id)) await syncFloorPlan(supabase, data.business_unit, data.suite, row);
+  if (!row.is_backup && await isInEffect(supabase, listingId, data.suite, data.id)) await syncFloorPlan(supabase, listingId, data.business_unit, data.suite, row);
   return NextResponse.json({ row: data });
 }
 
@@ -127,7 +132,7 @@ export async function PATCH(req: NextRequest) {
   // Sync against the suite as it now stands (a renamed suite moves the mirror with it).
   // Backup / prospective tenants never drive the Floor Plan.
   if (!data.is_backup && await isInEffect(supabase, cur.listing_id, data.suite ?? cur.suite, id)) {
-    await syncFloorPlan(supabase, data.business_unit, data.suite ?? cur.suite, { ...row, tenant_name: data.tenant_name, size_sf: data.size_sf, lease_expiration: data.lease_expiration });
+    await syncFloorPlan(supabase, cur.listing_id, data.business_unit, data.suite ?? cur.suite, { ...row, tenant_name: data.tenant_name, size_sf: data.size_sf, lease_expiration: data.lease_expiration });
   }
   return NextResponse.json({ row: data });
 }
