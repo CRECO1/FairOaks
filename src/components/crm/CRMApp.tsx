@@ -78,6 +78,22 @@ interface CalendarEvent { id: string; title: string; description: string | null;
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
 interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; hold_risky_addresses?: boolean; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; listing_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
+/**
+ * History order for a campaign: the lead who opened it the MOST is first and it steps down from there —
+ * most opens → fewer opens (ties: most recent open first) → opened once → not opened (newest send first) → failed last.
+ */
+function historyOrder(a: CampaignSend, b: CampaignSend): number {
+  const tier = (x: CampaignSend) => (x.status === 'failed' ? 2 : (x.opened_at || (x.open_count ?? 0) > 0) ? 0 : 1);
+  const ta = tier(a), tb = tier(b);
+  if (ta !== tb) return ta - tb;
+  if (ta === 0) {
+    const oa = Math.max(a.open_count ?? 0, a.opened_at ? 1 : 0), ob = Math.max(b.open_count ?? 0, b.opened_at ? 1 : 0);
+    if (oa !== ob) return ob - oa;
+    return String(b.opened_at ?? '').localeCompare(String(a.opened_at ?? ''));
+  }
+  return String(b.sent_at ?? '').localeCompare(String(a.sent_at ?? ''));
+}
+
 interface CampaignSend { id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
 
@@ -3090,7 +3106,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function loadCampaignSends(campaignId: string) {
-    const { data } = await supabase.from('crm_campaign_sends').select('*').eq('campaign_id', campaignId).order('sent_at', { ascending: false }).limit(100);
+    // The WHOLE history, not the newest 100: ranking by opens only means something if the top openers are in the list,
+    // and the Sent / Opened / Unopened cards above it count what's loaded.
+    const data = await fetchAll<CampaignSend>((a, b) => supabase.from('crm_campaign_sends').select('*').eq('campaign_id', campaignId)
+      .order('sent_at', { ascending: false }).order('id').range(a, b));
     setCampaignSends(data ?? []);
   }
 
@@ -7218,8 +7237,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
 
                             {/* Send rows */}
+                            <div style={{ fontSize: 11.5, color: '#9ca3af', margin: '0 0 8px 2px' }}>Ordered by most opens first — then fewer opens, then not opened{failedCount > 0 ? ', failed last' : ''}.</div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              {campaignSends.map(s => {
+                              {[...campaignSends].sort(historyOrder).map(s => {
                                 const client = clients.find(c => c.id === s.client_id);
                                 const displayName = client ? ([client.first_name, client.last_name].filter(Boolean).join(' ') || client.business_name || client.email || 'Unknown') : 'Unknown';
                                 const subName = client?.business_name && (client.first_name || client.last_name) ? client.business_name : null;
