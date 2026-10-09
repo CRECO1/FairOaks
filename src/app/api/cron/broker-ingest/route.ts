@@ -1,7 +1,7 @@
 /**
  * GET /api/cron/broker-ingest
  *
- * Weekly Vercel cron: reads recent commercial-real-estate broker "available space"
+ * Scheduled Vercel cron (2x/day Mon-Fri, 1x/day Sat-Sun; see vercel.json): reads recent commercial-real-estate broker "available space"
  * emails from the connected Gmail account (zack@crecotx.com), extracts listings with
  * Claude vision, and inserts new buildings into crm_prospective_properties.
  *
@@ -18,6 +18,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { runPipeline } from '@/lib/broker-ingest';
 import { geocodeMissing } from '@/lib/broker-ingest/geocode';
+import { adminClient } from '@/lib/supabase-admin';
+import { CRAWL_HEARTBEAT_KEY } from '@/lib/integration-health';
 import { enrichMissing } from '@/lib/broker-ingest/enrich';
 import { linkBrokerContacts } from '@/lib/broker-ingest/link-brokers';
 
@@ -134,6 +136,8 @@ export async function GET(req: NextRequest) {
     } catch (linkErr) {
       console.error('broker-ingest: broker-linking failed (non-fatal):', linkErr);
     }
+    // Heartbeat for the integration watchdog: this scheduled run completed.
+    await adminClient().from('crm_integration_status').upsert({ id: CRAWL_HEARTBEAT_KEY, last_status: 'ok', updated_at: new Date().toISOString() });
     return NextResponse.json({
       scanned: r.scanned,
       listings: r.listings,

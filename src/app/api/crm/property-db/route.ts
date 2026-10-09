@@ -5,7 +5,7 @@ import { normalizeAddress } from '@/lib/broker-ingest/upsert';
 import { guardRead } from '@/lib/crm-read-guard';
 
 // Read-side for the broker-ingested Property DB (crm_prospective_properties).
-// The write-side is src/lib/broker-ingest/* (the 4x/day Gmail → CRM pipeline).
+// The write-side is src/lib/broker-ingest/* (the scheduled Gmail → CRM pipeline).
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
