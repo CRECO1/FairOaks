@@ -61,6 +61,15 @@ takes a message.
 (residential). `crm_voicebot_settings.talkroute_numbers` maps them; `unitForNumber()`
 files every call/text under the right workspace.
 
+**What the commercial bot knows about properties:** the crecotx.com website
+listings **plus the CRM's own `crm_listings` (commercial workspace)** — development,
+pre-leasing, land and off-website inventory such as Elkhorn Point. Add or edit a
+property in the CRM and Ava knows it within ~5 minutes (non-restricted folders only;
+leased/sold ones are still recognised as CRECO's). Spoken-only extras the CRM has no
+field for (e.g. who to ask for) go in `PROPERTY_NOTES` in `src/lib/listing-knowledge.ts`.
+A property that is on neither list is never denied: Ava says an agent will confirm and
+takes the caller's details.
+
 ## Setup (once)
 
 ### 1. Vercel environment variables (project `fair-oaks-realty-group`)

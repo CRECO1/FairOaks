@@ -6,6 +6,13 @@
 // compact fact sheet the bot can answer from — and ONLY from. Anything not on the
 // sheet is "an agent will confirm".
 //
+// ALSO the CRM's own property table (`crm_listings`, commercial workspace): CRECO's
+// development, pre-leasing, land and off-website inventory (Elkhorn Point, the back
+// lot, 8000 Fair Oaks Pkwy…) is NOT all on the public site, and a caller who asks
+// about one of our properties must never be told it isn't ours. Add a property in
+// the CRM and the bot knows it within ~5 minutes. Spoken-only extras the CRM has no
+// field for (who to ask for) live in PROPERTY_NOTES below.
+//
 // Cached in memory for a few minutes so a call's five or six turns don't hit the
 // database five or six times, and the whole block is prompt-cached by Claude.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +129,67 @@ export async function fetchListings(unit: string): Promise<WebListing[]> {
   } catch (e) { console.warn('[listing-knowledge]', e); return cache?.listings ?? []; }
 }
 
+// ── The CRM's own commercial inventory (crm_listings) ─────────────────────────
+interface CrmProperty {
+  name: string; address: string | null; city: string | null; state: string | null; zip: string | null; type: string | null; status: string | null;
+  asking_price: number | null; sq_ft: number | null; lot_size: string | null; zoning: string | null; year_built: number | null;
+  description: string | null; highlights: string | null;
+}
+const CRM_COLS = 'name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, zoning, year_built, description, highlights';
+
+/**
+ * Spoken-only extras the CRM has no field for. Keyed by a pattern on the property name;
+ * add a line here when a property needs "who to ask for" or a caller-facing caveat.
+ * Everything else about a property comes from its CRM record automatically.
+ */
+const PROPERTY_NOTES: { match: RegExp; note: string }[] = [
+  { match: /elkhorn point/i, note: 'Elkhorn Point is CRECO\'s own commercial development at 8923 Dietz Elkhorn Rd in Fair Oaks Ranch (elkhornpoint.com): two ±10,000 SF retail buildings now pre-leasing, plus a ±2 acre back lot offered for sale, ground lease or build-to-suit. The brokers are Zachary Stovall and Brian Blanco, (210) 817-3443 — give that number only if the caller asks for it; otherwise take their details and an agent will call.' },
+];
+
+let crmCache: { at: number; unit: string; rows: CrmProperty[] } | null = null;
+/** CRECO's inventory straight from the CRM. Restricted folders stay private. */
+export async function fetchCrmProperties(unit: string): Promise<CrmProperty[]> {
+  if (crmCache && crmCache.unit === unit && Date.now() - crmCache.at < TTL_MS) return crmCache.rows;
+  try {
+    const { data, error } = await adminClient().from('crm_listings').select(CRM_COLS)
+      .eq('business_unit', unit).eq('is_restricted', false).order('created_at', { ascending: false }).limit(80);
+    if (error) throw error;
+    crmCache = { at: Date.now(), unit, rows: (data ?? []) as CrmProperty[] };
+    return crmCache.rows;
+  } catch (e) { console.warn('[listing-knowledge] crm properties', e); return crmCache?.unit === unit ? crmCache.rows : []; }
+}
+
+/** "8923 Dietz Elkhorn Rd" ≈ "8923 DIETZ ELKHORN ROAD": street number + first street word. */
+const addrKey = (a: string | null | undefined) => {
+  const m = String(a ?? '').toLowerCase().match(/(\d+)\s+(?:[nsew]\.?\s+)?([a-z]+)/);
+  return m ? `${m[1]} ${m[2]}` : '';
+};
+const isLive = (s: string | null) => !s || /^(active|pending|under[ _-]?contract)$/i.test(s);
+
+function describeCrm(p: CrmProperty): string {
+  const live = isLive(p.status);
+  const where = [p.address, p.city, p.state].filter(Boolean).join(', ');
+  const bits: string[] = [];
+  if (p.sq_ft) bits.push(`${Number(p.sq_ft).toLocaleString('en-US')} SF`);
+  if (p.lot_size) bits.push(`${/acre|ac\b/i.test(p.lot_size) ? p.lot_size : `${p.lot_size} acres`} of land`);
+  if (p.zoning) bits.push(`zoned ${p.zoning}`);
+  if (p.year_built) bits.push(`built ${p.year_built}`);
+  // asking_price holds a sale price OR a per-SF lease rate depending on the property, so a small
+  // number is never read out as dollars; the agent confirms.
+  if (p.asking_price) bits.push(p.asking_price >= 1000 ? `asking ${money(p.asking_price)}` : 'pricing: an agent will confirm');
+  const status = !live ? ` — ${String(p.status).toUpperCase()} (no longer available; offer an agent to discuss other space)` : String(p.status).toLowerCase() === 'pending' ? ' — PENDING' : '';
+  const lines = [`• ${p.name}${where ? ` — ${where}` : ''}`, `  ${p.type || 'Commercial property'}${bits.length ? `: ${bits.join('; ')}` : ''}${status}`];
+  if (live) {
+    const desc = (p.description || '').replace(/\s+/g, ' ').trim();
+    if (desc) lines.push(`  Notes: ${desc.length > 520 ? desc.slice(0, 520) + '…' : desc}`);
+    const hl = (p.highlights || '').split('\n').map(x => x.trim()).filter(Boolean).slice(0, 8);
+    if (hl.length) lines.push(`  Highlights: ${hl.join('; ')}`);
+  }
+  const extra = PROPERTY_NOTES.filter(n => n.match.test(p.name)).map(n => n.note);
+  for (const n of new Set(extra)) lines.push(`  Agent note: ${n}`);
+  return lines.join('\n');
+}
+
 const money = (n: number) => n >= 1000 ? `$${Math.round(n).toLocaleString('en-US')}` : `$${n % 1 ? n.toFixed(2) : n}`;
 const typeWord: Record<string, string> = { warehouse: 'Warehouse/industrial', industrial: 'Industrial', office: 'Office', retail: 'Retail', flex: 'Flex', land: 'Land', multifamily: 'Multifamily', 'mixed-use': 'Mixed-use' };
 
@@ -161,9 +229,25 @@ export async function listingFactSheet(unit: string): Promise<{ text: string; co
       count: homes.length,
     };
   }
-  const listings = await fetchListings(unit);
-  if (!listings.length) return { text: '', count: 0 };
+  const [web, crm] = await Promise.all([fetchListings(unit), fetchCrmProperties(unit)]);
+  if (!web.length && !crm.length) return { text: '', count: 0 };
   const origin = SITE[unit]?.origin ?? '';
-  const text = `CURRENT LISTINGS ON OUR WEBSITE (${listings.length}). These are the only property facts you may state. Prices, sizes and features come from here verbatim; if a caller asks something not listed for a property (e.g. parking count, HVAC, availability date, lease terms, whether an offer is in), say an agent will confirm and take their details.\n\n${listings.map(l => describe(l, origin)).join('\n\n')}`;
-  return { text, count: listings.length };
+  // A property on both lists is described once, from the website row (it carries lease basis etc.).
+  // Same street number + street word AND a shared name stem, so two products at one address
+  // (Elkhorn Point's retail vs its back lot) are never mistaken for each other.
+  const stem = (t: string) => t.toLowerCase().split(/\s+[—-]\s+/)[0].replace(/[^a-z0-9]/g, '').slice(0, 10);
+  const onWeb = (p: CrmProperty) => { const k = addrKey(p.address); return !!k && web.some(l => addrKey(l.address) === k && (stem(l.title) === stem(p.name) || stem(l.title).startsWith(stem(p.name).slice(0, 6)))); };
+  const crmOnly = crm.filter(p => !onWeb(p));
+  // Website rows that are also CRM properties still need the CRM's notes (who to ask for).
+  const webText = web.map(l => {
+    const extra = crm.filter(p => addrKey(p.address) === addrKey(l.address)).flatMap(p => PROPERTY_NOTES.filter(n => n.match.test(p.name)).map(n => n.note));
+    return describe(l, origin) + [...new Set(extra)].map(n => `\n  Agent note: ${n}`).join('');
+  });
+  const live = crmOnly.filter(p => isLive(p.status)), closed = crmOnly.filter(p => !isLive(p.status));
+  const parts: string[] = [];
+  if (webText.length) parts.push(`CURRENT LISTINGS ON OUR WEBSITE (${web.length}):\n\n${webText.join('\n\n')}`);
+  if (live.length) parts.push(`OTHER CRECO PROPERTIES IN OUR CRM — development, pre-leasing and land inventory (${live.length}):\n\n${live.map(describeCrm).join('\n\n')}`);
+  if (closed.length) parts.push(`CRECO PROPERTIES NO LONGER AVAILABLE (${closed.length}) — still ours, so never say they are not; say it has leased/sold and offer an agent to discuss other space:\n\n${closed.map(describeCrm).join('\n\n')}`);
+  const text = `CRECO PROPERTY INVENTORY. Everything below is OUR property or listing — if a caller names any of these (by name, address or nickname), acknowledge that it is CRECO's, never say it isn't ours. These are the only property facts you may state. Prices, sizes and features come from here verbatim; if a caller asks something not listed for a property (e.g. parking count, HVAC, availability date, lease terms, whether an offer is in), say an agent will confirm and take their details.\n\n${parts.join('\n\n')}`;
+  return { text, count: web.length + live.length };
 }
