@@ -1219,15 +1219,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         if (d.connected) {
           setGmailConnected(true);
           setGmailAccounts(d.accounts ?? []);
-          // Fetch & save Gmail signature in the background
-          fetch(`/api/gmail/signature?userId=${session.user.id}`, { headers: authHeader })
-            .then(r => r.json())
-            .then(s => {
-              if (s.signature !== undefined) {
-                setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev);
-              }
-            })
-            .catch(() => {});
+          // Refresh the Gmail signature in the background — but only when it's stale. It is saved
+          // to crm_profiles and arrives with the profile, so asking Google on EVERY load (a token
+          // refresh + settings call, ~1.6s) bought nothing. Once every 12 hours, or when empty.
+          const sigKey = `crm:sigAt:${session.user.id}`;
+          let sigAt = 0;
+          try { sigAt = Number(localStorage.getItem(sigKey) ?? 0); } catch { /* storage blocked */ }
+          if (Date.now() - sigAt > 12 * 3600_000) {
+            fetch(`/api/gmail/signature?userId=${session.user.id}`, { headers: authHeader })
+              .then(r => r.json())
+              .then(s => {
+                if (s.signature !== undefined) {
+                  try { localStorage.setItem(sigKey, String(Date.now())); } catch { /* storage blocked */ }
+                  setProfile(prev => prev ? { ...prev, email_signature: s.signature } : prev);
+                }
+              })
+              .catch(() => {});
+          }
         }
       });
     // Handle OAuth redirect result — re-fetch accounts so new connection shows immediately
@@ -1358,8 +1366,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [businessUnit]); // eslint-disable-line
 
   const loadProfiles = useCallback(async () => {
-    // Sync real last_sign_in_at from Supabase Auth → crm_profiles first
-    await fetch('/api/crm/sync-logins', { method: 'POST' }).catch(() => {});
+    // Sync real last_sign_in_at from Supabase Auth → crm_profiles. Admin-only and it lists every
+    // auth user, so it used to sit IN FRONT of the profile list (awaited, on every load, several
+    // times a load). Now: fire-and-forget, at most once per 10 minutes per browser.
+    try {
+      const last = Number(localStorage.getItem('crm:syncLoginsAt') ?? 0);
+      if (Date.now() - last > 10 * 60_000) {
+        localStorage.setItem('crm:syncLoginsAt', String(Date.now()));
+        fetch('/api/crm/sync-logins', { method: 'POST' }).catch(() => {});
+      }
+    } catch { /* storage blocked — skip the sync, the profile list still loads */ }
     // Each workspace shows its own agents + all admins & super-admins
     const { data } = await supabase.from('crm_profiles').select('*')
       .or(`business_unit.eq.${businessUnit},role.eq.admin,role.eq.super_admin`)
@@ -1702,21 +1718,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const prof = p ?? profile;
     if (!prof) return;
     const BATCH = 1000;
-    let from = 0;
-    let all: Client[] = [];
-    let total = 0;
-    for (;;) {
-      const { data, count, error } = await supabase
-        .from('crm_clients')
-        .select('*', { count: 'exact' })
+    // PostgREST returns at most 1000 rows, so a 3,300-contact book is four reads. They used to run
+    // one after another, each re-counting the table (`count: exact`), ~4s end to end. Page 1
+    // carries the count; the rest are known from it and go out together. `id` is the tiebreak so a
+    // bulk import (identical created_at) can't be split across pages, which dropped/duplicated rows.
+    const page = (i: number, withCount: boolean) => {
+      const q = supabase.from('crm_clients').select('*', withCount ? { count: 'exact' } : undefined)
         .eq('business_unit', businessUnit)
-        .order('created_at', { ascending: false })
-        .range(from, from + BATCH - 1);
-      if (error) { console.error('loadClients error:', error.message); return; }
-      all = all.concat((data ?? []) as Client[]);
-      total = count ?? all.length;
-      if (!data || data.length < BATCH || all.length >= total) break;
-      from += BATCH;
+        .order('created_at', { ascending: false }).order('id')
+        .range(i * BATCH, i * BATCH + BATCH - 1);
+      return q;
+    };
+    const first = await page(0, true);
+    if (first.error) { console.error('loadClients error:', first.error.message); return; }
+    let all = (first.data ?? []) as Client[];
+    const total = first.count ?? all.length;
+    if (all.length >= BATCH && total > BATCH) {
+      const more = Math.ceil(total / BATCH) - 1;
+      const rest = await Promise.all(Array.from({ length: more }, (_, k) => page(k + 1, false)));
+      for (const r of rest) {
+        if (r.error) { console.error('loadClients error:', r.error.message); return; }
+        all = all.concat((r.data ?? []) as Client[]);
+      }
+      const seen = new Set<string>();
+      all = all.filter(c => (seen.has(c.id) ? false : (seen.add(c.id), true)));
     }
     setClients(all);
     setContactsTotal(total);
