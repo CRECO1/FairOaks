@@ -1178,7 +1178,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load profile + data once session is set
+  // Load profile + data once per signed-in user. Keyed on the user id, NOT the session
+  // object: getSession(), INITIAL_SESSION, SIGNED_IN and TOKEN_REFRESHED each hand back a
+  // fresh session object, and with [session] as the dependency every CRM open ran the whole
+  // load (profile, contacts, deals, campaigns + their engagement math, Gmail status…)
+  // three times over — three /api/campaigns computes of 2–5s each. The token still
+  // updates in state for the requests that follow; it just doesn't restart the load.
   useEffect(() => {
     if (!session) return;
     loadProfile();
@@ -1241,7 +1246,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setTimeout(() => setToast(''), 8000);
       window.history.replaceState({}, '', '/crm');
     }
-  }, [session]); // eslint-disable-line
+  }, [session?.user?.id]); // eslint-disable-line
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -1272,7 +1277,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadProfiles();
       loadSmartLists();
       loadActionPlans();
-      loadCampaigns();
+      loadCampaigns({ quick: true });
       loadCampaignProjects();
       setTimeout(() => { loadAllTasks(updated); loadAllCommissions(); }, 500);
     } else {
@@ -1297,7 +1302,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       loadProfiles();
       loadSmartLists();
       loadActionPlans();
-      loadCampaigns();
+      loadCampaigns({ quick: true });
       loadCampaignProjects();
       setTimeout(() => { loadAllTasks(newProfile); loadAllCommissions(); }, 500);
     }
@@ -1693,6 +1698,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setContactsTotal(total);
     setContactsPage(0);
   }, [profile, businessUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Landing straight on Marketing (a refresh keeps the view) skips the click paths that run the
+  // Gmail-inclusive engagement pass, so run it once here when campaigns are first on screen.
+  useEffect(() => {
+    if (['campaigns', 'action-plans'].includes(page) && campaigns.length > 0 && !engagementRefreshed.current) refreshEngagementCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, campaigns.length]);
 
   // Load campaign enrollments for the Campaigns column whenever the contacts page is shown.
   useEffect(() => {
@@ -2926,7 +2938,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // The call-list endpoint includes it, so once it answers (a few seconds), its
   // numbers replace the quick ones on the summary card and the campaign rows —
   // the card, the badges and the list then all agree.
+  const engagementRefreshed = useRef(false);
   async function refreshEngagementCounts() {
+    engagementRefreshed.current = true;
     try {
       const r = await fetch('/api/campaigns/engagement', { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
       if (!r.ok) return;
@@ -2942,12 +2956,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     } catch { /* keep the quick counts */ }
   }
 
-  async function loadCampaigns() {
+  // quick: the first load on sign-in. The Gmail-inclusive engagement pass (slow — it reads
+  // Gmail) only matters once you are on Marketing, and every path into Marketing reloads
+  // campaigns without `quick`, so it runs then.
+  async function loadCampaigns(opts?: { quick?: boolean }) {
     setCampaignLoading(true);
     try {
       const res = await fetch(`/api/campaigns?unit=${businessUnit}`);
       const j = await res.json();
-      if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); refreshEngagementCounts(); }
+      if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); if (!opts?.quick) refreshEngagementCounts(); }
       else { showToast(`Could not load campaigns: ${j.error ?? res.status}`); }
     } catch (err) {
       showToast('Network error loading campaigns');
@@ -3612,6 +3629,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   return (
     <div className="crm-app-shell" style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
       <style>{`
+        /* The marketing site's global base styles (globals.css) leak into the CRM: every input /
+           select / textarea got min-height:3rem (= 60px at the site's 20px root) and the site's
+           large body font, and every checkbox became 25x60. Reset them here, ahead of the CRM's
+           own rules so those still win ties. Phones keep a 44px touch target. */
+        .crm-app-shell :where(input,select,textarea){min-height:0;font-size:inherit;letter-spacing:inherit;}
+        .crm-app-shell input:where([type=checkbox],[type=radio]){width:16px;height:16px;min-height:0;}
+        .crm-app-shell :where(p){max-width:none;}
+        .crm-app-shell :focus-visible{--tw-ring-offset-width:0px;--tw-ring-color:rgba(201,146,44,.6);}
+        @media(max-width:767px){.crm-app-shell :where(input:not([type=checkbox]):not([type=radio]),select,textarea){min-height:44px;}}
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
         /* Print is enabled. The 1099-NEC report and the document preview each scope
@@ -3693,7 +3719,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         .ctc-card{background:#fff;border:1px solid #e8eaed;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);display:flex;flex-direction:column;position:relative;transition:box-shadow .15s,transform .15s,border-color .15s;}
         .ctc-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.09);transform:translateY(-2px);border-color:#e0d4b8;}
         .ctc-card.sel{border-color:#c9922c;background:#fffdf8;}
-        .ctc-chk{position:absolute;top:14px;left:14px;width:16px;height:16px;accent-color:#c9922c;opacity:0;cursor:pointer;z-index:3;}
+        .ctc-chk{position:absolute;top:6px;left:6px;width:16px;height:16px;accent-color:#c9922c;opacity:0;cursor:pointer;z-index:3;background:#fff;border-radius:4px;}
         .ctc-card:hover .ctc-chk,.ctc-chk:checked{opacity:1;}
         .ctc-acts{margin-top:auto;border-top:1px solid #f1f2f4;display:grid;grid-template-columns:repeat(4,1fr);}
         .ctc-acts button{border:none;background:#fff;padding:11px 0;cursor:pointer;color:#6b7280;display:flex;align-items:center;justify-content:center;gap:5px;font-family:'DM Sans',sans-serif;font-weight:600;font-size:12.5px;position:relative;transition:all .12s;}
@@ -5054,13 +5080,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {filteredContacts.map(c => {
                     const clientDeals = deals.filter(d => d.client_id === c.id);
                     const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
-                    const rowInitials = (c.first_name[0] ?? '') + (c.last_name[0] ?? '');
-                    const avatarPair = (CONTACT_AVATAR_COLORS[(c.first_name[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
+                    // A contact can arrive with only a business or only an email — the card used to render
+                    // a blank name and an empty avatar for those. Fall back through business → email.
+                    const personName = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
+                    const cardName = personName || c.business_name || c.email || 'Unnamed contact';
+                    const rowInitials = personName ? ((c.first_name?.[0] ?? '') + (c.last_name?.[0] ?? '')) : (cardName[0] ?? '?').toUpperCase();
+                    const avatarPair = (CONTACT_AVATAR_COLORS[(cardName[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
                     const enrolls = enrollmentsByClient[c.id] ?? [];
                     const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
                     const ta = timeAgo(c.last_touched_at);
                     const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
-                    const phone = c.cell_phone || c.phone;
+                    const phone = (c.cell_phone || c.phone || '').trim() || null;
                     const tags = c.tags ?? [];
                     return (
                       <div key={c.id} className={`ctc-card${selectedClientIds.has(c.id) ? ' sel' : ''}`} onClick={() => setActiveClient(c)}>
@@ -5073,10 +5103,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ width: 46, height: 46, borderRadius: '50%', background: `linear-gradient(135deg, ${avatarPair[0]}, ${avatarPair[1]})`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Cormorant Garamond',serif", fontWeight: 700, fontSize: 18, flexShrink: 0, letterSpacing: .5, marginLeft: isAdmin ? 16 : 0 }}>{rowInitials}</div>
                           <div style={{ minWidth: 0, flex: 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <span title={`${c.first_name} ${c.last_name}`.trim()} style={{ fontWeight: 700, color: '#111', fontSize: 16, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.first_name} {c.last_name}</span>
+                              <span title={cardName} style={{ fontWeight: 700, color: '#111', fontSize: 16, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cardName}</span>
                               {c.is_shared && <span title="Team contact — visible to all agents" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: .5, background: '#ede9fe', color: '#6d28d9', borderRadius: 6, padding: '1px 5px', flexShrink: 0, textTransform: 'uppercase' }}>Team</span>}
                             </div>
-                            {c.business_name && <div title={c.business_name} style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
+                            {c.business_name && personName && <div title={c.business_name} style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.business_name}</div>}
                             <div style={{ position: 'relative', display: 'inline-block', marginTop: 7 }} title="Change contact type" onClick={e => e.stopPropagation()}>
                               <span style={{ ...typeStyle, display: 'inline-block', padding: '2px 9px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, pointerEvents: 'none' }}>{c.type}</span>
                               <select value={c.type} onChange={async e => { const nt = e.target.value as Client['type']; await supabase.from('crm_clients').update({ type: nt }).eq('id', c.id); setClients(prev => prev.map(x => x.id === c.id ? { ...x, type: nt } : x)); }}
@@ -5088,7 +5118,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                         <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: 5 }} onClick={e => e.stopPropagation()}>
                           {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: 13, color: '#4b5563', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>✉</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email}</span></a>}
-                          {phone && <a href={`tel:${phone}`} style={{ fontSize: 13, color: '#4b5563', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>☎</span>{fmtPhone(phone)}</a>}
+                          {phone && <a href={`tel:${phone}`} style={{ fontSize: 13, color: '#4b5563', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ opacity: .5, width: 14, flexShrink: 0 }}>☎</span>{phoneDisp(phone)}</a>}
                           {!c.email && !phone && <span style={{ fontSize: 12.5, color: '#cbd5e1' }}>No contact info yet</span>}
                         </div>
                         {(tags.length > 0 || clientDeals.length > 0 || enrolls.length > 0) && (
@@ -5101,7 +5131,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                         <div className="ctc-acts" onClick={e => e.stopPropagation()}>
                           <button onClick={() => { if (c.email) window.location.href = `mailto:${c.email}`; }} title={c.email ? `Email ${c.email}` : 'No email on file'} style={{ opacity: c.email ? 1 : .4 }}>✉ Email</button>
-                          <button onClick={() => { if (phone) window.location.href = `tel:${phone}`; }} title={phone ? `Call ${fmtPhone(phone)}` : 'No phone on file'} style={{ opacity: phone ? 1 : .4 }}>☎ Call</button>
+                          <button onClick={() => { if (phone) window.location.href = `tel:${phone}`; }} title={phone ? `Call ${phoneDisp(phone)}` : 'No phone on file'} style={{ opacity: phone ? 1 : .4 }}>☎ Call</button>
                           <button className={pendingCount > 0 ? 'hot' : ''} onClick={() => { setTaskClientId(c.id); setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' }); setShowTaskModal(true); }} title={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''} — add another` : 'Add a task'}>✓ Task{pendingCount > 0 && <span className="nbadge">{pendingCount}</span>}</button>
                           <button onClick={() => setActiveClient(c)} title="Open contact — notes, history & edit">✎ Open</button>
                         </div>
