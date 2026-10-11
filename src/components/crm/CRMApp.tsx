@@ -183,8 +183,10 @@ function fmtPhone(v: string): string {
 // mangle an extension or an international number), so tables use this instead.
 function phoneDisp(v?: string | null): string {
   const s = String(v ?? '').trim();
-  const d = s.replace(/\D/g, '');
-  return d.length === 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : s;
+  // "+15037532206" / "1-503-753-2206" are US numbers with the country code on — show them
+  // like every other number. Anything else (extensions, international) is left as typed.
+  const d = s.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+  return d.length === 10 && !/ext|x\d/i.test(s) ? `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}` : s;
 }
 
 function titleCase(v: string): string {
@@ -3770,6 +3772,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           .cf-tag-input{font-size:16px!important;min-height:44px;padding-top:10px!important;padding-bottom:10px!important;}
           .ctc-grid{grid-template-columns:1fr!important;}
           .ctc-stats{grid-template-columns:repeat(2,1fr)!important;}
+          .ctc-stats>.ctc-stat:last-child:nth-child(odd){grid-column:1/-1;}
           .ctc-chk{opacity:1!important;}
           /* Table helpers */
           .mobile-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;-ms-overflow-style:none;scrollbar-width:none;}
@@ -5475,6 +5478,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   {dayNum}
                                 </span>
                               </div>
+                              {isMobile ? (
+                                // Phone cells are ~50px wide: "1:00 Showing…" chips were unreadable
+                                // truncations. Show dots (tap the day for the list below).
+                                dayEvents.length > 0 && (
+                                  <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexWrap: 'wrap', paddingLeft: 3 }}>
+                                    {dayEvents.slice(0, 3).map(ev => <span key={ev.id} style={{ width: 7, height: 7, borderRadius: '50%', background: '#1a365d' }} />)}
+                                    {dayEvents.length > 3 && <span style={{ fontSize: 10, color: '#6b7280', fontWeight: 700 }}>+{dayEvents.length - 3}</span>}
+                                  </div>
+                                )
+                              ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 {dayEvents.slice(0, isMobile ? 2 : 3).map(ev => (
                                   <div key={ev.id} style={{ fontSize: 11, background: '#1a365d', color: '#fff', borderRadius: 3, padding: '1px 5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -5485,6 +5498,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   <div style={{ fontSize: 10, color: '#9ca3af', paddingLeft: 4 }}>+{dayEvents.length - (isMobile ? 2 : 3)} more</div>
                                 )}
                               </div>
+                              )}
                             </div>
                           );
                         })}
@@ -6496,7 +6510,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 { k: 'social',       label: '📱 Social Media', on: () => setPage('social') },
               ].map(t => (
                 <button key={t.k} onClick={t.on}
-                  style={{ padding: isMobile ? '12px 14px' : '9px 18px', minHeight: isMobile ? 44 : undefined, border: 'none', background: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", color: page === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${page === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -1 }}>
+                  style={{ padding: isMobile ? '12px 8px' : '9px 18px', minHeight: isMobile ? 44 : undefined, border: 'none', background: 'none', cursor: 'pointer', fontSize: isMobile ? 13 : 14, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", color: page === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${page === t.k ? '#c9922c' : 'transparent'}`, marginBottom: -1 }}>
                   {t.label}
                 </button>
               ))}
@@ -10350,7 +10364,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ background: '#f9fafb', borderRadius: 8, padding: '12px 14px' }}>
                       <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 3 }}>Cell Phone</div>
                       {c.cell_phone ? (
-                        <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: '#374151', textDecoration: 'none' }}>{c.cell_phone}</a>
+                        <a href={`tel:${c.cell_phone}`} style={{ fontSize: 14, fontWeight: 500, color: '#374151', textDecoration: 'none' }}>{phoneDisp(c.cell_phone)}</a>
                       ) : <span style={{ fontSize: 14, color: '#d1d5db' }}>Not provided</span>}
                     </div>
                     {(c.address || c.city || c.state || c.zip) && (
