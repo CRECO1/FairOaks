@@ -143,7 +143,7 @@ const CRM_COLS = 'name, address, city, state, zip, type, status, asking_price, s
  * Everything else about a property comes from its CRM record automatically.
  */
 const PROPERTY_NOTES: { match: RegExp; note: string }[] = [
-  { match: /elkhorn point/i, note: 'Elkhorn Point is CRECO\'s own commercial development at 8923 Dietz Elkhorn Rd in Fair Oaks Ranch (elkhornpoint.com): two ±10,000 SF retail buildings now pre-leasing, plus a ±2 acre back lot offered for sale, ground lease or build-to-suit. The brokers are Zachary Stovall and Brian Blanco, (210) 817-3443 — give that number only if the caller asks for it; otherwise take their details and an agent will call.' },
+  { match: /elkhorn point/i, note: 'Elkhorn Point is CRECO\'s own commercial development on Dietz Elkhorn Rd in Fair Oaks Ranch (elkhornpoint.com): two ±10,000 SF retail buildings now pre-leasing at 8923 Dietz Elkhorn Rd, plus a ±2 acre back lot at 8979 Dietz Elkhorn Rd offered for sale, ground lease or build-to-suit. The brokers are Zachary Stovall and Brian Blanco, (210) 817-3443 — give that number only if the caller asks for it; otherwise take their details and an agent will call.' },
 ];
 
 let crmCache: { at: number; unit: string; rows: CrmProperty[] } | null = null;
