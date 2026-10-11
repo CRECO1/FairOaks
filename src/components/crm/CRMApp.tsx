@@ -839,6 +839,28 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [contactSourceFilter, setContactSourceFilter] = useState('');
   const [contactSpecFilter, setContactSpecFilter] = useState('');
   const [contactOwnerFilter, setContactOwnerFilter] = useState('');
+  // "Needs a touch": the contacts that actually need someone today, not "everyone nobody has
+  // touched in 30 days" (that was 2,586 of 3,312 — a number nobody can act on). Open deals gone
+  // quiet for 2+ weeks, overdue tasks, and brand-new leads nobody has contacted.
+  const [needsTouchOnly, setNeedsTouchOnly] = useState(false);
+  const needsTouchIds = useMemo(() => {
+    const now = Date.now(), DAY = 24 * 60 * 60 * 1000;
+    const touched = new Map<string, number | null>();
+    for (const c of clients) touched.set(c.id, c.last_touched_at ? new Date(c.last_touched_at).getTime() : null);
+    const ids = new Set<string>();
+    for (const d of deals) {
+      if (!d.client_id || ['Closed', 'Lost'].includes(d.stage) || !touched.has(d.client_id)) continue;
+      const t = touched.get(d.client_id);
+      if (t === null || t === undefined || now - t > 14 * DAY) ids.add(d.client_id);
+    }
+    const today = new Date().toLocaleDateString('en-CA');
+    for (const t of allTasks) if (t.client_id && !t.completed_at && t.due_date && t.due_date.slice(0, 10) < today && touched.has(t.client_id)) ids.add(t.client_id);
+    for (const c of clients) {
+      if (c.last_touched_at || !c.created_at || c.unsubscribed_at) continue;
+      if (now - new Date(c.created_at).getTime() < 14 * DAY && ['Buyer', 'Seller', 'Tenant', 'Landlord/Investor'].includes(c.type)) ids.add(c.id);
+    }
+    return ids;
+  }, [clients, deals, allTasks]);
   const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'added'>('recent');
   const [emailEditorMode, setEmailEditorMode] = useState<'rich' | 'html'>('rich');
   const [showSaveList, setShowSaveList] = useState(false);
@@ -4829,7 +4851,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 const now = Date.now();
                 const DAY = 24 * 60 * 60 * 1000;
                 const newThisWeek = clients.filter(c => c.created_at && (now - new Date(c.created_at).getTime()) < 7 * DAY).length;
-                const needFollowUp = clients.filter(c => { const t = c.last_touched_at ? new Date(c.last_touched_at).getTime() : null; return t === null || (now - t) > 30 * DAY; }).length;
                 const activeDealCount = deals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage)).length;
                 const inCampaigns = clients.filter(c => (enrollmentsByClient[c.id]?.length ?? 0) > 0).length;
                 const segs: { label: string; type: string }[] = [
@@ -4842,7 +4863,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div className="ctc-stats">
                       <div className="ctc-stat dark"><div className="k">Total</div><div className="v">{clients.length.toLocaleString()}</div><div className="d">across all types</div></div>
                       <div className="ctc-stat click" onClick={() => setContactSort('added')} title="Sort by newest added"><div className="k">New This Week</div><div className="v">{newThisWeek}</div><div className="d">added in last 7 days</div></div>
-                      <div className="ctc-stat click" onClick={() => setContactSort('never')} title="Show least-recently contacted first"><div className="k">Need Follow-Up</div><div className="v">{needFollowUp}</div><div className="d">no touch in 30+ days</div></div>
+                      <div className={`ctc-stat click${needsTouchOnly ? ' dark' : ''}`} onClick={() => setNeedsTouchOnly(v => !v)} title="Open deals quiet for 2+ weeks, overdue tasks, and new leads nobody has contacted — click to show only these"><div className="k">Needs a Touch</div><div className="v">{needsTouchIds.size}</div><div className="d">{needsTouchOnly ? 'showing only these · click to clear' : 'quiet deals, overdue tasks, new leads'}</div></div>
                       <div className="ctc-stat"><div className="k">Active Deals</div><div className="v">{activeDealCount}</div><div className="d">in the pipeline</div></div>
                       <div className="ctc-stat"><div className="k">In Campaigns</div><div className="v">{inCampaigns}</div><div className="d">currently enrolled</div></div>
                     </div>
@@ -4952,8 +4973,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
                       className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: isMobile ? '100%' : 140 }} />
                     {/* Clear */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); }}
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter || needsTouchOnly) && (
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); setNeedsTouchOnly(false); }}
                         style={{ fontSize: 13, color: '#6b7280', background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                         Clear
                       </button>
@@ -4990,6 +5011,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   if (contactTagFilter && !(c.tags ?? []).some(t => t.toLowerCase().includes(contactTagFilter.toLowerCase()))) return false;
                   if (contactSpecFilter && !(c.asset_types ?? []).includes(contactSpecFilter)) return false;
                   if (contactOwnerFilter && c.agent_id !== contactOwnerFilter) return false;
+                  if (needsTouchOnly && !needsTouchIds.has(c.id)) return false;
                   return true;
                 }).sort((a, b) => {
                   if (contactSort === 'recent') {

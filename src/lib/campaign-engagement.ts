@@ -93,6 +93,16 @@ export async function fetchAll<T>(page: (from: number, to: number) => PromiseLik
 }
 
 const chunk = <T,>(xs: T[], n: number) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
+/** Map over chunks with a few in flight at once, results kept in input order. Chunked reads
+ *  here were awaited one after another — a 3,000-recipient campaign set is ~20 round trips. */
+async function pmap<T, R>(xs: T[], fn: (x: T) => Promise<R>, limit = 6): Promise<R[]> {
+  const out: R[] = new Array(xs.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, xs.length) }, async () => {
+    while (next < xs.length) { const i = next++; out[i] = await fn(xs[i]); }
+  }));
+  return out;
+}
 const digits10 = (p?: string | null) => (p ?? '').replace(/\D/g, '').slice(-10);
 
 export interface Signal {
@@ -148,14 +158,18 @@ export async function computeEngagement(
   // ── Sends + clicks, paged and chunked (both tables pass 1000 rows) ──────────
   const sends: { campaign_id: string; client_id: string; sent_at: string }[] = [];
   const clicks: ClickEvent[] = [];
-  for (const part of chunk(ids, 80)) {
-    sends.push(...await fetchAll<{ campaign_id: string; client_id: string; sent_at: string }>((a, b) =>
-      db.from('crm_campaign_sends').select('campaign_id, client_id, sent_at')
-        .in('campaign_id', part).eq('status', 'sent').eq('type', 'email').order('sent_at').range(a, b)));
-    clicks.push(...await fetchAll<ClickEvent>((a, b) =>
-      db.from('email_tracking_events').select('campaign_id, client_id, url, occurred_at, user_agent')
-        .in('campaign_id', part).eq('event_type', 'click').order('occurred_at').range(a, b)));
-  }
+  const parts = await pmap(chunk(ids, 80), async part => {
+    const [s, c] = await Promise.all([
+      fetchAll<{ campaign_id: string; client_id: string; sent_at: string }>((a, b) =>
+        db.from('crm_campaign_sends').select('campaign_id, client_id, sent_at')
+          .in('campaign_id', part).eq('status', 'sent').eq('type', 'email').order('sent_at').range(a, b)),
+      fetchAll<ClickEvent>((a, b) =>
+        db.from('email_tracking_events').select('campaign_id, client_id, url, occurred_at, user_agent')
+          .in('campaign_id', part).eq('event_type', 'click').order('occurred_at').range(a, b)),
+    ]);
+    return { s, c };
+  });
+  for (const x of parts) { sends.push(...x.s); clicks.push(...x.c); }
 
   // First send per (campaign, recipient)
   const firstSent = new Map<string, string>();
@@ -208,12 +222,9 @@ export async function computeEngagement(
   const reportCampaigns = new Set(campaigns.filter(c => /\{\{owner_report_url\}\}|\/r\//.test(c.email_body ?? '')).map(c => c.id));
   if (reportCampaigns.size) {
     const reports: { client_id: string; first_viewed_at: string | null; last_viewed_at: string | null; view_count: number | null; bov_requested_at: string | null }[] = [];
-    for (const part of chunk(clientIds, 150)) {
-      const { data } = await db.from('crm_owner_reports')
+    for (const rows of await pmap(chunk(clientIds, 150), async part => (await db.from('crm_owner_reports')
         .select('client_id, first_viewed_at, last_viewed_at, view_count, bov_requested_at')
-        .in('client_id', part).not('first_viewed_at', 'is', null);
-      reports.push(...(data ?? []));
-    }
+        .in('client_id', part).not('first_viewed_at', 'is', null)).data ?? [])) reports.push(...rows);
     for (const r of reports) {
       for (const cid of recipients.get(r.client_id) ?? []) {
         if (!reportCampaigns.has(cid)) continue;
@@ -230,17 +241,17 @@ export async function computeEngagement(
 
   // ── Recipient phones (inbound calls + outbound "contacted") ─────────────────
   const phones = new Map<string, string[]>(); // client → last-10 digits
-  for (const part of chunk(clientIds, 150)) {
-    const { data } = await db.from('crm_clients').select('id, phone, cell_phone').in('id', part);
-    for (const c of data ?? []) phones.set(c.id, [digits10(c.phone), digits10(c.cell_phone)].filter(d => d.length === 10));
-  }
+  const since = clientIds.length ? clientIds.map(earliest).sort()[0] : new Date().toISOString();
+  // The call-log read only needs `since`, so it runs alongside the phone lookups.
+  const [phoneRows, calls] = await Promise.all([
+    pmap(chunk(clientIds, 150), async part => (await db.from('crm_clients').select('id, phone, cell_phone').in('id', part)).data ?? []),
+    fetchAll<{ direction: string; from_number: string | null; to_number: string | null; contact_id: string | null; started_at: string }>((a, b) =>
+      db.from('crm_call_log').select('direction, from_number, to_number, contact_id, started_at')
+        .gte('started_at', since).order('started_at').range(a, b)),
+  ]);
+  for (const rows of phoneRows) for (const c of rows) phones.set(c.id, [digits10(c.phone), digits10(c.cell_phone)].filter(d => d.length === 10));
   const byDigits = new Map<string, string>();
   for (const [id, ds] of phones) for (const d of ds) byDigits.set(d, id);
-
-  const since = clientIds.length ? clientIds.map(earliest).sort()[0] : new Date().toISOString();
-  const calls = await fetchAll<{ direction: string; from_number: string | null; to_number: string | null; contact_id: string | null; started_at: string }>((a, b) =>
-    db.from('crm_call_log').select('direction, from_number, to_number, contact_id, started_at')
-      .gte('started_at', since).order('started_at').range(a, b));
   const outboundCalls = new Map<string, string>(); // client → latest outbound call
   for (const c of calls) {
     const inbound = c.direction === 'inbound';
@@ -286,7 +297,7 @@ export async function computeEngagement(
 
   // ── Contacted since they engaged? ───────────────────────────────────────────
   const engagedIds = [...people.keys()];
-  for (const part of chunk(engagedIds, 150)) {
+  const contactReads = await pmap(chunk(engagedIds, 150), async part => {
     // Two activity tables are in use: crm_client_activities, and crm_activity (the
     // contact timeline — where call wrap-ups and returned calls are logged).
     const [{ data: acts1 }, { data: acts2 }, { data: tasks }] = await Promise.all([
@@ -297,6 +308,9 @@ export async function computeEngagement(
       db.from('crm_tasks').select('client_id, type, status, completed_at, created_at').in('client_id', part)
         .in('type', ['call', 'follow_up']),
     ]);
+    return { acts1, acts2, tasks };
+  });
+  for (const { acts1, acts2, tasks } of contactReads) {
     for (const a of [...(acts1 ?? []), ...(acts2 ?? [])]) {
       const p = people.get(a.client_id);
       if (p && a.created_at >= p.first_signal_at && (!p.contacted_at || a.created_at > p.contacted_at)) {
@@ -355,10 +369,10 @@ export const PLAZA_TENANT_TAG = '8000 Fair Oaks';
  */
 export async function tenantNoticeIds(db: SupabaseClient, campaignIds: string[]): Promise<Set<string>> {
   const out = new Set<string>();
-  for (const part of chunk(campaignIds, 80)) {
-    const rows = await fetchAll<{ campaign_id: string; client: { tags: string[] | null } | null }>((a, b) =>
+  const partRows = await pmap(chunk(campaignIds, 80), part => fetchAll<{ campaign_id: string; client: { tags: string[] | null } | null }>((a, b) =>
       db.from('crm_campaign_enrollments').select('campaign_id, client:crm_clients(tags)')
-        .in('campaign_id', part).order('id').range(a, b) as unknown as PromiseLike<{ data: { campaign_id: string; client: { tags: string[] | null } | null }[] | null; error: unknown }>);
+        .in('campaign_id', part).order('id').range(a, b) as unknown as PromiseLike<{ data: { campaign_id: string; client: { tags: string[] | null } | null }[] | null; error: unknown }>));
+  for (const rows of partRows) {
     const tally = new Map<string, { n: number; tenants: number }>();
     for (const r of rows) {
       const t = tally.get(r.campaign_id) ?? { n: 0, tenants: 0 };

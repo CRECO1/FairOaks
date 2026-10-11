@@ -3,6 +3,20 @@ import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-aut
 import { adminClient } from '@/lib/supabase-admin';
 import { computeEngagement, fetchAll, tenantNoticeIds, type CampaignFunnel } from '@/lib/campaign-engagement';
 
+type Engagement = Awaited<ReturnType<typeof computeEngagement>>;
+const ENGAGEMENT_TTL_MS = 45_000;
+const engagementCache = new Map<string, { at: number; value: Promise<Engagement> }>();
+function cachedEngagement(key: string, compute: () => Promise<Engagement>): Promise<Engagement> {
+  const hit = engagementCache.get(key);
+  if (hit && Date.now() - hit.at < ENGAGEMENT_TTL_MS) return hit.value;
+  const value = compute();
+  engagementCache.set(key, { at: Date.now(), value });
+  // A failed computation must not be served again — drop it so the next load retries.
+  value.catch(() => { if (engagementCache.get(key)?.value === value) engagementCache.delete(key); });
+  if (engagementCache.size > 12) { const oldest = [...engagementCache.entries()].sort((a, b) => a[1].at - b[1].at)[0]; if (oldest) engagementCache.delete(oldest[0]); }
+  return value;
+}
+
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -29,14 +43,20 @@ export async function GET(req: NextRequest) {
   // Paged: PostgREST stops at 1000 rows, and this table passed that in Oct 2026 —
   // every stat on this page was quietly computed from a truncated list.
   const sends: { campaign_id: string; sent_at: string; opened_at: string | null; tracking_id: string | null; status: string; type: string }[] = [];
-  for (let i = 0; i < ids.length; i += 80) {
-    sends.push(...await fetchAll<typeof sends[number]>((a, b) => supabase
+  // The send stats and the tenant-notice check are independent reads — run them together
+  // (they used to run back to back, ~0.9s of the response).
+  const parts: string[][] = [];
+  for (let i = 0; i < ids.length; i += 80) parts.push(ids.slice(i, i + 80));
+  const [sendParts, noticeSet] = await Promise.all([
+    Promise.all(parts.map(part => fetchAll<typeof sends[number]>((a, b) => supabase
       .from('crm_campaign_sends')
       .select('campaign_id, sent_at, opened_at, tracking_id, status, type')
-      .in('campaign_id', ids.slice(i, i + 80))
+      .in('campaign_id', part)
       .order('sent_at', { ascending: false })
-      .range(a, b)));
-  }
+      .range(a, b)))),
+    tenantNoticeIds(supabase, ids).catch(() => null),
+  ]);
+  for (const part of sendParts) sends.push(...part);
 
   // Build per-campaign stats: last_sent_at, send_count, open_rate
   const statsMap: Record<string, { lastSent: string | null; sentCount: number; openedCount: number; trackedCount: number }> = {};
@@ -62,8 +82,13 @@ export async function GET(req: NextRequest) {
   const totals = { engaged: 0, to_call: 0 };
   try {
     // Notices to our own tenants aren't prospecting — no call list for them.
-    notices = await tenantNoticeIds(supabase, sentCampaigns.map(c => c.id));
-    const eng = await computeEngagement(supabase, sentCampaigns.filter(c => !notices.has(c.id)).map(c => ({ id: c.id, email_body: c.email_body })));
+    notices = noticeSet ?? await tenantNoticeIds(supabase, sentCampaigns.map(c => c.id));
+    const engIn = sentCampaigns.filter(c => !notices.has(c.id)).map(c => ({ id: c.id, email_body: c.email_body }));
+    // Engagement math is the slow part (2s+). It only changes when a send, click or call lands,
+    // so reuse a result up to 45s old — and share one in-flight computation between the
+    // simultaneous loads a tab refresh or a second open tab can produce.
+    const key = engIn.map(c => `${c.id}:${statsMap[c.id]?.sentCount ?? 0}`).sort().join(',');
+    const eng = await cachedEngagement(key, () => computeEngagement(supabase, engIn));
     funnels = eng.funnels;
     const since = new Date(Date.now() - 90 * 86400_000).toISOString();
     const recent = new Set(sentCampaigns.filter(c => (statsMap[c.id]?.lastSent ?? '') >= since).map(c => c.id as string));
