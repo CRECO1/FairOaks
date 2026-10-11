@@ -863,6 +863,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
     return ids;
   }, [clients, deals, allTasks]);
+  // The contacts grid used to render every card at once — 3,300 cards, ~100k DOM nodes, and a
+  // freeze of tens of seconds on any filter/sort change. Render a window and grow it on demand;
+  // filtering, sorting, select-all and the counts all still work on the full list.
+  const CONTACT_WINDOW = 120;
+  const [contactRenderLimit, setContactRenderLimit] = useState(CONTACT_WINDOW);
+  const [followUpLimit, setFollowUpLimit] = useState(100);
+  const dealsByClient = useMemo(() => {
+    const m = new Map<string, Deal[]>();
+    for (const d of deals) if (d.client_id) (m.get(d.client_id) ?? m.set(d.client_id, []).get(d.client_id)!).push(d);
+    return m;
+  }, [deals]);
+  const pendingTasksByClient = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of allTasks) if (t.client_id) m.set(t.client_id, (m.get(t.client_id) ?? 0) + 1);
+    return m;
+  }, [allTasks]);
   const [contactSort, setContactSort] = useState<'recent' | 'never' | 'az' | 'added'>('recent');
   const [emailEditorMode, setEmailEditorMode] = useState<'rich' | 'html'>('rich');
   const [showSaveList, setShowSaveList] = useState(false);
@@ -1754,6 +1770,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (['campaigns', 'action-plans'].includes(page) && campaigns.length > 0 && !engagementRefreshed.current) refreshEngagementCounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, campaigns.length]);
+
+  useEffect(() => { setContactRenderLimit(CONTACT_WINDOW); },
+    [contactTypeFilter, contactSourceFilter, contactTagFilter, contactSpecFilter, contactOwnerFilter, contactSort, needsTouchOnly, page]);
+  useEffect(() => { setFollowUpLimit(100); }, [followUpDays, followUpTypeFilter]);
 
   // Load campaign enrollments for the Campaigns column whenever the contacts page is shown.
   useEffect(() => {
@@ -5127,8 +5147,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ textAlign: 'center', padding: 48, color: '#9ca3af', background: '#fff', borderRadius: 14, border: '1px solid #e8eaed' }}>No contacts match these filters.</div>
                 ) : (
                 <div className="ctc-grid">
-                  {filteredContacts.map(c => {
-                    const clientDeals = deals.filter(d => d.client_id === c.id);
+                  {filteredContacts.slice(0, contactRenderLimit).map(c => {
+                    const clientDeals = dealsByClient.get(c.id) ?? [];
                     const activeDeals = clientDeals.filter(d => ['Active', 'LOI', 'In Contract'].includes(d.stage));
                     // A contact can arrive with only a business or only an email — the card used to render
                     // a blank name and an empty avatar for those. Fall back through business → email.
@@ -5137,7 +5157,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const rowInitials = personName ? ((c.first_name?.[0] ?? '') + (c.last_name?.[0] ?? '')) : (cardName[0] ?? '?').toUpperCase();
                     const avatarPair = (CONTACT_AVATAR_COLORS[(cardName[0] ?? 'A').toUpperCase()] ?? '#c9922c,#a07020').split(',');
                     const enrolls = enrollmentsByClient[c.id] ?? [];
-                    const pendingCount = allTasks.filter(t => t.client_id === c.id).length;
+                    const pendingCount = pendingTasksByClient.get(c.id) ?? 0;
                     const ta = timeAgo(c.last_touched_at);
                     const typeStyle = Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || 'background:#f3f4f6;color:#374151').split(';').filter(Boolean).map(s => s.split(':').map(p => p.trim()))) as React.CSSProperties;
                     const phone = (c.cell_phone || c.phone || '').trim() || null;
@@ -5189,6 +5209,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     );
                   })}
                 </div>
+                )}
+                {filteredContacts.length > contactRenderLimit && (
+                  <div style={{ textAlign: 'center', margin: '16px 0 6px' }}>
+                    <button className="crm-btn crm-btn-ghost" onClick={() => setContactRenderLimit(n => n + CONTACT_WINDOW * 2)} style={{ fontSize: 13, padding: '8px 22px' }}>
+                      Show {Math.min(CONTACT_WINDOW * 2, filteredContacts.length - contactRenderLimit)} more · {(filteredContacts.length - contactRenderLimit).toLocaleString()} not shown
+                    </button>
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>Search or filter to narrow {filteredContacts.length.toLocaleString()} contacts — everything is still searchable.</div>
+                  </div>
                 )}
                 </>
                 );
@@ -5279,7 +5307,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               </tr>
                             </thead>
                             <tbody>
-                              {stale.map((c, i) => {
+                              {stale.slice(0, followUpLimit).map((c, i) => {
                                 const lastDate = c.last_touched_at ?? c.created_at;
                                 const daysAgo = lastDate ? Math.floor((Date.now() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
                                 const urgency = daysAgo === null ? '#dc2626' : daysAgo >= 90 ? '#dc2626' : daysAgo >= 60 ? '#d97706' : '#6b7280';
@@ -5322,6 +5350,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </table>
                           </div>
                         </div>
+                        {stale.length > followUpLimit && (
+                          <div style={{ textAlign: 'center', marginTop: 12 }}>
+                            <button className="crm-btn crm-btn-ghost" onClick={() => setFollowUpLimit(n => n + 200)} style={{ fontSize: 13, padding: '8px 22px' }}>
+                              Show {Math.min(200, stale.length - followUpLimit)} more · {(stale.length - followUpLimit).toLocaleString()} not shown
+                            </button>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
