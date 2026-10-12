@@ -1,14 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { computeEngagement, fetchAll, tenantNoticeIds, type CampaignFunnel } from '@/lib/campaign-engagement';
 
 type Engagement = Awaited<ReturnType<typeof computeEngagement>>;
+// Fresh for 45s. Past that it is still served instantly for up to 10 minutes while a
+// fresh one is computed in the background, so opening the CRM after a few minutes away
+// no longer waits on the 2s+ engagement pass. The cache key carries each campaign's send
+// count, so a new send is a different key and is never served stale.
 const ENGAGEMENT_TTL_MS = 45_000;
-const engagementCache = new Map<string, { at: number; value: Promise<Engagement> }>();
+const ENGAGEMENT_STALE_MS = 10 * 60_000;
+const engagementCache = new Map<string, { at: number; value: Promise<Engagement>; refreshing?: boolean }>();
 function cachedEngagement(key: string, compute: () => Promise<Engagement>): Promise<Engagement> {
   const hit = engagementCache.get(key);
-  if (hit && Date.now() - hit.at < ENGAGEMENT_TTL_MS) return hit.value;
+  const age = hit ? Date.now() - hit.at : Infinity;
+  if (hit && age < ENGAGEMENT_TTL_MS) return hit.value;
+  if (hit && age < ENGAGEMENT_STALE_MS) {
+    if (!hit.refreshing) {
+      hit.refreshing = true;
+      after(async () => {
+        try {
+          const fresh = await compute();
+          engagementCache.set(key, { at: Date.now(), value: Promise.resolve(fresh) });
+        } catch {
+          hit.refreshing = false; // keep serving the stale value; retry on a later load
+        }
+      });
+    }
+    return hit.value;
+  }
   const value = compute();
   engagementCache.set(key, { at: Date.now(), value });
   // A failed computation must not be served again — drop it so the next load retries.
