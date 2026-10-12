@@ -34,6 +34,13 @@ export interface LoiSpec {
   // (the lease template embedded its blanks inside standard sentences).
   overlayKeys: Record<string, string[]>;
   overlayFill: 'replace' | 'blanks';
+  /** Who the letter is addressed to and who countersigns it. Default 'landlord'
+   *  (we write to the owner on a tenant's behalf). A landlord-side letter — e.g. the
+   *  Elkhorn Point LOI, sent FROM the landlord's broker TO a prospective tenant —
+   *  addresses and is accepted by the tenant. */
+  addressee?: 'landlord' | 'tenant';
+  /** Optional exhibit page appended after the acceptance block (image under /public). */
+  exhibit?: { title: string; imagePath: string };
   overlayMeta: {
     date?: string; addresseeName?: string; addresseeAddr1?: string; addresseeAddr2?: string;
     reLine?: string; agentName?: string; agentEmail?: string; agentPhone?: string;
@@ -128,7 +135,42 @@ const INDUSTRIAL_ROWS: LoiTermRow[] = [
   { label: 'Clear Height:', value: '________ feet clear.' },
 ];
 
-export type LeaseAsset = 'office' | 'industrial' | 'generic' | 'shortterm';
+export type LeaseAsset = 'office' | 'industrial' | 'generic' | 'shortterm' | 'elkhorn';
+
+// Elkhorn Point (8923 Dietz Elkhorn Rd, Fair Oaks Ranch) — the developer's (Headwall)
+// standard retail landlord LOI, adapted 2026-10-12: CRECO is the landlord's broker,
+// the landlord entity stays a blank until Headwall confirms it, and delivery is
+// shell + work letter because the buildings are ground-up build-to-suit. Written
+// FROM the landlord side TO a prospective tenant, so the tenant countersigns.
+const ELKHORN_TERMS: LoiTermRow[] = [
+  { label: 'Landlord:', value: '________ ("Landlord")' },
+  { label: 'Tenant:', value: '________, doing business as ________ ("Tenant")' },
+  { label: 'Guaranty:', value: 'Personal guarantee for the full term of the Lease.' },
+  { label: 'Leased Premises:', value: 'Approximately ________ rentable square feet, Suite ________, at Elkhorn Point, 8923 Dietz Elkhorn Rd, Fair Oaks Ranch, Texas 78015, as reflected on the preliminary site plan attached hereto as "Exhibit A - Site Plan".' },
+  { label: 'Permitted Use:', value: 'Tenant shall open for business and operate continuously in the Leased Premises throughout the Term for the operation of ________, and for no other purpose.' },
+  { label: 'Term:', value: 'Five (5) years.' },
+  { label: 'Base Rent:', value: 'Year 1: $________ per rentable square foot per year, with three percent (3%) annual increases. Rent shall be paid by ACH unless otherwise designated by Landlord.' },
+  { label: 'Percentage Rent:', value: 'Tenant shall pay to Landlord additional rent equal to ____ percent (____%) of a Natural Breakpoint. For the purposes herein, Natural Breakpoint shall be calculated as the annual Minimum Base Rent divided by the stated Percentage Rent.' },
+  { label: 'Insurance, Taxes, Management, Association:', value: "The Lease shall be triple net to Tenant. Tenant shall pay its pro-rata share of Taxes, Insurance, General and Common Area Expenses assessed on the Leased Premises calculated based on the enclosed square footage of Tenant's Premises as compared to the enclosed square footage of all other leasable spaces in the property, including separately owned pad sites that are not self-maintaining. Current NNN estimates (subject to change): $________ per rentable square foot per year." },
+  { label: 'Prepaid Rental:', value: "First month's Base Rent plus NNN; paid upon execution of the Lease." },
+  { label: 'Security Deposit:', value: "Last month's Base Rent plus NNN; paid upon execution of the Lease." },
+  { label: 'Delivery Date:', value: 'Within ________ business days of execution of the Lease.' },
+  { label: 'Rent Commencement:', value: "Tenant shall commence paying Base Rent plus NNN the earlier of: (i) ________ days from the Delivery Date, or (ii) upon Tenant's opening for business." },
+  { label: 'Utilities:', value: 'Tenant shall be responsible for all utility charges for the Leased Premises.' },
+  { label: 'Maintenance:', value: 'Tenant shall maintain and repair the Leased Premises, which shall include, but not limited to, the mechanical, HVAC, electrical and plumbing systems from the point of connection to the Leased Premises. Tenant shall maintain all exterior lighting, landscaping, and signage. Landlord shall be responsible for maintenance of the roof, exterior walls, and the structural integrity of the Building.' },
+  { label: 'Delivery Condition:', value: "Landlord shall deliver the Leased Premises in shell condition, with Landlord's Work as described in the Work Letter to be attached to the Lease as Exhibit B." },
+  { label: "Tenant's Work:", value: "Tenant shall build out the interior of the Leased Premises according to plans and specs approved by Landlord and all applicable governmental authorities and according to all applicable governmental codes and requirements that are necessary for Tenant to open and operate the Leased Premises for the Permitted Use. Tenant shall diligently pursue all governmental permits and approvals for its improvements. All interior and exterior signage, alterations, plans, and specifications shall be subject to Landlord's reasonable approval." },
+  { label: 'Tenant Improvement Allowance:', value: "Subject to Landlord's review and approval of Tenant/Guarantor financials, Tenant shall be reimbursed up to $________ per usable square foot (for any approved hard costs associated with interior non-structural permanent improvements, excluding FF&E or the off-set against rent) following Landlord's receipt of Tenant's lien waivers, receipts for all work completed, the passage of all lien filing deadlines under applicable law, Tenant's receipt of final certificate of occupancy, opening of Premises for business, and commencement and payment of rent, all as more specifically described in the Lease Agreement." },
+  { label: 'Signage:', value: "Subject to Landlord's and applicable governmental authorities' prior review and approval and municipal code, at Tenant's sole cost and expense, Tenant shall install a sign on the front elevation of the Leased Premises. All signs shall comply with applicable City/County ordinances and Landlord's standard sign criteria for the Building, at Tenant's sole cost and expense. Subject to availability, Tenant shall be entitled to one (1) double-sided panel on the shopping center pylon in a location acceptable to Landlord for a fee of $125/month." },
+  { label: 'Radius Restriction:', value: 'Three (3) miles from the Leased Premises.' },
+  { label: 'Initial Lease Draft:', value: 'Landlord will draft the initial form of Lease Agreement.' },
+  { label: 'Disclosure:', value: "Tenant acknowledges that CRECO LLC (\"CRECO\") will be representing the Landlord in this proposed lease transaction (\"Landlord's Broker\"). Tenant will be represented by ________ (\"Tenant's Broker\"). Tenant's Broker will be paid pursuant to separate written agreement between Landlord and Tenant's Broker." },
+  { label: 'Confidentiality:', value: "Landlord and Tenant each agree to keep the terms and conditions of this LOI and any lease negotiations strictly confidential unless mutually agreed to otherwise; provided, however, that the foregoing shall not apply to disclosures which may be required by applicable law, to third party consultants on an \"as needed\" basis (provided such consultants otherwise comply with the confidentiality requirements hereof) or made by Landlord in connection with its financing of the Building." },
+];
+// The developer's non-binding paragraph, verbatim (it is their form).
+const ELKHORN_BOILERPLATE = [
+  "THIS LOI IS INTENDED SOLELY AS A PRELIMINARY EXPRESSION OF GENERAL INTENTIONS AND IS TO BE USED FOR DISCUSSION PURPOSES ONLY. THE PARTIES INTEND THAT NEITHER SHALL HAVE ANY CONTRACTUAL OBLIGATIONS TO THE OTHER WITH RESPECT TO THE MATTERS REFERRED HEREIN UNLESS AND UNTIL A DEFINITIVE LEASE AGREEMENT HAS BEEN FULLY EXECUTED AND DELIVERED BY THE PARTIES. THE PARTIES AGREE THAT THIS LOI IS NOT INTENDED TO CREATE ANY AGREEMENT OR OBLIGATION BY EITHER PARTY TO NEGOTIATE A DEFINITIVE LEASE AGREEMENT AND IMPOSES NO DUTY WHATSOEVER ON EITHER PARTY TO CONTINUE NEGOTIATIONS, INCLUDING WITHOUT LIMITATION ANY OBLIGATION TO NEGOTIATE IN GOOD FAITH OR IN ANY WAY OTHER THAN AT ARM'S LENGTH. PRIOR TO DELIVERY OF A DEFINITIVE EXECUTED LEASE AGREEMENT, AND WITHOUT ANY LIABILITY TO THE OTHER PARTY, EITHER PARTY MAY (1) PROPOSE DIFFERENT TERMS FROM THOSE SUMMARIZED HEREIN, (2) ENTER INTO NEGOTIATIONS WITH OTHER PARTIES AND/OR (3) UNILATERALLY TERMINATE ALL NEGOTIATIONS WITH THE OTHER PARTY HERETO.",
+];
 
 // A staged lease: a short storage-only period rolling into the full term. Written
 // from the TENANT's side (Tenant proposes; Landlord countersigns), and the numbered
@@ -166,11 +208,27 @@ const LEASE_OVERLAY_KEYS: Record<string, string[]> = {
 
 export function leaseTerms(asset: LeaseAsset): LoiTermRow[] {
   if (asset === 'shortterm') return SHORTTERM_TERMS;   // its own structure, not common + flavour
+  if (asset === 'elkhorn') return ELKHORN_TERMS;
   const flavour = asset === 'industrial' ? INDUSTRIAL_ROWS : asset === 'office' ? OFFICE_ROWS : [];
   return [...LEASE_TERMS_COMMON, ...flavour, ...LEASE_TERMS_TAIL];
 }
 
 export function leaseSpec(asset: LeaseAsset = 'generic'): LoiSpec {
+  if (asset === 'elkhorn') {
+    return {
+      kind: 'lease',
+      title: 'Letter of Intent to Lease',
+      partyHeading: 'Tenant:',
+      partyNoun: 'Tenant',
+      boilerplate: ELKHORN_BOILERPLATE,
+      defaultTerms: ELKHORN_TERMS,
+      addressee: 'tenant',
+      exhibit: { title: 'EXHIBIT A - SITE PLAN', imagePath: '/loi/elkhorn-point-site-plan.jpg' },
+      overlayKeys: {},
+      overlayFill: 'blanks',
+      overlayMeta: {},
+    };
+  }
   return {
     kind: 'lease',
     title: 'Letter of Intent to Lease',
@@ -206,6 +264,7 @@ export const LOI_LEASE_CODE = 'LOI-LEASE';
 
 export function assetFromFormName(name: string): LeaseAsset {
   const n = (name || '').toLowerCase();
+  if (n.includes('elkhorn')) return 'elkhorn';
   if (n.includes('short')) return 'shortterm';      // check first — "Short-Term Industrial" is still staged
   if (n.includes('industrial')) return 'industrial';
   if (n.includes('office')) return 'office';

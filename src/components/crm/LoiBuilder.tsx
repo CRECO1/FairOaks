@@ -57,9 +57,12 @@ function seedData(spec: LoiSpec, prefill?: Prefill): LoiPurchaseData {
     if ((t.label === 'Property:' || t.label === 'Premises:') && prefill?.propertyAddress && !t.value) value = prefill.propertyAddress;
     return { id: newId(), label: t.label, value };
   });
+  // A landlord-side letter (spec.addressee 'tenant') is written TO the tenant, who
+  // also countersigns; every other LOI is addressed to and accepted by the owner.
+  const addressee = spec.addressee === 'tenant' ? (prefill?.purchaser || '') : (prefill?.sellerName || '');
   return {
     loiDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-    addresseeName: prefill?.sellerName || '',
+    addresseeName: addressee,
     addresseeAddr1: '',
     addresseeAddr2: '',
     reLine: prefill?.propertyAddress ? `${spec.title} - ${prefill.propertyAddress}` : spec.title,
@@ -68,7 +71,7 @@ function seedData(spec: LoiSpec, prefill?: Prefill): LoiPurchaseData {
     agentName: prefill?.agentName || '',
     agentEmail: prefill?.agentEmail || '',
     agentPhone: prefill?.agentPhone || '',
-    sellers: [{ entity: prefill?.sellerName || '', signatory: '' }],
+    sellers: [{ entity: addressee, signatory: '' }],
   };
 }
 
@@ -179,6 +182,13 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
     ? { ...d, sellers: [d.sellers[0] || { entity: '', signatory: '' }] }
     : { ...d, sellers: [d.sellers[0] || { entity: '', signatory: '' }, d.sellers[1] || { entity: '', signatory: '' }] });
 
+  const exhibitRef = useRef<Uint8Array | null>(null);
+  async function getExhibit(): Promise<Uint8Array | undefined> {
+    if (!spec.exhibit) return undefined;
+    if (!exhibitRef.current) { const buf = await fetch(spec.exhibit.imagePath).then(r => r.arrayBuffer()); exhibitRef.current = new Uint8Array(buf); }
+    return exhibitRef.current;
+  }
+
   async function getLogo(): Promise<Uint8Array> {
     if (!logoRef.current) { const buf = await fetch('/creco-letterhead-logo.png').then(r => r.arrayBuffer()); logoRef.current = new Uint8Array(buf); }
     return logoRef.current;
@@ -188,7 +198,7 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
     if (!data.terms.some(t => t.value.trim() || t.label.trim())) { onToast('Add at least one term'); return; }
     setBusy(true);
     try {
-      const { pdfBytes, sigFields } = await renderLoi(data, await getLogo(), spec);
+      const { pdfBytes, sigFields } = await renderLoi(data, await getLogo(), spec, await getExhibit());
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -327,6 +337,14 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
                 <div style={{ display: 'flex', alignItems: 'flex-end', maxWidth: 420 }}><span>Date:</span><span style={SIGLINE} /><span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#b08833', marginLeft: 8, whiteSpace: 'nowrap' }}>✎ signed at e-sign</span></div>
               </div>
             ))}
+
+            {spec.exhibit && (
+              <div style={{ marginTop: 26, paddingTop: 18, borderTop: '1px dashed #d1d5db', textAlign: 'center' }}>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{spec.exhibit.title}</div>
+                <img src={spec.exhibit.imagePath} alt={spec.exhibit.title} style={{ maxWidth: '100%', display: 'block', margin: '0 auto' }} />
+                <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#9ca3af', marginTop: 6 }}>Attached as its own page in the PDF.</div>
+              </div>
+            )}
 
             {/* Footer */}
             <div style={{ borderTop: '3px solid #1c1c1f', marginTop: 26, paddingTop: 8, textAlign: 'center' }}>

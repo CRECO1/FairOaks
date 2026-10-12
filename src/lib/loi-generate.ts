@@ -71,7 +71,10 @@ export async function generateLoi(db: SupabaseClient<any, any, any>, userId: str
   let pdfBytes: Uint8Array;
   let sigFields: unknown[];
   try {
-    const out = await renderLoi(draft.data, await letterhead(input.baseUrl), spec);
+    const exhibit = spec.exhibit
+      ? await fetch(`${input.baseUrl}${spec.exhibit.imagePath}`).then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? new Uint8Array(b) : undefined).catch(() => undefined)
+      : undefined;
+    const out = await renderLoi(draft.data, await letterhead(input.baseUrl), spec, exhibit);
     pdfBytes = out.pdfBytes; sigFields = out.sigFields;
   } catch (e) {
     console.error('[loi-generate] render', e);

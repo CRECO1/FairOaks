@@ -53,6 +53,8 @@ export async function renderLoi(
   data: LoiPurchaseData,
   logoBytes: Uint8Array,
   spec: LoiSpec = LOI_PURCHASE_SPEC,
+  /** Image for spec.exhibit (JPEG or PNG). Omitted → no exhibit page. */
+  exhibitBytes?: Uint8Array,
 ): Promise<{ pdfBytes: Uint8Array; sigFields: LoiSigField[] }> {
   const doc = await PDFDocument.create();
   const times = await doc.embedFont(StandardFonts.TimesRoman);
@@ -194,6 +196,20 @@ export async function renderLoi(
   y -= 20;
   const sellers = (data.sellers && data.sellers.length ? data.sellers : [{ entity: '', signatory: '' }]).slice(0, 2);
   sellers.forEach((s, i) => { if (i > 0) spacer(14); acceptanceBlock(s, SELLER_ROLES[i] ?? 'client'); });
+
+  // ── Exhibit page (e.g. Elkhorn Point "Exhibit A - Site Plan") ────────────────
+  // Its own page after the acceptance block, image scaled to fit inside the margins.
+  if (spec.exhibit && exhibitBytes && exhibitBytes.length) {
+    const isPng = exhibitBytes[0] === 0x89 && exhibitBytes[1] === 0x50;
+    const img = isPng ? await doc.embedPng(exhibitBytes) : await doc.embedJpg(exhibitBytes);
+    newPage();
+    center(page, spec.exhibit.title, y, TITLE, bold); y -= TITLE * 1.6;
+    const maxW = RIGHT - M, maxH = y - CONTENT_BOTTOM - 8;
+    const k = Math.min(maxW / img.width, maxH / img.height);
+    const w = img.width * k, h = img.height * k;
+    page.drawImage(img, { x: (PW - w) / 2, y: y - h, width: w, height: h });
+    y -= h;
+  }
 
   const pdfBytes = await doc.save();
   return { pdfBytes, sigFields };
