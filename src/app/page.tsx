@@ -1,4 +1,18 @@
-export const dynamic = 'force-dynamic';
+// ISR, not force-dynamic: the live MLS + database queries below used to run on
+// every visit (0.5–1.1s TTFB, never cacheable). Rendered once per window and
+// served from the edge cache, with the MLS calls sharing the same window.
+export const revalidate = 900;
+const MLS_REVALIDATE = 900;
+
+/**
+ * Keep a degraded render (feed or database error) out of the cache. Skipped
+ * during `next build`: there noStore() would flip this route to fully dynamic
+ * for the life of the deploy, whereas a failed build-time render just refreshes
+ * itself after the revalidate window.
+ */
+function skipCache() {
+  if (process.env.NEXT_PHASE !== 'phase-production-build') noStore();
+}
 
 import type { Metadata } from 'next';
 import { FORG, CRECO } from '@/lib/site-identity';
@@ -37,6 +51,7 @@ export const metadata: Metadata = {
   },
 };
 
+import { unstable_noStore as noStore } from 'next/cache';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Star, Home, TrendingUp, Award, MapPin, Bed, Bath, Square } from 'lucide-react';
@@ -96,12 +111,15 @@ const DEFAULT_SETTINGS = {
 async function fetchOneListing(filter: string) {
   try {
     const activeFilter = `StandardStatus eq ODataService.StandardStatus'ACTIVE' and ${filter}`;
-    const result = await searchProperties({ filter: activeFilter, top: 1, orderby: 'ListPrice desc' });
+    const result = await searchProperties({ filter: activeFilter, top: 1, orderby: 'ListPrice desc', revalidate: MLS_REVALIDATE });
     const p = result.value[0];
     if (!p) return null;
-    const mediaMap = await getMediaBatch([p.ListingId]);
+    const mediaMap = await getMediaBatch([p.ListingId], MLS_REVALIDATE);
     return resoPropertyToListing(p, mediaMap.get(p.ListingId) ?? []);
-  } catch { return null; }
+  } catch {
+    skipCache(); // a feed error must not be cached as "no listing here" for the window
+    return null;
+  }
 }
 
 export default async function HomePage() {
@@ -129,6 +147,14 @@ export default async function HomePage() {
 
   const featuredNeighborhoods = neighborhoodsResult.status === 'fulfilled'
     ? neighborhoodsResult.value.slice(0, 3) : [];
+
+  // Any failed database read renders fallbacks; keep that out of the cache.
+  if (
+    testimonialsResult.status !== 'fulfilled'
+    || neighborhoodsResult.status !== 'fulfilled'
+    || settingsResult.status !== 'fulfilled'
+    || !settingsResult.value.data
+  ) skipCache();
 
   const s = (settingsResult.status === 'fulfilled' && settingsResult.value.data)
     ? settingsResult.value.data

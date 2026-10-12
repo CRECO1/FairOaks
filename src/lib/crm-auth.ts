@@ -31,13 +31,18 @@ export async function getCrmUser(req?: NextRequest) {
 /** Role tiers, most-privileged first. super_admin ⊃ admin ⊃ agent. */
 export const ADMIN_ROLES = ['admin', 'super_admin'] as const;
 
-/** Fetch the caller's crm_profiles.role (or null). */
-async function getCrmRole(req?: NextRequest): Promise<string | null> {
+/**
+ * The authenticated user plus their crm_profiles.role (role null if no profile).
+ * One auth round trip + one profile read: the admin gates below used to call
+ * getCrmUser() a second time just to hand the user back, which doubled the
+ * Supabase Auth latency on every admin-only route.
+ */
+async function getCrmUserWithRole(req?: NextRequest) {
   const user = await getCrmUser(req);
   if (!user) return null;
   const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data } = await admin.from('crm_profiles').select('role').eq('id', user.id).single();
-  return (data?.role as string | undefined) ?? null;
+  return { user, role: (data?.role as string | undefined) ?? null };
 }
 
 /**
@@ -45,16 +50,16 @@ async function getCrmRole(req?: NextRequest): Promise<string | null> {
  * (super_admin is a strict superset of admin, so it passes every admin gate.)
  */
 export async function getCrmAdmin(req?: NextRequest) {
-  const role = await getCrmRole(req);
-  if (!role || !ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])) return null;
-  return await getCrmUser(req);
+  const caller = await getCrmUserWithRole(req);
+  if (!caller?.role || !ADMIN_ROLES.includes(caller.role as (typeof ADMIN_ROLES)[number])) return null;
+  return caller.user;
 }
 
 /** Returns the authenticated user only if they have role='super_admin'. */
 export async function getCrmSuperAdmin(req?: NextRequest) {
-  const role = await getCrmRole(req);
-  if (role !== 'super_admin') return null;
-  return await getCrmUser(req);
+  const caller = await getCrmUserWithRole(req);
+  if (caller?.role !== 'super_admin') return null;
+  return caller.user;
 }
 
 /** Convenience: return 401 JSON response. */

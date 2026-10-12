@@ -15,6 +15,28 @@ const sessionPrefixes = [
 ];
 const sessionExact = ['/api/smart-lists', '/api/mls/sync', '/api/attom'];
 
+/**
+ * The CRM client authenticates every API call with a Bearer token, and each
+ * route validates that token itself (getCrmUser). updateSession() below only
+ * refreshes the *cookie* session, and costs a Supabase Auth round trip from the
+ * edge region (iad1 → us-west-2) on every request, so a call that carries a
+ * live Bearer token skips it. No route reads the cookie session while a Bearer
+ * validates. The `exp` claim is only read to decide whether the refresh can be
+ * skipped (the route still verifies the token); an expired or unreadable token,
+ * and any request without one, gets the refresh exactly as before.
+ */
+function hasLiveBearerToken(request: NextRequest): boolean {
+  const m = /^Bearer\s+([\w-]+\.([\w-]+)\.[\w-]+)$/i.exec(request.headers.get('authorization') ?? '');
+  if (!m) return false;
+  try {
+    const b64 = m[2].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as { exp?: number };
+    return typeof claims.exp === 'number' && claims.exp - Date.now() / 1000 > 30;
+  } catch {
+    return false;
+  }
+}
+
 function isSessionRoute(pathname: string): boolean {
   return sessionExact.includes(pathname)
     || sessionPrefixes.some(r => pathname === r || pathname.startsWith(`${r}/`));
@@ -170,6 +192,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
       if (csrfResult instanceof NextResponse) return csrfResult;
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    if (hasLiveBearerToken(request)) return withSecurityHeaders(NextResponse.next());
     try {
       const { supabaseResponse } = await updateSession(request);
       return withSecurityHeaders(supabaseResponse);
@@ -181,6 +204,7 @@ async function handle(request: NextRequest): Promise<NextResponse> {
   // Routes with session refresh only (own auth handles security — no CSRF needed)
   const isNoCsrfRoute = apiSessionNoCsrfRoutes.some(route => pathname.startsWith(route));
   if (isNoCsrfRoute) {
+    if (hasLiveBearerToken(request)) return withSecurityHeaders(NextResponse.next());
     try {
       const { supabaseResponse } = await updateSession(request);
       return withSecurityHeaders(supabaseResponse);

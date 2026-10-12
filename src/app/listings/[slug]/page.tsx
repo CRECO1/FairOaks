@@ -1,7 +1,12 @@
 export const revalidate = 1800;
+// The MLS fetches must carry the same window. Without it they are `no-store`,
+// which silently makes the whole page dynamic and ignores `revalidate` above
+// (every visit was a 0.7–1.5s uncached render).
+const MLS_REVALIDATE = 1800;
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { unstable_noStore as noStore } from 'next/cache';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Bed, Bath, Square, MapPin, Calendar, Phone, ArrowLeft, Home, ArrowRight } from 'lucide-react';
@@ -55,12 +60,15 @@ function detectArea(listing: { city: string; subdivision_name: string | null }):
 async function fetchNearbyListings(area: { label: string; filter: string }, excludeId: string) {
   try {
     const filter = `StandardStatus eq ODataService.StandardStatus'ACTIVE' and ${area.filter}`;
-    const result = await searchProperties({ filter, top: 12, orderby: 'ListPrice desc' });
+    const result = await searchProperties({ filter, top: 12, orderby: 'ListPrice desc', revalidate: MLS_REVALIDATE });
     const props = result.value.filter(p => p.ListingId !== excludeId).slice(0, 8);
     if (props.length === 0) return [];
-    const mediaMap = await getMediaBatch(props.map(p => p.ListingId));
+    const mediaMap = await getMediaBatch(props.map(p => p.ListingId), MLS_REVALIDATE);
     return props.map(p => resoPropertyToListing(p, mediaMap.get(p.ListingId) ?? []));
-  } catch { return []; }
+  } catch {
+    noStore(); // a feed hiccup must not be cached as "no nearby listings"
+    return [];
+  }
 }
 
 async function fetchListing(slug: string) {
@@ -71,14 +79,21 @@ async function fetchListing(slug: string) {
     const result = await searchProperties({
       filter: `ListingId eq '${listingId}'`,
       top: 1,
+      revalidate: MLS_REVALIDATE,
     });
     const property = result.value[0];
     if (!property) return null;
 
-    const mediaMap = await getMediaBatch([property.ListingId]);
+    const mediaMap = await getMediaBatch([property.ListingId], MLS_REVALIDATE);
     const images = mediaMap.get(property.ListingId) ?? [];
+    // getMediaBatch swallows its own errors. A listing that should have photos
+    // but came back with none is a failed fetch, so don't cache this render.
+    if (images.length === 0 && Number(property.PhotosCount) > 0) noStore();
     return resoPropertyToListing(property, images);
   } catch {
+    // A feed error is not "listing not found": caching it would serve a 404
+    // for a live listing for the whole revalidate window.
+    noStore();
     return null;
   }
 }
