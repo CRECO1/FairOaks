@@ -47,6 +47,8 @@ function cachedEngagement(key: string, compute: () => Promise<Engagement>): Prom
 export async function buildCampaignList(
   ctx: { userId: string; role: string | null; businessUnit: string | null },
   unitParam: string | null,
+  /** The warm-up cron: recompute and store, ignoring any cached copy. */
+  opts: { force?: boolean } = {},
 ): Promise<{ ok: true; campaigns: unknown[]; engagement_totals: { engaged: number; to_call: number } } | { ok: false }> {
   const supabase = adminClient();
 
@@ -114,13 +116,14 @@ export async function buildCampaignList(
     // so reuse a result up to 45s old — and share one in-flight computation between the
     // simultaneous loads a tab refresh or a second open tab can produce.
     const key = engIn.map(c => `${c.id}:${statsMap[c.id]?.sentCount ?? 0}`).sort().join(',');
-    const eng = await cachedEngagement(key, async () => (await cachedCompute<Engagement>(supabase, `list|${hashKey(key)}`, async () => {
+    const load = async () => (await cachedCompute<Engagement>(supabase, `list|${hashKey(key)}`, async () => {
       const e = await computeEngagement(supabase, engIn);
       return {
         funnels: [...e.funnels],
         people: [...e.people].map(([id, p]) => [id, { campaign_ids: p.campaign_ids, contacted_at: p.contacted_at }] as [string, { campaign_ids: string[]; contacted_at: string | null }]),
       };
-    }, { freshMs: 3 * 60_000, staleMs: 15 * 60_000 })).value);
+    }, { freshMs: 3 * 60_000, staleMs: 15 * 60_000, force: opts.force })).value;
+    const eng = opts.force ? await load() : await cachedEngagement(key, load);
     funnels = new Map(eng.funnels);
     const since = new Date(Date.now() - 90 * 86400_000).toISOString();
     const recent = new Set(sentCampaigns.filter(c => (statsMap[c.id]?.lastSent ?? '') >= since).map(c => c.id as string));

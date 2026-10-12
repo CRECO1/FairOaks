@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     }
     // The campaign list builds its own cache entries as a side effect of running.
     for (const unit of ['commercial', 'residential']) {
-      await buildCampaignList({ userId: adminIds[0] ?? '', role: 'admin', businessUnit: unit }, unit)
+      await buildCampaignList({ userId: adminIds[0] ?? '', role: 'admin', businessUnit: unit }, unit, { force: true })
         .then(r => { if (r.ok) warmed.push(`list:${unit}`); }).catch(e => console.error('[cron/reply-scan] list', e));
     }
     out.warmed = warmed;
