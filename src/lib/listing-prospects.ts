@@ -124,12 +124,14 @@ async function buildProspects(
   }).filter(c => c.sent > 0 || c.status === 'active');
 
   // Per person.
-  const people = new Map<string, { sends: number; opens: number; openedEmails: number; firstOpen: string | null; lastOpen: string | null; lastSent: string | null; clicks: number; lastClick: string | null; campaigns: Set<string> }>();
+  const people = new Map<string, { sends: number; opens: number; openedEmails: number; firstOpen: string | null; lastOpen: string | null; lastSent: string | null; clicks: number; lastClick: string | null; campaigns: Set<string>; openCamp: string | null; openCampAt: string | null; sentCamp: string | null; sentCampAt: string | null }>();
   for (const s of sends) {
     if (s.status !== 'sent' || !s.client_id) continue;
-    const p = people.get(s.client_id) ?? { sends: 0, opens: 0, openedEmails: 0, firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null, campaigns: new Set<string>() };
+    const p = people.get(s.client_id) ?? { sends: 0, opens: 0, openedEmails: 0, firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null, campaigns: new Set<string>(), openCamp: null, openCampAt: null, sentCamp: null, sentCampAt: null };
     p.sends++; p.campaigns.add(s.campaign_id);
     if (s.sent_at && (!p.lastSent || s.sent_at > p.lastSent)) p.lastSent = s.sent_at;
+    if (s.sent_at && (!p.sentCampAt || s.sent_at > p.sentCampAt)) { p.sentCampAt = s.sent_at; p.sentCamp = s.campaign_id; }
+    if (s.opened_at && (!p.openCampAt || s.opened_at > p.openCampAt)) { p.openCampAt = s.opened_at; p.openCamp = s.campaign_id; }
     if (s.opened_at) {
       p.openedEmails++; p.opens += Math.max(1, s.open_count ?? 1);
       if (!p.firstOpen || s.opened_at < p.firstOpen) p.firstOpen = s.opened_at;
@@ -162,6 +164,8 @@ async function buildProspects(
       ...askFor(c?.notes ?? null),
       emailsSent: p.sends, emailsOpened: p.openedEmails, opens: p.opens,
       campaignNames: [...p.campaigns].map(id => nameById.get(id) ?? '').filter(Boolean),
+      // The exact campaign to credit this person to: the one they last opened, else the last one emailed.
+      primaryCampaign: nameById.get(p.openCamp ?? p.sentCamp ?? '') ?? '',
       firstOpen: p.firstOpen, lastOpen: p.lastOpen, lastSent: p.lastSent,
       clicks: p.clicks, lastClick: p.lastClick,
       type: c?.type ?? '',
@@ -191,7 +195,7 @@ async function buildProspects(
         phone: c.phone || c.cell_phone || '',
         category: tags.filter(t => cats.has(t) && !umbrella.has(t)).join(', '),
         ...askFor(c.notes ?? null),
-        emailsSent: 0, emailsOpened: 0, opens: 0, campaignNames: [] as string[], firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null,
+        emailsSent: 0, emailsOpened: 0, opens: 0, campaignNames: [] as string[], primaryCampaign: '', firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null,
         type: c.type ?? '',
         unsubscribed: !!c.unsubscribed_at, dead: tags.includes('Dead Email'),
         notEmailed: true,

@@ -72,7 +72,7 @@ interface CallListPerson {
   // Same fields as the property's Rent Roll "Email Prospects" row, so the agent sees the whole picture.
   business: string; contactName: string; email: string; phone: string; category: string; locations: string;
   emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
-  campaignNames: string[]; unsubscribed: boolean; dead: boolean; notEmailed: boolean; type: string;
+  campaignNames: string[]; unsubscribed: boolean; dead: boolean; notEmailed: boolean; type: string; primaryCampaign: string;
 }
 // An inbound call (or a "try again" reminder) from the Calling Log that is waiting on a call back.
 interface CallbackRow {
@@ -81,7 +81,9 @@ interface CallbackRow {
   started_at: string; follow_up_due: string | null; follow_up_assignee: string | null; assignee_name?: string | null;
   summary: string | null; intent: string | null; transcript: string | null;
 }
-interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
+interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; description?: string | null; completed_at: string | null; created_at: string; }
+// A call task handed over from a campaign / property list carries "From: <exact campaign>" as its first line; the Call Queue groups by it.
+const callGroupOf = (t: { description?: string | null }): string | null => { const m = /^From:\s*(.+)$/m.exec(t.description ?? ''); return m ? m[1].trim() : null; };
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
 interface ActionPlan { id: string; created_by: string; name: string; description: string; trigger_type: 'manual' | 'new_contact' | 'stage_change' | 'tag_added'; trigger_value?: string; audience?: string | null; status: 'active' | 'paused'; steps?: ActionPlanStep[]; step_count?: number; enrollment_count?: number; send_count?: number; open_count?: number; open_rate?: number | null; created_at: string; updated_at: string; }
@@ -758,6 +760,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callbacks, setCallbacks] = useState<CallbackRow[]>([]);
   const [callbackDoneIds, setCallbackDoneIds] = useState<Set<string>>(new Set());
   const [callOnlyCallbacks, setCallOnlyCallbacks] = useState(false);
+  // Campaign groups in the queue that are folded away (remembered per browser).
+  const [callGroupsCollapsed, setCallGroupsCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => { try { const j = JSON.parse(localStorage.getItem('crm:callGroupsCollapsed') ?? '[]'); if (Array.isArray(j)) setCallGroupsCollapsed(new Set(j.filter((x: unknown): x is string => typeof x === 'string'))); } catch { /* ignore */ } }, []);
   // Hand a campaign / property call list to an agent (admins): pick people (or take the whole view), choose who + when.
   const [callPicked, setCallPicked] = useState<Set<string>>(new Set());
   const [callAssignTo, setCallAssignTo] = useState('');
@@ -2325,7 +2330,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         return {
           client_id: t.client_id,
           title: `Call ${who}${m ? ` — ${m.reason}` : ''}`.slice(0, 240),
-          description: [m?.askFor ? `📞 ${m.askFor}` : '', `From: ${sourceLabel}`, m ? `${m.emailsSent} emailed · ${m.emailsOpened} opened${m.clicks ? ` · ${m.clicks} clicks` : ''}` : ''].filter(Boolean).join('\n'),
+          // First line = the exact campaign (what the Call Queue groups by); then where the list came from, who to ask for, engagement.
+          description: [`From: ${m?.primaryCampaign || sourceLabel}`, m?.primaryCampaign && m.primaryCampaign !== sourceLabel ? `List: ${sourceLabel}` : '', m?.askFor ? `📞 ${m.askFor}` : '',
+            m ? `${m.emailsSent} emailed · ${m.emailsOpened} opened${m.clicks ? ` · ${m.clicks} clicks` : ''}` : '', m && m.campaignNames.length > 1 ? `Emailed in: ${m.campaignNames.join(' · ')}` : ''].filter(Boolean).join('\n'),
           priority: m?.heat === 'hot' ? 'high' : 'normal',
         };
       });
@@ -2496,12 +2503,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
     if (callOnlyCallbacks) return callbackTasks;
     // Waiting call-backs come first (someone is waiting on us), then the follow-up / call tasks by due date.
-    return [
-      ...callbackTasks,
-      ...callSource
-        .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
-        .sort((a, b) => a.due_date.localeCompare(b.due_date)),
-    ];
+    const due = callSource
+      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
+      .sort((a, b) => a.due_date.localeCompare(b.due_date));
+    const plain = due.filter(t => !callGroupOf(t));
+    const grouped = due.filter(t => callGroupOf(t));
+    const size = new Map<string, number>();
+    for (const t of grouped) size.set(callGroupOf(t)!, (size.get(callGroupOf(t)!) ?? 0) + 1);
+    grouped.sort((a, b) => (size.get(callGroupOf(b)!)! - size.get(callGroupOf(a)!)!) || callGroupOf(a)!.localeCompare(callGroupOf(b)!) || a.title.localeCompare(b.title));
+    return [...callbackTasks, ...plain, ...grouped];
   }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, callbackTasks, callOnlyCallbacks, profile?.id]);
   // Counts per segment for the chips (computed before the segment filter), then the filtered queue.
   const callSegmentCounts = useMemo(() => {
@@ -2561,7 +2571,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           business: /^(none|n\/a|na|-)$/i.test(biz) ? '' : biz, contactName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
           email: c.email ?? '', phone: c.cell_phone || c.phone || '', category: (c.asset_types ?? []).join(', '), locations: '',
           emailsSent: 0, emailsOpened: 0, opens: 0, clicks: 0, lastOpen: null, lastSent: null, campaignNames: [],
-          unsubscribed: !!c.unsubscribed_at, dead: false, notEmailed: false, type: c.type,
+          unsubscribed: !!c.unsubscribed_at, dead: false, notEmailed: false, type: c.type, primaryCampaign: '',
         };
       });
       // Who already got a call: show the date and put the uncalled first.
@@ -2600,7 +2610,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         type PP = {
           client_id: string; name: string; business: string; email: string; phone: string; category: string; askFor: string; locations: string;
           emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
-          campaignNames?: string[]; unsubscribed: boolean; dead: boolean; notEmailed?: boolean; type?: string;
+          campaignNames?: string[]; unsubscribed: boolean; dead: boolean; notEmailed?: boolean; type?: string; primaryCampaign?: string;
         };
         const people: CallListPerson[] = ((j.prospects ?? []) as PP[]).map(p => {
           const notEmailed = !!p.notEmailed;
@@ -2616,7 +2626,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             rank: HEAT_RANK[heat] * 1e13 - Date.parse(p.lastOpen || '1970-01-01'),
             business: p.business, contactName: p.name, email: p.email, phone: p.phone, category: p.category, locations: p.locations,
             emailsSent: p.emailsSent, emailsOpened: p.emailsOpened, opens: p.opens, clicks: p.clicks, lastOpen: p.lastOpen, lastSent: p.lastSent,
-            campaignNames: p.campaignNames ?? [], unsubscribed: p.unsubscribed, dead: p.dead, notEmailed, type: p.type ?? '',
+            campaignNames: p.campaignNames ?? [], unsubscribed: p.unsubscribed, dead: p.dead, notEmailed, type: p.type ?? '', primaryCampaign: p.primaryCampaign ?? '',
           };
         });
         // Who has already been called: uncalled first (and a "called Oct 9" tag) so a list worked over several
@@ -6362,8 +6372,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const inits = (cl: Client | null) => cl ? ((cl.first_name?.[0] ?? '') + (cl.last_name?.[0] ?? '') || (cl.business_name?.[0] ?? '?')).toUpperCase() : '?';
                   const cbItems = queue.filter(t => t.id.startsWith('cb:'));
                   const taskItems = queue.filter(t => !t.id.startsWith('cb:'));
-                  const overdueItems = taskItems.filter(t => t.due_date && t.due_date < t0);
-                  const todayItems = taskItems.filter(t => !(t.due_date && t.due_date < t0));
+                  const plainItems = taskItems.filter(t => !callGroupOf(t));
+                  const groupedItems = taskItems.filter(t => callGroupOf(t));
+                  const callGroups = (() => {
+                    const m = new Map<string, CRMTask[]>();
+                    for (const t of groupedItems) { const k = callGroupOf(t)!; (m.get(k) ?? m.set(k, []).get(k)!).push(t); }
+                    return [...m.entries()];
+                  })();
+                  const toggleGroup = (k: string) => setCallGroupsCollapsed(prev => {
+                    const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k);
+                    try { localStorage.setItem('crm:callGroupsCollapsed', JSON.stringify([...n])); } catch { /* ignore */ }
+                    return n;
+                  });
+                  const overdueItems = plainItems.filter(t => t.due_date && t.due_date < t0);
+                  const todayItems = plainItems.filter(t => !(t.due_date && t.due_date < t0));
                   const HEAT_ICON = { hot: '🔥', warm: '☀️', cold: '❄️' } as const;
                   const curMeta = callListMeta.get(current.id) ?? null;
                   const row = (t: CRMTask) => {
@@ -6426,6 +6448,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {todayItems.map(row)}
                           </>
                         )}
+                        {callListMode === 'tasks' && callGroups.map(([label, items]) => {
+                          const folded = callGroupsCollapsed.has(label);
+                          const late = items.filter(t => t.due_date && t.due_date < t0).length;
+                          return (
+                            <div key={label} style={{ marginTop: 6 }}>
+                              <button onClick={() => toggleGroup(label)}
+                                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: '#f8fafc', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                <span style={{ fontSize: 11, color: '#6b7280' }}>{folded ? '▸' : '▾'}</span>
+                                <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>📣 {label}</span>
+                                {late > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: '#b91c1c', background: '#fee2e2', borderRadius: 8, padding: '1px 7px' }}>{late} late</span>}
+                                <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', background: '#eef1f4', borderRadius: 10, padding: '0 8px' }}>{items.length}</span>
+                              </button>
+                              {!folded && items.map(row)}
+                            </div>
+                          );
+                        })}
                         {upcoming.length > 0 && (
                           <div style={{ borderTop: '1px solid #f1f2f4', marginTop: 8, paddingTop: 4 }}>
                             <button onClick={() => setCallUpcomingOpen(o => !o)}
