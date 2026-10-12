@@ -19,7 +19,7 @@ async function all<T>(q: (from: number, to: number) => PromiseLike<{ data: T[] |
 const chunks = <T,>(a: T[], n = 150) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
 type Send = { campaign_id: string; client_id: string; status: string; sent_at: string | null; opened_at: string | null; open_count: number | null };
-type Client = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; email: string | null; phone: string | null; cell_phone: string | null; tags: string[] | null; unsubscribed_at: string | null; notes: string | null };
+type Client = { id: string; first_name: string | null; last_name: string | null; business_name: string | null; email: string | null; phone: string | null; cell_phone: string | null; tags: string[] | null; unsubscribed_at: string | null; notes: string | null; type: string | null };
 
 // Who to ask for on a call. Researched contacts carry a first notes line like
 // "📞 ASK FOR: Robert Godines — Owner & Founder · 13 locations (…) · …"; surface the
@@ -106,7 +106,7 @@ async function buildProspects(
   const clients = new Map<string, Client>();
   for (const ids of chunks(clientIds)) {
     const { data } = await db.from('crm_clients')
-      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes').in('id', ids);
+      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes, type').in('id', ids);
     for (const c of (data ?? []) as Client[]) clients.set(c.id, c);
   }
   const cats = await categoryTags(db);
@@ -164,6 +164,7 @@ async function buildProspects(
       campaignNames: [...p.campaigns].map(id => nameById.get(id) ?? '').filter(Boolean),
       firstOpen: p.firstOpen, lastOpen: p.lastOpen, lastSent: p.lastSent,
       clicks: p.clicks, lastClick: p.lastClick,
+      type: c?.type ?? '',
       unsubscribed: !!c?.unsubscribed_at, dead: tags.includes('Dead Email'),
       notEmailed: false,
     };
@@ -177,7 +178,7 @@ async function buildProspects(
   const cold: typeof emailedRows = [];
   if (listing && /^[a-z]{5,}$/.test(word)) {
     const extra = await all<Client>((a, b) => db.from('crm_clients')
-      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes')
+      .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes, type')
       .eq('business_unit', listing?.business_unit ?? 'commercial').ilike('lead_source', `%${word}%`).order('id').range(a, b));
     for (const c of extra) {
       if (people.has(c.id)) continue;
@@ -191,6 +192,7 @@ async function buildProspects(
         category: tags.filter(t => cats.has(t) && !umbrella.has(t)).join(', '),
         ...askFor(c.notes ?? null),
         emailsSent: 0, emailsOpened: 0, opens: 0, campaignNames: [] as string[], firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null,
+        type: c.type ?? '',
         unsubscribed: !!c.unsubscribed_at, dead: tags.includes('Dead Email'),
         notEmailed: true,
       });

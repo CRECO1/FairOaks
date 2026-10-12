@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { segmentOf, SEGMENTS, SEGMENT_LABEL, type Segment } from '@/lib/contact-segment';
 
 // Email Prospects — sits in a property's Rent Roll tab. Everyone the property's
 // campaigns have emailed (campaign projects linked to the listing), with opens,
@@ -11,7 +12,7 @@ interface Camp { id: string; name: string; status: string; sent: number; opened:
 interface Prospect {
   client_id: string; name: string; business: string; email: string; phone: string; category: string; askFor: string; locations: string;
   emailsSent: number; emailsOpened: number; opens: number; firstOpen: string | null; lastOpen: string | null; lastSent: string | null;
-  clicks: number; lastClick: string | null; unsubscribed: boolean; dead: boolean;
+  clicks: number; lastClick: string | null; unsubscribed: boolean; dead: boolean; type?: string;
   /** Built for this property but never emailed by its campaigns — a cold-call row. */
   notEmailed?: boolean;
 }
@@ -30,6 +31,7 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'opened' | 'all' | 'cold'>('opened');
+  const [segment, setSegment] = useState<'all' | Segment>('all');
   const onlyOpened = view === 'opened';
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'lastOpen', dir: -1 });
@@ -58,6 +60,7 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
   const visible = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const rows = prospects.filter(p => (view === 'opened' ? p.emailsOpened > 0 : view === 'cold' ? !!p.notEmailed : !p.notEmailed) &&
+      (segment === 'all' || segmentOf(p.type) === segment) &&
       (!needle || [p.business, p.name, p.email, p.phone, p.category, p.askFor].some(v => v.toLowerCase().includes(needle))));
     const k = sort.key;
     // The cold list has no opens to sort by — keep the server's order (callable first, then A–Z) until a column is chosen.
@@ -69,7 +72,7 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
       if (bv === null || bv === '') return -1;
       return (typeof av === 'number' ? av - (bv as number) : String(av).localeCompare(String(bv))) * sort.dir;
     });
-  }, [prospects, view, q, sort]);
+  }, [prospects, view, q, sort, segment]);
 
   if (loading) return emptyHint ? <div style={{ padding: 30, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Loading prospects…</div> : null;
   // No linked campaigns: hidden inside the Rent Roll; on the Prospects tab, say how to fill it.
@@ -149,6 +152,18 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
             <button key={l} onClick={() => setView(v)} style={{ fontSize: 12, fontWeight: 700, padding: '7px 11px', border: 'none', cursor: 'pointer', background: view === v ? '#1a1a1a' : '#fff', color: view === v ? '#fff' : '#374151' }}>{l}</button>
           ))}
         </div>
+        {(() => {
+          const inView = prospects.filter(p => view === 'opened' ? p.emailsOpened > 0 : view === 'cold' ? !!p.notEmailed : !p.notEmailed);
+          const n = (sg: Segment) => inView.filter(p => segmentOf(p.type) === sg).length;
+          const opts: ['all' | Segment, string][] = [['all', `Everyone (${inView.length})`], ...SEGMENTS.filter(sg => n(sg) > 0).map(sg => [sg, `${SEGMENT_LABEL[sg]} (${n(sg)})`] as ['all' | Segment, string])];
+          return (
+            <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+              {opts.map(([v, l]) => (
+                <button key={v} onClick={() => setSegment(v)} style={{ fontSize: 12, fontWeight: 700, padding: '7px 11px', border: 'none', cursor: 'pointer', background: segment === v ? '#c9922c' : '#fff', color: segment === v ? '#111' : '#374151' }}>{l}</button>
+              ))}
+            </div>
+          );
+        })()}
         <button onClick={exportCsv} style={{ fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 11px', cursor: 'pointer' }}>⬇ CSV</button>
       </div>
 

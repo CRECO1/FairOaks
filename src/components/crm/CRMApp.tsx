@@ -52,6 +52,7 @@ const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: f
 const FormAutofillReview = dynamic(() => import('@/components/crm/FormAutofillReview'), { ssr: false });
 import SiteActivity from '@/components/crm/SiteActivity';
 import { fetchAll } from '@/lib/campaign-engagement';
+import { segmentOf, SEGMENTS, SEGMENT_LABEL, type Segment } from '@/lib/contact-segment';
 import { specForForm, type LoiSpec } from '@/lib/loi-spec';
 import { deriveSide } from '@/lib/representation-side';
 
@@ -71,7 +72,7 @@ interface CallListPerson {
   // Same fields as the property's Rent Roll "Email Prospects" row, so the agent sees the whole picture.
   business: string; contactName: string; email: string; phone: string; category: string; locations: string;
   emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
-  campaignNames: string[]; unsubscribed: boolean; dead: boolean; notEmailed: boolean;
+  campaignNames: string[]; unsubscribed: boolean; dead: boolean; notEmailed: boolean; type: string;
 }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
@@ -741,6 +742,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Views mirror the Rent Roll: Opened / All emailed / Not emailed yet.
   const [callListMode, setCallListMode] = useState<string>('tasks');
   const [callPropView, setCallPropView] = useState<'opened' | 'all' | 'cold'>('opened');
+  // Tenants vs brokers/agents (vs owners & other) — applies to every source.
+  const [callSegment, setCallSegment] = useState<'all' | Segment>('all');
   const [callListPeople, setCallListPeople] = useState<CallListPerson[]>([]);
   const [callListLoading, setCallListLoading] = useState(false);
   const [callListNonce, setCallListNonce] = useState(0);
@@ -2339,7 +2342,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     for (const p of callListPeople) m.set(`p:${p.clientId}`, p);
     return m;
   }, [callListPeople]);
-  const callQueue = useMemo(() => {
+  const clientTypeById = useMemo(() => new Map(clients.map(c => [c.id, c.type as string])), [clients]);
+  const segOfTask = (t: CRMTask): Segment => segmentOf(callListMeta.get(t.id)?.type ?? clientTypeById.get(t.client_id));
+  const callQueueBase = useMemo(() => {
     const t0 = today();
     if (callListMode !== 'tasks') {
       return callListPeople
@@ -2351,13 +2356,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
   }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, profile?.id]);
+  // Counts per segment for the chips (computed before the segment filter), then the filtered queue.
+  const callSegmentCounts = useMemo(() => {
+    const n: Record<Segment, number> = { tenant: 0, broker: 0, other: 0 };
+    for (const t of callQueueBase) n[segOfTask(t)]++;
+    return n;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callQueueBase, callListMeta, clientTypeById]);
+  const callQueue = useMemo(
+    () => (callSegment === 'all' ? callQueueBase : callQueueBase.filter(t => segOfTask(t) === callSegment)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [callQueueBase, callSegment, callListMeta, clientTypeById]);
   const callUpcomingList = useMemo(() => {
     const t0 = today();
     if (callListMode !== 'tasks') return [] as CRMTask[];
     return callSource
-      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id))
+      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id)
+        && (callSegment === 'all' || segmentOf(clientTypeById.get(t.client_id)) === callSegment))
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [callSource, callSkippedIds, callListMode]);
+  }, [callSource, callSkippedIds, callListMode, callSegment, clientTypeById]);
   // Pick any call from the list; when the selected one is completed/skipped it leaves the queue and
   // the workspace falls back to the top of the list.
   const callCurrent = (callSelectedId ? callQueue.find(t => t.id === callSelectedId) : null) ?? callQueue[0] ?? null;
@@ -2396,7 +2413,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         type PP = {
           client_id: string; name: string; business: string; email: string; phone: string; category: string; askFor: string; locations: string;
           emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
-          campaignNames?: string[]; unsubscribed: boolean; dead: boolean; notEmailed?: boolean;
+          campaignNames?: string[]; unsubscribed: boolean; dead: boolean; notEmailed?: boolean; type?: string;
         };
         const people: CallListPerson[] = ((j.prospects ?? []) as PP[]).map(p => {
           const notEmailed = !!p.notEmailed;
@@ -2412,7 +2429,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             rank: HEAT_RANK[heat] * 1e13 - Date.parse(p.lastOpen || '1970-01-01'),
             business: p.business, contactName: p.name, email: p.email, phone: p.phone, category: p.category, locations: p.locations,
             emailsSent: p.emailsSent, emailsOpened: p.emailsOpened, opens: p.opens, clicks: p.clicks, lastOpen: p.lastOpen, lastSent: p.lastSent,
-            campaignNames: p.campaignNames ?? [], unsubscribed: p.unsubscribed, dead: p.dead, notEmailed,
+            campaignNames: p.campaignNames ?? [], unsubscribed: p.unsubscribed, dead: p.dead, notEmailed, type: p.type ?? '',
           };
         });
         // Who has already been called: uncalled first (and a "called Oct 9" tag) so a list worked over several
@@ -5876,6 +5893,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 </div>
 
+                {/* who — tenants vs brokers & agents (applies to every source) */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+                  {([['all', 'Everyone', callSegmentCounts.tenant + callSegmentCounts.broker + callSegmentCounts.other],
+                    ...SEGMENTS.map(sg => [sg, SEGMENT_LABEL[sg], callSegmentCounts[sg]] as ['all' | Segment, string, number])] as ['all' | Segment, string, number][])
+                    .filter(([k, , n]) => k === 'all' || k === callSegment || n > 0)
+                    .map(([k, label, n]) => {
+                      const on = callSegment === k;
+                      return (
+                        <button key={k} onClick={() => { setCallSegment(k); setCallSelectedId(null); }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                            border: `1px solid ${on ? '#c9922c' : '#e2e5e9'}`, background: on ? '#fdf3dd' : '#fff', color: on ? '#92400e' : '#4b5563' }}>
+                          {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : '#eef1f4', color: on ? '#111' : '#6b7280' }}>{n}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+
                 {/* views — identical to the Rent Roll tab: Opened / All emailed / Not emailed yet */}
                 {callListMode !== 'tasks' && (() => {
                   const live = callListPeople.filter(p => !callProspectDoneIds.has(p.clientId));
@@ -5927,13 +5961,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {!current && callListMode !== 'tasks' ? (
                   <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>{callListLoading ? '⏳' : '🎯'}</div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{callListLoading ? 'Building the call list…' : 'Nobody to call from this list right now'}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{callListLoading ? 'Building the call list…' : callSegment !== 'all' ? `No ${SEGMENT_LABEL[callSegment].toLowerCase()} to call in this view` : 'Nobody to call from this list right now'}</div>
                     {!callListLoading && <div style={{ fontSize: 14, color: '#6b7280' }}>Everyone with a phone number has been called, or nothing has been sent for this yet.</div>}
                   </div>
                 ) : !current ? (
                   <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>🎉</div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>All caught up — no calls left for today</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{callSegment !== 'all' ? `No ${SEGMENT_LABEL[callSegment].toLowerCase()} calls left for today` : 'All caught up — no calls left for today'}</div>
                     <div style={{ fontSize: 14, color: '#6b7280' }}>New follow-ups will show up here as they come due.</div>
                     {upcoming.length > 0 && <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 10 }}>{upcoming.length} call{upcoming.length === 1 ? '' : 's'} scheduled ahead — next: {nameFor(clientFor(upcoming[0]))} on {new Date(upcoming[0].due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>}
                   </div>
