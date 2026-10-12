@@ -2,6 +2,7 @@ export const revalidate = 3600;
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { unstable_noStore as noStore } from 'next/cache';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, MapPin, Home, DollarSign, School, CheckCircle } from 'lucide-react';
@@ -51,6 +52,13 @@ const STATIC_GUIDES: Record<string, object> = {
 };
 
 interface Props { params: Promise<{ slug: string }> }
+
+// Without generateStaticParams a dynamic route is rendered live on every visit
+// and `revalidate` above is ignored. [] pre-builds nothing: each neighborhood is
+// generated on its first visit, then served from the cache for the window.
+export function generateStaticParams() {
+  return [];
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -106,7 +114,12 @@ export default async function NeighborhoodDetailPage({ params }: Props) {
   let neighborhood = await getNeighborhoodBySlug(slug).catch(() => null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (!neighborhood && STATIC_GUIDES[slug]) neighborhood = STATIC_GUIDES[slug] as any;
-  if (!neighborhood) notFound();
+  if (!neighborhood) {
+    // Not found, or the database hiccupped: either way never cache the 404 over
+    // a good page (a bad regeneration would otherwise replace it for the window).
+    noStore();
+    notFound();
+  }
 
   const listings = await getListingsByCity(neighborhood!.city).catch(() => []);
 

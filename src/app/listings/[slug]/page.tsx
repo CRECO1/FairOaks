@@ -4,6 +4,14 @@ export const revalidate = 1800;
 // (every visit was a 0.7–1.5s uncached render).
 const MLS_REVALIDATE = 1800;
 
+// A dynamic route is only ISR-cached when it exports generateStaticParams;
+// without it Next renders every visit live (`ƒ`) and ignores `revalidate`.
+// Returning [] pre-builds nothing: each listing page is generated on its first
+// visit and then served from the cache for the revalidate window.
+export function generateStaticParams() {
+  return [];
+}
+
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { unstable_noStore as noStore } from 'next/cache';
@@ -150,7 +158,10 @@ export default async function ListingDetailPage({ params }: Props) {
   const { slug } = await params;
 
   const listing = await fetchListing(slug);
-  if (!listing) notFound();
+  if (!listing) {
+    noStore(); // never let a 404 (or an empty feed answer) replace a cached page
+    notFound();
+  }
 
   const images = (listing.images as string[] | null) ?? [];
 
