@@ -760,9 +760,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callbacks, setCallbacks] = useState<CallbackRow[]>([]);
   const [callbackDoneIds, setCallbackDoneIds] = useState<Set<string>>(new Set());
   const [callOnlyCallbacks, setCallOnlyCallbacks] = useState(false);
-  // Campaign groups in the queue that are folded away (remembered per browser).
-  const [callGroupsCollapsed, setCallGroupsCollapsed] = useState<Set<string>>(new Set());
-  useEffect(() => { try { const j = JSON.parse(localStorage.getItem('crm:callGroupsCollapsed') ?? '[]'); if (Array.isArray(j)) setCallGroupsCollapsed(new Set(j.filter((x: unknown): x is string => typeof x === 'string'))); } catch { /* ignore */ } }, []);
+  // Campaign groups in the queue start FOLDED and stay that way until you open one (not remembered across reloads).
+  const [callGroupsOpen, setCallGroupsOpen] = useState<Set<string>>(new Set());
   // Hand a campaign / property call list to an agent (admins): pick people (or take the whole view), choose who + when.
   const [callPicked, setCallPicked] = useState<Set<string>>(new Set());
   const [callAssignTo, setCallAssignTo] = useState('');
@@ -6379,9 +6378,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     for (const t of groupedItems) { const k = callGroupOf(t)!; (m.get(k) ?? m.set(k, []).get(k)!).push(t); }
                     return [...m.entries()];
                   })();
-                  const toggleGroup = (k: string) => setCallGroupsCollapsed(prev => {
+                  const toggleGroup = (k: string) => setCallGroupsOpen(prev => {
                     const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k);
-                    try { localStorage.setItem('crm:callGroupsCollapsed', JSON.stringify([...n])); } catch { /* ignore */ }
                     return n;
                   });
                   const overdueItems = plainItems.filter(t => t.due_date && t.due_date < t0);
@@ -6449,7 +6447,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </>
                         )}
                         {callListMode === 'tasks' && callGroups.map(([label, items]) => {
-                          const folded = callGroupsCollapsed.has(label);
+                          const folded = !callGroupsOpen.has(label);
                           const late = items.filter(t => t.due_date && t.due_date < t0).length;
                           return (
                             <div key={label} style={{ marginTop: 6 }}>
