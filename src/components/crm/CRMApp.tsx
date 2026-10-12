@@ -6142,6 +6142,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           )}
 
+                          {/* No one to ask for: say so, and what to do about it */}
+                          {curMeta && !askLine && !curMeta.askFor && !(c?.first_name?.trim() && c?.last_name?.trim()) && (
+                            <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13.5, color: '#9a3412', lineHeight: 1.45 }}>
+                              <b style={{ letterSpacing: .5, fontSize: 11, textTransform: 'uppercase' }}>No point of contact on file</b><br />
+                              We only have the business and a phone. Ask who handles leasing / the property, then put their name on the contact so the next call has it.
+                            </div>
+                          )}
+
                           {/* Who to ask for (from the contact research) */}
                           {(askLine || curMeta?.askFor) && (
                             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#78350f', lineHeight: 1.45 }}>
