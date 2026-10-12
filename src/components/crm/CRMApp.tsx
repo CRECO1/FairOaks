@@ -65,6 +65,7 @@ interface Profile { id: string; email: string; first_name: string; last_name: st
 /** A contact-export request awaiting, or carrying, the owner's decision. */
 
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
+interface CallListPerson { clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number; view?: 'opened' | 'emailed' | 'cold' }
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
@@ -725,6 +726,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Admins can view/work another agent's Call Queue ('' = your own).
   const [callViewAgentId, setCallViewAgentId] = useState('');
   const [callViewTasks, setCallViewTasks] = useState<CRMTask[]>([]);
+  // Which queued call is open in the workspace (null = the top of the queue), and each agent's
+  // open call count so an admin sees everyone's load without switching into their queue.
+  const [callSelectedId, setCallSelectedId] = useState<string | null>(null);
+  // Where the queue comes from: your call tasks (default), or people to call out of the marketing —
+  // 'eng:all' / 'eng:<campaignId>' (engaged with a campaign, not yet contacted) and 'prop:<listingId>'
+  // (a property's prospect list, same people as its Rent Roll "Email Prospects": opened / emailed / cold).
+  const [callListMode, setCallListMode] = useState<string>('tasks');
+  const [callPropView, setCallPropView] = useState<'all' | 'opened' | 'emailed' | 'cold'>('all');
+  const [callListPeople, setCallListPeople] = useState<CallListPerson[]>([]);
+  const [callListLoading, setCallListLoading] = useState(false);
+  const [callListNonce, setCallListNonce] = useState(0);
+  const [callListInfo, setCallListInfo] = useState('');
+  const [callProspectDoneIds, setCallProspectDoneIds] = useState<Set<string>>(new Set());
+  const [callListings, setCallListings] = useState<{ id: string; name: string }[]>([]);
+  const [callAgentCounts, setCallAgentCounts] = useState<Record<string, number>>({});
   const [tasksSubTab, setTasksSubTab] = useRememberedState<'tasks' | 'calls' | 'leases'>('tasks-sub', 'tasks', ['tasks', 'calls', 'leases']);
   // Dashboard: the reporting charts collapse into a "Numbers" section so the
   // action center (what needs attention today/this week) leads. Default closed.
@@ -2256,8 +2272,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (callActionInFlight) return;
     setCallActionInFlight(true);
     try {
-      // 1) Complete the current call task (sets completed_at + status='done')
-      await completeTask(task.id);
+      // 1) Complete the current call task (sets completed_at + status='done'). A person pulled from a
+      //    marketing list has no task yet — they just leave this session's list; the call logged below
+      //    is what marks them contacted everywhere else.
+      if (task.id.startsWith('p:')) setCallProspectDoneIds(prev => new Set(prev).add(task.client_id));
+      else await completeTask(task.id);
 
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
       const dispLabel = disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : 'No answer';
@@ -2306,19 +2325,130 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Call Queue ── your own (allTasks) unless an admin is viewing another agent
   //    (callViewAgentId → callViewTasks). Lifted so keyboard shortcuts can act on it.
   const callSource = callViewAgentId ? callViewTasks : allTasks;
+  // People-to-call lists become synthetic tasks (id 'p:<clientId>') so the workspace, keyboard shortcuts,
+  // outcome logging and follow-up scheduling all work unchanged; dispositionCall skips the task update for them.
+  const callListMeta = useMemo(() => {
+    const m = new Map<string, CallListPerson>();
+    for (const p of callListPeople) m.set(`p:${p.clientId}`, p);
+    return m;
+  }, [callListPeople]);
   const callQueue = useMemo(() => {
     const t0 = today();
+    if (callListMode !== 'tasks') {
+      return callListPeople
+        .filter(p => (callPropView === 'all' || !p.view || p.view === callPropView) && !callProspectDoneIds.has(p.clientId) && !callSkippedIds.has(`p:${p.clientId}`))
+        .map<CRMTask>(p => ({ id: `p:${p.clientId}`, client_id: p.clientId, agent_id: profile?.id ?? '', type: 'call', title: p.reason, due_date: t0, notes: '', completed_at: null, created_at: '' }));
+    }
     return callSource
       .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [callSource, callSkippedIds]);
+  }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, profile?.id]);
   const callUpcomingList = useMemo(() => {
     const t0 = today();
+    if (callListMode !== 'tasks') return [] as CRMTask[];
     return callSource
       .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date > t0 && !callSkippedIds.has(t.id))
       .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [callSource, callSkippedIds]);
-  const callCurrent = callQueue[0] ?? null;
+  }, [callSource, callSkippedIds, callListMode]);
+  // Pick any call from the list; when the selected one is completed/skipped it leaves the queue and
+  // the workspace falls back to the top of the list.
+  const callCurrent = (callSelectedId ? callQueue.find(t => t.id === callSelectedId) : null) ?? callQueue[0] ?? null;
+
+  // The property list for the "By property" source.
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || callListings.length) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const lh: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+        const r = await fetch('/api/crm/listings', { headers: lh });
+        const j = await r.json().catch(() => ({}));
+        if (!cancelled && r.ok) setCallListings(((j.listings ?? []) as { id: string; name: string }[]).filter(l => l.name).map(l => ({ id: l.id, name: l.name })));
+      } catch { /* the dropdown just lacks the property group */ }
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // People to call out of the marketing (campaign engagement, or a property's prospect list).
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || callListMode === 'tasks') return;
+    let cancelled = false;
+    setCallListLoading(true); setCallListPeople([]); setCallListInfo(''); setCallSelectedId(null);
+    const headers: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+    const HEAT_RANK = { hot: 0, warm: 1, cold: 2 } as const;
+    (async () => {
+      try {
+        let people: CallListPerson[] = [];
+        let noPhone = 0;
+        if (callListMode.startsWith('eng:')) {
+          const id = callListMode.slice(4);
+          const r = await fetch(`/api/campaigns/engagement?fresh=1${id === 'all' ? '' : `&campaign_id=${id}`}`, { headers });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.error ?? 'Could not load the call list');
+          type EP = { client_id: string; tier: 'hot' | 'warm'; contacted_at: string | null; last_signal_at: string; signals: { label: string }[]; campaigns?: { name: string }[]; contact?: { phone?: string | null; cell_phone?: string | null; notes?: string | null } | null };
+          for (const p of (j.people ?? []) as EP[]) {
+            if (p.contacted_at || !p.contact) continue;
+            if (!(p.contact.phone || p.contact.cell_phone)) { noPhone++; continue; }
+            const labels = [...new Set(p.signals.map(x => x.label))].slice(0, 2).join(' · ');
+            const camp = (p.campaigns ?? [])[0]?.name;
+            people.push({ clientId: p.client_id, reason: labels || 'Engaged with a campaign', heat: p.tier === 'hot' ? 'hot' : 'warm', askFor: camp ? `From: ${camp}` : '', lastCalled: null, rank: HEAT_RANK[p.tier === 'hot' ? 'hot' : 'warm'] * 1e13 - Date.parse(p.last_signal_at || '1970-01-01') });
+          }
+        } else if (callListMode.startsWith('prop:')) {
+          const id = callListMode.slice(5);
+          const r = await fetch(`/api/crm/listing-prospects?listing_id=${id}`, { headers });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.error ?? 'Could not load the prospects');
+          type PP = { client_id: string; phone: string; askFor: string; locations: string; category: string; emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; notEmailed: boolean };
+          for (const p of (j.prospects ?? []) as PP[]) {
+            if (!p.phone) { noPhone++; continue; }
+            const opened = p.emailsOpened > 0;
+            const view: 'opened' | 'emailed' | 'cold' = p.notEmailed ? 'cold' : opened ? 'opened' : 'emailed';
+            const reason = p.notEmailed ? 'Not emailed yet — cold call'
+              : opened ? `Opened ${p.emailsOpened} of ${p.emailsSent} email${p.emailsSent === 1 ? '' : 's'}${p.clicks ? ` · ${p.clicks} click${p.clicks === 1 ? '' : 's'}` : ''}`
+              : `Emailed ${p.emailsSent}×, no open yet`;
+            const heat: 'hot' | 'warm' | 'cold' = view === 'cold' ? 'cold' : view === 'opened' && (p.clicks > 0 || p.opens >= 2) ? 'hot' : 'warm';
+            const ask = [p.askFor, p.locations].filter(Boolean).join(' · ');
+            people.push({ clientId: p.client_id, reason: p.category ? `${reason} · ${p.category}` : reason, heat, askFor: ask, lastCalled: null,
+              rank: HEAT_RANK[heat] * 1e13 - Date.parse(p.lastOpen || '1970-01-01'), view });
+          }
+        }
+        // Who has already been called: sort uncalled first and show the date, so a list worked over several
+        // days doesn't send you back to the same people.
+        const ids = people.map(p => p.clientId);
+        const lastCalled = new Map<string, string>();
+        for (let i = 0; i < ids.length; i += 150) {
+          const { data } = await supabase.from('crm_client_activities').select('client_id, created_at').eq('type', 'call').in('client_id', ids.slice(i, i + 150));
+          for (const a of data ?? []) { const prev = lastCalled.get(a.client_id as string); if (!prev || (a.created_at as string) > prev) lastCalled.set(a.client_id as string, a.created_at as string); }
+        }
+        for (const p of people) p.lastCalled = lastCalled.get(p.clientId) ?? null;
+        people.sort((a, b) => Number(!!a.lastCalled) - Number(!!b.lastCalled) || a.rank - b.rank);
+        if (cancelled) return;
+        setCallListPeople(people);
+        setCallListInfo(noPhone ? `${noPhone} more ${noPhone === 1 ? 'has' : 'have'} no phone on file` : '');
+      } catch (e) {
+        if (!cancelled) { setCallListInfo(e instanceof Error ? e.message : 'Could not load the list'); }
+      } finally {
+        if (!cancelled) setCallListLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab, callListMode, callListNonce]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open-call counts per agent (admins), for the agent switcher on the Call Queue.
+  useEffect(() => {
+    const admin = profile?.role === 'admin' || profile?.role === 'super_admin';
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || !admin) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from('crm_tasks').select('agent_id')
+        .is('completed_at', null).in('type', ['call', 'follow_up']).lte('due_date', today()).limit(5000);
+      if (cancelled) return;
+      const m: Record<string, number> = {};
+      for (const r of data ?? []) if (r.agent_id) m[r.agent_id as string] = (m[r.agent_id as string] ?? 0) + 1;
+      setCallAgentCounts(m);
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab, profile?.role, callsDoneThisSession]);
 
   // Reset the per-call note + follow-up override whenever the active call changes.
   useEffect(() => { setCallNote(''); setCallFollowUpDays(null); }, [callCurrent?.id]);
@@ -2353,10 +2483,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       else if (k === 'v') { e.preventDefault(); dispositionCall(callCurrent, 'voicemail'); }
       else if (k === 'n') { e.preventDefault(); dispositionCall(callCurrent, 'no_answer'); }
       else if (k === 's') { e.preventDefault(); skipCall(callCurrent.id); }
+      else if (k === 'j' || k === 'arrowdown' || k === 'k' || k === 'arrowup') {
+        // Move through the queue without acting on a call.
+        e.preventDefault();
+        const i = callQueue.findIndex(t => t.id === callCurrent.id);
+        const next = callQueue[Math.min(Math.max(i + (k === 'j' || k === 'arrowdown' ? 1 : -1), 0), callQueue.length - 1)];
+        if (next) setCallSelectedId(next.id);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [page, tasksSubTab, callCurrent, callActionInFlight, callNote, callFollowUpDays]);
+  }, [page, tasksSubTab, callCurrent, callQueue, callActionInFlight, callNote, callFollowUpDays]);
 
   // ── Activity Tracking ─────────────────────────────────────────────────────────
   async function loadClientActivities(clientId: string) {
@@ -5699,50 +5836,104 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
             return (
               <div>
-                {/* Header + live stats */}
-                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
+                {/* ── Header ── */}
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', marginBottom: 4 }}>
-                      📞 {callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s Calls` : 'Today’s Calls'}
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.1 }}>
+                      📞 {callListMode === 'tasks'
+                        ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s call queue` : 'Your call queue')
+                        : callListMode === 'eng:all' ? 'Engaged with our campaigns'
+                        : callListMode.startsWith('eng:') ? (campaigns.find(c => c.id === callListMode.slice(4))?.name ?? 'Campaign')
+                        : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
                     </h2>
-                    <p style={{ fontSize: 14, color: '#6b7280' }}>
-                      {queue.length === 0 ? 'All caught up for today' : `${queue.length} call${queue.length === 1 ? '' : 's'} to go`}
-                      {doneCt > 0 ? ` · ${doneCt} done` : ''}
+                    <p style={{ fontSize: 14, color: '#6b7280', margin: '4px 0 0' }}>
+                      {queue.length === 0 ? 'All caught up' : `${queue.length} to call`}
+                      {doneCt > 0 ? ` · ${doneCt} done this session` : ''}
+                      {upcoming.length > 0 ? ` · ${upcoming.length} coming up` : ''}
                     </p>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    {isAdmin && (
-                      <select value={callViewAgentId} title="View another agent's calls"
-                        onChange={e => { const id = e.target.value; setCallViewAgentId(id); setCallsDoneThisSession(0); if (id) loadCallView(id); else loadAllTasks(); }}
-                        style={{ padding: '7px 10px', border: `1px solid ${callViewAgentId ? '#c9922c' : '#e5e7eb'}`, borderRadius: 8, fontSize: 13, background: callViewAgentId ? '#fdf6e8' : '#fff', color: callViewAgentId ? '#a8741a' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                        <option value="">👤 My calls</option>
-                        {profiles.filter(p => p.id !== profile?.id).map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
-                      </select>
-                    )}
-                    {[{ n: doneCt, l: 'Done', c: '#16a34a' }, { n: queue.length, l: 'Left', c: '#c9922c' }, { n: upcoming.length, l: 'Upcoming', c: '#6b7280' }].map(s => (
-                      <div key={s.l} style={{ textAlign: 'center', minWidth: 54, padding: '6px 12px', borderRadius: 10, background: '#fff', border: '1px solid #eee' }}>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: s.c, lineHeight: 1 }}>{s.n}</div>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{s.l}</div>
-                      </div>
-                    ))}
-                    <button className="crm-btn" onClick={() => { if (callViewAgentId) loadCallView(callViewAgentId); else loadAllTasks(); loadClients(undefined, 0, true); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {/* Where the calls come from: your tasks, or people to call out of the marketing */}
+                    <select value={callListMode} onChange={e => { setCallListMode(e.target.value); setCallPropView('all'); setCallSelectedId(null); setCallsDoneThisSession(0); }}
+                      title="Choose who to call"
+                      style={{ padding: '8px 12px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: `1px solid ${callListMode === 'tasks' ? '#e2e8f0' : '#c9922c'}`, background: callListMode === 'tasks' ? '#fff' : '#fffbf2', color: callListMode === 'tasks' ? '#374151' : '#92400e', maxWidth: 320, fontFamily: "'DM Sans',sans-serif" }}>
+                      <option value="tasks">📋 My call tasks</option>
+                      <optgroup label="From our campaigns">
+                        <option value="eng:all">🔥 Everyone who engaged — not called yet</option>
+                        {campaigns.filter(c => (c.to_call_count ?? 0) > 0).map(c => <option key={c.id} value={`eng:${c.id}`}>{c.name} ({c.to_call_count})</option>)}
+                      </optgroup>
+                      {callListings.length > 0 && (
+                        <optgroup label="By property (prospects)">
+                          {callListings.map(l => <option key={l.id} value={`prop:${l.id}`}>{l.name}</option>)}
+                        </optgroup>
+                      )}
+                    </select>
+                    <button className="crm-btn" onClick={() => { if (callListMode !== 'tasks') { setCallProspectDoneIds(new Set()); setCallListNonce(n => n + 1); return; } if (callViewAgentId) loadCallView(callViewAgentId); else loadAllTasks(); loadClients(undefined, 0, true); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
                   </div>
                 </div>
-                <div style={{ height: 8, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 22 }}>
+
+                {/* property views: which of its prospects to work */}
+                {callListMode.startsWith('prop:') && (() => {
+                  const cnt = (v: string) => callListPeople.filter(p => p.view === v && !callProspectDoneIds.has(p.clientId)).length;
+                  return (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                      {([['all', 'All callable', callListPeople.filter(p => !callProspectDoneIds.has(p.clientId)).length], ['opened', 'Opened our emails', cnt('opened')], ['emailed', 'Emailed, no open', cnt('emailed')], ['cold', 'Not emailed yet', cnt('cold')]] as [typeof callPropView, string, number][]).map(([k, label, n]) => {
+                        const on = callPropView === k;
+                        return (
+                          <button key={k} onClick={() => { setCallPropView(k); setCallSelectedId(null); }}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                              border: `1px solid ${on ? '#141414' : '#e2e5e9'}`, background: on ? '#141414' : '#fff', color: on ? '#fff' : '#4b5563' }}>
+                            {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : '#eef1f4', color: on ? '#111' : '#6b7280' }}>{n}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                {callListMode !== 'tasks' && callListInfo && <div style={{ fontSize: 12.5, color: '#9ca3af', margin: '-4px 0 10px' }}>{callListInfo}</div>}
+
+                {/* ── Whose queue (admins) ── each agent with their own open count, so the load is visible at a glance */}
+                {isAdmin && callListMode === 'tasks' && (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                    {[{ id: '', name: 'My calls', n: callAgentCounts[profile?.id ?? ''] ?? allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0).length },
+                      ...profiles.filter(p => p.id !== profile?.id).map(p => ({ id: p.id, name: p.first_name || p.email, n: callAgentCounts[p.id] ?? 0 }))].map(a => {
+                      const on = callViewAgentId === a.id;
+                      return (
+                        <button key={a.id || 'me'} onClick={() => { setCallViewAgentId(a.id); setCallsDoneThisSession(0); setCallSelectedId(null); if (a.id) loadCallView(a.id); else loadAllTasks(); }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                            border: `1px solid ${on ? '#141414' : '#e2e5e9'}`, background: on ? '#141414' : '#fff', color: on ? '#fff' : '#4b5563' }}>
+                          {a.name}
+                          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : a.n > 0 ? '#fee2e2' : '#eef1f4', color: on ? '#111' : a.n > 0 ? '#dc2626' : '#6b7280' }}>{a.n}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* progress */}
+                <div style={{ height: 6, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 18 }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#c9922c,#e0b458)', transition: 'width .3s ease' }} />
                 </div>
 
-                {!current ? (
-                  /* Empty / all-caught-up state */
+                {!current && callListMode !== 'tasks' ? (
+                  <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
+                    <div style={{ fontSize: 44, marginBottom: 12 }}>{callListLoading ? '⏳' : '🎯'}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{callListLoading ? 'Building the call list…' : 'Nobody to call from this list right now'}</div>
+                    {!callListLoading && <div style={{ fontSize: 14, color: '#6b7280' }}>Everyone with a phone number has been called, or nothing has been sent for this yet.</div>}
+                  </div>
+                ) : !current ? (
                   <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>🎉</div>
                     <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>All caught up — no calls left for today</div>
                     <div style={{ fontSize: 14, color: '#6b7280' }}>New follow-ups will show up here as they come due.</div>
+                    {upcoming.length > 0 && <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 10 }}>{upcoming.length} call{upcoming.length === 1 ? '' : 's'} scheduled ahead — next: {nameFor(clientFor(upcoming[0]))} on {new Date(upcoming[0].due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>}
                   </div>
                 ) : (() => {
                   const c = clientFor(current);
                   const phone = phoneFor(c);
-                  const isOverdue = !!current.due_date && current.due_date < t0;
+                  const dayDiff = (d: string) => Math.round((Date.parse(t0 + 'T12:00:00') - Date.parse(d.slice(0, 10) + 'T12:00:00')) / 86_400_000);
+                  const overdueDays = current.due_date ? dayDiff(current.due_date) : 0;
+                  const isOverdue = overdueDays > 0;
                   const deal = c ? deals.find(d => d.client_id === c.id) ?? null : null;
                   const fmtDay = (s?: string | null) => s ? new Date(s.length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
                   const TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -5755,8 +5946,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     { label: 'Auto', val: null }, { label: 'Tomorrow', val: 1 },
                     { label: 'In 3 days', val: 3 }, { label: 'Next week', val: 7 }, { label: 'None', val: 'none' },
                   ];
-                  const kbdStyle: React.CSSProperties = { marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'ui-monospace, SFMono-Regular, monospace' };
-                  // Call briefing — the current contact's recent activity (attempt history + timeline).
+                  const kbdStyle: React.CSSProperties = { marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' };
                   const briefingReady = !!c && callActivitiesClientId === c.id;
                   const acts = briefingReady ? callActivities : [];
                   const priorCalls = acts.filter(a => a.type === 'call');
@@ -5764,93 +5954,177 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const lastOutcome = lastCall ? (lastCall.note.split(' — ')[1] ?? '') : '';
                   const outcomeIcon = /connected/i.test(lastOutcome) ? '✓' : /voicemail/i.test(lastOutcome) ? '📼' : /no answer/i.test(lastOutcome) ? '✕' : '📞';
                   const ACT_ICON: Record<string, string> = { call: '📞', email: '✉️', meeting: '🤝', note: '📝', deal_update: '📄' };
+                  // Researched contacts carry "📞 ASK FOR: <name> — <role> · …" as the first line of their notes.
+                  const askLine = (c?.notes ?? '').split('\n')[0].startsWith('📞 ASK FOR:') ? (c!.notes as string).split('\n')[0].replace('📞 ASK FOR:', '').trim() : '';
+                  const inits = (cl: Client | null) => cl ? ((cl.first_name?.[0] ?? '') + (cl.last_name?.[0] ?? '') || (cl.business_name?.[0] ?? '?')).toUpperCase() : '?';
+                  const overdueItems = queue.filter(t => t.due_date && t.due_date < t0);
+                  const todayItems = queue.filter(t => !(t.due_date && t.due_date < t0));
+                  const HEAT_ICON = { hot: '🔥', warm: '☀️', cold: '❄️' } as const;
+                  const curMeta = callListMeta.get(current.id) ?? null;
+                  const row = (t: CRMTask) => {
+                    const tc = clientFor(t);
+                    const sel = t.id === current.id;
+                    const od = t.due_date ? dayDiff(t.due_date) : 0;
+                    const ph = phoneFor(tc);
+                    const meta = callListMeta.get(t.id) ?? null;
+                    return (
+                      <button key={t.id} onClick={() => setCallSelectedId(t.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 10, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                          border: `1px solid ${sel ? '#c9922c' : 'transparent'}`, background: sel ? '#fffbf2' : 'transparent' }}>
+                        <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
+                          background: od > 0 ? '#fee2e2' : '#f1f5f9', color: od > 0 ? '#dc2626' : '#475569' }}>{inits(tc)}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</span>
+                          <span style={{ display: 'block', fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {meta
+                              ? `${HEAT_ICON[meta.heat]} ${meta.reason}${meta.lastCalled ? ` · called ${new Date(meta.lastCalled).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
+                              : `${t.type === 'follow_up' ? '🔄' : '📞'} ${ph ? phoneDisp(ph) : 'no phone'}${od > 0 ? ` · ${od}d overdue` : ' · due today'}`}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  };
+                  const stack = isTabletOrMobile;
                   return (
-                    <div>
-                      {/* Current call card */}
-                      <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${isOverdue ? '#fecaca' : '#e8e8e8'}`, padding: '22px 24px', marginBottom: 20, boxShadow: '0 2px 10px rgba(0,0,0,.05)' }}>
-                        {/* Name · type · overdue */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, flexWrap: 'wrap' }}>
-                          {c ? (
-                            <button onClick={() => { setPage('contacts'); setActiveClient(c); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#111', textAlign: 'left' }}>
-                              {nameFor(c)}
+                    <div style={{ display: 'grid', gridTemplateColumns: stack ? '1fr' : '330px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+                      {/* ── Queue ── */}
+                      <aside style={{ order: stack ? 2 : 0, background: '#fff', border: '1px solid #e8eaed', borderRadius: 14, padding: 10, position: stack ? 'static' : 'sticky', top: 8, maxHeight: stack ? undefined : 'calc(100vh - 160px)', overflowY: stack ? undefined : 'auto' }}>
+                        {callListMode !== 'tasks' && (
+                          <>
+                            <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#c9922c', fontWeight: 800, padding: '6px 10px 4px' }}>To call · {queue.length}</div>
+                            {queue.map(row)}
+                          </>
+                        )}
+                        {callListMode === 'tasks' && overdueItems.length > 0 && (
+                          <>
+                            <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#dc2626', fontWeight: 800, padding: '6px 10px 4px' }}>Overdue · {overdueItems.length}</div>
+                            {overdueItems.map(row)}
+                          </>
+                        )}
+                        {callListMode === 'tasks' && todayItems.length > 0 && (
+                          <>
+                            <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#c9922c', fontWeight: 800, padding: '10px 10px 4px' }}>Due today · {todayItems.length}</div>
+                            {todayItems.map(row)}
+                          </>
+                        )}
+                        {upcoming.length > 0 && (
+                          <div style={{ borderTop: '1px solid #f1f2f4', marginTop: 8, paddingTop: 4 }}>
+                            <button onClick={() => setCallUpcomingOpen(o => !o)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontWeight: 800, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', fontFamily: "'DM Sans',sans-serif" }}>
+                              <span style={{ fontSize: 10 }}>{callUpcomingOpen ? '▾' : '▸'}</span> Upcoming · {upcoming.length}
                             </button>
-                          ) : (
-                            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', lineHeight: 1.2 }}>{current.title ? current.title.replace(/^🏢\s*/, '') : nameFor(c)}</span>
-                          )}
-                          {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
-                          {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>OVERDUE</span>}
-                        </div>
-
-                        {/* Location · tags */}
-                        {c && (c.city || (c.tags && c.tags.length > 0)) && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, fontSize: 13, color: '#6b7280' }}>
-                            {c.city && <span>📍 {c.city}{c.state ? `, ${c.state}` : ''}</span>}
-                            {(c.tags ?? []).slice(0, 5).map(tag => (
-                              <span key={tag} style={{ padding: '1px 8px', borderRadius: 10, background: '#f3f4f6', color: '#4b5563', fontSize: 11, fontWeight: 600 }}>{tag}</span>
-                            ))}
+                            {callUpcomingOpen && upcoming.map(t => {
+                              const tc = clientFor(t);
+                              return (
+                                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px' }}>
+                                  <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, background: '#f1f5f9', color: '#94a3b8' }}>{inits(tc)}</span>
+                                  <span style={{ flex: 1, minWidth: 0 }}>
+                                    <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</span>
+                                    <span style={{ display: 'block', fontSize: 11.5, color: '#9ca3af' }}>{fmtDay(t.due_date)}</span>
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
+                      </aside>
 
-                        {/* Click-to-call */}
-                        {phone ? (
-                          <a href={`tel:${phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 22, fontWeight: 700, color: '#c9922c', textDecoration: 'none', padding: '10px 18px', borderRadius: 10, background: '#fdf6e8', border: '1px solid #f0e2c0', marginBottom: 14 }}>
-                            📞 {phone}
-                          </a>
-                        ) : (
-                          <div style={{ fontSize: 15, color: '#9ca3af', fontStyle: 'italic', marginBottom: 14 }}>No phone on file</div>
-                        )}
-
-                        {/* Task title · notes · meta */}
-                        {c && <div style={{ fontSize: 15, fontWeight: 600, color: '#111', marginBottom: 4 }}>{current.title}</div>}
-                        {current.notes && <div style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.5, marginBottom: 6 }}>{current.notes}</div>}
-                        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#9ca3af' }}>
-                          <span>{current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due {fmtDay(current.due_date)}</span>
-                          <span>🕐 {c?.last_touched_at ? `Last touch ${fmtDay(c.last_touched_at)}` : 'No prior contact'}</span>
-                          {deal && (
-                            <button onClick={() => { setPage('deals'); openDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>
-                              📄 {deal.property || deal.type}{deal.stage ? ` · ${deal.stage}` : ''}{deal.value > 0 ? ` · $${Number(deal.value).toLocaleString()}` : ''}
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Call briefing: attempt history + recent activity */}
-                        {c && (
-                          <div style={{ marginTop: 14, background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '11px 14px' }}>
-                            {!briefingReady ? (
-                              <div style={{ fontSize: 12, color: '#9ca3af' }}>Loading history…</div>
+                      {/* ── Workspace: the selected call ── */}
+                      <section style={{ order: stack ? 1 : 0, background: '#fff', borderRadius: 14, border: `1px solid ${isOverdue ? '#fecaca' : '#e8eaed'}`, boxShadow: '0 2px 10px rgba(0,0,0,.05)', overflow: 'hidden' }}>
+                        <div style={{ padding: isMobile ? '16px 16px 6px' : '22px 26px 6px' }}>
+                          {/* Name · type · overdue */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+                            {c ? (
+                              <button onClick={() => { setPage('contacts'); setActiveClient(c); }} title="Open contact" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 24 : 30, fontWeight: 700, color: '#111', textAlign: 'left', lineHeight: 1.15 }}>
+                                {nameFor(c)}
+                              </button>
                             ) : (
-                              <>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: acts.length ? 10 : 0 }}>
-                                  {priorCalls.length > 0 ? (
-                                    <>
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 20, padding: '2px 10px' }}>Attempt #{priorCalls.length + 1}</span>
-                                      {lastCall && <span style={{ fontSize: 12, color: '#6b7280' }}>Last: {outcomeIcon} {lastOutcome || 'Call'} · {fmtDay(lastCall.created_at)}</span>}
-                                    </>
-                                  ) : (
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, padding: '2px 10px' }}>✨ First call</span>
-                                  )}
-                                </div>
-                                {acts.length > 0 && (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                                    {acts.slice(0, 3).map(a => (
-                                      <div key={a.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12 }}>
-                                        <span style={{ flexShrink: 0 }}>{ACT_ICON[a.type] ?? '•'}</span>
-                                        <span style={{ flex: 1, minWidth: 0, color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.note}</span>
-                                        <span style={{ flexShrink: 0, color: '#9ca3af' }}>{fmtDay(a.created_at)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </>
+                              <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111', lineHeight: 1.2 }}>{current.title ? current.title.replace(/^🏢\s*/, '') : nameFor(c)}</span>
+                            )}
+                            {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
+                            {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>{overdueDays}d OVERDUE</span>}
+                            {curMeta && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: curMeta.heat === 'hot' ? '#fff1f2' : curMeta.heat === 'cold' ? '#eff6ff' : '#fffbeb', color: curMeta.heat === 'hot' ? '#be123c' : curMeta.heat === 'cold' ? '#1d4ed8' : '#b45309' }}>{HEAT_ICON[curMeta.heat]} {curMeta.heat === 'hot' ? 'Hot' : curMeta.heat === 'cold' ? 'Cold' : 'Warm'}</span>}
+                          </div>
+                          {c && (c.city || (c.tags && c.tags.length > 0)) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, fontSize: 13, color: '#6b7280' }}>
+                              {c.city && <span>📍 {c.city}{c.state ? `, ${c.state}` : ''}</span>}
+                              {(c.tags ?? []).slice(0, 5).map(tag => (
+                                <span key={tag} style={{ padding: '1px 8px', borderRadius: 10, background: '#f3f4f6', color: '#4b5563', fontSize: 11, fontWeight: 600 }}>{tag}</span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Phone + email, side by side */}
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+                            {phone ? (
+                              <a href={`tel:${phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 24, fontWeight: 800, color: '#fff', textDecoration: 'none', padding: '12px 22px', borderRadius: 12, background: '#c9922c', boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
+                                📞 {phoneDisp(phone)}
+                              </a>
+                            ) : (
+                              <span style={{ fontSize: 15, color: '#9ca3af', fontStyle: 'italic' }}>No phone on file</span>
+                            )}
+                            {c?.email && (
+                              <a href={`mailto:${c.email}`} style={{ fontSize: 13.5, color: '#4b5563', textDecoration: 'none', padding: '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff' }}>✉ {c.email}</a>
                             )}
                           </div>
-                        )}
 
-                        {/* Note + next-follow-up scheduling */}
-                        <div style={{ marginTop: 16, borderTop: '1px solid #f3f4f6', paddingTop: 16 }}>
-                          <input value={callNote} onChange={e => setCallNote(e.target.value)} placeholder="Add a quick note — saved to the timeline & the next follow-up…"
-                            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: "'DM Sans',sans-serif", marginBottom: 10, boxSizing: 'border-box' }} />
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {/* Who to ask for (from the contact research) */}
+                          {(curMeta?.askFor || askLine) && (
+                            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#78350f', lineHeight: 1.45 }}>
+                              <b style={{ letterSpacing: .5, fontSize: 11, textTransform: 'uppercase', color: '#b45309' }}>{curMeta?.askFor && !askLine ? 'Context' : 'Ask for'}</b><br />{askLine || curMeta?.askFor}
+                            </div>
+                          )}
+
+                          {/* Why we're calling */}
+                          <div style={{ fontSize: 15, fontWeight: 700, color: '#111', marginBottom: 2 }}>{c ? current.title : (current.notes ? 'Call' : '')}</div>
+                          {current.notes && <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5, marginBottom: 6 }}>{current.notes}</div>}
+                          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>
+                            <span>{curMeta ? `📣 ${callListMode.startsWith('prop:') ? 'Property prospect' : 'Campaign engagement'}` : `${current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due ${fmtDay(current.due_date)}`}</span>
+                            <span>🕐 {c?.last_touched_at ? `Last touch ${fmtDay(c.last_touched_at)}` : 'No prior contact'}</span>
+                            {deal && (
+                              <button onClick={() => { setPage('deals'); openDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>
+                                📄 {deal.property || deal.type}{deal.stage ? ` · ${deal.stage}` : ''}{deal.value > 0 ? ` · $${Number(deal.value).toLocaleString()}` : ''}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* History */}
+                          {c && (
+                            <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '11px 14px', marginBottom: 14 }}>
+                              {!briefingReady ? (
+                                <div style={{ fontSize: 12, color: '#9ca3af' }}>Loading history…</div>
+                              ) : (
+                                <>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: acts.length ? 10 : 0 }}>
+                                    {priorCalls.length > 0 ? (
+                                      <>
+                                        <span style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 20, padding: '2px 10px' }}>Attempt #{priorCalls.length + 1}</span>
+                                        {lastCall && <span style={{ fontSize: 12, color: '#6b7280' }}>Last: {outcomeIcon} {lastOutcome || 'Call'} · {fmtDay(lastCall.created_at)}</span>}
+                                      </>
+                                    ) : (
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 20, padding: '2px 10px' }}>✨ First call</span>
+                                    )}
+                                  </div>
+                                  {acts.length > 0 && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                      {acts.slice(0, 4).map(a => (
+                                        <div key={a.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12 }}>
+                                          <span style={{ flexShrink: 0 }}>{ACT_ICON[a.type] ?? '•'}</span>
+                                          <span style={{ flex: 1, minWidth: 0, color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.note}>{a.note}</span>
+                                          <span style={{ flexShrink: 0, color: '#9ca3af' }}>{fmtDay(a.created_at)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Note + next follow-up */}
+                          <input value={callNote} onChange={e => setCallNote(e.target.value)} placeholder="Quick note — saved to the timeline and the next follow-up…"
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", marginBottom: 10, boxSizing: 'border-box' }} />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
                             <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, marginRight: 2 }}>Next follow-up:</span>
                             {followChips.map(chip => {
                               const active = callFollowUpDays === chip.val;
@@ -5865,82 +6139,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         </div>
 
-                        {/* Disposition buttons (with keyboard shortcuts) */}
-                        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 18, alignItems: 'center' }}>
+                        {/* ── Outcome bar: always in reach (sticks to the bottom of the viewport) ── */}
+                        <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', padding: isMobile ? '12px 16px' : '14px 26px', background: '#fff', borderTop: '1px solid #eceef1', boxShadow: '0 -4px 14px rgba(0,0,0,.04)' }}>
+                          <span style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800, marginRight: 4 }}>How did it go?</span>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'connected')}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             ✓ Connected {!isMobile && <span style={kbdStyle}>C</span>}
                           </button>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'voicemail')}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             📼 Voicemail {!isMobile && <span style={kbdStyle}>V</span>}
                           </button>
                           <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'no_answer')}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', opacity: callActionInFlight ? 0.5 : 1, fontFamily: "'DM Sans',sans-serif" }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             ✕ No Answer {!isMobile && <span style={kbdStyle}>N</span>}
                           </button>
                           <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: 'none', background: 'none', color: '#9ca3af', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'not-allowed' : 'pointer', marginLeft: 'auto', fontFamily: "'DM Sans',sans-serif" }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#9ca3af', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                             Skip {!isMobile && <span style={kbdStyle}>S</span>}
                           </button>
+                          {!isMobile && <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#b0b5bd' }}>↑ ↓ to move through the list</span>}
                         </div>
-                      </div>
-
-                      {/* Remaining queue */}
-                      {queue.length > 1 && (
-                        <div>
-                          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, marginBottom: 10 }}>Up Next — {queue.length - 1}</div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {queue.slice(1).map(t => {
-                              const tc = clientFor(t);
-                              const tOverdue = !!t.due_date && t.due_date < t0;
-                              return (
-                                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                                  <span style={{ fontSize: 14 }}>{t.type === 'follow_up' ? '🔄' : '📞'}</span>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</div>
-                                    <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                                  </div>
-                                  {tOverdue && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>OVERDUE</span>}
-                                  <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{new Date(t.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
+                      </section>
                     </div>
                   );
                 })()}
-
-                {/* Upcoming — future-dated calls/follow-ups (collapsed by default) */}
-                {upcoming.length > 0 && (
-                  <div style={{ marginTop: 24 }}>
-                    <button
-                      onClick={() => setCallUpcomingOpen(o => !o)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 0', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontWeight: 600, fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: "'DM Sans',sans-serif" }}>
-                      <span style={{ fontSize: 10 }}>{callUpcomingOpen ? '▾' : '▸'}</span>
-                      Upcoming — {upcoming.length}
-                    </button>
-                    {callUpcomingOpen && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
-                        {upcoming.map(t => {
-                          const tc = clientFor(t);
-                          return (
-                            <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 8 }}>
-                              <span style={{ fontSize: 14 }}>{t.type === 'follow_up' ? '🔄' : '📞'}</span>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</div>
-                                <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                              </div>
-                              <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{new Date(t.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })()}
