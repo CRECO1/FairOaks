@@ -43,8 +43,8 @@ const LeaseExpirationsSection = dynamic(() => import('@/components/crm/LeaseExpi
  * from the live MLS feed at send time, so its preview comes from the server route that
  * does the same rendering — the stored body alone would show a raw {{market_report}}.
  */
-const usesMarketReport = (c: { email_subject?: string | null; email_body?: string | null }) =>
-  /\{\{(market_report|report_month|report_headline)\}\}/.test(`${c.email_subject ?? ''}${c.email_body ?? ''}`);
+const usesMarketReport = (c: { email_subject?: string | null; email_body?: string | null; uses_market_report?: boolean }) =>
+  c.uses_market_report ?? /\{\{(market_report|report_month|report_headline)\}\}/.test(`${c.email_subject ?? ''}${c.email_body ?? ''}`);
 const marketReportPreviewUrl = (id: string) => `/api/campaigns/market-report-preview?campaign=${encodeURIComponent(id)}`;
 const MatchmakerSection = dynamic(() => import('@/components/crm/MatchmakerSection'), { ssr: false });
 const ActivitySection = dynamic(() => import('@/components/crm/ActivitySection'), { ssr: false });
@@ -94,7 +94,7 @@ interface DealEmail { id: string; deal_id: string | null; client_id?: string | n
 interface DealDoc { id: string; deal_id: string; name: string; storage_path: string; file_size: number; file_type: string; uploaded_by: string; created_at: string; url?: string; }
 interface CalendarEvent { id: string; title: string; description: string | null; location: string | null; start: string | null; end: string | null; allDay: boolean; attendees: { email: string; name: string | null; self: boolean }[]; htmlLink: string | null; status: string; }
 interface CRMActivity { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'meeting' | 'note' | 'deal_update'; note: string; created_at: string; }
-interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; hold_risky_addresses?: boolean; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; listing_id?: string | null; }
+interface Campaign { id: string; created_by: string; name: string; description: string; type: 'email' | 'sms'; frequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'one-time'; send_date?: string; send_time?: string; send_day_of_month?: number | null; status: 'draft' | 'active' | 'paused' | 'completed'; email_subject?: string; email_body?: string; has_body?: boolean; uses_market_report?: boolean; sms_body?: string; created_at: string; updated_at: string; enrollment_count?: number; last_sent_at?: string | null; sender_agent_id?: string | null; project_id?: string | null; hold_risky_addresses?: boolean; send_count?: number; open_rate?: number | null; click_count?: number; click_rate?: number | null; engaged_count?: number; responded_count?: number; to_call_count?: number; scanner_clickers?: number; is_tenant_notice?: boolean; send_as_sender?: boolean | null; listing_id?: string | null; }
 interface CampaignEnrollment { id: string; campaign_id: string; client_id: string; enrolled_at: string; next_send_at: string | null; active: boolean; client?: Client; }
 /**
  * History order for a campaign.
@@ -3477,6 +3477,50 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
+  // The list endpoint omits email HTML (has_body says one exists). Open, preview and edit
+  // load it here, once, and merge it into the list so it is not fetched again.
+  const bodyLoads = useRef(new Map<string, Promise<string | null>>());
+  async function ensureCampaignBody(c: Campaign): Promise<Campaign> {
+    if (c.type !== 'email' || c.email_body !== undefined) return c;
+    let p = bodyLoads.current.get(c.id);
+    if (!p) {
+      p = fetch(`/api/campaigns/${c.id}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+        .then(j => (j.campaign?.email_body as string | null | undefined) ?? '');
+      bodyLoads.current.set(c.id, p);
+      p.catch(() => bodyLoads.current.delete(c.id));
+    }
+    try {
+      const body = await p;
+      const full: Campaign = { ...c, email_body: body ?? '' };
+      setCampaigns(prev => prev.map(x => x.id === c.id ? { ...x, email_body: body ?? '' } : x));
+      return full;
+    } catch {
+      showToast('Could not load the email body — try again');
+      throw new Error('campaign body unavailable');
+    }
+  }
+
+  // Anything that renders a campaign's email (detail view, preview, "view sent email")
+  // gets its body here as soon as that campaign is on screen.
+  const viewSendCampaignId = viewCampaignSendModal?.send?.campaign_id ?? null;
+  useEffect(() => {
+    const need = (c: Campaign | null | undefined) => !!c && c.type === 'email' && c.has_body && c.email_body === undefined;
+    if (need(activeCampaign)) {
+      ensureCampaignBody(activeCampaign!)
+        .then(full => setActiveCampaign(prev => prev && prev.id === full.id ? { ...prev, email_body: full.email_body } : prev))
+        .catch(() => {});
+    }
+    if (need(previewCampaign)) {
+      ensureCampaignBody(previewCampaign!)
+        .then(full => setPreviewCampaign(prev => prev && prev.id === full.id ? { ...prev, email_body: full.email_body } : prev))
+        .catch(() => {});
+    }
+    const sent = viewSendCampaignId ? campaigns.find(c => c.id === viewSendCampaignId) : null;
+    if (need(sent)) ensureCampaignBody(sent!).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCampaign?.id, activeCampaign?.email_body, previewCampaign?.id, previewCampaign?.email_body, viewSendCampaignId, campaigns.length]);
+
   async function loadCampaignProjects() {
     const { data } = await supabase.from('crm_campaign_projects').select('*').order('created_at', { ascending: true });
     setCampaignProjects(data ?? []);
@@ -3524,7 +3568,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // Going live from the editor runs the pre-send check first: save with the
       // current status, then the check activates it (or explains why it can't).
       const goingLive = newCampaign.status === 'active' && activeCampaign?.status !== 'active';
-      const body = { ...newCampaign, ...(goingLive ? { status: activeCampaign?.status ?? 'draft' } : {}), listing_id: campaignListingId || null, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
+      const body: Record<string, unknown> = { ...newCampaign, ...(goingLive ? { status: activeCampaign?.status ?? 'draft' } : {}), listing_id: campaignListingId || null, email_body: latestEmailBody, created_by: session!.user.id, business_unit: businessUnit };
+      // List rows carry no email HTML. If this campaign's body never loaded, leave it alone
+      // rather than saving an empty one over it.
+      if (activeCampaign && activeCampaign.email_body === undefined && activeCampaign.has_body && !String(latestEmailBody ?? '').trim()) delete body.email_body;
       const url = activeCampaign ? `/api/campaigns/${activeCampaign.id}` : '/api/campaigns';
       const method = activeCampaign ? 'PATCH' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` }, body: JSON.stringify(body) });
@@ -7550,7 +7597,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <div onClick={() => setOpenRowMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
                               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', zIndex: 41, minWidth: 190, overflow: 'hidden', fontSize: 13 }}>
                                 <button onClick={() => { openCampaignPreview(camp); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>👁 Preview email</button>
-                                {isAdmin && <button onClick={() => { setActiveCampaign(camp); setNewCampaign({ name: camp.name, description: camp.description, type: camp.type, frequency: camp.frequency, send_date: camp.send_date ?? '', send_time: camp.send_time ?? '08:00', send_day_of_month: camp.send_day_of_month != null ? String(camp.send_day_of_month) : '', status: camp.status, email_subject: camp.email_subject ?? '', email_body: camp.email_body ?? '', sms_body: camp.sms_body ?? '', sender_agent_id: camp.sender_agent_id ?? '', project_id: camp.project_id ?? '', hold_risky_addresses: !!camp.hold_risky_addresses }); setCampaignView('builder'); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>✎ Edit campaign</button>}
+                                {isAdmin && <button onClick={async () => { setOpenRowMenuId(null); let full: Campaign; try { full = await ensureCampaignBody(camp); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>✎ Edit campaign</button>}
                                 {isAdmin && campaignProjects.length > 0 && (
                                   <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 14px' }}>
                                     <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 5 }}>Move to project</div>
@@ -7957,7 +8004,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setNewCampaign({ name: activeCampaign.name, description: activeCampaign.description, type: activeCampaign.type, frequency: activeCampaign.frequency, send_date: activeCampaign.send_date ?? '', send_time: activeCampaign.send_time ?? '08:00', send_day_of_month: activeCampaign.send_day_of_month != null ? String(activeCampaign.send_day_of_month) : '', status: activeCampaign.status, email_subject: activeCampaign.email_subject ?? '', email_body: activeCampaign.email_body ?? '', sms_body: activeCampaign.sms_body ?? '', sender_agent_id: activeCampaign.sender_agent_id ?? '', project_id: activeCampaign.project_id ?? '', hold_risky_addresses: !!activeCampaign.hold_risky_addresses }); setCampaignView('builder'); }}>Edit</button>
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={async () => { let full: Campaign; try { full = await ensureCampaignBody(activeCampaign); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }}>Edit</button>
                         {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>

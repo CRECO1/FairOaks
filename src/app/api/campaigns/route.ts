@@ -122,12 +122,17 @@ export async function GET(req: NextRequest) {
     console.error('[api/campaigns] engagement failed', e);
   }
 
-  const campaigns = rows.map((c: any) => {
+  // The list never ships email HTML (it was 540KB of a 606KB response and no list view
+  // renders it). The CRM fetches a body by id when a campaign is opened, previewed or
+  // edited; `has_body` / `uses_market_report` are what the list itself needs.
+  const campaigns = rows.map(({ email_body, ...c }: any) => {
     const st = statsMap[c.id];
     const f = funnels.get(c.id);
     const openRate = st && st.trackedCount > 0 ? Math.round((st.openedCount / st.trackedCount) * 100) : null;
     return {
       ...c,
+      has_body: !!email_body,
+      uses_market_report: /\{\{(market_report|report_month|report_headline)\}\}/.test(`${c.email_subject ?? ''}${email_body ?? ''}`),
       enrollment_count: c.enrollment_count?.[0]?.count ?? 0,
       last_sent_at: st?.lastSent ?? null,
       send_count: st?.sentCount ?? 0,
