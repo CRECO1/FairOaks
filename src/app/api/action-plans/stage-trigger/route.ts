@@ -99,8 +99,10 @@ export async function POST(req: NextRequest) {
         const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx, bu);
         const trackingId = newTrackingId();
         const body = withOpenPixel(applyMergeFields(step.body || '', ctx, bu), trackingId); // open-tracking pixel
-        await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch(() => {});
-        await supabase.from('crm_action_plan_sends').insert([{ plan_id: plan.id, client_id: clientId, step_id: step.id, type: 'email', status: 'sent', subject, tracking_id: trackingId }]);
+        const sendRes = await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } }));
+        const providerId = sendRes?.data?.id ?? null;
+        // provider_id is what lets the Resend webhook tie a bounce/complaint back to this send.
+        await supabase.from('crm_action_plan_sends').insert([{ plan_id: plan.id, client_id: clientId, step_id: step.id, type: 'email', status: sendRes?.error ? 'failed' : 'sent', subject, tracking_id: trackingId, provider_id: providerId, error_message: sendRes?.error ? String((sendRes.error as { message?: string }).message ?? 'send failed').slice(0, 300) : null }]);
       }
 
       await supabase.from('crm_activity').insert([{ client_id: clientId, agent_id: agentId, type: 'email', notes: `[Action Plan: ${plan.name} — Stage trigger: ${stage}] Step 1 sent` }]);

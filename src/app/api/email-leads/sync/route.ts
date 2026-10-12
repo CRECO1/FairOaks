@@ -137,16 +137,18 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
 
     const trackingId = newTrackingId();
     let emailSubject: string | null = null;
+    let providerId: string | null = null;
     try {
       if (step.type === 'email') {
         emailSubject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx, business_unit);
         const body   = withOpenPixel(applyMergeFields(step.body || '', ctx, business_unit), trackingId); // open-tracking pixel
-        await resendClient(business_unit).emails.send({
+        const sendRes = await resendClient(business_unit).emails.send({
           from:    resolveActionPlanFrom(business_unit, plan.from_name, plan.from_email, fromAddress(business_unit)),
           to:      client.email,
           subject: emailSubject,
           html:    body,
         });
+        providerId = sendRes?.data?.id ?? null;
       }
 
       // Log to activity
@@ -160,7 +162,7 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
       // Record the send + tracking id so the pixel can attribute opens.
       await supabase.from('crm_action_plan_sends').insert([{
         plan_id: plan.id, client_id: clientId, step_id: step.id, type: 'email',
-        status: 'sent', subject: emailSubject, tracking_id: trackingId,
+        status: 'sent', subject: emailSubject, tracking_id: trackingId, provider_id: providerId,
       }]);
 
       await supabase.from('crm_clients')

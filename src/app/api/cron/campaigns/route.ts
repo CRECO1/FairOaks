@@ -235,6 +235,13 @@ export async function GET(req: NextRequest) {
           { subject: `⛔ Campaign paused — ${Math.round(h.rate * 100)}% bounce: ${camp.name}` });
       } else if (h.allTimeSends < CANARY) {
         canaryLeft.set(cid, CANARY - h.allTimeSends);
+      } else if (h.sends < BREAKER.minSends) {
+        // Cold start after a gap. The breaker only judges the last BREAKER.windowDays of sends and needs
+        // BREAKER.minSends of them, so a campaign that has been quiet over a weekend/pause (or was just resumed)
+        // has no recent evidence and the old canary — all-time sends < 25 — never applied to it: the whole due
+        // batch went out in one run with nothing able to stop it. Release only enough to reach a judgeable
+        // sample; the next run's breaker then sees real bounces (they land within minutes) before more goes out.
+        canaryLeft.set(cid, Math.max(CANARY - h.sends, 0));
       }
     } catch (e) { console.error('[cron/campaigns] campaign health', cid, e); }
   }
@@ -331,6 +338,21 @@ export async function GET(req: NextRequest) {
       console.warn(`[cron/campaigns] market report unavailable — holding ${campaign.id} for ${client.id}`);
       held++;
       continue;
+    }
+
+    // Atomic claim. Two overlapping cron invocations (a slow run still going when the next 15-minute run
+    // starts, or a manual trigger) both read this enrollment as due and both sent it — 12 recipients got the
+    // same email 330 ms apart on 2026-09-30. Move next_send_at into the future ONLY IF it still holds the value
+    // we read: exactly one run's update matches a row, the other gets 0 rows back and skips. Everything below
+    // either advances/deactivates the enrollment or defers it, which replaces this 10-minute lease; if the
+    // process dies right here the recipient simply comes due again in 10 minutes.
+    {
+      const lease = new Date(Date.now() + 10 * 60_000).toISOString();
+      const { data: claimed } = await supabase.from('crm_campaign_enrollments')
+        .update({ next_send_at: lease })
+        .eq('id', enrollment.id).eq('active', true).eq('next_send_at', enrollment.next_send_at)
+        .select('id');
+      if (!claimed?.length) continue;
     }
 
     try {

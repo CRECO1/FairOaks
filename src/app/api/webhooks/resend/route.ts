@@ -57,7 +57,7 @@ const RANK: Record<string, number> = { delayed: 1, delivered: 2, opened: 3, clic
  */
 async function recordCampaignEvent(
   supabase: ReturnType<typeof adminClient>,
-  payload: { created_at?: string; data?: { click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string; bounce?: { type?: string; subType?: string; message?: string } } },
+  payload: { created_at?: string; data?: { to?: string[]; click?: { link?: string; ipAddress?: string; userAgent?: string }; link?: string; bounce?: { type?: string; subType?: string; message?: string } } },
   emailId: string,
   status: string,
   svixId: string,
@@ -71,7 +71,32 @@ async function recordCampaignEvent(
   const { data: send } = await supabase.from('crm_campaign_sends')
     .select('id, campaign_id, client_id, tracking_id, org_id')
     .eq('provider_id', emailId).maybeSingle();
-  if (!send) return NextResponse.json({ ok: true, ignored: 'no matching send' });
+  if (!send) {
+    // Not a campaign send: an action-plan / welcome / one-to-one email. Those were silently dropped
+    // here, so a hard bounce or a spam complaint on them never suppressed the address and the next
+    // campaign mailed it again. The campaign-event tables don't apply, but the protective half does.
+    const hard = eventType === 'bounce' && payload.data?.bounce?.type === 'Permanent';
+    if (eventType === 'complaint' || hard) {
+      let clientId: string | null = null;
+      const { data: planSend } = await supabase.from('crm_action_plan_sends')
+        .select('client_id').eq('provider_id', emailId).maybeSingle();
+      clientId = (planSend?.client_id as string | undefined) ?? null;
+      if (clientId) {
+        await supabase.from('crm_clients').update({ unsubscribed_at: new Date().toISOString() }).eq('id', clientId).is('unsubscribed_at', null);
+        return NextResponse.json({ ok: true, suppressed: 'action-plan send', event: eventType });
+      }
+      // Last resort: match the recipient address itself (an exact, lower-cased match only).
+      const to = (payload.data?.to ?? []).map(a => String(a).toLowerCase().trim()).filter(Boolean);
+      const emails = to.map(a => a.replace(/^.*<([^>]+)>.*$/, '$1'));
+      if (emails.length) {
+        const { data: hit } = await supabase.from('crm_clients').select('id, email').in('email', emails).is('unsubscribed_at', null).limit(5);
+        const exact = (hit ?? []).filter(c => emails.includes(String(c.email ?? '').toLowerCase().trim()));
+        for (const c of exact) await supabase.from('crm_clients').update({ unsubscribed_at: new Date().toISOString() }).eq('id', c.id).is('unsubscribed_at', null);
+        if (exact.length) return NextResponse.json({ ok: true, suppressed: 'by address', event: eventType, contacts: exact.length });
+      }
+    }
+    return NextResponse.json({ ok: true, ignored: 'no matching send' });
+  }
 
   const key = `${send.tracking_id ?? send.id}:${eventType}:${svixId || emailId}`;
   const { error } = await supabase.from('email_tracking_events').insert([{
