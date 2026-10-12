@@ -50,7 +50,8 @@ export default function CampaignEngagedPanel({ campaign, authToken, isMobile, on
     let live = true;
     (async () => {
       try {
-        const q = campaign ? `?campaign_id=${campaign.id}` : '';
+        // fresh=1: the call list shows who has been contacted, so it skips the 2-minute response cache
+        const q = campaign ? `?campaign_id=${campaign.id}&fresh=1` : '?fresh=1';
         const r = await fetch(`/api/campaigns/engagement${q}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
         const j = await r.json().catch(() => ({}));
         if (!live) return;

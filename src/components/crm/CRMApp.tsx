@@ -1730,9 +1730,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // segments rely on `clients` holding every contact — not just the first page — so
   // this always returns the complete list. The `_page` arg is retained for call-site
   // compatibility (e.g. the legacy "Load more" button) but no longer limits results.
-  const loadClients = useCallback(async (p?: Profile, _page = 0) => {
+  // One shared load: navigating Tasks → Contacts → Calling Log used to start a fresh
+  // 3,300-row, four-request read each time (8 reads on a single Tasks click). Concurrent
+  // callers share the in-flight load, and a result under 90s old is reused unless the caller
+  // knows the book just changed (import, add, explicit Refresh) and passes force.
+  const clientsLoad = useRef<{ at: number; unit: string; inflight: Promise<void> | null }>({ at: 0, unit: '', inflight: null });
+  const loadClients = useCallback(async (p?: Profile, _page = 0, force = false): Promise<void> => {
     const prof = p ?? profile;
     if (!prof) return;
+    const st = clientsLoad.current;
+    if (st.inflight && st.unit === businessUnit) return st.inflight;
+    if (!force && st.unit === businessUnit && Date.now() - st.at < 90_000) return;
+    st.unit = businessUnit;
+    const run = (async () => {
     const BATCH = 1000;
     // PostgREST returns at most 1000 rows, so a 3,300-contact book is four reads. They used to run
     // one after another, each re-counting the table (`count: exact`), ~4s end to end. Page 1
@@ -1762,6 +1772,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setClients(all);
     setContactsTotal(total);
     setContactsPage(0);
+    st.at = Date.now();
+    })();
+    st.inflight = run.finally(() => { if (st.inflight === wrapped) st.inflight = null; });
+    const wrapped = st.inflight;
+    return wrapped;
   }, [profile, businessUnit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Landing straight on Marketing (a refresh keeps the view) skips the click paths that run the
@@ -1846,7 +1861,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       }
       setNc({ first_name: '', last_name: '', business_name: '', email: '', phone: '', cell_phone: '', address: '', city: '', state: '', zip: '', brokerage: '', license: '', budget: '', size_range: '', asset_types: [], type: 'Buyer', tags: [], lead_source: '', notes: '', lease_expiration_date: '', lxp_follow_up_days: null, birthday: '' });
       setShowAddClient(false);
-      loadClients(profile!);
+      loadClients(profile!, 0, true);
     }
     setSaving(false);
   }
@@ -2623,7 +2638,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         }]);
         if (error) { errors++; } else { added++; if (email) existingEmails.add(email.toLowerCase()); }
       }
-      await loadClients(profile!);
+      await loadClients(profile!, 0, true);
       showToast(`Imported ${added} contact${added !== 1 ? 's' : ''}${dupes > 0 ? ` · ${dupes} duplicate${dupes !== 1 ? 's' : ''} skipped` : ''}${errors > 0 ? ` · ${errors} error${errors !== 1 ? 's' : ''}` : ''}`);
     } catch (err) {
       showToast('Import failed — check file format');
@@ -3892,7 +3907,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         <div style={{ padding: '14px 12px 4px' }}>
           <div style={{ fontSize: 12.5, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', padding: '0 8px', marginBottom: 6 }}>Overview</div>
           <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
-          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); loadAllTasks(); loadClients(); }}>
+          <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); }}>
             ✅ &nbsp;Tasks
             {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
               <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
@@ -4078,7 +4093,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               <div style={{ padding: '16px 12px 4px' }}>
                 <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', padding: '0 6px', marginBottom: 6 }}>Overview</div>
                 <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}>🏠 &nbsp;Dashboard</button>
-                <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadProfiles(); loadAllTasks(); loadClients(); setMobileMenuOpen(false); }}>
+                <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); setMobileMenuOpen(false); }}>
                   ✅ &nbsp;Tasks
                   {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
                     <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
@@ -5710,7 +5725,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 3 }}>{s.l}</div>
                       </div>
                     ))}
-                    <button className="crm-btn" onClick={() => { if (callViewAgentId) loadCallView(callViewAgentId); else loadAllTasks(); loadClients(); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
+                    <button className="crm-btn" onClick={() => { if (callViewAgentId) loadCallView(callViewAgentId); else loadAllTasks(); loadClients(undefined, 0, true); }} style={{ fontSize: 13 }}>🔄 Refresh</button>
                   </div>
                 </div>
                 <div style={{ height: 8, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 22 }}>

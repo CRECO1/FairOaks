@@ -3,14 +3,29 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-let supabase: SupabaseClient;
-
-if (supabaseUrl && supabaseAnonKey) {
-  supabase = createClient(supabaseUrl, supabaseAnonKey);
-} else {
-  console.warn('NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY not set - using placeholder for build');
-  supabase = createClient('https://placeholder.supabase.co', 'placeholder-key');
+// Built on first use, not at import. This module is pulled into the root layout through the
+// public Footer, so eager construction made a SECOND GoTrueClient (same storage key as the CRM's
+// cookie client) on every CRM page — "Multiple GoTrueClient instances detected" — each with its
+// own token-refresh timer and visibility listeners racing the CRM's session.
+let client: SupabaseClient | undefined;
+function getClient(): SupabaseClient {
+  if (client) return client;
+  if (supabaseUrl && supabaseAnonKey) {
+    client = createClient(supabaseUrl, supabaseAnonKey);
+  } else {
+    console.warn('NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY not set - using placeholder for build');
+    client = createClient('https://placeholder.supabase.co', 'placeholder-key');
+  }
+  return client;
 }
+
+const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const c = getClient();
+    const v = Reflect.get(c, prop, c);
+    return typeof v === 'function' ? v.bind(c) : v;
+  },
+});
 
 export { supabase };
 
