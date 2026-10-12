@@ -5864,7 +5864,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <option value="tasks">📋 My call tasks</option>
                       <optgroup label="From our campaigns (same list as the Rent Roll prospects)">
                         <option value="camp:all">📣 All campaigns — last 90 days</option>
-                        {campaigns.filter(c => (c.send_count ?? 0) > 0).map(c => <option key={c.id} value={`camp:${c.id}`}>{c.name} ({c.send_count} sent)</option>)}
+                        {campaigns.filter(c => (c.send_count ?? 0) > 0 && !(c as unknown as { is_tenant_notice?: boolean }).is_tenant_notice && !/^\[TEST\]/i.test(c.name)).map(c => <option key={c.id} value={`camp:${c.id}`}>{c.name} ({c.send_count} sent)</option>)}
                       </optgroup>
                       {callListings.length > 0 && (
                         <optgroup label="By property (prospects)">
