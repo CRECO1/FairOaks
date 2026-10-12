@@ -31,6 +31,21 @@ export function brianProfile(profiles: Profile[]): Profile | undefined {
   return profiles.find(p => (p.email ?? '').toLowerCase() === 'brian@crecotx.com');
 }
 
+/** The person a caller asked for by name (from the bot's intent / summary), if any. */
+export function askedFor(
+  call: { summary?: string | null; intent?: string | null; ai_meta?: Record<string, unknown> | null },
+  profiles: Profile[],
+): string | null {
+  const zack = zackProfile(profiles);
+  const text = [call.ai_meta?.property, call.intent, call.summary].filter(Boolean).join(' ');
+  const hit = profiles.find(p => {
+    const first = (p.first_name ?? '').split(' ')[0];
+    if (p.id === zack?.id) return /\b(zach|zack|zachary|stovall)\b/i.test(text);
+    return first.length >= 3 && new RegExp(`\\b${first}\\b`, 'i').test(text);
+  });
+  return hit?.id ?? null;
+}
+
 /** Who should return a call: the contact's agent, else the listing's owner, else the unit default. */
 export function ownerFor(
   call: { business_unit: string; summary?: string | null; intent?: string | null; ai_meta?: Record<string, unknown> | null },
@@ -41,12 +56,8 @@ export function ownerFor(
   const zack = zackProfile(profiles), brian = brianProfile(profiles);
   const text = [call.ai_meta?.property, call.intent, call.summary].filter(Boolean).join(' ');
   // A caller who asks for someone by name gets that person.
-  const asked = profiles.find(p => {
-    const first = (p.first_name ?? '').split(' ')[0];
-    if (p.id === zack?.id) return /\b(zach|zack|zachary|stovall)\b/i.test(text);
-    return first.length >= 3 && new RegExp(`\\b${first}\\b`, 'i').test(text);
-  });
-  if (asked) return asked.id;
+  const asked = askedFor(call, profiles);
+  if (asked) return asked;
   if (ZACK_PROPERTIES.test(text)) return zack?.id ?? null;
   if (call.business_unit === 'commercial') return brian?.id ?? zack?.id ?? null;
   return zack?.id ?? null;
@@ -207,6 +218,12 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
   // 3–5. The open call-back queue
   const spamNumbers = new Set(all.filter(r => r.outcome === 'spam').map(r => last10(theirNumber(r))).filter(d => d.length === 10));
   const agentOf = new Map<string, string | null>();
+  // Workspace rule: "route every missed call / voicemail / bot call-back to <agent>" (Calling Log → setup).
+  const routeTo = new Map<string, string>();
+  try {
+    const { data: st } = await db.from('crm_voicebot_settings').select('business_unit, missed_call_assignee');
+    for (const s of st ?? []) if (s.missed_call_assignee && profiles.some(p => p.id === s.missed_call_assignee)) routeTo.set(s.business_unit as string, s.missed_call_assignee as string);
+  } catch { /* column not migrated yet — fall back to the ownership rules */ }
   for (const r of rows) {
     if (!r.needs_follow_up || r.handled_at) continue;
     const tail = last10(r.callback_number || theirNumber(r));
@@ -245,7 +262,8 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
         if (!agentOf.has(r.contact_id)) agentOf.set(r.contact_id, ((await db.from('crm_clients').select('agent_id').eq('id', r.contact_id).maybeSingle()).data?.agent_id as string | null) ?? null);
         contact = { agent_id: agentOf.get(r.contact_id) ?? null };
       }
-      const owner = ownerFor(r, contact, profiles);
+      // The workspace rule wins over the contact's agent and the listing owner; only a caller who asked for someone by name outranks it.
+      const owner = askedFor(r, profiles) ?? routeTo.get(r.business_unit) ?? ownerFor(r, contact, profiles);
       if (owner) { patch.follow_up_assignee = owner; out.assigned++; }
     }
     if (!r.follow_up_due) { patch.follow_up_due = defaultCallbackDue(r.started_at); out.dated++; }

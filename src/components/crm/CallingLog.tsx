@@ -25,6 +25,7 @@ interface Stats { today: number; week: number; bot: number; missed: number; voic
 interface Settings {
   business_unit: string; enabled: boolean; bot_name: string; company_name: string | null; greeting: string | null; instructions: string | null;
   transfer_number: string | null; notify_emails: string[]; twilio_number: string | null; talkroute_numbers: string[];
+  missed_call_assignee?: string | null;
 }
 interface Connection { talkroute: boolean; talkroute_webhook_secret: boolean; twilio: boolean; anthropic: boolean; twilio_voice_url: string; twilio_status_url: string; talkroute_webhook_url: string }
 interface Turn { id: string; role: 'bot' | 'caller'; text: string; created_at: string }
@@ -430,6 +431,13 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             <div><span style={label}>Company name (as spoken)</span><input style={input} value={draft.company_name ?? ''} onChange={e => setDraft(d => ({ ...d, company_name: e.target.value }))} placeholder={businessUnit === 'residential' ? 'Fair Oaks Realty Group' : 'CRECO'} /></div>
             <div><span style={label}>Bot line (Twilio number)</span><input style={input} value={draft.twilio_number ?? ''} onChange={e => setDraft(d => ({ ...d, twilio_number: e.target.value }))} placeholder="+1 210 555 0100" /></div>
             <div><span style={label}>Transfer to a person (optional)</span><input style={input} value={draft.transfer_number ?? ''} onChange={e => setDraft(d => ({ ...d, transfer_number: e.target.value }))} placeholder="Your cell, for emergencies" /></div>
+            <div>
+              <span style={label}>Route missed calls &amp; voicemails to</span>
+              <select style={input} value={draft.missed_call_assignee ?? ''} onChange={e => setDraft(d => ({ ...d, missed_call_assignee: e.target.value || null }))}>
+                <option value="">Automatic (the contact's agent / the property owner)</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || 'Agent'}</option>)}
+              </select>
+            </div>
             <div><span style={label}>Email the summary to</span><input style={input} value={draft.notify_emails_text ?? ''} onChange={e => setDraft(d => ({ ...d, notify_emails_text: e.target.value }))} placeholder="zack@crecotx.com, agent@…" /></div>
             <div><span style={label}>Your Talkroute numbers for this workspace</span><input style={input} value={draft.talkroute_numbers_text ?? ''} onChange={e => setDraft(d => ({ ...d, talkroute_numbers_text: e.target.value }))} placeholder="+1 210 555 0123, …" /></div>
           </div>

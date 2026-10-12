@@ -58,6 +58,7 @@ export async function PATCH(req: NextRequest) {
   if (b.instructions !== undefined) patch.instructions = b.instructions ? String(b.instructions).slice(0, 4000) : null;
   if (b.transfer_number !== undefined) patch.transfer_number = toE164(b.transfer_number);
   if (b.twilio_number !== undefined) patch.twilio_number = toE164(b.twilio_number);
+  if (b.missed_call_assignee !== undefined) patch.missed_call_assignee = b.missed_call_assignee ? String(b.missed_call_assignee) : null;
   if (b.notify_emails !== undefined) patch.notify_emails = String(Array.isArray(b.notify_emails) ? b.notify_emails.join(',') : b.notify_emails).split(/[,\s]+/).map((s: string) => s.trim()).filter((s: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)).slice(0, 10);
   if (b.talkroute_numbers !== undefined) patch.talkroute_numbers = String(Array.isArray(b.talkroute_numbers) ? b.talkroute_numbers.join(',') : b.talkroute_numbers).split(/[,\s]+/).map((s: string) => toE164(s)).filter(Boolean).slice(0, 20);
   const { data, error } = await adminClient().from('crm_voicebot_settings').upsert(patch, { onConflict: 'business_unit' }).select('*').single();

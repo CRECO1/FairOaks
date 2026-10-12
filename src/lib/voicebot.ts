@@ -33,6 +33,8 @@ export interface VoicebotSettings {
   business_unit: string; enabled: boolean; bot_name: string; company_name: string | null;
   greeting: string | null; instructions: string | null; transfer_number: string | null;
   notify_emails: string[]; twilio_number: string | null; talkroute_numbers: string[]; updated_at?: string;
+  /** Every missed call / voicemail / bot call-back in this workspace is assigned to this agent (null = the ownership rules in lib/call-routing.ts). */
+  missed_call_assignee?: string | null;
 }
 
 const DEFAULTS: Record<string, { company: string; blurb: string }> = {
