@@ -747,6 +747,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callListPeople, setCallListPeople] = useState<CallListPerson[]>([]);
   const [callListLoading, setCallListLoading] = useState(false);
   const [callListNonce, setCallListNonce] = useState(0);
+  // Phone: filters tucked away, history collapsed, and a one-tap "how did it go?" sheet when you come back from the dialer.
+  const [callFiltersOpen, setCallFiltersOpen] = useState(false);
+  const [callHistoryOpen, setCallHistoryOpen] = useState(false);
+  const [callDialed, setCallDialed] = useState<{ taskId: string; at: number } | null>(null);
+  const [callReturnOpen, setCallReturnOpen] = useState(false);
   const [callListInfo, setCallListInfo] = useState('');
   const [callProspectDoneIds, setCallProspectDoneIds] = useState<Set<string>>(new Set());
   const [callListings, setCallListings] = useState<{ id: string; name: string }[]>([]);
@@ -2278,7 +2283,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Today's Calls: disposition + auto next-follow-up ──────────────────────────
-  async function dispositionCall(task: CRMTask, disposition: 'connected' | 'voicemail' | 'no_answer') {
+  async function dispositionCall(task: CRMTask, disposition: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number') {
     if (callActionInFlight) return;
     setCallActionInFlight(true);
     try {
@@ -2289,7 +2294,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       else await completeTask(task.id);
 
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
-      const dispLabel = disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : 'No answer';
+      const dispLabel = disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : disposition === 'wrong_number' ? 'Wrong number' : 'No answer';
       const jotted = callNote.trim();
       const base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
       // Property-based prospecting calls have no linked contact — skip the timeline log.
@@ -2297,7 +2302,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
       // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
       //    A chip override (callFollowUpDays) beats the disposition's default cadence.
-      if (callFollowUpDays !== 'none') {
+      // A wrong number needs no callback — the note on the timeline is the follow-up (fix the number on the contact).
+      if (callFollowUpDays !== 'none' && disposition !== 'wrong_number') {
         const defaultDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : 7;
         const addDays = typeof callFollowUpDays === 'number' ? callFollowUpDays : defaultDays;
         const nextType: 'call' | 'follow_up' = disposition === 'connected' ? 'follow_up' : 'call';
@@ -2322,6 +2328,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 4) Reset the per-call inputs, bump the counter, refresh the queue in view, and advance
       setCallNote(''); setCallFollowUpDays(null);
       setCallsDoneThisSession(n => n + 1);
+      // Phone: land on the next call at the top, with a small buzz so you know it saved.
+      setCallDialed(null); setCallReturnOpen(false);
+      try { navigator.vibrate?.(25); } catch { /* not supported */ }
+      try { document.querySelector('.crm-page-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* ignore */ }
       if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
     } finally {
       setCallActionInFlight(false);
@@ -2491,6 +2501,32 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { cancelled = true; };
   }, [callCurrent?.client_id, page, tasksSubTab]);
 
+  // Phone: keep the screen awake while you work the queue (a locked phone mid-list is the #1 annoyance).
+  useEffect(() => {
+    if (windowWidth >= 768 || page !== 'tasks' || tasksSubTab !== 'calls') return;
+    type Lock = { release: () => Promise<void> };
+    let lock: Lock | null = null; let stopped = false;
+    const acquire = async () => {
+      try { const l = await (navigator as unknown as { wakeLock?: { request: (t: 'screen') => Promise<Lock> } }).wakeLock?.request('screen'); if (l) lock = l; } catch { /* denied / unsupported */ }
+    };
+    acquire();
+    const onVis = () => { if (document.visibilityState === 'visible' && !stopped) acquire(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { stopped = true; document.removeEventListener('visibilitychange', onVis); lock?.release().catch(() => {}); };
+  }, [windowWidth, page, tasksSubTab]);
+
+  // Phone: you tapped Call, went to the dialer, and came back — ask how it went (one tap, then the next call).
+  useEffect(() => {
+    if (!callDialed) return;
+    const back = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - callDialed.at >= 4000) setCallReturnOpen(true);
+    };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    return () => { document.removeEventListener('visibilitychange', back); window.removeEventListener('focus', back); };
+  }, [callDialed]);
+
   // Keyboard shortcuts for power-dialing: C connected, V voicemail, N no answer, S skip.
   useEffect(() => {
     if (page !== 'tasks' || tasksSubTab !== 'calls' || !callCurrent) return;
@@ -2504,6 +2540,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       else if (k === 'v') { e.preventDefault(); dispositionCall(callCurrent, 'voicemail'); }
       else if (k === 'n') { e.preventDefault(); dispositionCall(callCurrent, 'no_answer'); }
       else if (k === 's') { e.preventDefault(); skipCall(callCurrent.id); }
+      else if (k === 'w') { e.preventDefault(); dispositionCall(callCurrent, 'wrong_number'); }
       else if (k === 'j' || k === 'arrowdown' || k === 'k' || k === 'arrowup') {
         // Move through the queue without acting on a call.
         e.preventDefault();
@@ -5857,6 +5894,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
             return (
               <div>
+                {/* Phone: one compact line + a Filters button; the call itself is the first thing on screen */}
+                {isMobile && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 25, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>📞 {queue.length === 0 ? 'All caught up' : `${queue.length} to call`}</div>
+                      <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {callListMode === 'tasks' ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s calls` : 'My calls')
+                          : callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
+                        {callSegment !== 'all' ? ` · ${SEGMENT_LABEL[callSegment]}` : ''}{doneCt > 0 ? ` · ${doneCt} done` : ''}
+                      </div>
+                    </div>
+                    <button onClick={() => setCallFiltersOpen(o => !o)}
+                      style={{ flexShrink: 0, minHeight: 44, padding: '0 14px', borderRadius: 10, border: `1px solid ${callFiltersOpen ? '#c9922c' : '#e2e5e9'}`, background: callFiltersOpen ? '#fdf3dd' : '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                      ⚙ Filters {callFiltersOpen ? '▴' : '▾'}
+                    </button>
+                  </div>
+                )}
+
+                {(!isMobile || callFiltersOpen) && (<>
                 {/* ── Header ── */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                   <div>
@@ -5953,6 +6009,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 )}
 
+                </>)}
+
                 {/* progress */}
                 <div style={{ height: 6, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 18 }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#c9922c,#e0b458)', transition: 'width .3s ease' }} />
@@ -6029,7 +6087,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   };
                   const stack = isTabletOrMobile;
                   return (
-                    <div style={{ display: 'grid', gridTemplateColumns: stack ? '1fr' : '330px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: stack ? 'minmax(0, 1fr)' : '330px minmax(0, 1fr)', gap: 20, alignItems: 'start' }}>
                       {/* ── Queue ── */}
                       <aside style={{ order: stack ? 2 : 0, background: '#fff', border: '1px solid #e8eaed', borderRadius: 14, padding: 10, position: stack ? 'static' : 'sticky', top: 8, maxHeight: stack ? undefined : 'calc(100vh - 160px)', overflowY: stack ? undefined : 'auto' }}>
                         {callListMode !== 'tasks' && (
@@ -6073,7 +6131,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </aside>
 
                       {/* ── Workspace: the selected call ── */}
-                      <section style={{ order: stack ? 1 : 0, background: '#fff', borderRadius: 14, border: `1px solid ${isOverdue ? '#fecaca' : '#e8eaed'}`, boxShadow: '0 2px 10px rgba(0,0,0,.05)', overflow: 'hidden' }}>
+                      <section style={{ order: stack ? 1 : 0, minWidth: 0, background: '#fff', borderRadius: 14, border: `1px solid ${isOverdue ? '#fecaca' : '#e8eaed'}`, boxShadow: '0 2px 10px rgba(0,0,0,.05)', overflow: 'hidden' }}>
                         <div style={{ padding: isMobile ? '16px 16px 6px' : '22px 26px 6px' }}>
                           {/* Name · type · overdue */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -6097,18 +6155,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           )}
 
-                          {/* Phone + email, side by side */}
-                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
+                          {/* Phone: one big Call button; Text / Email under it */}
+                          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 10, flexWrap: 'wrap', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 14 }}>
                             {phone ? (
-                              <a href={`tel:${phone}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 24, fontWeight: 800, color: '#fff', textDecoration: 'none', padding: '12px 22px', borderRadius: 12, background: '#c9922c', boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
+                              <a href={`tel:${phone}`} onClick={() => { if (isMobile) setCallDialed({ taskId: current.id, at: Date.now() }); }}
+                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, fontSize: isMobile ? 26 : 24, fontWeight: 800, color: '#fff', textDecoration: 'none', minHeight: isMobile ? 66 : undefined, padding: isMobile ? '16px 20px' : '12px 22px', borderRadius: 14, background: '#c9922c', boxShadow: '0 2px 8px rgba(201,146,44,.35)' }}>
                                 📞 {phoneDisp(phone)}
                               </a>
                             ) : (
                               <span style={{ fontSize: 15, color: '#9ca3af', fontStyle: 'italic' }}>No phone on file</span>
                             )}
-                            {c?.email && (
-                              <a href={`mailto:${c.email}`} style={{ fontSize: 13.5, color: '#4b5563', textDecoration: 'none', padding: '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff' }}>✉ {c.email}</a>
-                            )}
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {phone && (
+                                <a href={`sms:${phone}`} style={{ flex: isMobile ? 1 : undefined, textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#374151', textDecoration: 'none', minHeight: isMobile ? 48 : undefined, padding: isMobile ? '13px 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff' }}>💬 Text</a>
+                              )}
+                              {c?.email && (
+                                <a href={`mailto:${c.email}`} style={{ flex: isMobile ? 1 : undefined, textAlign: 'center', fontSize: isMobile ? 14 : 13.5, fontWeight: isMobile ? 700 : 400, color: isMobile ? '#374151' : '#4b5563', textDecoration: 'none', minHeight: isMobile ? 48 : undefined, padding: isMobile ? '13px 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', overflowWrap: 'anywhere' }}>{isMobile ? '✉ Email' : `✉ ${c.email}`}</a>
+                              )}
+                              {isMobile && c && (
+                                <button onClick={() => { setPage('contacts'); setActiveClient(c); }} style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#374151', minHeight: 48, padding: '13px 12px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>👤 Contact</button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Tenant snapshot — what the marketing has done with this person (same numbers as the Rent Roll row) */}
@@ -6170,8 +6237,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                           </div>
 
-                          {/* History */}
-                          {c && (
+                          {/* History (a tap away on a phone — the call button comes first) */}
+                          {isMobile && c && (
+                            <button onClick={() => setCallHistoryOpen(o => !o)}
+                              style={{ width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', marginBottom: 12, borderRadius: 10, border: '1px solid #eceef1', background: '#fafafa', fontSize: 13.5, fontWeight: 700, color: '#4b5563', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              📜 History {priorCalls.length > 0 ? `· attempt #${priorCalls.length + 1}${lastCall ? ` · last ${outcomeIcon} ${fmtDay(lastCall.created_at)}` : ''}` : briefingReady ? '· first call' : ''} {callHistoryOpen ? '▴' : '▾'}
+                            </button>
+                          )}
+                          {c && (!isMobile || callHistoryOpen) && (
                             <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '11px 14px', marginBottom: 14 }}>
                               {!briefingReady ? (
                                 <div style={{ fontSize: 12, color: '#9ca3af' }}>Loading history…</div>
@@ -6222,27 +6295,52 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
 
                         {/* ── Outcome bar: always in reach (sticks to the bottom of the viewport) ── */}
-                        <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', padding: isMobile ? '12px 16px' : '14px 26px', background: '#fff', borderTop: '1px solid #eceef1', boxShadow: '0 -4px 14px rgba(0,0,0,.04)' }}>
-                          <span style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800, marginRight: 4 }}>How did it go?</span>
-                          <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'connected')}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                            ✓ Connected {!isMobile && <span style={kbdStyle}>C</span>}
-                          </button>
-                          <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'voicemail')}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #fed7aa', background: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                            📼 Voicemail {!isMobile && <span style={kbdStyle}>V</span>}
-                          </button>
-                          <button disabled={callActionInFlight} onClick={() => dispositionCall(current, 'no_answer')}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                            ✕ No Answer {!isMobile && <span style={kbdStyle}>N</span>}
-                          </button>
-                          <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', padding: '10px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#9ca3af', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-                            Skip {!isMobile && <span style={kbdStyle}>S</span>}
-                          </button>
-                          {!isMobile && <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#b0b5bd' }}>↑ ↓ to move through the list</span>}
-                        </div>
+                        {(() => {
+                          const btn = (label: string, key: string, d: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number', border: string, bg: string, fg: string) => (
+                            <button key={d} disabled={callActionInFlight} onClick={() => dispositionCall(current, d)}
+                              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 54 : undefined, padding: isMobile ? '12px 8px' : '10px 16px', borderRadius: isMobile ? 12 : 8, border: `1px solid ${border}`, background: bg, color: fg, fontWeight: 700, fontSize: isMobile ? 15 : 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              {label} {!isMobile && <span style={kbdStyle}>{key}</span>}
+                            </button>
+                          );
+                          return (
+                            <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? '1fr 1fr' : undefined, gap: isMobile ? 8 : 10, flexWrap: 'wrap', alignItems: 'center', padding: isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '14px 26px', background: '#fff', borderTop: '1px solid #eceef1', boxShadow: '0 -4px 14px rgba(0,0,0,.05)' }}>
+                              <span style={{ gridColumn: isMobile ? '1 / -1' : undefined, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800, marginRight: 4 }}>How did it go?</span>
+                              {btn('✓ Connected', 'C', 'connected', '#bbf7d0', '#f0fdf4', '#16a34a')}
+                              {btn('📼 Voicemail', 'V', 'voicemail', '#fed7aa', '#fff7ed', '#c2410c')}
+                              {btn('✕ No answer', 'N', 'no_answer', '#e5e7eb', '#fff', '#374151')}
+                              {btn('⚠ Wrong number', 'W', 'wrong_number', '#fecaca', '#fef2f2', '#b91c1c')}
+                              <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
+                                style={{ gridColumn: isMobile ? '1 / -1' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 46 : undefined, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                Skip — next call {!isMobile && <span style={kbdStyle}>S</span>}
+                              </button>
+                              {!isMobile && <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#b0b5bd' }}>↑ ↓ to move through the list</span>}
+                            </div>
+                          );
+                        })()}
                       </section>
+
+                      {/* Back from the dialer: one tap to say how it went, then straight to the next call */}
+                      {isMobile && callReturnOpen && callDialed?.taskId === current.id && (
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'flex-end' }}>
+                          <div style={{ width: '100%', background: '#fff', borderRadius: '18px 18px 0 0', padding: '18px 16px calc(18px + env(safe-area-inset-bottom))', boxShadow: '0 -10px 40px rgba(0,0,0,.25)' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 18, fontWeight: 800, color: '#111' }}>How did the call go?</div>
+                                <div style={{ fontSize: 13.5, color: '#6b7280', marginTop: 2, overflowWrap: 'anywhere' }}>{curMeta?.business || nameFor(c)}{phone ? ` · ${phoneDisp(phone)}` : ''}</div>
+                              </div>
+                              <button onClick={() => setCallReturnOpen(false)} aria-label="Not yet" style={{ background: 'none', border: 'none', fontSize: 26, lineHeight: 1, color: '#9ca3af', minWidth: 44, minHeight: 44, cursor: 'pointer' }}>×</button>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                              {([['✓ Talked to them', 'connected', '#dcfce7', '#166534'], ['📼 Left a voicemail', 'voicemail', '#fef3c7', '#92400e'], ['📵 No answer', 'no_answer', '#f3f4f6', '#374151'], ['⚠ Wrong number', 'wrong_number', '#fee2e2', '#991b1b']] as ['' | string, 'connected' | 'voicemail' | 'no_answer' | 'wrong_number', string, string][]).map(([label, d, bg, fg]) => (
+                                <button key={d} disabled={callActionInFlight} onClick={() => dispositionCall(current, d)}
+                                  style={{ minHeight: 68, borderRadius: 14, border: 'none', background: bg, color: fg, fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '10px 8px' }}>{label}</button>
+                              ))}
+                            </div>
+                            <input value={callNote} onChange={e => setCallNote(e.target.value)} placeholder="Quick note (optional) — type it, then tap what happened"
+                              style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, minHeight: 48, padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 16, fontFamily: "'DM Sans',sans-serif" }} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
