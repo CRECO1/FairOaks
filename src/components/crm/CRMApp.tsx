@@ -3466,7 +3466,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function loadCampaigns(opts?: { quick?: boolean }) {
     setCampaignLoading(true);
     try {
-      const res = await fetch(`/api/campaigns?unit=${businessUnit}`);
+      const res = await fetch(`/api/campaigns?unit=${businessUnit}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
       const j = await res.json();
       if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); if (!opts?.quick) refreshEngagementCounts(); }
       else { showToast(`Could not load campaigns: ${j.error ?? res.status}`); }
@@ -3688,7 +3688,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // ── Smart Lists ───────────────────────────────────────────────────────────────
   async function loadSmartLists() {
-    const res = await fetch(`/api/smart-lists?unit=${businessUnit}`);
+    const res = await fetch(`/api/smart-lists?unit=${businessUnit}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
     if (res.ok) { const j = await res.json(); setSmartLists(j.smart_lists ?? j.smartLists ?? []); }
   }
 
@@ -3738,7 +3738,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── Action Plans ──────────────────────────────────────────────────────────────
   async function loadActionPlans() {
     setActionPlanLoading(true);
-    const res = await fetch(`/api/action-plans?unit=${businessUnit}`);
+    const res = await fetch(`/api/action-plans?unit=${businessUnit}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
     if (res.ok) { const j = await res.json(); setActionPlans(j.plans ?? []); }
     setActionPlanLoading(false);
   }

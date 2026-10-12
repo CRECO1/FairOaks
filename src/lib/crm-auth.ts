@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { adminClient } from '@/lib/supabase-admin';
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -12,8 +13,14 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
  * localStorage session) and falls back to the cookie-based SSR session.
  */
 export async function getCrmUser(req?: NextRequest) {
-  // 1. Try Bearer token from Authorization header first
-  const authHeader = req?.headers.get('Authorization') ?? null;
+  // 1. Try Bearer token from Authorization header first. Routes that never pass
+  //    `req` (about 35 of them) read the header from the request context, so a
+  //    Bearer is honored everywhere — middleware relies on that when it skips the
+  //    cookie-session refresh for a request that carries a live Bearer token.
+  let authHeader = req?.headers.get('Authorization') ?? null;
+  if (!authHeader) {
+    try { authHeader = (await headers()).get('authorization'); } catch { authHeader = null; }
+  }
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice(7);
     const admin = createAdminClient(SUPABASE_URL, SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
