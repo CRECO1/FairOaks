@@ -434,7 +434,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             <div>
               <span style={label}>Route missed calls &amp; voicemails to</span>
               <select style={input} value={draft.missed_call_assignee ?? ''} onChange={e => setDraft(d => ({ ...d, missed_call_assignee: e.target.value || null }))}>
-                <option value="">Automatic (the contact's agent / the property owner)</option>
+                <option value="">Automatic (the contact&apos;s agent / the property owner)</option>
                 {agents.map(a => <option key={a.id} value={a.id}>{`${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || 'Agent'}</option>)}
               </select>
             </div>
