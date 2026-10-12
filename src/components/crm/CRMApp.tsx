@@ -74,6 +74,13 @@ interface CallListPerson {
   emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
   campaignNames: string[]; unsubscribed: boolean; dead: boolean; notEmailed: boolean; type: string;
 }
+// An inbound call (or a "try again" reminder) from the Calling Log that is waiting on a call back.
+interface CallbackRow {
+  id: string; kind: string; direction: string; result: string | null; from_number: string | null; to_number: string | null; callback_number: string | null;
+  caller_name: string | null; contact_id: string | null; contact?: { id: string; name: string; business_name: string | null; type: string | null } | null;
+  started_at: string; follow_up_due: string | null; follow_up_assignee: string | null; assignee_name?: string | null;
+  summary: string | null; intent: string | null; transcript: string | null;
+}
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
@@ -747,6 +754,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callListPeople, setCallListPeople] = useState<CallListPerson[]>([]);
   const [callListLoading, setCallListLoading] = useState(false);
   const [callListNonce, setCallListNonce] = useState(0);
+  // Call-backs waiting in the Calling Log (missed calls, voicemails, bot calls, "try again"), worked from the same queue.
+  const [callbacks, setCallbacks] = useState<CallbackRow[]>([]);
+  const [callbackDoneIds, setCallbackDoneIds] = useState<Set<string>>(new Set());
+  const [callOnlyCallbacks, setCallOnlyCallbacks] = useState(false);   // the "Call-backs waiting" view of My calls
+  // Today at a glance: team stats + per-agent calls (the panel above the queue).
+  const [callPanel, setCallPanel] = useState<{ stats: { today: number; follow_up: number; overdue: number; missed: number; voicemail: number; wrapup: number } | null; byAgent: Record<string, { calls: number; talked: number; voicemail: number; none: number }> } | null>(null);
+  const [callPanelOpen, setCallPanelOpen] = useState(true);
+  useEffect(() => { try { if (localStorage.getItem('crm:callPanelOpen') === '0') setCallPanelOpen(false); } catch { /* ignore */ } }, []);
   // Phone: filters tucked away, history collapsed, and a one-tap "how did it go?" sheet when you come back from the dialer.
   const [callFiltersOpen, setCallFiltersOpen] = useState(false);
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
@@ -2283,6 +2298,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Today's Calls: disposition + auto next-follow-up ──────────────────────────
+  // The number the agent dials for a queue item: the contact's phone, else the prospect's, else the call-back's.
+  function callPhoneFor(task: CRMTask): string {
+    const cl = clients.find(x => x.id === task.client_id);
+    const own = cl ? (cl.phone || cl.cell_phone || '') : '';
+    if (own) return own;
+    const pm = callListMeta.get(task.id)?.phone;
+    if (pm) return pm;
+    const cb = callbackMeta.get(task.id);
+    return cb ? (cb.callback_number || cb.from_number || cb.to_number || '') : '';
+  }
+  function nameOfClient(id: string): string | null {
+    const cl = clients.find(x => x.id === id);
+    if (!cl) return null;
+    return `${cl.first_name ?? ''} ${cl.last_name ?? ''}`.trim() || cl.business_name || null;
+  }
+
   async function dispositionCall(task: CRMTask, disposition: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number') {
     if (callActionInFlight) return;
     setCallActionInFlight(true);
@@ -2290,7 +2321,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 1) Complete the current call task (sets completed_at + status='done'). A person pulled from a
       //    marketing list has no task yet — they just leave this session's list; the call logged below
       //    is what marks them contacted everywhere else.
+      const cb = callbackMeta.get(task.id) ?? null;
       if (task.id.startsWith('p:')) setCallProspectDoneIds(prev => new Set(prev).add(task.client_id));
+      else if (cb) { /* a call-back lives in the Calling Log — resolved below, not a task */ }
       else await completeTask(task.id);
 
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
@@ -2303,7 +2336,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
       //    A chip override (callFollowUpDays) beats the disposition's default cadence.
       // A wrong number needs no callback — the note on the timeline is the follow-up (fix the number on the contact).
-      if (callFollowUpDays !== 'none' && disposition !== 'wrong_number') {
+      if (callFollowUpDays !== 'none' && disposition !== 'wrong_number' && !cb) {
         const defaultDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : 7;
         const addDays = typeof callFollowUpDays === 'number' ? callFollowUpDays : defaultDays;
         const nextType: 'call' | 'follow_up' = disposition === 'connected' ? 'follow_up' : 'call';
@@ -2324,6 +2357,36 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           status: 'open',
         }]);
       }
+
+      // 3b) The Calling Log gets the call too (it used to hold only calls the phone system saw). For a
+      //     call-back this also resolves it: talking to them or a wrong number closes it; a voicemail / no
+      //     answer keeps it open and moves its due time (the follow-up chip, else 1 day / 2 days).
+      const digits = (task.id.startsWith('cb:') && cb ? (cb.callback_number || cb.from_number || cb.to_number || '') : (callPhoneFor(task) || '')).replace(/\D/g, '').slice(-10);
+      if (digits.length === 10) {
+        const result = disposition === 'connected' ? 'answered' : disposition === 'voicemail' ? 'left_voicemail' : disposition === 'wrong_number' ? 'wrong_number' : 'no_answer';
+        let retryAt: string | null = null;
+        if (cb && (result === 'left_voicemail' || result === 'no_answer') && callFollowUpDays !== 'none') {
+          const days = typeof callFollowUpDays === 'number' ? callFollowUpDays : result === 'no_answer' ? 1 : 2;
+          const d = new Date(); d.setDate(d.getDate() + days); d.setHours(9, 0, 0, 0); retryAt = d.toISOString();
+        }
+        const dialedAt = callDialed && callDialed.taskId === task.id ? callDialed.at : null;
+        try {
+          await fetch('/api/crm/calls', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+            body: JSON.stringify({
+              business_unit: businessUnit, direction: 'outbound', number: digits,
+              caller_name: cb ? (cb.contact?.name || cb.caller_name || null) : (clients.find(x => x.id === task.client_id) ? nameOfClient(task.client_id) : null),
+              contact_id: task.client_id || cb?.contact_id || null, result,
+              duration_sec: result === 'answered' && dialedAt ? Math.min(Math.round((Date.now() - dialedAt) / 1000), 3600) : null,
+              notes: jotted || null, started_at: dialedAt ? new Date(dialedAt).toISOString() : undefined,
+              resolves_call_id: cb ? cb.id : undefined, retry_at: retryAt,
+            }),
+          });
+        } catch { /* the activity above is saved; the log entry can be added from the Calling Log */ }
+      }
+      if (cb) { setCallbackDoneIds(prev => new Set(prev).add(cb.id)); loadCallbacks(); }
+      window.dispatchEvent(new Event('crm:calls-changed'));   // the Calling Log refreshes itself
 
       // 4) Reset the per-call inputs, bump the counter, refresh the queue in view, and advance
       setCallNote(''); setCallFollowUpDays(null);
@@ -2353,7 +2416,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return m;
   }, [callListPeople]);
   const clientTypeById = useMemo(() => new Map(clients.map(c => [c.id, c.type as string])), [clients]);
-  const segOfTask = (t: CRMTask): Segment => segmentOf(callListMeta.get(t.id)?.type ?? clientTypeById.get(t.client_id));
+  // Call-backs addressed to the agent whose queue this is (mine = assigned to me or to nobody).
+  const callbackMeta = useMemo(() => {
+    const m = new Map<string, CallbackRow>();
+    const me = callViewAgentId || profile?.id || '';
+    for (const cb of callbacks) {
+      if (callbackDoneIds.has(cb.id)) continue;
+      if (cb.follow_up_assignee && cb.follow_up_assignee !== me) continue;
+      m.set(`cb:${cb.id}`, cb);
+    }
+    return m;
+  }, [callbacks, callbackDoneIds, callViewAgentId, profile?.id]);
+  const callbackTasks = useMemo(() => {
+    const t0 = today();
+    const out: CRMTask[] = [];
+    for (const [id, cb] of callbackMeta) {
+      const due = new Date(cb.follow_up_due ?? cb.started_at).toLocaleDateString('en-CA');
+      if (due > t0 || callSkippedIds.has(id)) continue;     // a later due time sits in the Calling Log until it's due
+      const who = cb.contact?.business_name || cb.contact?.name || cb.caller_name || (cb.from_number ?? cb.callback_number ?? cb.to_number ?? 'Caller');
+      out.push({ id, client_id: cb.contact_id ?? '', agent_id: cb.follow_up_assignee ?? profile?.id ?? '', type: 'call', title: who, due_date: due, notes: '', completed_at: null, created_at: cb.started_at });
+    }
+    // Longest-waiting first.
+    return out.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }, [callbackMeta, callSkippedIds, profile?.id]);
+  const segOfTask = (t: CRMTask): Segment => segmentOf(callListMeta.get(t.id)?.type ?? callbackMeta.get(t.id)?.contact?.type ?? clientTypeById.get(t.client_id));
   const callQueueBase = useMemo(() => {
     const t0 = today();
     if (callListMode !== 'tasks') {
@@ -2362,10 +2448,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           && !!p.phone && !callProspectDoneIds.has(p.clientId) && !callSkippedIds.has(`p:${p.clientId}`))
         .map<CRMTask>(p => ({ id: `p:${p.clientId}`, client_id: p.clientId, agent_id: profile?.id ?? '', type: 'call', title: p.reason, due_date: t0, notes: '', completed_at: null, created_at: '' }));
     }
-    return callSource
-      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
-      .sort((a, b) => a.due_date.localeCompare(b.due_date));
-  }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, profile?.id]);
+    if (callOnlyCallbacks) return callbackTasks;
+    // Waiting call-backs come first (someone is waiting on us), then the follow-up / call tasks by due date.
+    return [
+      ...callbackTasks,
+      ...callSource
+        .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
+        .sort((a, b) => a.due_date.localeCompare(b.due_date)),
+    ];
+  }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, callbackTasks, callOnlyCallbacks, profile?.id]);
   // Counts per segment for the chips (computed before the segment filter), then the filtered queue.
   const callSegmentCounts = useMemo(() => {
     const n: Record<Segment, number> = { tenant: 0, broker: 0, other: 0 };
@@ -2464,6 +2555,45 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     })();
     return () => { cancelled = true; };
   }, [page, tasksSubTab, callListMode, callListNonce]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Call-backs waiting in the Calling Log → the queue. Re-read whenever the queue is shown or refreshed.
+  const loadCallbacks = useCallback(async () => {
+    if (!session?.access_token) return;
+    try {
+      const r = await fetch(`/api/crm/calls?filter=follow_up&days=90&limit=200&business_unit=${businessUnit}`, { headers: { Authorization: `Bearer ${session.access_token}` } });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok) setCallbacks((j.calls ?? []) as CallbackRow[]);
+    } catch { /* the queue still shows tasks */ }
+  }, [session?.access_token, businessUnit]);
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls') return;
+    loadCallbacks();
+  }, [page, tasksSubTab, loadCallbacks]);
+
+  // The "Today" panel: workspace call-log stats + each agent's calls today (from the contact timeline's call rows).
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || !session?.access_token) return;
+    let cancelled = false;
+    (async () => {
+      const headers = { Authorization: `Bearer ${session.access_token}` };
+      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const [st, act] = await Promise.all([
+        fetch(`/api/crm/calls?stats=1&business_unit=${businessUnit}`, { headers }).then(r => r.json()).catch(() => ({})),
+        supabase.from('crm_activity').select('agent_id, notes').eq('type', 'call').gte('created_at', start.toISOString()).limit(2000),
+      ]);
+      if (cancelled) return;
+      const byAgent: Record<string, { calls: number; talked: number; voicemail: number; none: number }> = {};
+      for (const a of (act.data ?? []) as { agent_id: string | null; notes: string | null }[]) {
+        if (!a.agent_id) continue;
+        const b = (byAgent[a.agent_id] ??= { calls: 0, talked: 0, voicemail: 0, none: 0 });
+        const n = a.notes ?? '';
+        b.calls++;
+        if (/Talked to them/.test(n)) b.talked++; else if (/Left a voicemail/.test(n)) b.voicemail++; else if (/No answer|Wrong number/.test(n)) b.none++;
+      }
+      setCallPanel({ stats: (st as { stats?: { today: number; follow_up: number; overdue: number; missed: number; voicemail: number; wrapup: number } }).stats ?? null, byAgent });
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab, session?.access_token, businessUnit, callsDoneThisSession]);
 
   // Open-call counts per agent (admins), for the agent switcher on the Call Queue.
   useEffect(() => {
@@ -5931,10 +6061,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     {/* Where the calls come from: your tasks, or people to call out of the marketing */}
-                    <select value={callListMode} onChange={e => { setCallListMode(e.target.value); setCallPropView('opened'); setCallSelectedId(null); setCallsDoneThisSession(0); setCallProspectDoneIds(new Set()); }}
+                    <select value={callOnlyCallbacks && callListMode === 'tasks' ? 'callbacks' : callListMode} onChange={e => { const v = e.target.value; setCallOnlyCallbacks(v === 'callbacks'); setCallViewAgentId(''); if (v === 'callbacks') { setCallListMode('tasks'); setCallSelectedId(null); return; } setCallListMode(v); setCallPropView('opened'); setCallSelectedId(null); setCallsDoneThisSession(0); setCallProspectDoneIds(new Set()); }}
                       title="Choose who to call"
                       style={{ padding: '8px 12px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: `1px solid ${callListMode === 'tasks' ? '#e2e8f0' : '#c9922c'}`, background: callListMode === 'tasks' ? '#fff' : '#fffbf2', color: callListMode === 'tasks' ? '#374151' : '#92400e', maxWidth: 320, fontFamily: "'DM Sans',sans-serif" }}>
-                      <option value="tasks">📋 My call tasks</option>
+                      <option value="tasks">📋 My call tasks &amp; call-backs</option>
+                      <option value="callbacks">📞 Call-backs waiting ({callbackTasks.length})</option>
                       <optgroup label="From our campaigns (same list as the Rent Roll prospects)">
                         <option value="camp:all">📣 All campaigns — last 90 days</option>
                         {campaigns.filter(c => (c.send_count ?? 0) > 0 && !(c as unknown as { is_tenant_notice?: boolean }).is_tenant_notice && !/^\[TEST\]/i.test(c.name)).map(c => <option key={c.id} value={`camp:${c.id}`}>{c.name} ({c.send_count} sent)</option>)}
@@ -6016,6 +6147,58 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#c9922c,#e0b458)', transition: 'width .3s ease' }} />
                 </div>
 
+                {/* ── Today panel (desktop): team stats + each agent's day, in the spirit of a call-center wallboard ── */}
+                {!isMobile && callListMode === 'tasks' && (() => {
+                  const st = callPanel?.stats ?? null;
+                  const agents = profiles.filter(p => p.role === 'agent' || p.role === 'admin' || p.role === 'super_admin');
+                  const sum = (k: 'calls' | 'talked' | 'voicemail' | 'none') => Object.values(callPanel?.byAgent ?? {}).reduce((a, x) => a + x[k], 0);
+                  const cards: { k: string; v: string | number; sub?: string; tone?: string }[] = [
+                    { k: 'Calls made today', v: sum('calls') },
+                    { k: 'Talked to', v: sum('talked'), sub: sum('calls') ? `${Math.round((sum('talked') / sum('calls')) * 100)}% of calls` : undefined, tone: '#15803d' },
+                    { k: 'Voicemail / no answer', v: sum('voicemail') + sum('none') },
+                    { k: 'Waiting for a call back', v: st?.follow_up ?? callbackTasks.length, sub: st?.overdue ? `${st.overdue} past due` : 'none overdue', tone: (st?.overdue ?? 0) > 0 ? '#b91c1c' : undefined },
+                    { k: 'Missed (7 days)', v: st?.missed ?? '—', sub: st ? `${st.voicemail} voicemails` : undefined },
+                    { k: 'Calls need a note', v: st?.wrapup ?? '—', tone: (st?.wrapup ?? 0) > 0 ? '#a06a12' : undefined },
+                  ];
+                  return (
+                    <div style={{ marginBottom: 16 }}>
+                      <button onClick={() => { const n = !callPanelOpen; setCallPanelOpen(n); try { localStorage.setItem('crm:callPanelOpen', n ? '1' : '0'); } catch { /* ignore */ } }}
+                        style={{ background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontSize: 11, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase', color: '#6b7280', fontFamily: "'DM Sans',sans-serif" }}>
+                        📊 Today {callPanelOpen ? '▾' : '▸'}
+                      </button>
+                      {callPanelOpen && (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)', gap: 14, marginTop: 8, alignItems: 'start' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                            {cards.map(c => (
+                              <div key={c.k} style={{ background: '#fff', border: '1px solid #e8eaed', borderLeft: '3px solid #c9922c', borderRadius: 10, padding: '10px 14px' }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af' }}>{c.k}</div>
+                                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: c.tone ?? '#111', lineHeight: 1.1, marginTop: 2 }}>{c.v}</div>
+                                {c.sub && <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{c.sub}</div>}
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '8px 12px' }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4 }}>Agents</div>
+                            {agents.map(a => {
+                              const d = callPanel?.byAgent[a.id] ?? { calls: 0, talked: 0, voicemail: 0, none: 0 };
+                              return (
+                                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '1px solid #f3f4f6' }}>
+                                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#141414', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{(a.first_name?.[0] ?? '') + (a.last_name?.[0] ?? '')}</span>
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.first_name}</span>
+                                  <span title="Calls today" style={{ fontSize: 12.5, fontWeight: 800, color: '#111' }}>{d.calls}</span>
+                                  <span title="Talked to" style={{ fontSize: 12, color: '#15803d', fontWeight: 700 }}>✓{d.talked}</span>
+                                  <span title="Voicemail / no answer" style={{ fontSize: 12, color: '#92400e', fontWeight: 700 }}>✕{d.voicemail + d.none}</span>
+                                  <span title="Left in their queue" style={{ fontSize: 11.5, color: '#6b7280', minWidth: 52, textAlign: 'right' }}>{callAgentCounts[a.id] ?? 0} left</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {!current && callListMode !== 'tasks' ? (
                   <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>{callListLoading ? '⏳' : '🎯'}</div>
@@ -6031,7 +6214,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 ) : (() => {
                   const c = clientFor(current);
-                  const phone = phoneFor(c) || (callListMeta.get(current.id)?.phone ?? '');
+                  const cbm = callbackMeta.get(current.id) ?? null;
+                  const phone = phoneFor(c) || (callListMeta.get(current.id)?.phone ?? '') || (cbm ? (cbm.callback_number || cbm.from_number || cbm.to_number || '') : '');
+                  const cbReason = (cb: CallbackRow) => cb.direction === 'outbound' ? 'Try again' : cb.kind === 'voicemail' ? 'Voicemail' : (cb.kind === 'bot' || cb.result === 'bot_answered') ? 'Bot call' : cb.result === 'missed' ? 'Missed call' : 'Call back';
+                  const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)); return m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
                   const dayDiff = (d: string) => Math.round((Date.parse(t0 + 'T12:00:00') - Date.parse(d.slice(0, 10) + 'T12:00:00')) / 86_400_000);
                   const overdueDays = current.due_date ? dayDiff(current.due_date) : 0;
                   const isOverdue = overdueDays > 0;
@@ -6058,8 +6244,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   // Researched contacts carry "📞 ASK FOR: <name> — <role> · …" as the first line of their notes.
                   const askLine = (c?.notes ?? '').split('\n')[0].startsWith('📞 ASK FOR:') ? (c!.notes as string).split('\n')[0].replace('📞 ASK FOR:', '').trim() : '';
                   const inits = (cl: Client | null) => cl ? ((cl.first_name?.[0] ?? '') + (cl.last_name?.[0] ?? '') || (cl.business_name?.[0] ?? '?')).toUpperCase() : '?';
-                  const overdueItems = queue.filter(t => t.due_date && t.due_date < t0);
-                  const todayItems = queue.filter(t => !(t.due_date && t.due_date < t0));
+                  const cbItems = queue.filter(t => t.id.startsWith('cb:'));
+                  const taskItems = queue.filter(t => !t.id.startsWith('cb:'));
+                  const overdueItems = taskItems.filter(t => t.due_date && t.due_date < t0);
+                  const todayItems = taskItems.filter(t => !(t.due_date && t.due_date < t0));
                   const HEAT_ICON = { hot: '🔥', warm: '☀️', cold: '❄️' } as const;
                   const curMeta = callListMeta.get(current.id) ?? null;
                   const row = (t: CRMTask) => {
@@ -6068,16 +6256,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const od = t.due_date ? dayDiff(t.due_date) : 0;
                     const ph = phoneFor(tc);
                     const meta = callListMeta.get(t.id) ?? null;
+                    const cbr = callbackMeta.get(t.id) ?? null;
                     return (
                       <button key={t.id} onClick={() => setCallSelectedId(t.id)}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 10, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                           border: `1px solid ${sel ? '#c9922c' : 'transparent'}`, background: sel ? '#fffbf2' : 'transparent' }}>
                         <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
-                          background: od > 0 ? '#fee2e2' : '#f1f5f9', color: od > 0 ? '#dc2626' : '#475569' }}>{inits(tc)}</span>
+                          background: (od > 0 || cbr) ? '#fee2e2' : '#f1f5f9', color: (od > 0 || cbr) ? '#dc2626' : '#475569' }}>{cbr && !tc ? '📞' : inits(tc)}</span>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta ? (meta.business || meta.contactName || nameFor(tc)) : nameFor(tc)}</span>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta ? (meta.business || meta.contactName || nameFor(tc)) : cbr ? t.title : nameFor(tc)}</span>
                           <span style={{ display: 'block', fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {meta
+                            {cbr
+                              ? `${cbr.kind === 'voicemail' ? '📼' : '📞'} ${cbReason(cbr)} · waiting ${ago(cbr.started_at)}${cbr.follow_up_due && new Date(cbr.follow_up_due).getTime() < Date.now() ? ' · overdue' : ''}`
+                              : meta
                               ? `${HEAT_ICON[meta.heat]} ${meta.reason}${meta.lastCalled ? ` · called ${new Date(meta.lastCalled).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
                               : `${t.type === 'follow_up' ? '🔄' : '📞'} ${ph ? phoneDisp(ph) : 'no phone'}${od > 0 ? ` · ${od}d overdue` : ' · due today'}`}
                           </span>
@@ -6094,6 +6285,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <>
                             <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#c9922c', fontWeight: 800, padding: '6px 10px 4px' }}>To call · {queue.length}</div>
                             {queue.map(row)}
+                          </>
+                        )}
+                        {callListMode === 'tasks' && cbItems.length > 0 && (
+                          <>
+                            <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#b91c1c', fontWeight: 800, padding: '6px 10px 4px' }}>📞 Waiting for a call back · {cbItems.length}</div>
+                            {cbItems.map(row)}
                           </>
                         )}
                         {callListMode === 'tasks' && overdueItems.length > 0 && (
@@ -6144,6 +6341,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                             {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
                             {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>{overdueDays}d OVERDUE</span>}
+                            {cbm && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fff1f2', color: '#be123c' }}>📞 {cbReason(cbm)} · waiting {ago(cbm.started_at)}</span>}
                             {curMeta && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: curMeta.heat === 'hot' ? '#fff1f2' : curMeta.heat === 'cold' ? '#eff6ff' : '#fffbeb', color: curMeta.heat === 'hot' ? '#be123c' : curMeta.heat === 'cold' ? '#1d4ed8' : '#b45309' }}>{HEAT_ICON[curMeta.heat]} {curMeta.heat === 'hot' ? 'Hot' : curMeta.heat === 'cold' ? 'Cold' : 'Warm'}</span>}
                           </div>
                           {c && (c.city || (c.tags && c.tags.length > 0)) && (
@@ -6206,6 +6404,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 {curMeta.campaignNames.length > 0 && <>Emailed in: {curMeta.campaignNames.slice(0, 3).join(' · ')}{curMeta.campaignNames.length > 3 ? ` +${curMeta.campaignNames.length - 3}` : ''}.</>}
                               </div>
                               <div style={{ fontSize: 11.5, color: '#b0b5bd', marginTop: 6 }}>Opens are approximate (Apple Mail pre-loads images); a call is the real signal.</div>
+                            </div>
+                          )}
+
+                          {/* A call-back: what they said (bot summary / voicemail transcript) and how long they've waited */}
+                          {cbm && (
+                            <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#be123c', marginBottom: 4 }}>
+                                {cbReason(cbm)} · {new Date(cbm.started_at).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · waiting {ago(cbm.started_at)}{cbm.follow_up_due ? ` · due ${new Date(cbm.follow_up_due).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ''}
+                              </div>
+                              {(cbm.summary || cbm.intent || cbm.transcript) ? (
+                                <div style={{ fontSize: 14.5, color: '#4c0519', lineHeight: 1.5 }}>
+                                  {cbm.intent && <b>{cbm.intent}. </b>}{(cbm.summary || cbm.transcript || '').slice(0, 420)}
+                                </div>
+                              ) : <div style={{ fontSize: 13.5, color: '#9f1239' }}>No message left — just the missed call.</div>}
+                              {!cbm.contact_id && <div style={{ fontSize: 12, color: '#9f1239', marginTop: 6 }}>Not in your contacts yet — save them from the Calling Log after the call.</div>}
                             </div>
                           )}
 
