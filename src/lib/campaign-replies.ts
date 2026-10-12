@@ -147,8 +147,9 @@ async function scanMailCached(
 
   if (!force && hit && age < SCAN_FRESH_MS) return fromRow(hit);
   if (!force && hit && age < SCAN_STALE_MS) {
-    const bg = () => { void run().catch(() => {}); };
-    try { after(bg); } catch { bg(); }
+    // after() only keeps the function alive for the promise the callback returns.
+    const bg = async () => { await run().catch(() => {}); };
+    try { after(bg); } catch { void bg(); }
     return fromRow(hit);
   }
   const fresh = await run().catch(() => null);

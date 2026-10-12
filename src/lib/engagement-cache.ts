@@ -51,8 +51,10 @@ export async function cachedCompute<T>(
 
   if (row && age < opts.freshMs) return { value: row.payload, source: 'fresh' };
   if (row && age < opts.staleMs) {
-    const bg = () => { void run().catch(() => {}); };
-    try { after(bg); } catch { bg(); }
+    // after() keeps the function alive only until the promise the callback RETURNS settles —
+    // a detached `void run()` would be cut off with the response and never refresh.
+    const bg = async () => { await run().catch(() => {}); };
+    try { after(bg); } catch { void bg(); }
     return { value: row.payload, source: 'stale' };
   }
   return { value: await run(), source: 'computed' };
