@@ -28,6 +28,10 @@ interface Props {
   onClose: () => void;
   onOpenContact: (clientId: string) => void;
   showToast: (msg: string) => void;
+  /** Who a call task can be handed to (admins). Omitted = tasks go to the person clicking. */
+  agents?: { id: string; name: string }[];
+  meId?: string;
+  businessUnit?: string;
 }
 
 const ICON: Record<Signal['kind'], string> = { click: '🔗', report: '📄', bov: '💰', call: '📞', reply: '✉️' };
@@ -39,7 +43,8 @@ const ago = (iso: string) => {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-export default function CampaignEngagedPanel({ campaign, authToken, isMobile, onClose, onOpenContact, showToast }: Props) {
+export default function CampaignEngagedPanel({ campaign, authToken, isMobile, onClose, onOpenContact, showToast, agents, meId, businessUnit }: Props) {
+  const [assignTo, setAssignTo] = useState<string>(meId ?? '');
   const [people, setPeople] = useState<Person[] | null>(null);
   const [checked, setChecked] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +79,35 @@ export default function CampaignEngagedPanel({ campaign, authToken, isMobile, on
         description: p.signals.map(s => `${s.label} (${ago(s.at)})`).join('\n'),
         client_id: p.client_id, type: 'call', priority: p.tier === 'hot' ? 'high' : 'normal',
         due_date: new Date().toISOString().slice(0, 10),
+        assigned_to: assignTo || undefined,
       }),
     });
-    if (r.ok) { setTasked(prev => new Set(prev).add(p.client_id)); showToast('Call task added for today ✓'); }
+    const toName = agents?.find(a => a.id === assignTo)?.name?.split(' ')[0];
+    if (r.ok) { setTasked(prev => new Set(prev).add(p.client_id)); showToast(`Call task added for ${assignTo && assignTo !== meId ? (toName ?? 'them') : 'today'} ✓`); }
     else showToast('Could not add the task');
+  }
+
+  // Everyone still to call → open call tasks for the chosen agent (skips anyone already in their queue).
+  async function assignAll(list: Person[]) {
+    if (!list.length) return;
+    const to = assignTo || meId || '';
+    const items = list.filter(p => !p.open_task && !tasked.has(p.client_id)).map(p => {
+      const c = p.contact;
+      const who = [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.business_name || 'contact';
+      return {
+        client_id: p.client_id, title: `Call ${who} — engaged with "${p.campaigns[0]?.name ?? 'campaign'}"`,
+        description: p.signals.map(s => `${s.label} (${ago(s.at)})`).join('\n'), priority: p.tier === 'hot' ? 'high' : 'normal',
+      };
+    });
+    if (!items.length) { showToast('Everyone here already has a call task'); return; }
+    const r = await fetch('/api/crm/tasks/assign-calls', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
+      body: JSON.stringify({ assigned_to: to, due_date: new Date().toLocaleDateString('en-CA'), business_unit: businessUnit, items }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error ?? 'Could not assign the calls'); return; }
+    setTasked(prev => { const n = new Set(prev); for (const i of items) n.add(i.client_id); return n; });
+    showToast(`Assigned ${j.created} call${j.created === 1 ? '' : 's'} to ${String(j.assignee_name ?? '').split(' ')[0] || 'them'}${j.skipped_existing ? ` (${j.skipped_existing} already in their queue)` : ''} ✓`);
   }
 
   const todo = (people ?? []).filter(p => !p.contacted_at);
@@ -103,6 +133,18 @@ export default function CampaignEngagedPanel({ campaign, authToken, isMobile, on
             {([['todo', `To call (${todo.length})`], ['all', `All engaged (${people.length})`]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setView(k)} style={{ padding: isMobile ? '8px 14px' : '4px 14px', minHeight: isMobile ? 38 : undefined, borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: view === k ? '#111' : '#fff', color: view === k ? '#fff' : '#6b7280', borderColor: view === k ? '#111' : '#e5e7eb', whiteSpace: 'nowrap' }}>{label}</button>
             ))}
+          </div>
+        )}
+
+        {people && todo.length > 0 && agents && agents.length > 0 && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 20px 0' }}>
+            <span style={{ fontSize: 12.5, color: '#6b7280', fontWeight: 600 }}>Call tasks go to</span>
+            <select value={assignTo || meId || ''} onChange={e => setAssignTo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontWeight: 600, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.id === meId ? 'Me' : a.name}</option>)}
+            </select>
+            <button onClick={() => assignAll(todo)} className="crm-btn crm-btn-sm" style={{ background: '#c9922c', color: '#111', border: 'none', fontWeight: 800 }}>
+              Assign all {todo.length} to {(agents.find(a => a.id === (assignTo || meId))?.name ?? 'me').split(' ')[0] === 'Me' ? 'me' : (agents.find(a => a.id === (assignTo || meId))?.name ?? 'me').split(' ')[0]}
+            </button>
           </div>
         )}
 

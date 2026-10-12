@@ -757,7 +757,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Call-backs waiting in the Calling Log (missed calls, voicemails, bot calls, "try again"), worked from the same queue.
   const [callbacks, setCallbacks] = useState<CallbackRow[]>([]);
   const [callbackDoneIds, setCallbackDoneIds] = useState<Set<string>>(new Set());
-  const [callOnlyCallbacks, setCallOnlyCallbacks] = useState(false);   // the "Call-backs waiting" view of My calls
+  const [callOnlyCallbacks, setCallOnlyCallbacks] = useState(false);
+  // Hand a campaign / property call list to an agent (admins): pick people (or take the whole view), choose who + when.
+  const [callPicked, setCallPicked] = useState<Set<string>>(new Set());
+  const [callAssignTo, setCallAssignTo] = useState('');
+  const [callAssignDue, setCallAssignDue] = useState<'today' | 'tomorrow' | '3d'>('today');
+  const [callAssigning, setCallAssigning] = useState(false);
+  const [callAssignedTo, setCallAssignedTo] = useState<Map<string, string>>(new Map());   // clientId → agent first name, this session
+  const [callAssignNonce, setCallAssignNonce] = useState(0);   // the "Call-backs waiting" view of My calls
   // Today at a glance: team stats + per-agent calls (the panel above the queue).
   const [callPanel, setCallPanel] = useState<{ stats: { today: number; follow_up: number; overdue: number; missed: number; voicemail: number; wrapup: number } | null; byAgent: Record<string, { calls: number; talked: number; voicemail: number; none: number }> } | null>(null);
   const [callPanelOpen, setCallPanelOpen] = useState(true);
@@ -2298,6 +2305,42 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── Today's Calls: disposition + auto next-follow-up ──────────────────────────
+  // Assign the people in the current list view (or just the ticked ones) to an agent as open call tasks.
+  async function assignCallList(queueItems: CRMTask[], sourceLabel: string) {
+    if (callAssigning) return;
+    const chosen = callPicked.size ? queueItems.filter(t => callPicked.has(t.client_id)) : queueItems;
+    const to = callAssignTo || profiles.find(p => p.id !== profile?.id)?.id || '';
+    if (!to || chosen.length === 0) return;
+    setCallAssigning(true);
+    try {
+      const d = new Date();
+      if (callAssignDue === 'tomorrow') d.setDate(d.getDate() + 1); else if (callAssignDue === '3d') d.setDate(d.getDate() + 3);
+      const due = d.toLocaleDateString('en-CA');
+      const items = chosen.map(t => {
+        const m = callListMeta.get(t.id);
+        const who = m?.business || m?.contactName || nameOfClient(t.client_id) || 'contact';
+        return {
+          client_id: t.client_id,
+          title: `Call ${who}${m ? ` — ${m.reason}` : ''}`.slice(0, 240),
+          description: [m?.askFor ? `📞 ${m.askFor}` : '', `From: ${sourceLabel}`, m ? `${m.emailsSent} emailed · ${m.emailsOpened} opened${m.clicks ? ` · ${m.clicks} clicks` : ''}` : ''].filter(Boolean).join('\n'),
+          priority: m?.heat === 'hot' ? 'high' : 'normal',
+        };
+      });
+      const res = await fetch('/api/crm/tasks/assign-calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ assigned_to: to, due_date: due, business_unit: businessUnit, items }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(j.error ?? 'Could not assign the calls'); return; }
+      const first = (j.assignee_name as string | undefined)?.split(' ')[0] ?? 'agent';
+      showToast(`Assigned ${j.created} call${j.created === 1 ? '' : 's'} to ${first}${j.skipped_existing ? ` (${j.skipped_existing} already in their queue)` : ''} ✓`);
+      setCallAssignedTo(prev => { const n = new Map(prev); for (const t of chosen) n.set(t.client_id, first); return n; });
+      setCallPicked(new Set());
+      setCallAssignNonce(n => n + 1);
+    } finally { setCallAssigning(false); }
+  }
+
   // The number the agent dials for a queue item: the contact's phone, else the prospect's, else the call-back's.
   function callPhoneFor(task: CRMTask): string {
     const cl = clients.find(x => x.id === task.client_id);
@@ -2609,7 +2652,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       setCallAgentCounts(m);
     })();
     return () => { cancelled = true; };
-  }, [page, tasksSubTab, profile?.role, callsDoneThisSession]);
+  }, [page, tasksSubTab, profile?.role, callsDoneThisSession, callAssignNonce]);
 
   // Reset the per-call note + follow-up override whenever the active call changes.
   useEffect(() => { setCallNote(''); setCallFollowUpDays(null); }, [callCurrent?.id]);
@@ -6120,6 +6163,31 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                   );
                 })()}
+                {/* Hand this list to someone: tick people (or take the whole view) → open call tasks in their queue */}
+                {isAdmin && callListMode !== 'tasks' && queue.length > 0 && (() => {
+                  const label = callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property');
+                  const n = callPicked.size ? queue.filter(t => callPicked.has(t.client_id)).length : queue.length;
+                  const agents = profiles.filter(p => p.role === 'agent' || p.role === 'admin' || p.role === 'super_admin');
+                  const to = callAssignTo || agents.find(p => p.id !== profile?.id)?.id || profile?.id || '';
+                  return (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: '#fffbf2', border: '1px solid #f0e2c4', borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>📤 Assign calls</span>
+                      <span style={{ fontSize: 12.5, color: '#78716c' }}>{callPicked.size ? `${callPicked.size} ticked` : `all ${queue.length} in this view`}</span>
+                      <select value={to} onChange={e => setCallAssignTo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
+                        {agents.map(p => <option key={p.id} value={p.id}>{p.id === profile?.id ? 'Me' : `${p.first_name} ${p.last_name ?? ''}`.trim()}</option>)}
+                      </select>
+                      <select value={callAssignDue} onChange={e => setCallAssignDue(e.target.value as 'today' | 'tomorrow' | '3d')} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
+                        <option value="today">Due today</option><option value="tomorrow">Due tomorrow</option><option value="3d">Due in 3 days</option>
+                      </select>
+                      <button disabled={callAssigning || !to || n === 0} onClick={() => assignCallList(queue, label)}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#111', fontWeight: 800, fontSize: 13, cursor: callAssigning ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                        {callAssigning ? 'Assigning…' : `Assign ${n} →`}
+                      </button>
+                      {callPicked.size > 0 && <button onClick={() => setCallPicked(new Set())} style={{ background: 'none', border: 'none', color: '#78716c', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>clear ticks</button>}
+                      {callPicked.size === 0 && <button onClick={() => setCallPicked(new Set(queue.map(t => t.client_id)))} style={{ background: 'none', border: 'none', color: '#78716c', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>tick all</button>}
+                    </div>
+                  );
+                })()}
                 {callListMode !== 'tasks' && callListInfo && <div style={{ fontSize: 12.5, color: '#9ca3af', margin: '-4px 0 10px' }}>{callListInfo}</div>}
 
                 {/* ── Whose queue (admins) ── each agent with their own open count, so the load is visible at a glance */}
@@ -6261,10 +6329,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button key={t.id} onClick={() => setCallSelectedId(t.id)}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 10, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                           border: `1px solid ${sel ? '#c9922c' : 'transparent'}`, background: sel ? '#fffbf2' : 'transparent' }}>
+                        {isAdmin && meta && (
+                          <input type="checkbox" checked={callPicked.has(t.client_id)} onClick={e => e.stopPropagation()}
+                            onChange={e => setCallPicked(prev => { const n = new Set(prev); if (e.target.checked) n.add(t.client_id); else n.delete(t.client_id); return n; })}
+                            style={{ width: 16, height: 16, accentColor: '#c9922c', flexShrink: 0, cursor: 'pointer' }} />
+                        )}
                         <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
                           background: (od > 0 || cbr) ? '#fee2e2' : '#f1f5f9', color: (od > 0 || cbr) ? '#dc2626' : '#475569' }}>{cbr && !tc ? '📞' : inits(tc)}</span>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta ? (meta.business || meta.contactName || nameFor(tc)) : cbr ? t.title : nameFor(tc)}</span>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta ? (meta.business || meta.contactName || nameFor(tc)) : cbr ? t.title : nameFor(tc)}{callAssignedTo.get(t.client_id) && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: '#0369a1', background: '#e0f2fe', borderRadius: 6, padding: '1px 6px' }}>→ {callAssignedTo.get(t.client_id)}</span>}</span>
                           <span style={{ display: 'block', fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {cbr
                               ? `${cbr.kind === 'voicemail' ? '📼' : '📞'} ${cbReason(cbr)} · waiting ${ago(cbr.started_at)}${cbr.follow_up_due && new Date(cbr.follow_up_due).getTime() < Date.now() ? ' · overdue' : ''}`
@@ -7621,6 +7694,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   authToken={session?.access_token}
                   isMobile={isMobile}
                   showToast={showToast}
+                  agents={isAdmin ? profiles.filter(a => a.role === 'agent' || a.role === 'admin' || a.role === 'super_admin').map(a => ({ id: a.id, name: `${a.first_name} ${a.last_name ?? ''}`.trim() })) : undefined}
+                  meId={profile?.id}
+                  businessUnit={businessUnit}
                   onClose={() => setEngagedFor(null)}
                   onOpenContact={(id) => { const c = clients.find(x => x.id === id); if (c) { setEngagedFor(null); setPage('contacts'); setActiveClient(c); } else showToast('Contact not loaded in this workspace'); }}
                 />
