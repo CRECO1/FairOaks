@@ -65,7 +65,14 @@ interface Profile { id: string; email: string; first_name: string; last_name: st
 /** A contact-export request awaiting, or carrying, the owner's decision. */
 
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
-interface CallListPerson { clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number; view?: 'opened' | 'emailed' | 'cold' }
+interface CallListPerson {
+  clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number;
+  view: 'opened' | 'emailed' | 'cold';
+  // Same fields as the property's Rent Roll "Email Prospects" row, so the agent sees the whole picture.
+  business: string; contactName: string; email: string; phone: string; category: string; locations: string;
+  emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
+  campaignNames: string[]; unsubscribed: boolean; dead: boolean; notEmailed: boolean;
+}
 interface CRMTask { id: string; client_id: string; agent_id: string; type: 'call' | 'email' | 'follow_up'; title: string; due_date: string; notes: string; completed_at: string | null; created_at: string; }
 interface Task { id: string; title: string; description?: string; due_date?: string; assigned_to?: string; client_id?: string; deal_id?: string; status: 'open' | 'in_progress' | 'done'; priority: 'low' | 'normal' | 'high' | 'urgent'; created_by?: string; business_unit: string; created_at: string; updated_at?: string; client?: { id: string; first_name: string; last_name: string; email: string }; assignee?: { id: string; first_name: string; last_name: string }; }
 interface SmartList { id: string; created_by: string; name: string; filters: Record<string, any>; is_shared: boolean; created_at: string; }
@@ -729,11 +736,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Which queued call is open in the workspace (null = the top of the queue), and each agent's
   // open call count so an admin sees everyone's load without switching into their queue.
   const [callSelectedId, setCallSelectedId] = useState<string | null>(null);
-  // Where the queue comes from: your call tasks (default), or people to call out of the marketing —
-  // 'eng:all' / 'eng:<campaignId>' (engaged with a campaign, not yet contacted) and 'prop:<listingId>'
-  // (a property's prospect list, same people as its Rent Roll "Email Prospects": opened / emailed / cold).
+  // Where the queue comes from: your call tasks (default), or the SAME prospect rows the property's Rent Roll
+  // "Email Prospects" shows — 'camp:all' / 'camp:<campaignId>' (everyone a campaign emailed) or 'prop:<listingId>'.
+  // Views mirror the Rent Roll: Opened / All emailed / Not emailed yet.
   const [callListMode, setCallListMode] = useState<string>('tasks');
-  const [callPropView, setCallPropView] = useState<'all' | 'opened' | 'emailed' | 'cold'>('all');
+  const [callPropView, setCallPropView] = useState<'opened' | 'all' | 'cold'>('opened');
   const [callListPeople, setCallListPeople] = useState<CallListPerson[]>([]);
   const [callListLoading, setCallListLoading] = useState(false);
   const [callListNonce, setCallListNonce] = useState(0);
@@ -2336,7 +2343,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const t0 = today();
     if (callListMode !== 'tasks') {
       return callListPeople
-        .filter(p => (callPropView === 'all' || !p.view || p.view === callPropView) && !callProspectDoneIds.has(p.clientId) && !callSkippedIds.has(`p:${p.clientId}`))
+        .filter(p => (callPropView === 'opened' ? p.view === 'opened' : callPropView === 'cold' ? p.view === 'cold' : p.view !== 'cold')
+          && !!p.phone && !callProspectDoneIds.has(p.clientId) && !callSkippedIds.has(`p:${p.clientId}`))
         .map<CRMTask>(p => ({ id: `p:${p.clientId}`, client_id: p.clientId, agent_id: profile?.id ?? '', type: 'call', title: p.reason, due_date: t0, notes: '', completed_at: null, created_at: '' }));
     }
     return callSource
@@ -2369,7 +2377,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { cancelled = true; };
   }, [page, tasksSubTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // People to call out of the marketing (campaign engagement, or a property's prospect list).
+  // People to call out of the marketing. One source of truth: /api/crm/listing-prospects — the same rows (sends,
+  // opens, clicks, ask-for, category) the property's Rent Roll "Email Prospects" tab shows, for a property or a campaign.
   useEffect(() => {
     if (page !== 'tasks' || tasksSubTab !== 'calls' || callListMode === 'tasks') return;
     let cancelled = false;
@@ -2378,41 +2387,35 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const HEAT_RANK = { hot: 0, warm: 1, cold: 2 } as const;
     (async () => {
       try {
-        let people: CallListPerson[] = [];
-        let noPhone = 0;
-        if (callListMode.startsWith('eng:')) {
-          const id = callListMode.slice(4);
-          const r = await fetch(`/api/campaigns/engagement?fresh=1${id === 'all' ? '' : `&campaign_id=${id}`}`, { headers });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j.error ?? 'Could not load the call list');
-          type EP = { client_id: string; tier: 'hot' | 'warm'; contacted_at: string | null; last_signal_at: string; signals: { label: string }[]; campaigns?: { name: string }[]; contact?: { phone?: string | null; cell_phone?: string | null; notes?: string | null } | null };
-          for (const p of (j.people ?? []) as EP[]) {
-            if (p.contacted_at || !p.contact) continue;
-            if (!(p.contact.phone || p.contact.cell_phone)) { noPhone++; continue; }
-            const labels = [...new Set(p.signals.map(x => x.label))].slice(0, 2).join(' · ');
-            const camp = (p.campaigns ?? [])[0]?.name;
-            people.push({ clientId: p.client_id, reason: labels || 'Engaged with a campaign', heat: p.tier === 'hot' ? 'hot' : 'warm', askFor: camp ? `From: ${camp}` : '', lastCalled: null, rank: HEAT_RANK[p.tier === 'hot' ? 'hot' : 'warm'] * 1e13 - Date.parse(p.last_signal_at || '1970-01-01') });
-          }
-        } else if (callListMode.startsWith('prop:')) {
-          const id = callListMode.slice(5);
-          const r = await fetch(`/api/crm/listing-prospects?listing_id=${id}`, { headers });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok) throw new Error(j.error ?? 'Could not load the prospects');
-          type PP = { client_id: string; phone: string; askFor: string; locations: string; category: string; emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; notEmailed: boolean };
-          for (const p of (j.prospects ?? []) as PP[]) {
-            if (!p.phone) { noPhone++; continue; }
-            const opened = p.emailsOpened > 0;
-            const view: 'opened' | 'emailed' | 'cold' = p.notEmailed ? 'cold' : opened ? 'opened' : 'emailed';
-            const reason = p.notEmailed ? 'Not emailed yet — cold call'
-              : opened ? `Opened ${p.emailsOpened} of ${p.emailsSent} email${p.emailsSent === 1 ? '' : 's'}${p.clicks ? ` · ${p.clicks} click${p.clicks === 1 ? '' : 's'}` : ''}`
-              : `Emailed ${p.emailsSent}×, no open yet`;
-            const heat: 'hot' | 'warm' | 'cold' = view === 'cold' ? 'cold' : view === 'opened' && (p.clicks > 0 || p.opens >= 2) ? 'hot' : 'warm';
-            const ask = [p.askFor, p.locations].filter(Boolean).join(' · ');
-            people.push({ clientId: p.client_id, reason: p.category ? `${reason} · ${p.category}` : reason, heat, askFor: ask, lastCalled: null,
-              rank: HEAT_RANK[heat] * 1e13 - Date.parse(p.lastOpen || '1970-01-01'), view });
-          }
-        }
-        // Who has already been called: sort uncalled first and show the date, so a list worked over several
+        const qs = callListMode.startsWith('camp:')
+          ? `campaign_id=${encodeURIComponent(callListMode.slice(5))}&unit=${businessUnit}`
+          : `listing_id=${encodeURIComponent(callListMode.slice(5))}`;
+        const r = await fetch(`/api/crm/listing-prospects?${qs}`, { headers });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error ?? 'Could not load the prospects');
+        type PP = {
+          client_id: string; name: string; business: string; email: string; phone: string; category: string; askFor: string; locations: string;
+          emailsSent: number; emailsOpened: number; opens: number; clicks: number; lastOpen: string | null; lastSent: string | null;
+          campaignNames?: string[]; unsubscribed: boolean; dead: boolean; notEmailed?: boolean;
+        };
+        const people: CallListPerson[] = ((j.prospects ?? []) as PP[]).map(p => {
+          const notEmailed = !!p.notEmailed;
+          const opened = p.emailsOpened > 0;
+          const view: 'opened' | 'emailed' | 'cold' = notEmailed ? 'cold' : opened ? 'opened' : 'emailed';
+          const reason = notEmailed ? 'Not emailed yet — cold call'
+            : opened ? `Opened ${p.emailsOpened} of ${p.emailsSent} email${p.emailsSent === 1 ? '' : 's'}${p.clicks ? ` · ${p.clicks} click${p.clicks === 1 ? '' : 's'}` : ''}`
+            : `Emailed ${p.emailsSent}×, no open yet`;
+          const heat: 'hot' | 'warm' | 'cold' = view === 'cold' ? 'cold' : view === 'opened' && (p.clicks > 0 || p.opens >= 2) ? 'hot' : 'warm';
+          return {
+            clientId: p.client_id, reason, heat, view, lastCalled: null,
+            askFor: [p.askFor, p.locations].filter(Boolean).join(' · '),
+            rank: HEAT_RANK[heat] * 1e13 - Date.parse(p.lastOpen || '1970-01-01'),
+            business: p.business, contactName: p.name, email: p.email, phone: p.phone, category: p.category, locations: p.locations,
+            emailsSent: p.emailsSent, emailsOpened: p.emailsOpened, opens: p.opens, clicks: p.clicks, lastOpen: p.lastOpen, lastSent: p.lastSent,
+            campaignNames: p.campaignNames ?? [], unsubscribed: p.unsubscribed, dead: p.dead, notEmailed,
+          };
+        });
+        // Who has already been called: uncalled first (and a "called Oct 9" tag) so a list worked over several
         // days doesn't send you back to the same people.
         const ids = people.map(p => p.clientId);
         const lastCalled = new Map<string, string>();
@@ -2421,10 +2424,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           for (const a of data ?? []) { const prev = lastCalled.get(a.client_id as string); if (!prev || (a.created_at as string) > prev) lastCalled.set(a.client_id as string, a.created_at as string); }
         }
         for (const p of people) p.lastCalled = lastCalled.get(p.clientId) ?? null;
-        people.sort((a, b) => Number(!!a.lastCalled) - Number(!!b.lastCalled) || a.rank - b.rank);
+        // Dialable first (a phone on file), then uncalled before called, then warmest / most recent open.
+        people.sort((a, b) => Number(!a.phone) - Number(!b.phone) || Number(!!a.lastCalled) - Number(!!b.lastCalled) || a.rank - b.rank);
         if (cancelled) return;
         setCallListPeople(people);
-        setCallListInfo(noPhone ? `${noPhone} more ${noPhone === 1 ? 'has' : 'have'} no phone on file` : '');
+        setCallListInfo(`${((j.campaigns ?? []) as unknown[]).length} campaign${((j.campaigns ?? []) as unknown[]).length === 1 ? '' : 's'} feeding this list`);
       } catch (e) {
         if (!cancelled) { setCallListInfo(e instanceof Error ? e.message : 'Could not load the list'); }
       } finally {
@@ -5842,8 +5846,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.1 }}>
                       📞 {callListMode === 'tasks'
                         ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s call queue` : 'Your call queue')
-                        : callListMode === 'eng:all' ? 'Engaged with our campaigns'
-                        : callListMode.startsWith('eng:') ? (campaigns.find(c => c.id === callListMode.slice(4))?.name ?? 'Campaign')
+                        : callListMode === 'camp:all' ? 'All campaigns — last 90 days'
+                        : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign')
                         : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
                     </h2>
                     <p style={{ fontSize: 14, color: '#6b7280', margin: '4px 0 0' }}>
@@ -5854,13 +5858,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     {/* Where the calls come from: your tasks, or people to call out of the marketing */}
-                    <select value={callListMode} onChange={e => { setCallListMode(e.target.value); setCallPropView('all'); setCallSelectedId(null); setCallsDoneThisSession(0); }}
+                    <select value={callListMode} onChange={e => { setCallListMode(e.target.value); setCallPropView('opened'); setCallSelectedId(null); setCallsDoneThisSession(0); setCallProspectDoneIds(new Set()); }}
                       title="Choose who to call"
                       style={{ padding: '8px 12px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: `1px solid ${callListMode === 'tasks' ? '#e2e8f0' : '#c9922c'}`, background: callListMode === 'tasks' ? '#fff' : '#fffbf2', color: callListMode === 'tasks' ? '#374151' : '#92400e', maxWidth: 320, fontFamily: "'DM Sans',sans-serif" }}>
                       <option value="tasks">📋 My call tasks</option>
-                      <optgroup label="From our campaigns">
-                        <option value="eng:all">🔥 Everyone who engaged — not called yet</option>
-                        {campaigns.filter(c => (c.to_call_count ?? 0) > 0).map(c => <option key={c.id} value={`eng:${c.id}`}>{c.name} ({c.to_call_count})</option>)}
+                      <optgroup label="From our campaigns (same list as the Rent Roll prospects)">
+                        <option value="camp:all">📣 All campaigns — last 90 days</option>
+                        {campaigns.filter(c => (c.send_count ?? 0) > 0).map(c => <option key={c.id} value={`camp:${c.id}`}>{c.name} ({c.send_count} sent)</option>)}
                       </optgroup>
                       {callListings.length > 0 && (
                         <optgroup label="By property (prospects)">
@@ -5872,12 +5876,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 </div>
 
-                {/* property views: which of its prospects to work */}
-                {callListMode.startsWith('prop:') && (() => {
-                  const cnt = (v: string) => callListPeople.filter(p => p.view === v && !callProspectDoneIds.has(p.clientId)).length;
+                {/* views — identical to the Rent Roll tab: Opened / All emailed / Not emailed yet */}
+                {callListMode !== 'tasks' && (() => {
+                  const live = callListPeople.filter(p => !callProspectDoneIds.has(p.clientId));
+                  const opened = live.filter(p => p.view === 'opened').length;
+                  const emailed = live.filter(p => p.view !== 'cold').length;
+                  const cold = live.filter(p => p.view === 'cold').length;
+                  const noPhone = live.filter(p => !p.phone && (callPropView === 'opened' ? p.view === 'opened' : callPropView === 'cold' ? p.view === 'cold' : p.view !== 'cold')).length;
                   return (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                      {([['all', 'All callable', callListPeople.filter(p => !callProspectDoneIds.has(p.clientId)).length], ['opened', 'Opened our emails', cnt('opened')], ['emailed', 'Emailed, no open', cnt('emailed')], ['cold', 'Not emailed yet', cnt('cold')]] as [typeof callPropView, string, number][]).map(([k, label, n]) => {
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+                      {([['opened', 'Opened', opened], ['all', 'All emailed', emailed], ...(cold ? [['cold', 'Not emailed yet', cold]] : [])] as ['opened' | 'all' | 'cold', string, number][]).map(([k, label, n]) => {
                         const on = callPropView === k;
                         return (
                           <button key={k} onClick={() => { setCallPropView(k); setCallSelectedId(null); }}
@@ -5887,6 +5895,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </button>
                         );
                       })}
+                      {noPhone > 0 && <span style={{ fontSize: 12.5, color: '#9ca3af' }}>{noPhone} in this view {noPhone === 1 ? 'has' : 'have'} no phone on file</span>}
                     </div>
                   );
                 })()}
@@ -5930,7 +5939,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </div>
                 ) : (() => {
                   const c = clientFor(current);
-                  const phone = phoneFor(c);
+                  const phone = phoneFor(c) || (callListMeta.get(current.id)?.phone ?? '');
                   const dayDiff = (d: string) => Math.round((Date.parse(t0 + 'T12:00:00') - Date.parse(d.slice(0, 10) + 'T12:00:00')) / 86_400_000);
                   const overdueDays = current.due_date ? dayDiff(current.due_date) : 0;
                   const isOverdue = overdueDays > 0;
@@ -5974,7 +5983,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800,
                           background: od > 0 ? '#fee2e2' : '#f1f5f9', color: od > 0 ? '#dc2626' : '#475569' }}>{inits(tc)}</span>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameFor(tc)}</span>
+                          <span style={{ display: 'block', fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta ? (meta.business || meta.contactName || nameFor(tc)) : nameFor(tc)}</span>
                           <span style={{ display: 'block', fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {meta
                               ? `${HEAT_ICON[meta.heat]} ${meta.reason}${meta.lastCalled ? ` · called ${new Date(meta.lastCalled).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
@@ -6036,7 +6045,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
                             {c ? (
                               <button onClick={() => { setPage('contacts'); setActiveClient(c); }} title="Open contact" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Cormorant Garamond',serif", fontSize: isMobile ? 24 : 30, fontWeight: 700, color: '#111', textAlign: 'left', lineHeight: 1.15 }}>
-                                {nameFor(c)}
+                                {curMeta && curMeta.business ? `${curMeta.business}${curMeta.contactName && curMeta.contactName !== curMeta.business ? ` — ${curMeta.contactName}` : ''}` : nameFor(c)}
                               </button>
                             ) : (
                               <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111', lineHeight: 1.2 }}>{current.title ? current.title.replace(/^🏢\s*/, '') : nameFor(c)}</span>
@@ -6068,8 +6077,39 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                           </div>
 
+                          {/* Tenant snapshot — what the marketing has done with this person (same numbers as the Rent Roll row) */}
+                          {curMeta && (
+                            <div style={{ background: '#f8fafc', border: '1px solid #e5e9ef', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                                {curMeta.category && <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '2px 9px' }}>{curMeta.category}</span>}
+                                {curMeta.locations && <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '2px 9px' }}>🏬 {curMeta.locations}</span>}
+                                {(curMeta.unsubscribed || curMeta.dead) && <span style={{ fontSize: 11, fontWeight: 800, color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '2px 9px' }}>{curMeta.dead ? 'EMAIL BOUNCED' : 'UNSUBSCRIBED'} — phone is the way in</span>}
+                                {curMeta.notEmailed && <span style={{ fontSize: 11, fontWeight: 800, color: '#6b7280', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '2px 9px' }}>NOT EMAILED YET</span>}
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+                                {[
+                                  { k: 'Emails sent', v: String(curMeta.emailsSent) },
+                                  { k: 'Opened', v: `${curMeta.emailsOpened}${curMeta.emailsSent ? ` of ${curMeta.emailsSent}` : ''}` },
+                                  { k: 'Total opens', v: String(curMeta.opens || 0) },
+                                  { k: 'Clicks', v: String(curMeta.clicks || 0) },
+                                ].map(x => (
+                                  <div key={x.k} style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 10, padding: '8px 10px' }}>
+                                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af' }}>{x.k}</div>
+                                    <div style={{ fontSize: 17, fontWeight: 800, color: '#111', marginTop: 2 }}>{x.v}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 10, lineHeight: 1.5 }}>
+                                {curMeta.lastOpen && <>Last opened <b style={{ color: '#374151' }}>{fmtDay(curMeta.lastOpen)}</b>. </>}
+                                {curMeta.lastSent && <>Last emailed <b style={{ color: '#374151' }}>{fmtDay(curMeta.lastSent)}</b>. </>}
+                                {curMeta.campaignNames.length > 0 && <>Emailed in: {curMeta.campaignNames.slice(0, 3).join(' · ')}{curMeta.campaignNames.length > 3 ? ` +${curMeta.campaignNames.length - 3}` : ''}.</>}
+                              </div>
+                              <div style={{ fontSize: 11.5, color: '#b0b5bd', marginTop: 6 }}>Opens are approximate (Apple Mail pre-loads images); a call is the real signal.</div>
+                            </div>
+                          )}
+
                           {/* Who to ask for (from the contact research) */}
-                          {(curMeta?.askFor || askLine) && (
+                          {(askLine || curMeta?.askFor) && (
                             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#78350f', lineHeight: 1.45 }}>
                               <b style={{ letterSpacing: .5, fontSize: 11, textTransform: 'uppercase', color: '#b45309' }}>{curMeta?.askFor && !askLine ? 'Context' : 'Ask for'}</b><br />{askLine || curMeta?.askFor}
                             </div>
@@ -6079,7 +6119,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ fontSize: 15, fontWeight: 700, color: '#111', marginBottom: 2 }}>{c ? current.title : (current.notes ? 'Call' : '')}</div>
                           {current.notes && <div style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5, marginBottom: 6 }}>{current.notes}</div>}
                           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>
-                            <span>{curMeta ? `📣 ${callListMode.startsWith('prop:') ? 'Property prospect' : 'Campaign engagement'}` : `${current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due ${fmtDay(current.due_date)}`}</span>
+                            <span>{curMeta ? `📣 ${callListMode.startsWith('prop:') ? 'Property prospect' : 'Campaign prospect'}` : `${current.type === 'follow_up' ? '🔄 Follow-up' : '📞 Call'} · Due ${fmtDay(current.due_date)}`}</span>
                             <span>🕐 {c?.last_touched_at ? `Last touch ${fmtDay(c.last_touched_at)}` : 'No prior contact'}</span>
                             {deal && (
                               <button onClick={() => { setPage('deals'); openDeal(deal); }} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#c9922c', fontWeight: 600, fontSize: 12 }}>

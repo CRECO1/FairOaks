@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { tenantNoticeIds } from '@/lib/campaign-engagement';
 
 // Email Prospects for a property: everyone the property's campaigns have emailed
 // (campaign projects carry listing_id), with opens / clicks per person and an open
@@ -6,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 // Resend webhook's email_tracking_events, so it keeps itself current as campaigns send.
 
 // PostgREST caps a response at 1000 rows; page through anything that can grow.
+const pageAll = <T,>(q: (from: number, to: number) => PromiseLike<{ data: T[] | null }>) => all<T>(q);
 async function all<T>(q: (from: number, to: number) => PromiseLike<{ data: T[] | null }>): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += 1000) {
@@ -55,7 +57,43 @@ export async function campaignsForListing(db: SupabaseClient, listingId: string)
 
 export async function listingProspects(db: SupabaseClient, listingId: string) {
   const campaigns = await campaignsForListing(db, listingId);
+  const { data: listing } = await db.from('crm_listings').select('name, business_unit').eq('id', listingId).maybeSingle();
+  return buildProspects(db, campaigns, listing ?? null);
+}
+
+/**
+ * The same prospect rows for one campaign, or — campaignId 'all' — every email campaign in the
+ * workspace that sent in the last 90 days (tenant notices excluded). Same fields, same open/click
+ * math, same ask-for lines as the property view, so the Call Queue and the Rent Roll agree.
+ */
+export async function campaignProspects(db: SupabaseClient, unit: string, campaignId: string) {
+  let camps: { id: string; name: string; status: string; created_at: string }[] = [];
+  if (campaignId === 'all') {
+    const { data } = await db.from('crm_campaigns').select('id, name, status, created_at').eq('business_unit', unit).eq('type', 'email').limit(500);
+    const all = (data ?? []) as typeof camps;
+    const since = new Date(Date.now() - 90 * 86400_000).toISOString();
+    const recent = new Set<string>();
+    for (const ids of chunks(all.map(c => c.id), 80)) {
+      const rows = await pageAll<{ campaign_id: string }>((a, b) => db.from('crm_campaign_sends').select('campaign_id')
+        .in('campaign_id', ids).eq('status', 'sent').gte('sent_at', since).range(a, b));
+      for (const r of rows) recent.add(r.campaign_id);
+    }
+    const notices = await tenantNoticeIds(db, [...recent]);
+    camps = all.filter(c => recent.has(c.id) && !notices.has(c.id));
+  } else {
+    const { data } = await db.from('crm_campaigns').select('id, name, status, created_at').eq('id', campaignId).eq('business_unit', unit).maybeSingle();
+    if (data) camps = [data as (typeof camps)[number]];
+  }
+  return buildProspects(db, camps, null);
+}
+
+async function buildProspects(
+  db: SupabaseClient,
+  campaigns: { id: string; name: string; status: string; created_at: string }[],
+  listing: { name: string; business_unit: string } | null,
+) {
   const campIds = campaigns.map(c => c.id);
+  const nameById = new Map(campaigns.map(c => [c.id, c.name]));
   if (!campIds.length) return { campaigns: [], prospects: [] };
 
   const sends = await all<Send>((a, b) => db.from('crm_campaign_sends')
@@ -108,7 +146,6 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
   // so they say nothing about the business — keep only tags that actually segment it.
   const tagCount = new Map<string, number>();
   for (const id of people.keys()) for (const t of clients.get(id)?.tags ?? []) if (cats.has(t)) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
-  const { data: listing } = await db.from('crm_listings').select('name, business_unit').eq('id', listingId).maybeSingle();
   const own = String(listing?.name ?? '').toLowerCase().split(/\s+[—–-]\s+/)[0].trim();   // "Elkhorn Point"
   const umbrella = new Set([...tagCount].filter(([t, n]) => n > people.size * 0.4 || (own && t.toLowerCase().startsWith(own))).map(([t]) => t));
 
@@ -124,6 +161,7 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
       category: tags.filter(t => cats.has(t) && !umbrella.has(t)).join(', '),
       ...askFor(c?.notes ?? null),
       emailsSent: p.sends, emailsOpened: p.openedEmails, opens: p.opens,
+      campaignNames: [...p.campaigns].map(id => nameById.get(id) ?? '').filter(Boolean),
       firstOpen: p.firstOpen, lastOpen: p.lastOpen, lastSent: p.lastSent,
       clicks: p.clicks, lastClick: p.lastClick,
       unsubscribed: !!c?.unsubscribed_at, dead: tags.includes('Dead Email'),
@@ -137,7 +175,7 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
   // (e.g. "523 Seventh St") so we never match on something generic.
   const word = own.split(/\s+/)[0] ?? '';
   const cold: typeof emailedRows = [];
-  if (/^[a-z]{5,}$/.test(word)) {
+  if (listing && /^[a-z]{5,}$/.test(word)) {
     const extra = await all<Client>((a, b) => db.from('crm_clients')
       .select('id, first_name, last_name, business_name, email, phone, cell_phone, tags, unsubscribed_at, notes')
       .eq('business_unit', listing?.business_unit ?? 'commercial').ilike('lead_source', `%${word}%`).order('id').range(a, b));
@@ -152,7 +190,7 @@ export async function listingProspects(db: SupabaseClient, listingId: string) {
         phone: c.phone || c.cell_phone || '',
         category: tags.filter(t => cats.has(t) && !umbrella.has(t)).join(', '),
         ...askFor(c.notes ?? null),
-        emailsSent: 0, emailsOpened: 0, opens: 0, firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null,
+        emailsSent: 0, emailsOpened: 0, opens: 0, campaignNames: [] as string[], firstOpen: null, lastOpen: null, lastSent: null, clicks: 0, lastClick: null,
         unsubscribed: !!c.unsubscribed_at, dead: tags.includes('Dead Email'),
         notEmailed: true,
       });
