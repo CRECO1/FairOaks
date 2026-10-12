@@ -2332,7 +2332,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/crm/tasks/assign-calls', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-        body: JSON.stringify({ assigned_to: to, due_date: due, business_unit: businessUnit, items }),
+        body: JSON.stringify({ assigned_to: to, due_date: due, business_unit: businessUnit, items, set_owner: callListMode === 'leads:web' }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { showToast(j.error ?? 'Could not assign the calls'); return; }
@@ -2541,10 +2541,50 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { cancelled = true; };
   }, [page, tasksSubTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // New leads — website forms, lead magnets, tour requests and inbound-call leads saved as contacts: anyone tagged "New Lead"
+  // in the last 30 days, newest first. Same list machinery as the marketing lists, so they can be worked or assigned.
+  const newLeadContacts = useMemo(() => {
+    const cutoff = Date.now() - 30 * 86_400_000;
+    return clients.filter(c => (c.tags ?? []).includes('New Lead') && !(c.tags ?? []).some(t => /^recruiting/i.test(t)) && Date.parse(c.created_at) >= cutoff);
+  }, [clients]);
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || callListMode !== 'leads:web') return;
+    let cancelled = false;
+    setCallListLoading(true); setCallSelectedId(null);
+    (async () => {
+      const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
+      const people: CallListPerson[] = newLeadContacts.map(c => {
+        const biz = (c.business_name ?? '').trim();
+        return {
+          clientId: c.id, reason: `New lead · ${c.lead_source || 'Website'} · ${ago(c.created_at)}`, heat: 'hot', view: 'opened', lastCalled: null,
+          askFor: ((c.notes ?? '').split('\n')[0] ?? '').slice(0, 220), rank: -Date.parse(c.created_at),
+          business: /^(none|n\/a|na|-)$/i.test(biz) ? '' : biz, contactName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
+          email: c.email ?? '', phone: c.cell_phone || c.phone || '', category: (c.asset_types ?? []).join(', '), locations: '',
+          emailsSent: 0, emailsOpened: 0, opens: 0, clicks: 0, lastOpen: null, lastSent: null, campaignNames: [],
+          unsubscribed: !!c.unsubscribed_at, dead: false, notEmailed: false, type: c.type,
+        };
+      });
+      // Who already got a call: show the date and put the uncalled first.
+      const ids = people.map(p => p.clientId);
+      const lastCalled = new Map<string, string>();
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data } = await supabase.from('crm_client_activities').select('client_id, created_at').eq('type', 'call').in('client_id', ids.slice(i, i + 150));
+        for (const a of data ?? []) { const prev = lastCalled.get(a.client_id as string); if (!prev || (a.created_at as string) > prev) lastCalled.set(a.client_id as string, a.created_at as string); }
+      }
+      for (const p of people) p.lastCalled = lastCalled.get(p.clientId) ?? null;
+      people.sort((a, b) => Number(!a.phone) - Number(!b.phone) || Number(!!a.lastCalled) - Number(!!b.lastCalled) || a.rank - b.rank);
+      if (cancelled) return;
+      setCallListPeople(people);
+      setCallListInfo(`${people.filter(p => !p.phone).length} without a phone number are hidden here — email them from the contact`);
+      setCallListLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab, callListMode, callListNonce, newLeadContacts]);
+
   // People to call out of the marketing. One source of truth: /api/crm/listing-prospects — the same rows (sends,
   // opens, clicks, ask-for, category) the property's Rent Roll "Email Prospects" tab shows, for a property or a campaign.
   useEffect(() => {
-    if (page !== 'tasks' || tasksSubTab !== 'calls' || callListMode === 'tasks') return;
+    if (page !== 'tasks' || tasksSubTab !== 'calls' || callListMode === 'tasks' || callListMode === 'leads:web') return;
     let cancelled = false;
     setCallListLoading(true); setCallListPeople([]); setCallListInfo(''); setCallSelectedId(null);
     const headers: Record<string, string> = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
@@ -6077,7 +6117,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 25, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>📞 {queue.length === 0 ? 'All caught up' : `${queue.length} to call`}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {callListMode === 'tasks' ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s calls` : 'My calls')
-                          : callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
+                          : callListMode === 'leads:web' ? 'New leads' : callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
                         {callSegment !== 'all' ? ` · ${SEGMENT_LABEL[callSegment]}` : ''}{doneCt > 0 ? ` · ${doneCt} done` : ''}
                       </div>
                     </div>
@@ -6095,6 +6135,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.1 }}>
                       📞 {callListMode === 'tasks'
                         ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s call queue` : 'Your call queue')
+                        : callListMode === 'leads:web' ? 'New leads — last 30 days'
                         : callListMode === 'camp:all' ? 'All campaigns — last 90 days'
                         : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign')
                         : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
@@ -6112,6 +6153,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       style={{ padding: '8px 12px', borderRadius: 8, fontSize: 13.5, fontWeight: 600, border: `1px solid ${callListMode === 'tasks' ? '#e2e8f0' : '#c9922c'}`, background: callListMode === 'tasks' ? '#fff' : '#fffbf2', color: callListMode === 'tasks' ? '#374151' : '#92400e', maxWidth: 320, fontFamily: "'DM Sans',sans-serif" }}>
                       <option value="tasks">📋 My call tasks &amp; call-backs</option>
                       <option value="callbacks">📞 Call-backs waiting ({callbackTasks.length})</option>
+                      <option value="leads:web">🌐 New leads — website &amp; inbound ({newLeadContacts.length})</option>
                       <optgroup label="From our campaigns (same list as the Rent Roll prospects)">
                         <option value="camp:all">📣 All campaigns — last 90 days</option>
                         {campaigns.filter(c => (c.send_count ?? 0) > 0 && !(c as unknown as { is_tenant_notice?: boolean }).is_tenant_notice && !/^\[TEST\]/i.test(c.name)).map(c => <option key={c.id} value={`camp:${c.id}`}>{c.name} ({c.send_count} sent)</option>)}
@@ -6144,7 +6186,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* views — identical to the Rent Roll tab: Opened / All emailed / Not emailed yet */}
-                {callListMode !== 'tasks' && (() => {
+                {callListMode !== 'tasks' && callListMode !== 'leads:web' && (() => {
                   const live = callListPeople.filter(p => !callProspectDoneIds.has(p.clientId));
                   const opened = live.filter(p => p.view === 'opened').length;
                   const emailed = live.filter(p => p.view !== 'cold').length;
@@ -6168,7 +6210,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 })()}
                 {/* Hand this list to someone: tick people (or take the whole view) → open call tasks in their queue */}
                 {isAdmin && callListMode !== 'tasks' && queue.length > 0 && (() => {
-                  const label = callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property');
+                  const label = callListMode === 'leads:web' ? 'New leads (website & inbound)' : callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property');
                   const n = callPicked.size ? queue.filter(t => callPicked.has(t.client_id)).length : queue.length;
                   const agents = profiles.filter(p => p.role === 'agent' || p.role === 'admin' || p.role === 'super_admin');
                   // Last person you handed a list to; otherwise Brian (who the lists are normally for), otherwise the first other agent.
@@ -6498,6 +6540,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </div>
                               ) : <div style={{ fontSize: 13.5, color: '#9f1239' }}>No message left — just the missed call.</div>}
                               {!cbm.contact_id && <div style={{ fontSize: 12, color: '#9f1239', marginTop: 6 }}>Not in your contacts yet — save them from the Calling Log after the call.</div>}
+                              {isAdmin && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: '#9f1239' }}>Assign this call-back to</span>
+                                  <select value={cbm.follow_up_assignee ?? ''}
+                                    onChange={async e => {
+                                      const to = e.target.value || null;
+                                      const res = await fetch(`/api/crm/calls?id=${cbm.id}`, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+                                        body: JSON.stringify({ follow_up_assignee: to }),
+                                      });
+                                      if (res.ok) {
+                                        const nm = to ? (profiles.find(p => p.id === to)?.first_name ?? 'them') : null;
+                                        showToast(to ? (to === profile?.id ? 'Assigned to you ✓' : `Assigned to ${nm} ✓ — it moves to their queue`) : 'Unassigned — anyone can pick it up');
+                                        setCallSelectedId(null);
+                                        loadCallbacks();
+                                      } else showToast('Could not assign it');
+                                    }}
+                                    style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #fecdd3', fontSize: 13, fontWeight: 600, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
+                                    <option value="">Anyone (unassigned)</option>
+                                    {profiles.filter(p => p.role === 'agent' || p.role === 'admin' || p.role === 'super_admin').map(p => <option key={p.id} value={p.id}>{p.id === profile?.id ? 'Me' : `${p.first_name} ${p.last_name ?? ''}`.trim()}</option>)}
+                                  </select>
+                                </div>
+                              )}
                             </div>
                           )}
 

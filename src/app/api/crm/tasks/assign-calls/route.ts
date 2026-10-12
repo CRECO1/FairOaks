@@ -12,7 +12,7 @@ const MAX_ITEMS = 300;
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
-  const body = await req.json().catch(() => null) as { assigned_to?: string; due_date?: string; business_unit?: string; items?: { client_id?: string; title?: string; description?: string; priority?: string }[] } | null;
+  const body = await req.json().catch(() => null) as { assigned_to?: string; due_date?: string; business_unit?: string; set_owner?: boolean; items?: { client_id?: string; title?: string; description?: string; priority?: string }[] } | null;
   if (!body || !Array.isArray(body.items) || body.items.length === 0) return NextResponse.json({ error: 'items required' }, { status: 400 });
   if (body.items.length > MAX_ITEMS) return NextResponse.json({ error: `Assign at most ${MAX_ITEMS} at a time` }, { status: 400 });
 
@@ -63,7 +63,14 @@ export async function POST(req: NextRequest) {
     const { error } = await db.from('crm_tasks').insert(rows);
     if (error) return dbError('api/crm/tasks/assign-calls', error);
   }
+  // New leads: assigning the call also makes them the contact's owner (the lead-SLA clock and the alerts follow the owner).
+  let owned = 0;
+  if (body.set_owner && admin && valid.size) {
+    const { data, error } = await db.from('crm_clients').update({ agent_id: assignee }).in('id', [...valid]).eq('business_unit', unit).select('id');
+    if (!error) owned = data?.length ?? 0;
+  }
   return NextResponse.json({
+    owned,
     created: rows.length, skipped_existing: skippedExisting, skipped_invalid: skippedInvalid,
     assignee_name: `${who.first_name ?? ''} ${who.last_name ?? ''}`.trim() || 'agent',
   });
