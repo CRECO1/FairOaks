@@ -2309,7 +2309,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   async function assignCallList(queueItems: CRMTask[], sourceLabel: string) {
     if (callAssigning) return;
     const chosen = callPicked.size ? queueItems.filter(t => callPicked.has(t.client_id)) : queueItems;
-    const to = callAssignTo || profiles.find(p => p.id !== profile?.id)?.id || '';
+    let remembered = '';
+    try { remembered = localStorage.getItem('crm:callAssignTo') ?? ''; } catch { /* storage blocked */ }
+    const to = callAssignTo || (profiles.some(p => p.id === remembered) ? remembered : '')
+      || profiles.find(p => p.id !== profile?.id && /^brian$/i.test(p.first_name ?? ''))?.id || profiles.find(p => p.id !== profile?.id)?.id || '';
     if (!to || chosen.length === 0) return;
     setCallAssigning(true);
     try {
@@ -6168,12 +6171,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const label = callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property');
                   const n = callPicked.size ? queue.filter(t => callPicked.has(t.client_id)).length : queue.length;
                   const agents = profiles.filter(p => p.role === 'agent' || p.role === 'admin' || p.role === 'super_admin');
-                  const to = callAssignTo || agents.find(p => p.id !== profile?.id)?.id || profile?.id || '';
+                  // Last person you handed a list to; otherwise Brian (who the lists are normally for), otherwise the first other agent.
+                  let remembered = '';
+                  try { remembered = localStorage.getItem('crm:callAssignTo') ?? ''; } catch { /* storage blocked */ }
+                  const to = callAssignTo || (agents.some(p => p.id === remembered) ? remembered : '') || agents.find(p => p.id !== profile?.id && /^brian$/i.test(p.first_name ?? ''))?.id || agents.find(p => p.id !== profile?.id)?.id || profile?.id || '';
                   return (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', background: '#fffbf2', border: '1px solid #f0e2c4', borderRadius: 10, padding: '8px 12px', marginBottom: 10 }}>
                       <span style={{ fontSize: 13, fontWeight: 800, color: '#92400e' }}>📤 Assign calls</span>
                       <span style={{ fontSize: 12.5, color: '#78716c' }}>{callPicked.size ? `${callPicked.size} ticked` : `all ${queue.length} in this view`}</span>
-                      <select value={to} onChange={e => setCallAssignTo(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
+                      <select value={to} onChange={e => { setCallAssignTo(e.target.value); try { localStorage.setItem('crm:callAssignTo', e.target.value); } catch { /* ignore */ } }} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, fontWeight: 600, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
                         {agents.map(p => <option key={p.id} value={p.id}>{p.id === profile?.id ? 'Me' : `${p.first_name} ${p.last_name ?? ''}`.trim()}</option>)}
                       </select>
                       <select value={callAssignDue} onChange={e => setCallAssignDue(e.target.value as 'today' | 'tomorrow' | '3d')} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, background: '#fff', fontFamily: "'DM Sans',sans-serif" }}>
