@@ -20,9 +20,15 @@ import type { FetchedEmail, GmailImage } from './types';
 
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 
-/** The gmail_connections row where broker blasts land (zack@crecotx.com). */
-export const BROKER_CONNECTION_ID = '5598535c-c6d0-4638-bf45-45bff13ae4cf';
+/**
+ * Broker blasts land in zack@crecotx.com's inbox. The connection is looked up by USER, never by
+ * row id: disconnecting Gmail deletes the gmail_connections row and reconnecting inserts a new
+ * one, so the id this code used to pin (5598535c…) stopped existing when Zack reconnected on
+ * 2026-10-08 and the whole ingest has failed ("connection not found") ever since.
+ */
 export const BROKER_USER_ID = '47668cbf-25c1-480a-baa0-af65fb663dd7';
+/** @deprecated stale pinned row id — kept only so older imports keep compiling. Not used for lookup. */
+export const BROKER_CONNECTION_ID = '5598535c-c6d0-4638-bf45-45bff13ae4cf';
 
 const GMAIL_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -48,7 +54,7 @@ export interface GmailConnectionRow {
 /** Fetch the broker gmail_connections row directly via service-role REST (no user session). */
 export async function fetchBrokerConnection(): Promise<GmailConnectionRow | null> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${BROKER_CONNECTION_ID}&limit=1`,
+    `${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${BROKER_USER_ID}&order=created_at.desc&limit=1`,
     { headers: serviceHeaders() },
   );
   if (!res.ok) return null;
@@ -96,7 +102,7 @@ export async function resolveConnection(conn: GmailConnectionRow): Promise<strin
 /** Convenience: fetch + resolve the broker connection in one call. */
 export async function getBrokerAccessToken(): Promise<string> {
   const conn = await fetchBrokerConnection();
-  if (!conn) throw new Error(`Broker Gmail connection ${BROKER_CONNECTION_ID} not found`);
+  if (!conn) throw new Error(`Broker Gmail connection for user ${BROKER_USER_ID} not found — reconnect zack@crecotx.com in the CRM sidebar`);
   const token = await resolveConnection(conn);
   if (!token) throw new Error('Failed to resolve/refresh the broker Gmail access token');
   return token;

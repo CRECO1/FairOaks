@@ -1,3 +1,4 @@
+import { BROKER_USER_ID } from './broker-ingest/gmail';
 import { adminClient } from '@/lib/supabase-admin';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -53,7 +54,9 @@ export async function checkIntegrationHealth(): Promise<IntegrationHealth> {
   const lastRunAt: string | null = beat?.updated_at ?? null;
   const expected = lastExpectedRun();
 
-  const { data: gmail } = await supabase.from('gmail_connections').select('gmail_email').limit(1);
+  // The BROKER inbox specifically — "any Gmail connection exists" stayed green for four days while
+  // the broker one was missing (Brian's connection satisfied it).
+  const { data: gmail } = await supabase.from('gmail_connections').select('gmail_email').eq('user_id', BROKER_USER_ID).limit(1);
   const gmailConnected = !!(gmail && gmail.length);
 
   // A 1-token probe — Claude powers extraction, so an exhausted balance is exactly what
@@ -76,7 +79,10 @@ export async function checkIntegrationHealth(): Promise<IntegrationHealth> {
     status = 'error'; note = 'Anthropic API credits are exhausted — listing extraction is failing. Add credits at console.anthropic.com → Billing.';
   } else if (anthropic.status === 'error') {
     status = 'warn'; note = `Anthropic API error: ${anthropic.detail ?? 'unknown'}`;
-  } else if (lastRunAt && new Date(lastRunAt) < expected) {
+  } else if (!lastRunAt) {
+    // Never recorded a successful run — a silent failure used to look identical to "not started yet".
+    status = 'warn'; note = 'The Property DB crawl has no successful run on record — check /api/cron/broker-ingest in the Vercel logs.';
+  } else if (new Date(lastRunAt) < expected) {
     const ago = Math.round((Date.now() - new Date(lastRunAt).getTime()) / 3.6e6);
     status = 'warn'; note = `The Property DB crawl missed its scheduled run (expected by ${expected.toISOString().slice(0, 16).replace('T', ' ')} UTC; last successful run ${ago}h ago). Schedule: ${CRAWL_SCHEDULE_TEXT}.`;
   }
