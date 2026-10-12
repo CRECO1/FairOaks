@@ -176,10 +176,10 @@ export async function gmailReplies(db: SupabaseClient, userId: string, admin: bo
   }
   const recipientIds = [...new Set(sendRows.map(s => s.client_id).filter(Boolean))];
   const emailOf = new Map<string, string>();
-  for (let i = 0; i < recipientIds.length; i += 150) {
-    const { data } = await db.from('crm_clients').select('id, email').in('id', recipientIds.slice(i, i + 150));
-    for (const c of data ?? []) if (c.email) emailOf.set(c.id, String(c.email).trim().toLowerCase());
-  }
+  // Chunks are independent reads — run them together (they were awaited one at a time).
+  const emailChunks = await Promise.all(Array.from({ length: Math.ceil(recipientIds.length / 150) }, (_, i) =>
+    db.from('crm_clients').select('id, email').in('id', recipientIds.slice(i * 150, i * 150 + 150))));
+  for (const { data } of emailChunks) for (const c of data ?? []) if (c.email) emailOf.set(c.id, String(c.email).trim().toLowerCase());
 
   const inboxOwners = new Set<string>([ctx.userId]);
   for (const c of inScope) {

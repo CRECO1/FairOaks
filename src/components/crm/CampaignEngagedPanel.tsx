@@ -53,19 +53,34 @@ export default function CampaignEngagedPanel({ campaign, authToken, isMobile, on
 
   useEffect(() => {
     let live = true;
-    (async () => {
+    // The list shows who has been contacted, so it must end up exact (`fresh=1` recomputes).
+    // That takes a second or two, so the server's stored copy is asked for at the same time
+    // and painted the moment it lands; the exact one then replaces it.
+    const base = campaign ? `?campaign_id=${campaign.id}` : '';
+    const headers: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+    let exact = false;
+    let failures = 0;
+    const apply = (j: { people?: Person[]; replies_checked?: string[] }, isExact: boolean) => {
+      if (!live || (exact && !isExact)) return; // never let the cached copy overwrite the exact one
+      if (isExact) exact = true;
+      setPeople(j.people ?? []);
+      setChecked(j.replies_checked ?? []);
+      if (isExact && !(j.people ?? []).some((p: Person) => !p.contacted_at)) setView('all');
+    };
+    const load = async (url: string, isExact: boolean) => {
       try {
-        // fresh=1: the call list shows who has been contacted, so it skips the 2-minute response cache
-        const q = campaign ? `?campaign_id=${campaign.id}&fresh=1` : '?fresh=1';
-        const r = await fetch(`/api/campaigns/engagement${q}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+        const r = await fetch(url, { headers });
         const j = await r.json().catch(() => ({}));
-        if (!live) return;
-        if (!r.ok) { setError(j.error ?? 'Could not load engagement'); return; }
-        setPeople(j.people ?? []);
-        setChecked(j.replies_checked ?? []);
-        if (!(j.people ?? []).some((p: Person) => !p.contacted_at)) setView('all');
-      } catch { if (live) setError('Network error — try again'); }
-    })();
+        if (!r.ok) throw new Error(j.error ?? 'Could not load engagement');
+        apply(j, isExact);
+      } catch (e) {
+        failures++;
+        // Only an error if neither copy arrived.
+        if (live && failures >= 2 && !exact) setError((e as Error).message || 'Network error — try again');
+      }
+    };
+    void load(`/api/campaigns/engagement${base}`, false);
+    void load(`/api/campaigns/engagement${base ? `${base}&` : '?'}fresh=1`, true);
     return () => { live = false; };
   }, [campaign, authToken]);
 
