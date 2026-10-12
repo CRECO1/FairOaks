@@ -106,6 +106,10 @@
     {
       "path": "/api/cron/known-contact-summary",
       "schedule": "5 13,14 * * 1-6"
+    },
+    {
+      "path": "/api/cron/reply-scan",
+      "schedule": "*/15 11-23,0-3 * * *"
     }
   ]
 }

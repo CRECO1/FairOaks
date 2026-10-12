@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
-import { fetchAll, type Signal } from '@/lib/campaign-engagement';
+import { fetchAll, tenantNoticeIds, type Signal } from '@/lib/campaign-engagement';
 
 // Gmail replies to campaign emails — shared by the Marketing call list
 // (/api/campaigns/engagement) and a property's Leasing Activity leads.
@@ -39,18 +40,27 @@ async function findMail(token: string, emails: string[], after: string, directio
   const found = new Map<string, { at: string; subject: string }[]>();
   const afterDay = new Date(after).toISOString().slice(0, 10).replace(/-/g, '/');
   const H = { Authorization: `Bearer ${token}` };
-  const ids: string[] = [];
-  for (let i = 0; i < emails.length; i += 30) {
-    const who = emails.slice(i, i + 30).join(' OR ');
-    // Inbound: only "Re:"-style subjects — a reply is matched on subject below anyway,
-    // and tenants' everyday email would otherwise crowd real replies out of the cap.
-    const q = direction === 'in' ? `from:(${who}) subject:(re OR fw OR fwd) after:${afterDay} -in:sent -in:chats` : `to:(${who}) after:${afterDay} in:sent`;
-    const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=100`, { headers: H, signal: AbortSignal.timeout(8000) }).catch(() => null);
-    if (!r?.ok) continue;
-    const j = await r.json().catch(() => ({}));
-    ids.push(...((j.messages ?? []) as { id: string }[]).map(m => m.id));
-    if (ids.length >= 300) break;
-  }
+  // One search per 30 addresses, three at a time (they used to run one after another —
+  // ~40 round trips in a row on a big workspace). Order is kept so the 300 cap below
+  // trims the same tail it always did.
+  const searchIds: string[][] = [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < emails.length; i += 30) chunks.push(emails.slice(i, i + 30));
+  let nextChunk = 0;
+  await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, async () => {
+    while (nextChunk < chunks.length) {
+      const idx = nextChunk++;
+      const who = chunks[idx].join(' OR ');
+      // Inbound: only "Re:"-style subjects — a reply is matched on subject below anyway,
+      // and tenants' everyday email would otherwise crowd real replies out of the cap.
+      const q = direction === 'in' ? `from:(${who}) subject:(re OR fw OR fwd) after:${afterDay} -in:sent -in:chats` : `to:(${who}) after:${afterDay} in:sent`;
+      const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=100`, { headers: H, signal: AbortSignal.timeout(8000) }).catch(() => null);
+      if (!r?.ok) continue;
+      const j = await r.json().catch(() => ({}));
+      searchIds[idx] = ((j.messages ?? []) as { id: string }[]).map(m => m.id);
+    }
+  }));
+  const ids = searchIds.flat().filter(Boolean);
   // Batches of 20: firing them all at once trips Gmail's per-user rate limit (429),
   // which silently dropped messages and made the reply count change run to run.
   const get = (id: string) => fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject`, { headers: H, signal: AbortSignal.timeout(8000) });
@@ -81,11 +91,75 @@ async function findMail(token: string, emails: string[], after: string, directio
   return found;
 }
 
+// ── Scan cache ───────────────────────────────────────────────────────────────
+// A Gmail scan (≈40 searches + up to 300 message reads per inbox and direction) takes
+// 6–11s. Results are kept in crm_gmail_scan_cache so ANY instance can answer instantly:
+// fresh (<3 min) → used as is; <30 min → used while a refresh runs in the background;
+// older / none → scanned inline. A cached scan is usable for the addresses it covers, plus
+// any address first emailed AFTER the scan (it cannot have replied before we wrote to it).
+const SCAN_FRESH_MS = 3 * 60_000;
+const SCAN_STALE_MS = 30 * 60_000;
+const SCAN_KEEP = 8;
+type Found = Map<string, { at: string; subject: string }[]>;
+type ScanRow = { id: string; after_at: string; addrs: string[]; found: [string, { at: string; subject: string }[]][]; computed_at: string };
+const scanInflight = new Map<string, Promise<Found | null>>();
+
+async function scanMailCached(
+  db: SupabaseClient, conn: Conn, direction: 'in' | 'out', addrs: string[], afterIso: string,
+  firstSendTo: Map<string, string>, force: boolean,
+): Promise<Found | null> {
+  const key = `${conn.id}|${direction}`;
+  let rows: ScanRow[] = [];
+  try {
+    const { data } = await db.from('crm_gmail_scan_cache')
+      .select('id, after_at, addrs, found, computed_at').eq('conn_id', conn.id).eq('direction', direction)
+      .order('computed_at', { ascending: false }).limit(SCAN_KEEP);
+    rows = (data ?? []) as ScanRow[];
+  } catch { /* no cache → scan inline */ }
+
+  const covers = (r: ScanRow) => {
+    if (r.after_at > afterIso) return false;
+    const have = new Set(r.addrs);
+    return addrs.every(a => have.has(a) || (firstSendTo.get(a) ?? '') >= r.computed_at);
+  };
+  const hit = rows.find(covers);
+  const fromRow = (r: ScanRow): Found => new Map(r.found);
+  const age = hit ? Date.now() - new Date(hit.computed_at).getTime() : Infinity;
+
+  const recompute = async (): Promise<Found | null> => {
+    const token = await gmailToken(conn);
+    if (!token) return null;
+    const found = await findMail(token, addrs, afterIso, direction);
+    try {
+      await db.from('crm_gmail_scan_cache').insert({ conn_id: conn.id, direction, after_at: afterIso, addrs, found: [...found] });
+      const { data: old } = await db.from('crm_gmail_scan_cache').select('id').eq('conn_id', conn.id).eq('direction', direction)
+        .order('computed_at', { ascending: false }).range(SCAN_KEEP, SCAN_KEEP + 50);
+      if (old?.length) await db.from('crm_gmail_scan_cache').delete().in('id', old.map(o => o.id));
+    } catch { /* the cache is an optimisation */ }
+    return found;
+  };
+  // Share one scan between simultaneous callers on this instance.
+  const run = () => {
+    let p = scanInflight.get(key);
+    if (!p) { p = recompute().finally(() => scanInflight.delete(key)); scanInflight.set(key, p); }
+    return p;
+  };
+
+  if (!force && hit && age < SCAN_FRESH_MS) return fromRow(hit);
+  if (!force && hit && age < SCAN_STALE_MS) {
+    const bg = () => { void run().catch(() => {}); };
+    try { after(bg); } catch { bg(); }
+    return fromRow(hit);
+  }
+  const fresh = await run().catch(() => null);
+  return fresh ?? (hit ? fromRow(hit) : null); // token / Gmail failure: stale beats nothing
+}
+
 export interface ReplyScan { extra: Map<string, Signal[]>; emailedAt: Map<string, string>; repliesChecked: string[] }
 
 /** extra: `${campaign_id}|${client_id}` → reply signals. emailedAt: client → our latest Gmail to them. */
 export async function gmailReplies(db: SupabaseClient, userId: string, admin: boolean,
-  inScope: { id: string; sender_agent_id?: string | null }[]): Promise<ReplyScan> {
+  inScope: { id: string; sender_agent_id?: string | null }[], opts: { force?: boolean } = {}): Promise<ReplyScan> {
   const ctx = { userId };
   // ── Gmail replies ─────────────────────────────────────────────────────────
   const sendRows: { campaign_id: string; client_id: string; sent_at: string; subject: string | null }[] = [];
@@ -117,18 +191,27 @@ export async function gmailReplies(db: SupabaseClient, userId: string, admin: bo
   const emailedAt = new Map<string, string>(); // client → our latest email to them
   const clientByEmail = new Map([...emailOf].map(([id, em]) => [em, id]));
   const repliesChecked: string[] = [];
-  const earliestSend = sendRows[0]?.sent_at;
+  const earliestSend = sendRows.reduce<string | undefined>((m, s) => (!m || s.sent_at < m ? s.sent_at : m), undefined);
   const addrs = [...new Set(emailOf.values())].filter(e => /^[^\s@()"]+@[^\s@()"]+$/.test(e));
+  // When we first emailed each address (via a campaign): a cached scan from before that
+  // moment cannot be missing a reply from them.
+  const firstSendTo = new Map<string, string>();
+  for (const sr of sendRows) {
+    const em = emailOf.get(sr.client_id);
+    if (em && (!firstSendTo.has(em) || sr.sent_at < firstSendTo.get(em)!)) firstSendTo.set(em, sr.sent_at);
+  }
   if (earliestSend && addrs.length) {
     const inbox = new Map<string, { at: string; subject: string }[]>();
     await Promise.all(((conns ?? []) as Conn[]).map(async conn => {
-      const token = await gmailToken(conn);
-      if (!token) return;
+      const [got, sent] = await Promise.all([
+        scanMailCached(db, conn, 'in', addrs, earliestSend, firstSendTo, !!opts.force),
+        scanMailCached(db, conn, 'out', addrs, earliestSend, firstSendTo, !!opts.force),
+      ]);
+      if (!got && !sent) return; // no token and nothing cached
       repliesChecked.push(conn.email ?? 'Gmail');
-      const [got, sent] = await Promise.all([findMail(token, addrs, earliestSend, 'in'), findMail(token, addrs, earliestSend, 'out')]);
-      for (const [addr, msgs] of got) (inbox.get(addr) ?? inbox.set(addr, []).get(addr)!).push(...msgs);
+      for (const [addr, msgs] of got ?? []) (inbox.get(addr) ?? inbox.set(addr, []).get(addr)!).push(...msgs);
       // Our own emails to them count as contact (a Gmail reply never becomes a CRM activity).
-      for (const [addr, msgs] of sent) {
+      for (const [addr, msgs] of sent ?? []) {
         const client = clientByEmail.get(addr);
         const last = msgs.map(m => m.at).sort().pop();
         if (client && last && (!emailedAt.has(client) || last > emailedAt.get(client)!)) emailedAt.set(client, last);
@@ -150,4 +233,24 @@ export async function gmailReplies(db: SupabaseClient, userId: string, admin: bo
   }
 
   return { extra, emailedAt, repliesChecked };
+}
+
+/**
+ * The workspace-wide scope the Marketing call list scans: email campaigns of a business unit
+ * that sent in the last 90 days, minus tenant notices. Mirrors the no-campaign_id path of
+ * /api/campaigns/engagement so the reply-scan cron warms exactly what that page asks for.
+ */
+export async function workspaceReplyScope(db: SupabaseClient, unit: string): Promise<{ id: string; sender_agent_id: string | null }[]> {
+  const { data: campaigns } = await db.from('crm_campaigns').select('id, sender_agent_id').eq('type', 'email').eq('business_unit', unit).limit(500);
+  const visible = (campaigns ?? []) as { id: string; sender_agent_id: string | null }[];
+  const since = new Date(Date.now() - 90 * 86400_000).toISOString();
+  const recent = new Set<string>();
+  for (let i = 0; i < visible.length; i += 80) {
+    const rows = await fetchAll<{ campaign_id: string }>((a, b) => db.from('crm_campaign_sends').select('campaign_id')
+      .in('campaign_id', visible.slice(i, i + 80).map(c => c.id)).eq('status', 'sent').gte('sent_at', since).range(a, b));
+    for (const r of rows) recent.add(r.campaign_id);
+  }
+  const inScope = visible.filter(c => recent.has(c.id));
+  const notices = await tenantNoticeIds(db, inScope.map(c => c.id));
+  return inScope.filter(c => !notices.has(c.id));
 }
