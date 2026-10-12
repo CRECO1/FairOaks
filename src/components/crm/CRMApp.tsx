@@ -6167,13 +6167,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {phone && (
-                                <a href={`sms:${phone}`} style={{ flex: isMobile ? 1 : undefined, textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#374151', textDecoration: 'none', minHeight: isMobile ? 48 : undefined, padding: isMobile ? '13px 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff' }}>💬 Text</a>
+                                <a href={`sms:${phone}`} style={{ flex: isMobile ? 1 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#374151', textDecoration: 'none', height: isMobile ? 52 : undefined, padding: isMobile ? '0 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff' }}>💬 Text</a>
                               )}
                               {c?.email && (
-                                <a href={`mailto:${c.email}`} style={{ flex: isMobile ? 1 : undefined, textAlign: 'center', fontSize: isMobile ? 14 : 13.5, fontWeight: isMobile ? 700 : 400, color: isMobile ? '#374151' : '#4b5563', textDecoration: 'none', minHeight: isMobile ? 48 : undefined, padding: isMobile ? '13px 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', overflowWrap: 'anywhere' }}>{isMobile ? '✉ Email' : `✉ ${c.email}`}</a>
+                                <a href={`mailto:${c.email}`} style={{ flex: isMobile ? 1 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: isMobile ? 14 : 13.5, fontWeight: isMobile ? 700 : 400, color: isMobile ? '#374151' : '#4b5563', textDecoration: 'none', height: isMobile ? 52 : undefined, padding: isMobile ? '0 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', overflowWrap: 'anywhere' }}>{isMobile ? '✉ Email' : `✉ ${c.email}`}</a>
                               )}
                               {isMobile && c && (
-                                <button onClick={() => { setPage('contacts'); setActiveClient(c); }} style={{ flex: 1, fontSize: 14, fontWeight: 700, color: '#374151', minHeight: 48, padding: '13px 12px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>👤 Contact</button>
+                                <button onClick={() => { setPage('contacts'); setActiveClient(c); }} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#374151', height: 52, padding: '0 12px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>👤 Contact</button>
                               )}
                             </div>
                           </div>
