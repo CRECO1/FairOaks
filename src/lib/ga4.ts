@@ -150,7 +150,21 @@ function emptyReport(status: GaStatus, start: string, end: string): GaReport {
  * outage or a revoked key degrades to the not-connected state so the rest of
  * the dashboard keeps working.
  */
-export async function fetchGaReport(days = 30): Promise<GaReport> {
+// Lead Attribution polls /api/crm/lead-attribution every 15s, and each poll made 6 GA4 Data API
+// reports (~1,400/hour per open tab, against a per-property quota) for numbers that move on a
+// scale of hours. Cache per range: 10 min when connected, 30s when not (so reconnecting shows up fast).
+const gaCache = new Map<number, { at: number; ttl: number; value: Promise<GaReport> }>();
+export function fetchGaReport(days = 30): Promise<GaReport> {
+  const hit = gaCache.get(days);
+  if (hit && Date.now() - hit.at < hit.ttl) return hit.value;
+  const value = fetchGaReportUncached(days);
+  const entry = { at: Date.now(), ttl: 30_000, value };
+  gaCache.set(days, entry);
+  value.then(r => { entry.ttl = r.status?.connected ? 10 * 60_000 : 30_000; }, () => { gaCache.delete(days); });
+  return value;
+}
+
+async function fetchGaReportUncached(days = 30): Promise<GaReport> {
   const start = `${days}daysAgo`;
   const end = 'today';
   const status = await gaStatus();

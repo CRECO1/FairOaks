@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { trackEvent } from '@/lib/attribution';
 import { contactClickWasManual } from '@/lib/analytics';
 
@@ -28,8 +29,14 @@ import { contactClickWasManual } from '@/lib/analytics';
  * bubble phase, sees the claim, and stays quiet. It therefore covers only the
  * ~80 links that had no tracking at all — which is the whole point of it.
  */
+// The CRM and the e-sign manager are internal: an agent tapping a client's phone number there is not
+// a marketing conversion, and it queued a request to /api/track/event + a site_events row per click.
+const INTERNAL_PREFIXES = ['/crm', '/manage'];
+
 export default function ContactLinkTracker() {
+  const pathname = usePathname();
   useEffect(() => {
+    if (INTERNAL_PREFIXES.some(p => (pathname ?? '').startsWith(p))) return;
     function onClick(e: MouseEvent) {
       try {
         const el = (e.target as HTMLElement | null)?.closest?.('a[href^="tel:"], a[href^="mailto:"]');
@@ -53,7 +60,7 @@ export default function ContactLinkTracker() {
     // claim is visible here.
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
-  }, []);
+  }, [pathname]);
 
   return null;
 }

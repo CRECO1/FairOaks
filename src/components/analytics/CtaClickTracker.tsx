@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { trackCTA, ctaClickWasManual } from '@/lib/analytics';
 
 /**
@@ -49,8 +50,14 @@ function destinationFor(pathname: string): string | null {
   return best;
 }
 
+// The CRM and the e-sign manager are internal: an agent tapping a client's phone number there is not
+// a marketing conversion, and it queued a request to /api/track/event + a site_events row per click.
+const INTERNAL_PREFIXES = ['/crm', '/manage'];
+
 export default function CtaClickTracker() {
+  const pathname = usePathname();
   useEffect(() => {
+    if (INTERNAL_PREFIXES.some(p => (pathname ?? '').startsWith(p))) return;
     function onClick(e: MouseEvent) {
       try {
         const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
@@ -77,7 +84,7 @@ export default function CtaClickTracker() {
     }
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
-  }, []);
+  }, [pathname]);
 
   return null;
 }

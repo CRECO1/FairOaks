@@ -6,7 +6,7 @@ import { parseRich, drawRichText, drawnWidth, hasMarkup, type RichFonts } from '
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
-import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-doc';
+import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-spec';
 
 // The Letters of Intent are dynamic term-list docs, not fixed overlay forms —
 // whichever surface opens one (deals page, property, Transaction Docs library),

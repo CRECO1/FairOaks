@@ -32,13 +32,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!(await assertOwnsResource('crm_campaigns', id, ctx))) return notFound('Campaign not found');
   const supabase = adminClient();
-  const { data, error } = await supabase
-    .from('crm_campaign_enrollments')
-    .select(`*, client:crm_clients(id, first_name, last_name, business_name, email, phone, cell_phone, type, unsubscribed_at)`)
-    .eq('campaign_id', id)
-    .order('enrolled_at', { ascending: false });
-  if (error) return dbError('api/campaigns/[id]/enrollments', error);
-  return NextResponse.json({ enrollments: data ?? [] });
+  // Paged: PostgREST stops at 1,000 rows, so a campaign with more enrollments than that showed only
+  // its first 1,000 (the Enrolled tab, the preview and the pre-send checks all read this list).
+  // `id` breaks created-at ties so pages can't overlap or skip.
+  const rows: unknown[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('crm_campaign_enrollments')
+      .select(`*, client:crm_clients(id, first_name, last_name, business_name, email, phone, cell_phone, type, unsubscribed_at)`)
+      .eq('campaign_id', id)
+      .order('enrolled_at', { ascending: false }).order('id')
+      .range(from, from + 999);
+    if (error) return dbError('api/campaigns/[id]/enrollments', error);
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return NextResponse.json({ enrollments: rows });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

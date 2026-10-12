@@ -52,7 +52,7 @@ const LoiBuilder = dynamic(() => import('@/components/crm/LoiBuilder'), { ssr: f
 const FormAutofillReview = dynamic(() => import('@/components/crm/FormAutofillReview'), { ssr: false });
 import SiteActivity from '@/components/crm/SiteActivity';
 import { fetchAll } from '@/lib/campaign-engagement';
-import { specForForm, type LoiSpec } from '@/lib/loi-doc';
+import { specForForm, type LoiSpec } from '@/lib/loi-spec';
 import { deriveSide } from '@/lib/representation-side';
 
 // Use the SSR browser client so the session is stored in cookies,

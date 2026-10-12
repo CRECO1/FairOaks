@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiBuilder from '@/components/crm/LoiBuilder';
-import { specForForm, type LoiSpec } from '@/lib/loi-doc';
+import { specForForm, type LoiSpec } from '@/lib/loi-spec';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';

@@ -20,7 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   specForForm, type LoiSpec, type LoiPurchaseData, type LoiTermRow,
-} from '@/lib/loi-doc';
+} from '@/lib/loi-spec';
 import { deriveSide, mayFillPartyFields, isProposingSide, type SideResult, type Side } from '@/lib/representation-side';
 
 /** Where a value came from. Drives the review screen and nothing else. */

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRememberedSelection } from '@/lib/view-memory';
-import { specForForm } from '@/lib/loi-doc';
+import { specForForm } from '@/lib/loi-spec';
 import dynamic from 'next/dynamic';
 
 const TransactionDocEditor = dynamic(() => import('./TransactionDocEditor'), { ssr: false });
