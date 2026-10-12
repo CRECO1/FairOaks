@@ -6044,9 +6044,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {(!isMobile || callFiltersOpen) && (<>
                 {/* ── Header ── */}
-                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                   <div>
-                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.1 }}>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: '#111', margin: 0, lineHeight: 1.1 }}>
                       📞 {callListMode === 'tasks'
                         ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s call queue` : 'Your call queue')
                         : callListMode === 'camp:all' ? 'All campaigns — last 90 days'
@@ -6081,7 +6081,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
 
                 {/* who — tenants vs brokers & agents (applies to every source) */}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
                   {([['all', 'Everyone', callSegmentCounts.tenant + callSegmentCounts.broker + callSegmentCounts.other],
                     ...SEGMENTS.map(sg => [sg, SEGMENT_LABEL[sg], callSegmentCounts[sg]] as ['all' | Segment, string, number])] as ['all' | Segment, string, number][])
                     .filter(([k, , n]) => k === 'all' || k === callSegment || n > 0)
@@ -6089,7 +6089,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       const on = callSegment === k;
                       return (
                         <button key={k} onClick={() => { setCallSegment(k); setCallSelectedId(null); }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                             border: `1px solid ${on ? '#c9922c' : '#e2e5e9'}`, background: on ? '#fdf3dd' : '#fff', color: on ? '#92400e' : '#4b5563' }}>
                           {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : '#eef1f4', color: on ? '#111' : '#6b7280' }}>{n}</span>
                         </button>
@@ -6105,12 +6105,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const cold = live.filter(p => p.view === 'cold').length;
                   const noPhone = live.filter(p => !p.phone && (callPropView === 'opened' ? p.view === 'opened' : callPropView === 'cold' ? p.view === 'cold' : p.view !== 'cold')).length;
                   return (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
                       {([['opened', 'Opened', opened], ['all', 'All emailed', emailed], ...(cold ? [['cold', 'Not emailed yet', cold]] : [])] as ['opened' | 'all' | 'cold', string, number][]).map(([k, label, n]) => {
                         const on = callPropView === k;
                         return (
                           <button key={k} onClick={() => { setCallPropView(k); setCallSelectedId(null); }}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                               border: `1px solid ${on ? '#141414' : '#e2e5e9'}`, background: on ? '#141414' : '#fff', color: on ? '#fff' : '#4b5563' }}>
                             {label}<span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : '#eef1f4', color: on ? '#111' : '#6b7280' }}>{n}</span>
                           </button>
@@ -6124,13 +6124,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 {/* ── Whose queue (admins) ── each agent with their own open count, so the load is visible at a glance */}
                 {isAdmin && callListMode === 'tasks' && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                     {[{ id: '', name: 'My calls', n: callAgentCounts[profile?.id ?? ''] ?? allTasks.filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0).length },
                       ...profiles.filter(p => p.id !== profile?.id).map(p => ({ id: p.id, name: p.first_name || p.email, n: callAgentCounts[p.id] ?? 0 }))].map(a => {
                       const on = callViewAgentId === a.id;
                       return (
                         <button key={a.id || 'me'} onClick={() => { setCallViewAgentId(a.id); setCallsDoneThisSession(0); setCallSelectedId(null); if (a.id) loadCallView(a.id); else loadAllTasks(); }}
-                          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                             border: `1px solid ${on ? '#141414' : '#e2e5e9'}`, background: on ? '#141414' : '#fff', color: on ? '#fff' : '#4b5563' }}>
                           {a.name}
                           <span style={{ fontSize: 11.5, fontWeight: 700, padding: '0 7px', borderRadius: 10, background: on ? '#c9922c' : a.n > 0 ? '#fee2e2' : '#eef1f4', color: on ? '#111' : a.n > 0 ? '#dc2626' : '#6b7280' }}>{a.n}</span>
@@ -6143,7 +6143,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </>)}
 
                 {/* progress */}
-                <div style={{ height: 5, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ height: 6, borderRadius: 6, background: '#f0f0f0', overflow: 'hidden', marginBottom: 18 }}>
                   <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg,#c9922c,#e0b458)', transition: 'width .3s ease' }} />
                 </div>
 
@@ -6161,35 +6161,34 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     { k: 'Calls need a note', v: st?.wrapup ?? '—', tone: (st?.wrapup ?? 0) > 0 ? '#a06a12' : undefined },
                   ];
                   return (
-                    <div style={{ marginBottom: 10 }}>
+                    <div style={{ marginBottom: 16 }}>
                       <button onClick={() => { const n = !callPanelOpen; setCallPanelOpen(n); try { localStorage.setItem('crm:callPanelOpen', n ? '1' : '0'); } catch { /* ignore */ } }}
                         style={{ background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontSize: 11, fontWeight: 800, letterSpacing: 1.3, textTransform: 'uppercase', color: '#6b7280', fontFamily: "'DM Sans',sans-serif" }}>
                         📊 Today {callPanelOpen ? '▾' : '▸'}
                       </button>
                       {callPanelOpen && (
-                        // One slim strip (it was two rows of tall cards that pushed the call itself below the fold):
-                        // the day's numbers across, each agent's day at the end.
-                        <div style={{ display: 'flex', flexWrap: 'wrap', marginTop: 6, background: '#fff', border: '1px solid #e8eaed', borderRadius: 12, overflow: 'hidden' }}>
-                          {cards.map(c => (
-                            <div key={c.k} style={{ flex: '1 1 118px', minWidth: 0, padding: '7px 14px', borderRight: '1px solid #f0f1f3' }}>
-                              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.k}</div>
-                              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: c.tone ?? '#111', lineHeight: 1.15 }}>{c.v}</span>
-                                {c.sub && <span style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.sub}</span>}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)', gap: 14, marginTop: 8, alignItems: 'start' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
+                            {cards.map(c => (
+                              <div key={c.k} style={{ background: '#fff', border: '1px solid #e8eaed', borderLeft: '3px solid #c9922c', borderRadius: 10, padding: '10px 14px' }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af' }}>{c.k}</div>
+                                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, color: c.tone ?? '#111', lineHeight: 1.1, marginTop: 2 }}>{c.v}</div>
+                                {c.sub && <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{c.sub}</div>}
                               </div>
-                            </div>
-                          ))}
-                          <div style={{ flex: '2 1 300px', minWidth: 0, padding: '7px 14px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                            ))}
+                          </div>
+                          <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '8px 12px' }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4 }}>Agents</div>
                             {agents.map(a => {
                               const d = callPanel?.byAgent[a.id] ?? { calls: 0, talked: 0, voicemail: 0, none: 0 };
                               return (
-                                <div key={a.id} title={`${a.first_name} ${a.last_name ?? ''} — calls today · talked · not reached · left in queue`} style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, whiteSpace: 'nowrap' }}>
-                                  <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#141414', color: '#c9922c', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>{(a.first_name?.[0] ?? '') + (a.last_name?.[0] ?? '')}</span>
-                                  <b style={{ color: '#111' }}>{a.first_name}</b>
-                                  <span style={{ color: '#111', fontWeight: 800 }}>{d.calls}</span>
-                                  <span style={{ color: '#15803d', fontWeight: 700 }}>✓{d.talked}</span>
-                                  <span style={{ color: '#92400e', fontWeight: 700 }}>✕{d.voicemail + d.none}</span>
-                                  <span style={{ color: '#6b7280' }}>· {callAgentCounts[a.id] ?? 0} left</span>
+                                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '1px solid #f3f4f6' }}>
+                                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#141414', color: '#c9922c', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{(a.first_name?.[0] ?? '') + (a.last_name?.[0] ?? '')}</span>
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.first_name}</span>
+                                  <span title="Calls today" style={{ fontSize: 12.5, fontWeight: 800, color: '#111' }}>{d.calls}</span>
+                                  <span title="Talked to" style={{ fontSize: 12, color: '#15803d', fontWeight: 700 }}>✓{d.talked}</span>
+                                  <span title="Voicemail / no answer" style={{ fontSize: 12, color: '#92400e', fontWeight: 700 }}>✕{d.voicemail + d.none}</span>
+                                  <span title="Left in their queue" style={{ fontSize: 11.5, color: '#6b7280', minWidth: 52, textAlign: 'right' }}>{callAgentCounts[a.id] ?? 0} left</span>
                                 </div>
                               );
                             })}
