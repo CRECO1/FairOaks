@@ -19,7 +19,7 @@ import CopilotActivity from '@/components/crm/CopilotActivity';
 import CampaignEngagedPanel from '@/components/crm/CampaignEngagedPanel';
 import CampaignPreflight from '@/components/crm/CampaignPreflight';
 import CallTapPrompt from '@/components/crm/CallTapPrompt';
-import MentionTextarea, { parseMentionContactIds } from '@/components/crm/MentionTextarea';
+import MentionTextarea, { parseMentionContactIds, parseMentionIds } from '@/components/crm/MentionTextarea';
 
 // Heavy CRM sections are code-split so /crm no longer ships them all in one
 // bundle — each loads its own chunk the first time its tab or modal opens
@@ -2856,6 +2856,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       }
     }
     if (error) { console.error('Activity log error:', error.message); }
+    else {
+      const who = parseMentionIds(note, profiles);
+      if (who.length) {
+        const c = clients.find(x => x.id === clientId);
+        createMentionNotifications(who, `@${profile?.first_name} tagged you on a ${type} with ${c ? `${c.first_name} ${c.last_name}`.trim() : 'a contact'}: ${note.length > 90 ? note.slice(0, 90) + '…' : note}`, 'contact', clientId);
+      }
+    }
     // Always stamp last_touched_at on client regardless of activity insert outcome
     await supabase.from('crm_clients').update({ last_touched_at: now }).eq('id', clientId);
     setClients(prev => prev.map(c => c.id === clientId ? { ...c, last_touched_at: now } : c));
@@ -9610,6 +9617,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               isSuperAdmin={isSuperAdmin}
               businessUnit={businessUnit}
               agents={profiles}
+              onMention={(ids, call, note) => {
+                const who = call.caller_name || call.from_number || 'a call';
+                createMentionNotifications(ids, `@${profile?.first_name} tagged you on a call with ${who}: ${note.length > 90 ? note.slice(0, 90) + '…' : note}`, 'calls', call.id);
+              }}
               onOpenContact={async (contactId) => {
                 let c = clients.find(x => x.id === contactId);
                 if (!c) {

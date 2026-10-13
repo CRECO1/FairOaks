@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 
-interface Profile { id: string; first_name: string; last_name: string; role: string; }
+interface Profile { id: string; first_name: string; last_name: string; role?: string; }
 // A CRM contact (client). Tagging one is silent — it records who is involved in the
 // deal for the team; the contact is never notified.
 export interface MentionContact { id: string; first_name?: string; last_name?: string; business_name?: string; type?: string }
@@ -27,12 +27,41 @@ interface Props {
 }
 
 // Parse all @FirstName mentions from text → return matching profile IDs
+// Common short forms, so "@Zack" reaches Zachary, "@Mike" reaches Michael, etc.
+const NICKNAMES: Record<string, string[]> = {
+  zachary: ['zack', 'zach', 'zac'], michael: ['mike', 'mikey'], robert: ['rob', 'bob', 'bobby'],
+  william: ['will', 'bill', 'billy'], james: ['jim', 'jimmy'], john: ['johnny', 'jack'],
+  joseph: ['joe', 'joey'], thomas: ['tom', 'tommy'], christopher: ['chris'], matthew: ['matt'],
+  daniel: ['dan', 'danny'], anthony: ['tony'], richard: ['rick', 'rich', 'dick'], david: ['dave'],
+  jonathan: ['jon'], nicholas: ['nick'], benjamin: ['ben'], samuel: ['sam'], alexander: ['alex'],
+  andrew: ['andy', 'drew'], steven: ['steve'], stephen: ['steve'], timothy: ['tim'],
+  katherine: ['kate', 'katie', 'kathy'], elizabeth: ['liz', 'beth', 'lizzy'], jennifer: ['jen', 'jenny'],
+  jessica: ['jess'], rebecca: ['becky', 'becca'], patricia: ['pat', 'patty'], margaret: ['maggie', 'meg'],
+};
+// Does a typed @token refer to this first name? Exact, a prefix of the first name
+// (min 3 chars so "@Al" doesn't grab every Alan/Alex), or a known nickname.
+export function mentionMatchesName(token: string, firstName: string): boolean {
+  const t = token.toLowerCase(); const f = firstName.trim().toLowerCase();
+  if (!t || !f) return false;
+  if (t === f) return true;
+  if (t.length >= 3 && f.startsWith(t)) return true;
+  return (NICKNAMES[f] ?? []).includes(t);
+}
+
+// Parse all @mentions from text → return matching profile IDs. An exact first-name
+// match wins; only when a token has no exact match do prefixes/nicknames apply (and
+// only if that resolves to a single person, so a vague token never pings the wrong one).
 export function parseMentionIds(text: string, profiles: Profile[]): string[] {
   const hits = [...text.matchAll(/@(\w+)/g)].map(m => m[1].toLowerCase());
   if (!hits.length) return [];
-  return profiles
-    .filter(p => hits.includes(p.first_name.toLowerCase()))
-    .map(p => p.id);
+  const out = new Set<string>();
+  for (const h of new Set(hits)) {
+    const exact = profiles.filter(p => p.first_name?.trim().toLowerCase() === h);
+    if (exact.length) { exact.forEach(p => out.add(p.id)); continue; }
+    const loose = profiles.filter(p => mentionMatchesName(h, p.first_name ?? ''));
+    if (loose.length === 1) out.add(loose[0].id);
+  }
+  return [...out];
 }
 
 // The single word a contact is mentioned by — their first name, or the first word of
@@ -59,7 +88,8 @@ export default function MentionTextarea({ value, onChange, onMentionedIds, onMen
   const suggestions = search.length === 0
     ? profiles.slice(0, 6)
     : profiles.filter(p =>
-        `${p.first_name} ${p.last_name}`.toLowerCase().includes(search.toLowerCase())
+        `${p.first_name} ${p.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
+        mentionMatchesName(search, p.first_name ?? '')
       ).slice(0, 6);
   // Contacts only surface once there's something to match on, so the menu doesn't open
   // with hundreds of names.

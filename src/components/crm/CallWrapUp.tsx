@@ -3,6 +3,7 @@
 // belongs to (link an existing card or save the caller as a new one). Used inline
 // under a row in the Calling Log.
 import React, { useEffect, useState } from 'react';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 
 export const OUTCOMES = [
   { key: 'new_lead', label: 'New lead', bg: '#dcfce7', fg: '#166534' },
@@ -30,6 +31,10 @@ interface Props {
   showToast?: (m: string) => void;
   onSaved: (patch: Partial<WrapCall> & Record<string, unknown>) => void;
   onClose: () => void;
+  /** Teammates for the @ picker. Without it the note is plain text. */
+  profiles?: { id: string; first_name: string; last_name: string }[];
+  /** Ids of teammates @tagged in the note that was just saved — the parent notifies them. */
+  onMention?: (ids: string[], call: WrapCall, note: string) => void;
 }
 
 const mini: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '8px 12px', minHeight: 36, cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif" };
@@ -52,7 +57,7 @@ function guessName(cnam: string | null): { first: string; last: string; company:
   return { first: parts[0] ?? '', last: parts.slice(1).join(' '), company: '' };
 }
 
-export default function CallWrapUp({ call, authToken, businessUnit, showToast, onSaved, onClose }: Props) {
+export default function CallWrapUp({ call, authToken, businessUnit, showToast, onSaved, onClose, profiles, onMention }: Props) {
   const [outcome, setOutcome] = useState<string | null>(call.outcome ?? null);
   const [note, setNote] = useState(call.notes ?? '');
   const [mode, setMode] = useState<'new' | 'link'>('new');
@@ -105,6 +110,11 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast?.(j.error || 'Could not save the wrap-up'); return; }
+      if (profiles?.length && onMention) {
+        const before = new Set(parseMentionIds(call.notes ?? '', profiles));
+        const fresh = parseMentionIds(note, profiles).filter(id => !before.has(id));
+        if (fresh.length) onMention(fresh, call, note);
+      }
       onSaved({ ...j.call, contact, contact_id: contact?.id ?? null });
       showToast?.('Call wrapped up ✓');
       onClose();
@@ -123,7 +133,11 @@ export default function CallWrapUp({ call, authToken, businessUnit, showToast, o
       </div>
       <div>
         <span style={label}>Note</span>
-        <textarea value={note} onChange={e => setNote(e.target.value)} style={{ ...input, minHeight: 56 }} placeholder="What did they want? What happens next?" />
+        {profiles?.length ? (
+          <MentionTextarea value={note} onChange={setNote} profiles={profiles} style={{ ...input, minHeight: 56 }} placeholder="What did they want? What happens next? (@ to tag a teammate)" />
+        ) : (
+          <textarea value={note} onChange={e => setNote(e.target.value)} style={{ ...input, minHeight: 56 }} placeholder="What did they want? What happens next?" />
+        )}
       </div>
       {!noContact && (
         <div>

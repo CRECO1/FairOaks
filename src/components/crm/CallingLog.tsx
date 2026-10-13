@@ -5,6 +5,7 @@
 // follow-up queue: who still needs a call back, and what they wanted.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 import WrapUpQueue from '@/components/crm/WrapUpQueue';
 import { useRememberedState } from '@/lib/view-memory';
 
@@ -35,6 +36,8 @@ interface Thread { conversation_id: string; number: string | null; our_number: s
 interface Props {
   authToken?: string; showToast?: (m: string) => void; isAdmin?: boolean; isSuperAdmin?: boolean; businessUnit: string;
   onOpenContact?: (contactId: string) => void; agents?: Agent[];
+  /** Teammates @tagged in a call note — parent creates the notification. */
+  onMention?: (ids: string[], call: { id: string; caller_name?: string | null; from_number?: string | null }, note: string) => void;
 }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
@@ -110,7 +113,7 @@ function preset(kind: 'hour' | 'eod' | 'tmrw'): string {
   return d.toISOString();
 }
 
-export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [] }: Props) {
+export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin, businessUnit, onOpenContact, agents = [], onMention }: Props) {
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -389,6 +392,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           businessUnit={businessUnit}
           isMobile={typeof window !== 'undefined' && window.innerWidth < 768}
           showToast={showToast}
+          profiles={agents}
+          onMention={onMention}
           onSaved={(id, p) => setCalls(cs => cs.map(x => x.id === id ? { ...x, ...p, has_recording: x.has_recording } : x))}
           onClose={() => { setQueueOpen(false); load(); }}
         />
@@ -652,6 +657,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       authToken={authToken}
                       businessUnit={businessUnit}
                       showToast={showToast}
+                      profiles={agents}
+                      onMention={onMention}
                       onClose={() => setWrapFor(null)}
                       onSaved={p => {
                         setCalls(cs => cs.map(x => x.id === c.id ? { ...x, ...(p as Partial<CallRow>), has_recording: x.has_recording } : x));
@@ -677,8 +684,16 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       ) : c.transcript ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 13, color: '#374151' }}>{c.transcript}</pre> : null}
                       <div style={{ marginTop: 10 }}>
                         <span style={label}>Your notes</span>
-                        <textarea value={noteDraft[c.id] ?? c.notes ?? ''} onChange={e => setNoteDraft(n => ({ ...n, [c.id]: e.target.value }))} style={{ ...input, minHeight: 52 }} placeholder="What you did about it…" />
-                        {(noteDraft[c.id] ?? c.notes ?? '') !== (c.notes ?? '') && <button onClick={() => patch(c, { notes: noteDraft[c.id] ?? '' }, 'Note saved ✓')} disabled={busy === c.id} style={{ ...mini, marginTop: 6 }}>Save note</button>}
+                        <MentionTextarea value={noteDraft[c.id] ?? c.notes ?? ''} onChange={v => setNoteDraft(n => ({ ...n, [c.id]: v }))} profiles={agents} style={{ ...input, minHeight: 52 }} placeholder="What you did about it… (@ to tag a teammate)" />
+                        {(noteDraft[c.id] ?? c.notes ?? '') !== (c.notes ?? '') && <button onClick={async () => {
+                          const next = noteDraft[c.id] ?? '';
+                          await patch(c, { notes: next }, 'Note saved ✓');
+                          if (onMention) {
+                            const before = new Set(parseMentionIds(c.notes ?? '', agents));
+                            const fresh = parseMentionIds(next, agents).filter(id => !before.has(id));
+                            if (fresh.length) onMention(fresh, c, next);
+                          }
+                        }} disabled={busy === c.id} style={{ ...mini, marginTop: 6 }}>Save note</button>}
                       </div>
                     </div>
                   )}

@@ -15,6 +15,8 @@ interface Props {
   /** A call was wrapped up — update it in the parent's list. */
   onSaved: (id: string, patch: Partial<CallRow>) => void;
   onClose: () => void;
+  profiles?: { id: string; first_name: string; last_name: string }[];
+  onMention?: (ids: string[], call: { id: string }, note: string) => void;
 }
 
 const pretty = (n: string | null | undefined) => {
@@ -24,7 +26,7 @@ const pretty = (n: string | null | undefined) => {
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const dur = (s: number | null) => (s == null ? '' : s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`);
 
-export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, showToast, onSaved, onClose }: Props) {
+export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, showToast, onSaved, onClose, profiles, onMention }: Props) {
   // Snapshot the queue when it opens (newest first — fresher calls are easier to remember),
   // so saving a call doesn't reshuffle the one you're looking at.
   const ids = useMemo(() => calls.map(c => c.id), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -75,6 +77,8 @@ export default function WrapUpQueue({ calls, authToken, businessUnit, isMobile, 
               showToast={showToast}
               onSaved={p => { onSaved(call!.id, p as Partial<CallRow>); setDone(d => d + 1); }}
               onClose={advance}
+              profiles={profiles}
+              onMention={onMention}
             />
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8 }}>
               <button onClick={advance} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', fontFamily: 'inherit', minHeight: 36 }}>Skip this one</button>
