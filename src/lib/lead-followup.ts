@@ -138,3 +138,33 @@ export async function createLeadFollowUpTask(db: SupabaseClient<any, any, any>, 
     console.error('[lead-followup] unexpected failure (lead itself is unaffected):', e);
   }
 }
+
+/**
+ * Sources that are subscriptions (alerts, newsletter, market report, guides), never a call-back.
+ * Mirrors SUBSCRIPTION_SOURCE_PREFIXES in the crecotx.com site (lib/crm.ts) — keep the two in step.
+ */
+const SUBSCRIPTION_SOURCE = /(^|[^a-z])(property-alerts|alerts|newsletter|lead-magnet|market-report|guide|subscribe)([^a-z]|$)/i;
+
+/** A subscription-shaped payload: an explicit subscriber event, a declared subscription_type, or such a source. */
+export function isSubscriptionLead(opts: { source?: string | null; event?: unknown; subscriptionType?: unknown }): boolean {
+  return opts.event === 'subscriber.created'
+    || (typeof opts.subscriptionType === 'string' && opts.subscriptionType.trim() !== '')
+    || SUBSCRIPTION_SOURCE.test(opts.source ?? '');
+}
+
+/** How long a contact still counts as "created by this same submission". */
+export const SAME_SUBMISSION_WINDOW_MS = 10 * 60_000;
+
+/**
+ * crecotx.com hands every lead to the CRM through TWO writers (pushToCrm straight into
+ * crm_clients, and this webhook), and whichever lands first creates the contact. When the
+ * website wins, the webhook finds the contact "already existing" and used to skip the call
+ * task — it only appeared ~40 minutes later when the lead-SLA cron backstopped it. A contact
+ * created within the last few minutes is this same submission, so it gets its task now.
+ * (createLeadFollowUpTask still refuses a second task for anyone who already has one.)
+ */
+export function isSameSubmission(createdAt: string | null | undefined, now = Date.now()): boolean {
+  if (!createdAt) return false;
+  const t = Date.parse(createdAt);
+  return Number.isFinite(t) && now - t >= -60_000 && now - t < SAME_SUBMISSION_WINDOW_MS;
+}

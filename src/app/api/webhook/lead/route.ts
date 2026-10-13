@@ -26,7 +26,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createLeadFollowUpTask } from '@/lib/lead-followup';
+import { createLeadFollowUpTask, isSameSubmission, isSubscriptionLead } from '@/lib/lead-followup';
 import { maybeAutoEnrollLead } from '@/lib/lead-autoenroll';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
   const dedupeCol = email ? 'email' : 'phone';
   const dedupeVal = email ?? phone!;
   const { data: existing } = await supabase.from('crm_clients')
-    .select('id, tags, lead_source, channel, visitor_id').eq(dedupeCol, dedupeVal).maybeSingle();
+    .select('id, tags, lead_source, channel, visitor_id, created_at, agent_id').eq(dedupeCol, dedupeVal).maybeSingle();
 
   let clientId: string;
   let isNew = false;
@@ -217,6 +217,25 @@ export async function POST(req: NextRequest) {
     }).eq('id', existing.id);
     clientId = existing.id;
     if (visitor.visitor_id) await supabase.from('site_visitor_links').upsert({ visitor_id: visitor.visitor_id, client_id: clientId, source: 'lead_form' }, { onConflict: 'visitor_id' });
+
+    // The website's own writer (pushToCrm) usually creates the contact a moment before this
+    // webhook runs, so "existing" here often means "created by this same submission". Give it
+    // its call-back task now rather than waiting for the SLA cron to backstop it. Not for
+    // subscriptions, and createLeadFollowUpTask won't add a second task to anyone who has one.
+    if (isSameSubmission(existing.created_at) && !isSubscriptionLead({ source, event: body.event, subscriptionType: body.subscription_type })) {
+      await createLeadFollowUpTask(supabase, {
+        clientId,
+        name: `${first_name} ${last_name}`.trim(),
+        email, phone,
+        channel: (attrFields as Record<string, unknown>)?.channel as string | null ?? existing.channel ?? null,
+        leadSite: (attrFields as Record<string, unknown>)?.lead_site as string | null ?? null,
+        campaign: (attrFields as Record<string, unknown>)?.utm_campaign as string | null ?? null,
+        source,
+        businessUnit: unit,
+        detail: typeof message === 'string' && message ? `Message: ${message}` : null,
+        ownerId: (existing.agent_id as string | null) ?? adminId,
+      });
+    }
   } else {
     isNew = true;
     const unsubscribe_token = crypto.randomUUID();
