@@ -41,7 +41,8 @@ const NICKNAMES: Record<string, string[]> = {
 // Does a typed @token refer to this first name? Exact, a prefix of the first name
 // (min 3 chars so "@Al" doesn't grab every Alan/Alex), or a known nickname.
 export function mentionMatchesName(token: string, firstName: string): boolean {
-  const t = token.toLowerCase(); const f = firstName.trim().toLowerCase();
+  // first_name can carry a middle initial ("Zachary A.") — match on the first word.
+  const t = token.toLowerCase(); const f = firstName.trim().toLowerCase().split(/\s+/)[0] ?? '';
   if (!t || !f) return false;
   if (t === f) return true;
   if (t.length >= 3 && f.startsWith(t)) return true;
@@ -56,7 +57,7 @@ export function parseMentionIds(text: string, profiles: Profile[]): string[] {
   if (!hits.length) return [];
   const out = new Set<string>();
   for (const h of new Set(hits)) {
-    const exact = profiles.filter(p => p.first_name?.trim().toLowerCase() === h);
+    const exact = profiles.filter(p => (p.first_name ?? '').trim().toLowerCase().split(/\s+/)[0] === h);
     if (exact.length) { exact.forEach(p => out.add(p.id)); continue; }
     const loose = profiles.filter(p => mentionMatchesName(h, p.first_name ?? ''));
     if (loose.length === 1) out.add(loose[0].id);
