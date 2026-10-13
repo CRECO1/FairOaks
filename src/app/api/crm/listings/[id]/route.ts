@@ -14,6 +14,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of ALLOWED) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
+  // web_paths: extra URL fragments that count as this property's pages (property performance).
+  if ('web_paths' in body) {
+    const raw = Array.isArray(body.web_paths) ? body.web_paths : [];
+    const clean = [...new Set(raw.map((x: unknown) => String(x ?? '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '')).filter((x: string) => x.length >= 3 && x.length <= 120))].slice(0, 12);
+    update.web_paths = clean.length ? clean : null;
+  }
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_listings').update(update).eq('id', id).select().single();
   if (error) { console.error('[api] db error:', error); return NextResponse.json({ error: 'Internal server error.' }, { status: 500 }); }

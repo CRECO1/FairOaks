@@ -30,7 +30,7 @@ export function marketingLines(m: Marketing, calls: Calls) {
   };
 }
 
-export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing, calls: Calls) {
+export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing, calls: Calls, websiteLine?: string | null) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'CRECO';
   const ws = wb.addWorksheet(header.property.slice(0, 31), {
@@ -61,7 +61,9 @@ export async function toXlsx(header: { property: string; fund: string; agent: st
   for (let r = 2; r <= 5; r++) for (let c = 1; c <= 14; c++) ws.getCell(r, c).fill = fill(GREEN);
   // Marketing effort, two lines in the header band beside Fund / Agent / Date.
   const ml = marketingLines(m, calls);
-  ([['Email marketing', ml.email, 3], ['Calls', ml.calls, 4]] as const).forEach(([k, v, row]) => {
+  const lines: [string, string, number][] = [['Email marketing', ml.email, 3], ['Calls', ml.calls, 4]];
+  if (websiteLine) lines.push(['Website', websiteLine, 5]);
+  lines.forEach(([k, v, row]) => {
     ws.getCell(row, 4).value = k; ws.getCell(row, 4).font = font({ size: 9, bold: true, color: { argb: GOLD } });
     ws.mergeCells(row, 5, row, 14);
     ws.getCell(row, 5).value = v; ws.getCell(row, 5).font = font({ size: 9, color: { argb: WHITE } });

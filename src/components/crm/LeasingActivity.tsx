@@ -9,7 +9,7 @@ import { LEASING_STATUSES, REPORT_COLUMNS, type ReportLine, type ReportSection }
 // Download for the owner's exact .xlsx layout.
 
 interface Header { property: string; fund: string; agent: string }
-interface Mk { emailed: number; opened: number; sent: number; openRate: number; lines: { email: string; calls: string }; campaigns: { name: string; sent: number; opened: number; openRate: number }[] }
+interface Mk { emailed: number; opened: number; sent: number; openRate: number; lines: { email: string; calls: string; website?: string | null }; campaigns: { name: string; sent: number; opened: number; openRate: number }[] }
 
 const GREEN = '#1f3d2e', GOLD = '#b8972a', MINT = '#d6e4d6';
 const SOURCE_ICON: Record<string, string> = { 'Website inquiry': '🌐', 'Email reply': '✉️', 'Call / text': '📞', Deal: '💼' };
@@ -159,7 +159,8 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
         <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px', fontSize: 12.5, color: '#374151' }}>
           <span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Email marketing</span><span>{mk.lines.email}</span>
           <span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Calls</span><span>{mk.lines.calls}</span>
-          <span /><span style={{ color: '#9ca3af' }}>Both lines appear in the header of the downloaded sheet; per-campaign detail is on its second sheet.</span>
+          {mk.lines.website && (<><span style={{ fontSize: 11, letterSpacing: .7, textTransform: 'uppercase', color: GOLD, fontWeight: 800 }}>Website</span><span>{mk.lines.website}</span></>)}
+          <span /><span style={{ color: '#9ca3af' }}>These lines appear in the header of the downloaded sheet; per-campaign detail is on its second sheet.</span>
         </div>
       )}
     </div>

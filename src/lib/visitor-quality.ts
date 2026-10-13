@@ -60,12 +60,12 @@ export const isReal = (t: VisitorTier) => t === 'acted' || t === 'engaged' || t 
 export const isEngaged = (t: VisitorTier) => t === 'acted' || t === 'engaged';
 
 export interface PageviewRow {
-  site: string; session_id: string; visitor_id: string | null; created_at: string;
+  site: string; session_id: string; visitor_id: string | null; created_at: string; path?: string | null;
   referrer: string | null; utm_source?: string | null; utm_medium?: string | null;
   click_ids: Record<string, string> | null; city: string | null; env: Record<string, unknown> | null;
 }
 export interface EventRow {
-  site: string; visitor_id: string | null; type: string; value: number | null; created_at: string;
+  site: string; visitor_id: string | null; type: string; value: number | null; created_at: string; path?: string | null;
 }
 
 export interface VisitorSummary {

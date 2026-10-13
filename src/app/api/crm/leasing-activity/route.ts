@@ -6,6 +6,7 @@ import { buildLeasingActivity, type TenantRow } from '@/lib/leasing-activity';
 import { toXlsx, summarize, marketingLines } from '@/lib/leasing-activity-xlsx';
 import { listingProspects, callsForProspects } from '@/lib/listing-prospects';
 import { syncLeasingLeads } from '@/lib/leasing-leads';
+import { loadPropertyPerformance, websiteLine, type PerfListing } from '@/lib/property-performance';
 
 export const maxDuration = 60;
 
@@ -17,7 +18,7 @@ export const maxDuration = 60;
 async function load(listingId: string) {
   const db = adminClient();
   const [{ data: listing }, { data: rows }] = await Promise.all([
-    db.from('crm_listings').select('id, name, report_fund, listing_agent_id, co_agent_id').eq('id', listingId).single(),
+    db.from('crm_listings').select('id, name, address, web_paths, lead_keywords, report_fund, listing_agent_id, co_agent_id').eq('id', listingId).single(),
     db.from('crm_property_tenants').select('*').eq('listing_id', listingId),
   ]);
   const agentIds = [listing?.listing_agent_id, listing?.co_agent_id].filter(Boolean) as string[];
@@ -44,11 +45,16 @@ export async function GET(req: NextRequest) {
   const marketing = await listingProspects(db, listingId);
   const calls = await callsForProspects(db, marketing.prospects.map(p => p.client_id));
   const header = { property: listing.name as string, fund: (listing.report_fund as string | null) ?? '', agent };
+  // How the property's web pages did — a third line beside email and calls. Never blocks the report.
+  const web = await Promise.all([
+    loadPropertyPerformance(db, [listing as unknown as PerfListing], 30, false),
+    loadPropertyPerformance(db, [listing as unknown as PerfListing], 7, false),
+  ]).then(([m, w]) => websiteLine(m.get(listingId), w.get(listingId))).catch(() => null);
 
   if (req.nextUrl.searchParams.get('format') !== 'xlsx') {
-    return NextResponse.json({ header, sections, marketing: { ...summarize(marketing), calls, lines: marketingLines(marketing, calls) }, synced });
+    return NextResponse.json({ header, sections, marketing: { ...summarize(marketing), calls, lines: { ...marketingLines(marketing, calls), website: web } }, synced });
   }
-  const buf = await toXlsx(header, sections, marketing, calls);
+  const buf = await toXlsx(header, sections, marketing, calls, web);
   const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).replace(/-/g, '');
   const file = `${stamp} Leasing Activity Report - ${header.property}`.replace(/[^\w .-]+/g, '-') + '.xlsx';
   return new NextResponse(Buffer.from(buf), {

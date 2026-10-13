@@ -11,6 +11,7 @@ import { defaultEsignMessage } from '@/lib/esign-message';
 import RentRoll from '@/components/crm/RentRoll';
 import LeasingActivity from '@/components/crm/LeasingActivity';
 import EmailProspects from '@/components/crm/EmailProspects';
+import PropertyPerformance from '@/components/crm/PropertyPerformance';
 import CamReconciliation from '@/components/crm/CamReconciliation';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
 
@@ -198,7 +199,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // is active by the time it resolves — so A's docs/deals/envelopes can't paint
   // into B's panel.
   const activeListingIdRef = useRef<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'performance' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team'>('info');
   const [editForm, setEditForm] = useState<typeof BLANK_FORM>(BLANK_FORM);
   const [dirty, setDirty]       = useState(false);
 
@@ -293,13 +294,30 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
 
   useEffect(() => { loadListings(); }, [loadListings]);
 
+  // 30-day web performance per property, shown as a chip on each card. Best effort: no chip if it fails.
+  const [perfById, setPerfById] = useState<Record<string, { real: number; inquiries: number }>>({});
+  useEffect(() => {
+    if (!listings.length) return;
+    let live = true;
+    fetch(`/api/crm/property-performance?days=30&unit=${businessUnit}`, { headers: authHeaders })
+      .then(r => (r.ok ? r.json() : null))
+      .then(j => {
+        if (!live || !j?.rows) return;
+        const m: Record<string, { real: number; inquiries: number }> = {};
+        for (const r of j.rows as { listingId: string; real: number; inquiries: number }[]) m[r.listingId] = { real: r.real, inquiries: r.inquiries };
+        setPerfById(m);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [listings.length, businessUnit, authToken]); // eslint-disable-line
+
   // Reopen the property you had open before a refresh, on the same tab (lib/view-memory).
   useRememberedSelection(`${businessUnit}:listing`, active?.id, !loading && listings.length > 0, id => {
     const l = listings.find(x => x.id === id);
     if (!l) return;
     openListing(l);
     const tab = recallView(`${businessUnit}:listing-tab`);
-    const tabs = ['info', 'documents', 'rentroll', 'leasing', 'recon', 'prospects', 'deals', 'photos', 'contacts', 'team'] as const;
+    const tabs = ['info', 'performance', 'documents', 'rentroll', 'leasing', 'recon', 'prospects', 'deals', 'photos', 'contacts', 'team'] as const;
     const saved = tabs.find(t => t === tab);
     if (saved) setActiveTab(saved);
   });
@@ -1204,7 +1222,12 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                         <span style={{ fontSize: 11, color: '#6b7280' }}>{agent.first_name} {agent.last_name}</span>
                       </div>
                     ) : <span />}
-                    <span style={{ marginLeft: 'auto', fontSize: 11, color: '#9ca3af' }}>
+                    {(perfById[l.id]?.real || perfById[l.id]?.inquiries) ? (
+                      <span title="Real visitors and inquiries on this property's web pages, last 30 days" style={{ marginLeft: 'auto', fontSize: 11, color: '#9A6E18', fontWeight: 700, background: '#fdf6e3', borderRadius: 10, padding: '1px 8px' }}>
+                        👁 {perfById[l.id].real}{perfById[l.id].inquiries ? ` · ✉ ${perfById[l.id].inquiries}` : ''} <span style={{ fontWeight: 500, color: '#b9965a' }}>30d</span>
+                      </span>
+                    ) : null}
+                    <span style={{ marginLeft: perfById[l.id]?.real || perfById[l.id]?.inquiries ? 0 : 'auto', fontSize: 11, color: '#9ca3af' }}>
                       {new Date(l.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
@@ -1287,7 +1310,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               </div>
               {/* Tabs */}
               <div style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'documents', label: '📄 Documents' },
+                {[{ k: 'info', label: '📋 Details' }, { k: 'performance', label: '📈 Performance' }, { k: 'documents', label: '📄 Documents' },
                   ...(canSeeRentRoll ? [{ k: 'rentroll', label: '📊 Rent Roll' }] : []),
                   // The owner's weekly leasing activity report, kept live (LeasingActivity).
                   ...(canSeeRentRoll ? [{ k: 'leasing', label: '📋 Leasing Activity' }] : []),
@@ -1296,7 +1319,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   // Who this property's campaigns emailed + open rates + who to ask for (EmailProspects).
                   ...(canSeeRentRoll ? [{ k: 'prospects', label: '📬 Prospects' }] : []),
                   { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
+                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'performance' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
                     style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
                     {t.label}
                   </button>
@@ -1512,6 +1535,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   address={[active.address, active.city, active.state].filter(Boolean).join(', ')}
                   authToken={authToken} isAdmin={isAdmin} onToast={onToast}
                   onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })} />
+              )}
+
+              {activeTab === 'performance' && (
+                <PropertyPerformance listingId={active.id} authToken={authToken} isMobile={window.innerWidth < 768} onToast={onToast} />
               )}
 
               {activeTab === 'rentroll' && canSeeRentRoll && (
