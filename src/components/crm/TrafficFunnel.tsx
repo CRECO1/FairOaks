@@ -27,6 +27,7 @@ interface Payload {
 
 const card: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 };
 const title: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginBottom: 12 };
+const th: React.CSSProperties = { background: 'transparent', color: MUTE, fontWeight: 600, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', border: 'none', position: 'static' };
 const siteShort = (h: string) => h.replace('www.', '').replace('fairoaksrealtygroup.com', 'Fair Oaks').replace('crecotx.com', 'CRECO').replace('elkhornpoint.com', 'Elkhorn Point');
 
 const TIERS: { key: keyof Payload['quality']; label: string; color: string; hint: string }[] = [
@@ -101,19 +102,19 @@ export default function TrafficFunnel({ authToken, isMobile, site, days, humanOn
   const realPct = q.total ? Math.round((q.real / q.total) * 100) : 0;
 
   const Table = ({ heading, rows }: { heading: string; rows: Bucket[] }) => (
-    <div style={{ ...card, flex: 1, minWidth: isMobile ? 0 : 320, overflowX: 'auto' }}>
+    <div style={{ ...card, flex: '1 1 100%', minWidth: 0, overflowX: 'auto' }}>
       <div style={title}>{heading}</div>
       {rows.length === 0 ? <div style={{ fontSize: 12.5, color: FAINT }}>Nothing in this window yet.</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
           <thead>
             <tr style={{ color: MUTE, textAlign: 'right' }}>
-              <th style={{ textAlign: 'left', fontWeight: 600, padding: '0 6px 6px 0' }} />
-              <th style={{ fontWeight: 600, padding: '0 6px 6px' }}>Visitors</th>
-              {!isMobile && <th style={{ fontWeight: 600, padding: '0 6px 6px' }}>Engaged</th>}
-              <th style={{ fontWeight: 600, padding: '0 6px 6px' }}>Leads</th>
-              <th style={{ fontWeight: 600, padding: '0 6px 6px' }}>Deals</th>
-              <th style={{ fontWeight: 600, padding: '0 0 6px 6px' }}>Pipeline</th>
-              {!isMobile && <th style={{ fontWeight: 600, padding: '0 0 6px 6px' }}>Commission</th>}
+              <th style={{ ...th, textAlign: 'left', padding: '0 6px 6px 0' }} />
+              <th style={{ ...th, padding: '0 6px 6px' }}>Visitors</th>
+              {!isMobile && <th style={{ ...th, padding: '0 6px 6px' }}>Engaged</th>}
+              <th style={{ ...th, padding: '0 6px 6px' }}>Leads</th>
+              <th style={{ ...th, padding: '0 6px 6px' }}>Deals</th>
+              <th style={{ ...th, padding: '0 0 6px 6px' }}>Pipeline</th>
+              {!isMobile && <th style={{ ...th, padding: '0 0 6px 6px' }}>Commission</th>}
             </tr>
           </thead>
           <tbody>
