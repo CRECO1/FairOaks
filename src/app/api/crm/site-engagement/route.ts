@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, isSuperAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { fetchAll } from '@/lib/campaign-engagement';
+import { summarizeVisitors, isReal } from '@/lib/visitor-quality';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,8 @@ export async function GET(req: NextRequest) {
   const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get('days') ?? 7) || 7, 1), 90);
   const rawSite = req.nextUrl.searchParams.get('site');
   const site = rawSite && SITES.includes(rawSite) ? rawSite : null;
+  // human=1: leave out scanners, crawlers and unverifiable hits (see lib/visitor-quality.ts).
+  const humanOnly = req.nextUrl.searchParams.get('human') === '1';
   const since = new Date(Date.now() - days * 86400_000).toISOString();
   const db = adminClient();
 
@@ -35,16 +38,27 @@ export async function GET(req: NextRequest) {
     type PV = { site: string; session_id: string; visitor_id: string | null; visit_n: number | null; path: string; title: string | null; referrer: string | null; click_ids: Record<string, string> | null; device: string | null; browser: string | null; os: string | null; city: string | null; country: string | null; env: { lang?: string } | null; created_at: string };
     type EV = { site: string; visitor_id: string | null; type: string; label: string | null; value: number | null; path: string | null; meta: Record<string, unknown> | null; created_at: string };
 
-    const pvs = await fetchAll<PV>((a, b) => {
+    let pvs = await fetchAll<PV>((a, b) => {
       let q = db.from('site_pageviews').select('site, session_id, visitor_id, visit_n, path, title, referrer, click_ids, device, browser, os, city, country, env, created_at').gte('created_at', since).order('id', { ascending: false }).range(a, b);
       if (site) q = q.eq('site', site);
       return q;
     }).then(r => r.slice(0, 30000));
-    const evs = await fetchAll<EV>((a, b) => {
+    let evs = await fetchAll<EV>((a, b) => {
       let q = db.from('site_events').select('site, visitor_id, type, label, value, path, meta, created_at').gte('created_at', since).order('id', { ascending: false }).range(a, b);
       if (site) q = q.eq('site', site);
       return q;
     }).then(r => r.slice(0, 30000));
+
+    if (humanOnly) {
+      const tiers = summarizeVisitors(
+        pvs.map(p => ({ site: p.site, session_id: p.session_id, visitor_id: p.visitor_id, created_at: p.created_at, referrer: p.referrer, click_ids: (p.click_ids ?? null) as Record<string, string> | null, city: p.city, env: p.env as Record<string, unknown> | null })),
+        evs.map(e => ({ site: e.site, visitor_id: e.visitor_id, type: e.type, value: e.value, created_at: e.created_at })),
+        new Map(),
+      );
+      const real = new Set(tiers.filter(t => isReal(t.tier)).map(t => t.key));
+      pvs = pvs.filter(p => real.has(`${p.visitor_id ?? `s:${p.session_id}`}|${p.site}`));
+      evs = evs.filter(e => !!e.visitor_id && real.has(`${e.visitor_id}|${e.site}`));
+    }
 
     // ── visitors ─────────────────────────────────────────────────────────────────────────────
     const visitors = new Set<string>(), returning = new Set<string>(), sessions = new Set<string>();
@@ -127,7 +141,7 @@ export async function GET(req: NextRequest) {
     }));
 
     return NextResponse.json({
-      days, site,
+      days, site, humanOnly,
       totals: {
         visitors: visitors.size, returning: returning.size, sessions: sessions.size, pageviews: pvs.length, events: evs.length,
         avgLoadMs: loadN ? Math.round(loadSum / loadN) : null,

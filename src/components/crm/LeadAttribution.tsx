@@ -21,6 +21,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import SiteEngagement from '@/components/crm/SiteEngagement';
+import TrafficFunnel from '@/components/crm/TrafficFunnel';
 import SiteActivity from '@/components/crm/SiteActivity';
 
 const GOLD = '#c9922c';
@@ -286,6 +287,10 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   const [err, setErr] = useState<string | null>(null);
   const [days, setDays] = useState(7);
   const [site, setSite] = useState<string | null>(null);
+  // Count only real people in the traffic panels (scanners and crawlers out). Remembered per browser.
+  const [humanOnly, setHumanOnlyState] = useState(true);
+  useEffect(() => { try { if (localStorage.getItem('la:humanOnly') === '0') setHumanOnlyState(false); } catch { /* default on */ } }, []);
+  const setHumanOnly = (v: boolean) => { setHumanOnlyState(v); try { localStorage.setItem('la:humanOnly', v ? '1' : '0'); } catch { /* ignore */ } };
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);   // which recent-lead row is showing its visit path
   // ── Live: poll silently every 15s and flash the leads that arrived since the last poll ──
@@ -522,8 +527,11 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
         )}
       </div>
 
+      {/* ── Traffic → dollars: visitor quality + funnel to leads, deals and commission ── */}
+      <TrafficFunnel authToken={token} isMobile={isMobile} site={site} days={days} humanOnly={humanOnly} onHumanChange={setHumanOnly} />
+
       {/* ── Visitor engagement (first-party tracker v2) ── */}
-      <SiteEngagement authToken={token} isMobile={isMobile} site={site} days={days} />
+      <SiteEngagement authToken={token} isMobile={isMobile} site={site} days={days} humanOnly={humanOnly} />
 
       {/* ── Attribution health — demoted to a strip ── */}
       <div style={{ ...card, padding: '12px 18px' }}>

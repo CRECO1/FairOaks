@@ -57,20 +57,20 @@ function MiniBars({ rows, empty }: { rows: Row[]; empty: string }) {
   );
 }
 
-export default function SiteEngagement({ authToken, isMobile, site, days }: { authToken: string | null; isMobile: boolean; site: string | null; days: number }) {
+export default function SiteEngagement({ authToken, isMobile, site, days, humanOnly = false }: { authToken: string | null; isMobile: boolean; site: string | null; days: number; humanOnly?: boolean }) {
   const [d, setD] = useState<Payload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const window = Math.min(days, 90);
 
   useEffect(() => {
     let off = false;
-    const load = () => fetch(`/api/crm/site-engagement?days=${window}${site ? `&site=${encodeURIComponent(site)}` : ''}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined })
+    const load = () => fetch(`/api/crm/site-engagement?days=${window}${humanOnly ? '&human=1' : ''}${site ? `&site=${encodeURIComponent(site)}` : ''}`, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined })
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Failed'); if (!off) { setD(j); setErr(null); } })
       .catch(e => { if (!off) setErr(e.message || 'Could not load engagement'); });
     load();
     const t = setInterval(load, 30000);
     return () => { off = true; clearInterval(t); };
-  }, [authToken, site, window]);
+  }, [authToken, site, window, humanOnly]);
 
   if (err) return <div style={card}><div style={title}>Visitor engagement</div><div style={{ fontSize: 13, color: '#b91c1c' }}>{err}</div></div>;
   if (!d) return <div style={card}><div style={title}>Visitor engagement</div><div style={{ fontSize: 13, color: FAINT }}>Loading…</div></div>;
