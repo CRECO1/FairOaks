@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -70,6 +71,23 @@ export async function POST(req: NextRequest) {
   if (rows.length) {
     const { error } = await db.from('crm_tasks').insert(rows);
     if (error) return dbError('api/crm/tasks/assign-calls', error);
+  }
+  // Tell them. Handing someone 90 calls in silence meant they found out by scrolling.
+  if (assignee !== ctx.userId && (rows.length > 0 || refreshed > 0)) {
+    const count = rows.length;
+    const groups = new Map<string, number>();
+    for (const r of rows) {
+      const g = /(^|\n)From:\s*(.+)/.exec(String(r.description ?? ''))?.[2]?.trim();
+      if (g) groups.set(g, (groups.get(g) ?? 0) + 1);
+    }
+    const top = [...groups.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    const from = await senderName(db, ctx.userId);
+    await notifyAssignment(db, {
+      recipientId: assignee, senderId: ctx.userId, entityType: 'calls',
+      message: count > 0
+        ? `${from} assigned you ${count} call${count === 1 ? '' : 's'}${groups.size === 1 && top ? ` — ${top}` : groups.size > 1 ? ` from ${groups.size} lists` : ''}`
+        : `${from} refreshed ${refreshed} call${refreshed === 1 ? '' : 's'} on your list`,
+    });
   }
   // New leads: assigning the call also makes them the contact's owner (the lead-SLA clock and the alerts follow the owner).
   let owned = 0;

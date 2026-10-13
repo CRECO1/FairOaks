@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -51,5 +52,13 @@ export async function POST(req: NextRequest) {
     created_by: ctx.userId,
   }).select().single();
   if (error) return dbError('api/crm/tasks', error);
+  // Someone else's task: let them know it landed (bell). Never for your own, never fatal.
+  if (assigned_to && assigned_to !== ctx.userId) {
+    const from = await senderName(supabase, ctx.userId);
+    await notifyAssignment(supabase, {
+      recipientId: assigned_to, senderId: ctx.userId, entityType: 'task', entityId: data?.id ?? null,
+      message: `${from} assigned you: ${String(title).slice(0, 120)}`,
+    });
+  }
   return NextResponse.json({ task: data });
 }

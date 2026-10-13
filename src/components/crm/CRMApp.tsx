@@ -190,6 +190,15 @@ const CONTACT_AVATAR_COLORS: Record<string, string> = {
 
 function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
+/**
+ * A call that came from an assigned call LIST (campaign opens, website leads…) rather than a
+ * commitment with its own date. Those carry a "From: <list>" line. They are worked down in the
+ * Call Queue over days, so a batch assigned yesterday is "carried over", not "94 overdue" —
+ * counting them as overdue buried the tasks that really were late.
+ */
+const isListCall = (t: { type?: string | null; description?: string | null; notes?: string | null }) =>
+  t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`);
+
 function fmtPhone(v: string): string {
   const digits = v.replace(/\D/g, '').slice(0, 10);
   if (digits.length <= 3) return digits;
@@ -2858,17 +2867,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   // ── @mention notifications ────────────────────────────────────────────────
-  async function loadMentions() {
-    if (mentionsLoaded) return;
+  async function refreshMentions() {
+    if (!profile?.id) return;
     const { data } = await supabase
       .from('crm_notifications')
       .select('*')
-      .eq('recipient_id', profile!.id)
+      .eq('recipient_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(30);
     setMentions(data ?? []);
     setMentionsLoaded(true);
   }
+  async function loadMentions() {
+    if (mentionsLoaded) return;
+    await refreshMentions();
+  }
+  // The bell used to read notifications only when it was clicked, so its badge could never light up
+  // for a mention or an assignment. Load once the profile is known and re-check every minute.
+  useEffect(() => {
+    if (!profile?.id) return;
+    refreshMentions();
+    const t = setInterval(refreshMentions, 60_000);
+    return () => clearInterval(t);
+  }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function createMentionNotifications(ids: string[], message: string, entityType?: string, entityId?: string) {
     if (!ids.length || !profile) return;
@@ -4658,8 +4679,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* Notification Bell */}
           {(() => {
             const now = Date.now();
-            const todayStr = new Date().toISOString().slice(0, 10);
-            const overdueTasks = allTasks.filter(t => !t.completed_at && t.due_date && t.due_date < todayStr);
+            // Local calendar day: toISOString() is UTC, which flipped "due today" to "overdue" every evening.
+            const todayStr = today();
+            const listCalls = allTasks.filter(t => !t.completed_at && isListCall(t as never));
+            const overdueTasks = allTasks.filter(t => !t.completed_at && t.due_date && t.due_date < todayStr && !isListCall(t as never));
             const newLeads = clients.filter(c => (c.tags ?? []).includes('New Lead') && c.created_at && (now - new Date(c.created_at).getTime()) < 7 * 86400000);
             const upcomingBdays = clients.filter(c => {
               if (!c.birthday) return false;
@@ -4674,7 +4697,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               const d = Math.ceil((new Date(c.lease_expiration_date).getTime() - now) / 86400000);
               return d >= 0 && d <= 30;
             });
-            const unreadMentions = mentions.filter(n => !n.read_at);
+            // Old unread notifications stop counting after three weeks, so the bell number means "new".
+            const unreadMentions = mentions.filter(n => !n.read_at && (now - new Date(n.created_at).getTime()) < 21 * 86400000);
             const totalAlerts = overdueTasks.length + newLeads.length + upcomingBdays.length + lxpUrgent.length + unreadMentions.length;
             return (
               <div style={{ position: 'relative' }}>
@@ -4700,6 +4724,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ padding: '28px 16px', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
                             <div style={{ fontSize: 28, marginBottom: 8 }}>✅</div>
                             All clear — no alerts right now
+                          </div>
+                        )}
+                        {listCalls.length > 0 && (
+                          <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6' }}>
+                            <button onClick={() => { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); setShowNotifications(false); }}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#374151', fontFamily: "'DM Sans',sans-serif", textAlign: 'left' }}>
+                              📞 {listCalls.length} call{listCalls.length === 1 ? '' : 's'} on your list — open Call Queue →
+                            </button>
                           </div>
                         )}
                         {overdueTasks.length > 0 && (
@@ -4769,7 +4801,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         {mentions.length > 0 && (
                           <div style={{ padding: '10px 16px' }}>
                             <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6d28d9', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <span>💬 Mentions ({mentions.length})</span>
+                              <span>🔔 Notifications ({mentions.length})</span>
                               {unreadMentions.length > 0 && (
                                 <button onClick={markAllMentionsRead} style={{ background: 'none', border: 'none', fontSize: 11, color: '#6d28d9', cursor: 'pointer', fontWeight: 600, fontFamily: "'DM Sans',sans-serif" }}>Mark all read</button>
                               )}
@@ -4780,6 +4812,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 if (n.entity_type === 'contact' && n.entity_id) {
                                   const c = clients.find(cl => cl.id === n.entity_id);
                                   if (c) { setPage('contacts'); setActiveClient(c); }
+                                } else if (n.entity_type === 'calls') {
+                                  setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients();
+                                } else if (n.entity_type === 'task') {
+                                  setPage('tasks'); setTasksSubTab('tasks'); loadTasks(); loadAllTasks();
                                 }
                                 setShowNotifications(false);
                               }}
@@ -4886,9 +4922,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 // allTasks is already the current user's own OPEN tasks (agent_id = me,
                 // completed_at IS NULL) — no extra scoping needed. Lead follow-ups are
                 // just crm_tasks with type 'follow_up', so they're already in here.
-                const overdue = allTasks.filter(t => t.due_date && t.due_date < t0);
-                const dueToday = allTasks.filter(t => t.due_date === t0);
-                const thisWeek = allTasks.filter(t => t.due_date && t.due_date > t0 && t.due_date <= weekEnd);
+                // Assigned call-list calls are one working pile (the Call Queue), not dated commitments:
+                // they get their own card below instead of flooding Overdue / Due today.
+                const listCalls = allTasks.filter(t => isListCall(t as never));
+                const ownTasks = allTasks.filter(t => !isListCall(t as never));
+                const overdue = ownTasks.filter(t => t.due_date && t.due_date < t0);
+                const dueToday = ownTasks.filter(t => t.due_date === t0);
+                const thisWeek = ownTasks.filter(t => t.due_date && t.due_date > t0 && t.due_date <= weekEnd);
                 // Deals are team-wide for admins, so scope to mine explicitly.
                 const myDeals = deals.filter(d => d.agent_id === profile.id || (d.assigned_agent_ids ?? []).includes(profile.id));
                 const inContract = myDeals.filter(d => d.stage === 'In Contract');
@@ -4896,7 +4936,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                 const hr = new Date().getHours();
                 const greet = hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening';
-                const nothing = !overdue.length && !dueToday.length && !thisWeek.length && !inContract.length && !stalled.length;
+                const nothing = !overdue.length && !dueToday.length && !thisWeek.length && !inContract.length && !stalled.length && !listCalls.length;
 
                 const cname = (id?: string) => { const c = clients.find(x => x.id === id); return c ? `${c.first_name} ${c.last_name}` : ''; };
                 const tIcon = (t: CRMTask) => t.type === 'call' ? '📞' : t.type === 'email' ? '✉️' : '🔔';
@@ -4946,6 +4986,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ fontSize: 13, color: '#15803d', marginTop: 4 }}>No tasks due, and your active deals are current.</div>
                       </div>
                     )}
+
+                    {listCalls.length > 0 && (() => {
+                      const groups = new Map<string, number>();
+                      for (const t of listCalls) {
+                        const g = /(^|\n)From:\s*(.+)/.exec(`${(t as { description?: string }).description ?? ''}\n${t.notes ?? ''}`)?.[2]?.trim() ?? 'Call list';
+                        groups.set(g, (groups.get(g) ?? 0) + 1);
+                      }
+                      const top = [...groups.entries()].sort((a, b) => b[1] - a[1]);
+                      return (
+                        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', borderLeft: '4px solid #6b7280', padding: '16px 20px', marginBottom: 14 }}>
+                          {head('#374151', `📞 Your call list — ${listCalls.length} to go`,
+                            <button onClick={() => { setPage('tasks'); setTasksSubTab('calls'); loadAllTasks(); loadClients(); }} style={{ background: 'none', border: 'none', fontSize: 12, color: '#c9922c', cursor: 'pointer', fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Open Call Queue →</button>)}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {top.slice(0, 4).map(([g, n]) => (
+                              <div key={g} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, color: '#374151' }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g}</span>
+                                <strong>{n}</strong>
+                              </div>
+                            ))}
+                            {top.length > 4 && <div style={{ fontSize: 12, color: '#9ca3af' }}>+{top.length - 4} more lists</div>}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {overdue.length > 0 && (
                       <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #fecaca', padding: '16px 20px', marginBottom: 14 }}>
@@ -6391,7 +6455,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const cbReason = (cb: CallbackRow) => cb.direction === 'outbound' ? 'Try again' : cb.kind === 'voicemail' ? 'Voicemail' : (cb.kind === 'bot' || cb.result === 'bot_answered') ? 'Bot call' : cb.result === 'missed' ? 'Missed call' : 'Call back';
                   const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000)); return m < 60 ? `${m}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
                   const dayDiff = (d: string) => Math.round((Date.parse(t0 + 'T12:00:00') - Date.parse(d.slice(0, 10) + 'T12:00:00')) / 86_400_000);
-                  const overdueDays = current.due_date ? dayDiff(current.due_date) : 0;
+                  // A call from an assigned list is "carried over", not late — only dated commitments are overdue.
+                  const carried = !!current.due_date && dayDiff(current.due_date) > 0 && isListCall(current as never);
+                  const overdueDays = current.due_date && !carried ? dayDiff(current.due_date) : 0;
                   const isOverdue = overdueDays > 0;
                   const deal = c ? deals.find(d => d.client_id === c.id) ?? null : null;
                   const fmtDay = (s?: string | null) => s ? new Date(s.length <= 10 ? s + 'T12:00:00' : s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
@@ -6436,7 +6502,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const row = (t: CRMTask) => {
                     const tc = clientFor(t);
                     const sel = t.id === current.id;
-                    const od = t.due_date ? dayDiff(t.due_date) : 0;
+                    const od = t.due_date && !isListCall(t as never) ? dayDiff(t.due_date) : 0;
                     const ph = phoneFor(tc);
                     const meta = callListMeta.get(t.id) ?? null;
                     const cbr = callbackMeta.get(t.id) ?? null;
@@ -6545,6 +6611,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                             {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
                             {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>{overdueDays}d OVERDUE</span>}
+                            {carried && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#f3f4f6', color: '#6b7280' }}>CARRIED OVER</span>}
                             {cbm && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fff1f2', color: '#be123c' }}>📞 {cbReason(cbm)} · waiting {ago(cbm.started_at)}</span>}
                             {curMeta && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: curMeta.heat === 'hot' ? '#fff1f2' : curMeta.heat === 'cold' ? '#eff6ff' : '#fffbeb', color: curMeta.heat === 'hot' ? '#be123c' : curMeta.heat === 'cold' ? '#1d4ed8' : '#b45309' }}>{HEAT_ICON[curMeta.heat]} {curMeta.heat === 'hot' ? 'Hot' : curMeta.heat === 'cold' ? 'Cold' : 'Warm'}</span>}
                           </div>
@@ -9562,7 +9629,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         {/* ── Mobile bottom tab bar (5 tabs + Menu) ── */}
         {isMobile && (() => {
-          const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length;
+          const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today() && !isListCall(t as never)).length;
           const tabs = [
             { id: 'dashboard' as typeof page, icon: '🏠', label: 'Home' },
             { id: 'contacts'  as typeof page, icon: '👥', label: 'Contacts' },
