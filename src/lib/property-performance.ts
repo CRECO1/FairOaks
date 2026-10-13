@@ -150,9 +150,10 @@ export function computePropertyPerformance(opts: {
       m.acted = actedSet.size;
     };
     finish(cur, vis.cur, acted.cur); finish(prev, vis.prev, acted.prev);
-    // Traffic from before the Oct 2026 tracker upgrade can't be told apart from scanners, so a
-    // prior period with visits but nobody verifiable is not a baseline — show no comparison.
-    const prevUsable = !!opts.withPrevious && !(prev.visitors > 0 && prev.real === 0);
+    // A comparison only means something against verified traffic. Before the Oct 2026 tracker
+    // upgrade visits can't be told apart from scanners, so a prior period with no real visitors
+    // is "no baseline", not "zero" — show no change rather than a misleading "new".
+    const prevUsable = !!opts.withPrevious && prev.real > 0;
 
     // Inquiries: inbound leads that landed on one of this property's pages.
     const myInquiries: PropertyPerf['inquiries'] = [];
@@ -179,7 +180,8 @@ export function computePropertyPerformance(opts: {
 
     out.set(l.id, {
       listingId: l.id, name: l.name ?? 'Property', tokens, current: cur, previous: prevUsable ? prev : null,
-      daily: dayList.map(date => ({ date, visitors: dayVis.get(date)?.size ?? 0 })),
+      // Real visitors only, so the bars agree with the headline number.
+      daily: dayList.map(date => ({ date, visitors: [...(dayVis.get(date) ?? [])].filter(k => { const t = tierOf.get(k); return !!t && isReal(t); }).length })),
       topPages: [...pages.values()].sort((a, b) => b.views - a.views).slice(0, 6).map(p => ({ site: p.site, path: p.path, views: p.views, visitors: p.vis.size })),
       sources: [...sources.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, visitors]) => ({ label, visitors })),
       inquiries: myInquiries.slice(0, 5),

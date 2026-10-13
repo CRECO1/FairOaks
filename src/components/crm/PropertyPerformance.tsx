@@ -122,7 +122,7 @@ export default function PropertyPerformance({ listingId, authToken, isMobile, on
           </div>
 
           <div style={card}>
-            <div style={label}>Visitors per day</div>
+            <div style={label}>Real visitors per day</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: days > 30 ? 1 : 3, height: 70 }} aria-hidden>
               {perf.daily.map(d => (
                 <div key={d.date} title={`${d.date}: ${d.visitors}`} style={{ flex: 1, minWidth: 1, height: `${Math.max(d.visitors ? 6 : 2, (d.visitors / maxDay) * 100)}%`, background: d.visitors ? GOLD : '#eee', borderRadius: 2 }} />
