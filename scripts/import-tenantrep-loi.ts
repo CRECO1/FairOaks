@@ -111,7 +111,7 @@ function loadEnv(file: string) {
   for (const b of built) {
     const filled = `submissions/${LEASE_FORM_ID}/import_${Date.now()}_${b.base}.pdf`;
     const up = await fetch(`${URL_BASE}/storage/v1/object/transaction-forms/${filled}`, {
-      method: 'POST', headers: { ...H, 'Content-Type': 'application/pdf', 'x-upsert': 'true' }, body: b.pdfBytes,
+      method: 'POST', headers: { ...H, 'Content-Type': 'application/pdf', 'x-upsert': 'true' }, body: Buffer.from(b.pdfBytes),
     });
     if (!up.ok) throw new Error(`storage upload -> ${up.status} ${await up.text()}`);
     const row = {
