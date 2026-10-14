@@ -15,7 +15,6 @@ import { fileURLToPath } from 'node:url';
 import { renderLoi } from '../src/lib/loi-doc';
 import { leaseSpec, type LoiPurchaseData, type LoiTermRow } from '../src/lib/loi-spec';
 
-const LEASE_FORM_ID = '185d29b9-6fbe-4611-b6c4-9e5e2d54ecf2';   // "Letter of Intent to Lease"
 const args = process.argv.slice(2);
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
 const apply = args.includes('--apply');
@@ -104,20 +103,26 @@ function loadEnv(file: string) {
     if (!r.ok) throw new Error(`${init.method || 'GET'} ${p} -> ${r.status} ${t}`);
     return t ? JSON.parse(t) : null;
   };
-  const deals = await rest(`crm_deals?client=ilike.*${encodeURIComponent(dealMatch)}*&select=id,client,property,stage,business_unit,created_by`);
+  const deals = await rest(`crm_deals?client=ilike.*${encodeURIComponent(dealMatch)}*&select=*`);
   if (deals.length !== 1) throw new Error(`expected exactly 1 deal matching "${dealMatch}", got ${deals.length}: ${JSON.stringify(deals)}`);
   const deal = deals[0];
   console.log('deal:', deal.id, deal.client, '|', deal.property);
+  // The form id is looked up by code rather than trusted from a constant: library forms
+  // have been re-published with new ids, which is what broke the first --apply.
+  const forms = await rest(`crm_forms?form_code=eq.LOI-LEASE&business_unit=eq.${deal.business_unit ?? 'commercial'}&select=id,name&order=name`);
+  const lease = forms.find((f: { id: string; name: string }) => f.name === 'Letter of Intent to Lease') ?? forms[0];
+  if (!lease) throw new Error('no crm_forms row with form_code LOI-LEASE');
+  console.log('form:', lease.id, lease.name);
   for (const b of built) {
-    const filled = `submissions/${LEASE_FORM_ID}/import_${Date.now()}_${b.base}.pdf`;
+    const filled = `submissions/${lease.id}/import_${Date.now()}_${b.base}.pdf`;
     const up = await fetch(`${URL_BASE}/storage/v1/object/transaction-forms/${filled}`, {
       method: 'POST', headers: { ...H, 'Content-Type': 'application/pdf', 'x-upsert': 'true' }, body: Buffer.from(b.pdfBytes),
     });
     if (!up.ok) throw new Error(`storage upload -> ${up.status} ${await up.text()}`);
     const row = {
-      form_id: LEASE_FORM_ID, deal_id: deal.id, business_unit: deal.business_unit ?? 'commercial',
+      form_id: lease.id, deal_id: deal.id, business_unit: deal.business_unit ?? 'commercial',
       title: b.title, values: b.sigFields, builder_data: b.data, filled_path: filled,
-      status: 'saved', created_by: deal.created_by ?? null, updated_at: new Date().toISOString(),
+      status: 'saved', created_by: deal.created_by ?? deal.owner_id ?? deal.agent_id ?? deal.user_id ?? null, updated_at: new Date().toISOString(),
     };
     const ex = await rest(`crm_form_submissions?deal_id=eq.${deal.id}&title=eq.${encodeURIComponent(b.title)}&select=id`);
     if (ex.length) { await rest(`crm_form_submissions?id=eq.${ex[0].id}`, { method: 'PATCH', body: JSON.stringify(row) }); console.log('updated', ex[0].id, b.title); }
