@@ -822,6 +822,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
   const [callSnapOpen, setCallSnapOpen] = useState(false);
   const [callFocus, setCallFocus] = useState<'all' | 'leads' | 'callbacks' | 'overdue'>('all');   // quick focus chips
+  const [callScriptOpen, setCallScriptOpen] = useState(false);   // 📋 voicemail script card
+  const [callScriptEdit, setCallScriptEdit] = useState(false);
+  const [callMyDay, setCallMyDay] = useState<{ calls: number; talked: number; voicemail: number; none: number; leads: number } | null>(null);
+  const [callGoal, setCallGoal] = useState<number>(() => { try { return Number(localStorage.getItem('crm:callGoal')) || 25; } catch { return 25; } });
   const [callTextOpen, setCallTextOpen] = useState(false);                                          // Text → templates   // phone: campaign stats fold away by default
   const [callDialed, setCallDialed] = useState<{ taskId: string; at: number } | null>(null);
   const [callReturnOpen, setCallReturnOpen] = useState(false);
@@ -2754,6 +2758,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return n;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callQueueSeg, callListMode]);
+  // A focus whose last call just got done would otherwise strand the agent on a fake "all caught up".
+  useEffect(() => {
+    if (callFocus !== 'all' && callListMode === 'tasks' && callFocusCounts[callFocus] === 0) setCallFocus('all');
+  }, [callFocus, callFocusCounts, callListMode]);
   const callQueue = useMemo(
     () => (callFocus === 'all' || callListMode !== 'tasks' ? callQueueSeg : callQueueSeg.filter(t => focusOf(t) === callFocus)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2893,20 +2901,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const start = new Date(); start.setHours(0, 0, 0, 0);
       const [st, act] = await Promise.all([
         fetch(`/api/crm/calls?stats=1&business_unit=${businessUnit}`, { headers }).then(r => r.json()).catch(() => ({})),
-        supabase.from('crm_activity').select('agent_id, notes').eq('type', 'call').gte('created_at', start.toISOString()).limit(2000),
+        supabase.from('crm_activity').select('agent_id, client_id, notes').eq('type', 'call').gte('created_at', start.toISOString()).limit(2000),
       ]);
       if (cancelled) return;
       const byAgent: Record<string, { calls: number; talked: number; voicemail: number; none: number }> = {};
-      for (const a of (act.data ?? []) as { agent_id: string | null; notes: string | null }[]) {
+      const myLeadSet = new Set<string>(); const leadIds = new Set(newLeadContacts.map(x => x.id));
+      for (const a of (act.data ?? []) as { agent_id: string | null; client_id?: string | null; notes: string | null }[]) {
+        if (a.agent_id === profile?.id && a.client_id && leadIds.has(a.client_id)) myLeadSet.add(a.client_id);
         if (!a.agent_id) continue;
         const b = (byAgent[a.agent_id] ??= { calls: 0, talked: 0, voicemail: 0, none: 0 });
         const n = a.notes ?? '';
         b.calls++;
         if (/Talked to them/.test(n)) b.talked++; else if (/Left a voicemail/.test(n)) b.voicemail++; else if (/No answer|Wrong number/.test(n)) b.none++;
       }
+      { const mine = byAgent[profile?.id ?? ''] ?? { calls: 0, talked: 0, voicemail: 0, none: 0 }; setCallMyDay({ ...mine, leads: myLeadSet.size }); }
       setCallPanel({ stats: (st as { stats?: { today: number; follow_up: number; overdue: number; missed: number; voicemail: number; wrapup: number } }).stats ?? null, byAgent });
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, tasksSubTab, session?.access_token, businessUnit, callsDoneThisSession]);
 
   // Open-call counts per agent (admins), for the agent switcher on the Call Queue.
@@ -2926,7 +2938,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [page, tasksSubTab, profile?.role, callsDoneThisSession, callAssignNonce]);
 
   // Reset the per-call note + follow-up override whenever the active call changes.
-  useEffect(() => { setCallNote(''); setCallFollowUpDays(null); setCallTextOpen(false); }, [callCurrent?.id]);
+  useEffect(() => { setCallNote(''); setCallFollowUpDays(null); setCallTextOpen(false); setCallScriptOpen(false); setCallScriptEdit(false); setCallSnapOpen(false); }, [callCurrent?.id]);
 
   // Load the current contact's recent activity (attempt history + timeline) for the briefing.
   useEffect(() => {
@@ -6456,7 +6468,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 25, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>📞 {queue.length === 0 ? 'All caught up' : `${queue.length} left`}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {totalCt > 0 ? `${doneCt} of ${totalCt} done · ` : ''}
+                        {totalCt > 0 ? `${doneCt} of ${totalCt} done · ` : ''}{callMyDay ? `${callMyDay.calls}/${callGoal} today · ` : ''}
                         {callListMode === 'tasks' ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s calls` : 'My calls')
                           : callListMode === 'leads:web' ? 'New leads' : callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
                         {callSegment !== 'all' ? ` · ${SEGMENT_LABEL[callSegment]}` : ''}{doneCt > 0 ? ` · ${doneCt} done` : ''}
@@ -6683,7 +6695,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 ) : !current ? (
                   <div style={{ textAlign: 'center', padding: '60px 20px', background: '#f9fafb', borderRadius: 12, border: '2px dashed #e5e7eb' }}>
                     <div style={{ fontSize: 44, marginBottom: 12 }}>🎉</div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{callSegment !== 'all' ? `No ${SEGMENT_LABEL[callSegment].toLowerCase()} calls left for today` : 'All caught up — no calls left for today'}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: '#111', marginBottom: 6 }}>{callSegment !== 'all' ? `No ${SEGMENT_LABEL[callSegment].toLowerCase()} calls left for today` : 'Queue cleared — nice work'}</div>
+                    {callMyDay && callMyDay.calls > 0 && callListMode === 'tasks' && (
+                      <div style={{ margin: '14px auto 6px', maxWidth: 360 }}>
+                        <div style={{ fontSize: 14, color: '#374151', marginBottom: 10 }}>
+                          {callMyDay.calls >= callGoal ? `🎯 Goal hit — ${callMyDay.calls} calls today` : `${callMyDay.calls} of ${callGoal} calls today — ${callGoal - callMyDay.calls} to the goal`}
+                        </div>
+                        <div style={{ height: 8, borderRadius: 8, background: '#e5e7eb', overflow: 'hidden', marginBottom: 14 }}>
+                          <div style={{ height: '100%', width: `${Math.min(100, Math.round((callMyDay.calls / callGoal) * 100))}%`, background: 'linear-gradient(90deg,#c9922c,#e0b458)' }} />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+                          {[{ k: 'Calls', v: callMyDay.calls }, { k: 'Connected', v: callMyDay.talked }, { k: 'Voicemail', v: callMyDay.voicemail }, { k: 'Leads worked', v: callMyDay.leads }].map(x => (
+                            <div key={x.k} style={{ background: '#fff', border: '1px solid #eceff3', borderRadius: 10, padding: '10px 4px' }}>
+                              <div style={{ fontSize: 22, fontWeight: 800, color: '#111' }}>{x.v}</div>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af' }}>{x.k}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <button onClick={() => { const v = Number(window.prompt('Daily call goal', String(callGoal))); if (v > 0 && v < 1000) { setCallGoal(Math.round(v)); try { localStorage.setItem('crm:callGoal', String(Math.round(v))); } catch { /* ignore */ } } }}
+                          style={{ marginTop: 12, minHeight: 40, background: 'none', border: 'none', color: '#9ca3af', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>change daily goal</button>
+                      </div>
+                    )}
                     <div style={{ fontSize: 14, color: '#6b7280' }}>New follow-ups will show up here as they come due.</div>
                     {upcoming.length > 0 && <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 10 }}>{upcoming.length} call{upcoming.length === 1 ? '' : 's'} scheduled ahead — next: {nameFor(clientFor(upcoming[0]))} on {new Date(upcoming[0].due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>}
                   </div>
@@ -6749,7 +6781,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     const meta = callListMeta.get(t.id) ?? null;
                     const cbr = callbackMeta.get(t.id) ?? null;
                     return (
-                      <button key={t.id} onClick={() => setCallSelectedId(t.id)}
+                      <button key={t.id} onClick={() => { setCallSelectedId(t.id); if (isMobile) { try { document.querySelector('.crm-page-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* ignore */ } } }}
                         style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', borderRadius: 10, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
                           border: `1px solid ${sel ? '#c9922c' : 'transparent'}`, background: sel ? '#fffbf2' : 'transparent' }}>
                         {isAdmin && meta && (
@@ -6823,6 +6855,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           );
                         })}
+                        {callSkippedIds.size > 0 && (
+                          <button onClick={() => setCallSkippedIds(new Set())}
+                            style={{ display: 'block', width: '100%', minHeight: 44, margin: '8px 0 0', borderRadius: 10, border: '1px dashed #d1d5db', background: '#fff', color: '#4b5563', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                            ↩ Bring back {callSkippedIds.size} skipped
+                          </button>
+                        )}
                         {upcoming.length > 0 && (
                           <div style={{ borderTop: '1px solid #f1f2f4', marginTop: 8, paddingTop: 4 }}>
                             <button onClick={() => setCallUpcomingOpen(o => !o)}
@@ -6925,6 +6963,59 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     {t.label}{t.body && <span style={{ display: 'block', fontSize: 12.5, fontWeight: 400, color: '#6b7280', marginTop: 2, lineHeight: 1.35 }}>{t.body}</span>}
                                   </a>
                                 ))}
+                              </div>
+                            );
+                          })()}
+                          {phone && (() => {
+                            const first = (c?.first_name || curMeta?.contactName?.split(' ')[0] || '').trim();
+                            const me = profile?.first_name || '';
+                            const org = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
+                            const cbNum = profile?.phone ? phoneDisp(profile.phone) : '[your number]';
+                            const isLead = !!curMeta && /^New lead/.test(curMeta.reason);
+                            const kind = isLead ? 'lead' : 'followup';
+                            const ask = (curMeta?.askFor || '').split(/[.\n]/)[0].trim().slice(0, 90);
+                            const DEFAULTS: Record<string, string> = {
+                              lead: "Hi {first}, this is {me} with {org}. Thanks for reaching out{ask}. I'd love to help — call or text me back at {callback}. Again, {me} with {org}, {callback}. Talk soon.",
+                              followup: "Hi {first}, {me} with {org}. Just following up{ask}. Give me a call or text at {callback} whenever works for you. Again, {me}, {callback}. Thanks!",
+                            };
+                            let saved = ''; try { saved = localStorage.getItem(`crm:vmScript:${kind}`) ?? ''; } catch { /* ignore */ }
+                            const tpl = saved || DEFAULTS[kind];
+                            const fill = (t: string) => t.replaceAll('{first}', first || 'there').replaceAll('{me}', me || 'your agent').replaceAll('{org}', org)
+                              .replaceAll('{callback}', cbNum).replaceAll('{ask}', ask && kind === 'lead' ? ` about ${ask.charAt(0).toLowerCase()}${ask.slice(1)}` : '');
+                            const vmText = `${first ? `Hi ${first}, ` : 'Hi, '}${me} with ${org} — I left you a voicemail. Call or text me back whenever works for you.`;
+                            return (
+                              <div style={{ marginBottom: 12 }}>
+                                <button onClick={() => setCallScriptOpen(o => !o)}
+                                  style={{ width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', borderRadius: 10, border: `1px solid ${callScriptOpen ? '#c9922c' : '#eceef1'}`, background: callScriptOpen ? '#fdf6e8' : '#fafafa', fontSize: 13.5, fontWeight: 700, color: '#374151', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                  📋 Voicemail script {callScriptOpen ? '▴' : '▾'}
+                                </button>
+                                {callScriptOpen && (
+                                  <div style={{ marginTop: 6, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 12, padding: '12px 14px' }}>
+                                    {callScriptEdit ? (
+                                      <>
+                                        <textarea defaultValue={tpl} id={`vmscript-${kind}`} style={{ width: '100%', boxSizing: 'border-box', minHeight: 110, fontSize: 16, padding: '8px 10px', border: '1px solid #e5e7eb', borderRadius: 8, fontFamily: "'DM Sans',sans-serif" }} />
+                                        <div style={{ fontSize: 11.5, color: '#9ca3af', margin: '4px 0 8px' }}>Fills in: {'{first} {me} {org} {callback} {ask}'}</div>
+                                        <div style={{ display: 'flex', gap: 8 }}>
+                                          <button onClick={() => { const v = (document.getElementById(`vmscript-${kind}`) as HTMLTextAreaElement | null)?.value ?? ''; try { if (v.trim()) localStorage.setItem(`crm:vmScript:${kind}`, v.trim()); } catch { /* ignore */ } setCallScriptEdit(false); }}
+                                            style={{ flex: 1, minHeight: 44, borderRadius: 8, border: 'none', background: '#c9922c', color: '#111', fontWeight: 800, cursor: 'pointer' }}>Save</button>
+                                          <button onClick={() => { try { localStorage.removeItem(`crm:vmScript:${kind}`); } catch { /* ignore */ } setCallScriptEdit(false); }}
+                                            style={{ minHeight: 44, padding: '0 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Reset</button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#a06a12', marginBottom: 6 }}>{isLead ? 'New lead' : 'Follow-up'} · ~20 seconds</div>
+                                        <div style={{ fontSize: 17, lineHeight: 1.55, color: '#1f2937' }}>{fill(tpl)}</div>
+                                        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                                          <a href={`sms:${phone}?&body=${encodeURIComponent(vmText)}`}
+                                            onClick={() => { if (c) logActivity(c.id, 'note', `💬 Texted (Left you a voicemail): ${vmText}`); }}
+                                            style={{ flex: 1, minHeight: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', textDecoration: 'none', color: '#111', fontWeight: 700, fontSize: 14, padding: '0 10px', textAlign: 'center' }}>💬 Text “I left a voicemail”</a>
+                                          <button onClick={() => setCallScriptEdit(true)} style={{ minHeight: 46, padding: '0 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>✎ Edit</button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             );
                           })()}
