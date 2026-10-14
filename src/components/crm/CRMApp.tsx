@@ -196,6 +196,11 @@ function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.g
  * Call Queue over days, so a batch assigned yesterday is "carried over", not "94 overdue" —
  * counting them as overdue buried the tasks that really were late.
  */
+// Do-not-call lives on the contact as this tag (no schema change; it shows with the tags and is
+// removable from the contact like any tag). The queue, call lists and call-backs all skip it.
+const DNC_TAG = 'Do Not Call';
+const isDnc = (c?: { tags?: string[] | null } | null) => !!c && (c.tags ?? []).includes(DNC_TAG);
+const BRIAN_EMAIL = 'brian@crecotx.com';   // unassigned new website leads route to him
 const isListCall = (t: { type?: string | null; description?: string | null; notes?: string | null }) =>
   t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`);
 
@@ -748,6 +753,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callActivities, setCallActivities] = useState<CRMActivity[]>([]);
   const [callActivitiesClientId, setCallActivitiesClientId] = useState<string | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
+  // Undo for the two outcomes that are easy to fat-finger and hard to see again (Not interested / Wrong number).
+  const [callUndo, setCallUndo] = useState<{ label: string; run: () => Promise<void> } | null>(null);
+  useEffect(() => {
+    if (!callUndo) return;
+    const t = setTimeout(() => setCallUndo(null), 8000);
+    return () => clearTimeout(t);
+  }, [callUndo]);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
   // Admins can view/work another agent's Call Queue ('' = your own).
   const [callViewAgentId, setCallViewAgentId] = useState('');
@@ -2391,6 +2403,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       //    marketing list has no task yet — they just leave this session's list; the call logged below
       //    is what marks them contacted everywhere else.
       const cb = callbackMeta.get(task.id) ?? null;
+      const startedAt = new Date().toISOString();           // undo deletes only what this tap wrote
+      const undoable = disposition === 'not_interested' || disposition === 'wrong_number';
+      const undo: { taskId?: string; cbId?: string; prospectClientId?: string; nextTaskId?: string; dncPrevTags?: string[] } = {};
+      if (task.id.startsWith('p:')) undo.prospectClientId = task.client_id;
+      else if (cb) undo.cbId = cb.id;
+      else undo.taskId = task.id;
       if (task.id.startsWith('p:')) setCallProspectDoneIds(prev => new Set(prev).add(task.client_id));
       else if (cb) { /* a call-back lives in the Calling Log — resolved below, not a task */ }
       else await completeTask(task.id);
@@ -2407,6 +2425,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         if (who.length) createMentionNotifications(who, `@${profile?.first_name} tagged you on a call (${(task.title || 'call').replace(/^🏢\s*/, '').slice(0, 60)}): ${jotted.length > 90 ? jotted.slice(0, 90) + '…' : jotted}`, 'task', task.id.startsWith('p:') || task.id.startsWith('cb:') ? undefined : task.id);
       }
 
+      // 2b) Not interested = do not call: tag the contact so the queue, call lists and call-backs skip them.
+      if (disposition === 'not_interested' && task.client_id) {
+        const cl = clients.find(x => x.id === task.client_id);
+        if (cl && !isDnc(cl)) {
+          const nextTags = [...(cl.tags ?? []), DNC_TAG];
+          const { error: tagErr } = await supabase.from('crm_clients').update({ tags: nextTags }).eq('id', cl.id);
+          if (!tagErr) {
+            undo.dncPrevTags = cl.tags ?? [];
+            setClients(prev => prev.map(x => x.id === cl.id ? { ...x, tags: nextTags } : x));
+            setActiveClient(prev => prev && prev.id === cl.id ? { ...prev, tags: nextTags } : prev);
+          } else showToast('Logged, but could not mark Do Not Call');
+        }
+      }
+
       // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
       //    A chip override (callFollowUpDays) beats the disposition's default cadence.
       // A wrong number needs no callback — the note on the timeline is the follow-up (fix the number on the contact).
@@ -2420,7 +2452,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         const nextTitle = task.client_id ? baseTitle : `${baseTitle} — ${(task.title || '').replace(/^🏢\s*/, '').slice(0, 90)}`;
         const d = new Date(); d.setDate(d.getDate() + addDays);
         const nextDue = d.toISOString().slice(0, 10);
-        await supabase.from('crm_tasks').insert([{
+        const { data: nt } = await supabase.from('crm_tasks').insert([{
           client_id: task.client_id,
           // Keep the follow-up in the SAME agent's queue (an admin may be working someone else's calls).
           agent_id: task.agent_id ?? profile!.id,
@@ -2430,7 +2462,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           notes: jotted || (task.notes ?? ''),
           business_unit: businessUnit,
           status: 'open',
-        }]);
+        }]).select('id').single();
+        if (nt?.id) undo.nextTaskId = nt.id as string;
       }
 
       // 3b) The Calling Log gets the call too (it used to hold only calls the phone system saw). For a
@@ -2471,6 +2504,38 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       try { navigator.vibrate?.(25); } catch { /* not supported */ }
       try { document.querySelector('.crm-page-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* ignore */ }
       if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
+
+      if (undoable) {
+        const who = nameOfClient(task.client_id) || 'call';
+        setCallUndo({
+          label: `${dispLabel}${undo.dncPrevTags ? ' · marked Do Not Call' : ''}`,
+          run: async () => {
+            const cid = task.client_id;
+            if (undo.nextTaskId) await supabase.from('crm_tasks').delete().eq('id', undo.nextTaskId);
+            if (undo.taskId) await supabase.from('crm_tasks').update({ completed_at: null }).eq('id', undo.taskId);
+            if (undo.cbId) {
+              try {
+                await fetch(`/api/crm/calls?id=${undo.cbId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ handled: false, needs_follow_up: true }) });
+              } catch { /* it will show up in the Calling Log */ }
+              setCallbackDoneIds(prev => { const n = new Set(prev); n.delete(undo.cbId!); return n; });
+              loadCallbacks();
+            }
+            if (undo.prospectClientId) setCallProspectDoneIds(prev => { const n = new Set(prev); n.delete(undo.prospectClientId!); return n; });
+            if (undo.dncPrevTags && cid) {
+              await supabase.from('crm_clients').update({ tags: undo.dncPrevTags }).eq('id', cid);
+              setClients(prev => prev.map(x => x.id === cid ? { ...x, tags: undo.dncPrevTags! } : x));
+              setActiveClient(prev => prev && prev.id === cid ? { ...prev, tags: undo.dncPrevTags! } : prev);
+            }
+            // Take back the timeline entries this tap wrote (the call + "task completed").
+            if (cid && profile?.id) await supabase.from('crm_client_activities').delete().eq('client_id', cid).eq('agent_id', profile.id).gte('created_at', new Date(Date.parse(startedAt) - 5000).toISOString());
+            setCallsDoneThisSession(n => Math.max(0, n - 1));
+            setCallSkippedIds(prev => { const n = new Set(prev); n.delete(task.id); return n; });
+            setCallSelectedId(task.id);
+            if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
+            showToast(`Undone — ${who} is back in the queue`);
+          },
+        });
+      }
     } finally {
       setCallActionInFlight(false);
     }
@@ -2485,11 +2550,59 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const callSource = callViewAgentId ? callViewTasks : allTasks;
   // People-to-call lists become synthetic tasks (id 'p:<clientId>') so the workspace, keyboard shortcuts,
   // outcome logging and follow-up scheduling all work unchanged; dispositionCall skips the task update for them.
+  // New leads — website forms, lead magnets, tour requests and inbound-call leads saved as contacts: anyone tagged "New Lead"
+  // in the last 30 days, newest first. Same list machinery as the marketing lists, so they can be worked or assigned.
+  const newLeadContacts = useMemo(() => {
+    const cutoff = Date.now() - 30 * 86_400_000;
+    return clients.filter(c => (c.tags ?? []).includes('New Lead') && !isDnc(c) && !(c.tags ?? []).some(t => /^recruiting/i.test(t)) && Date.parse(c.created_at) >= cutoff);
+  }, [clients]);
+  // Who has already had a call logged — new leads that have been called leave the "new" section.
+  const [calledLeadIds, setCalledLeadIds] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls') return;
+    const ids = newLeadContacts.map(c => c.id);
+    if (!ids.length) return;
+    let cancelled = false;
+    (async () => {
+      const got = new Set<string>();
+      for (let i = 0; i < ids.length; i += 150) {
+        const { data } = await supabase.from('crm_client_activities').select('client_id').eq('type', 'call').in('client_id', ids.slice(i, i + 150));
+        for (const a of data ?? []) got.add(a.client_id as string);
+      }
+      if (!cancelled) setCalledLeadIds(got);
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab, newLeadContacts, callsDoneThisSession]);
+  const dncIds = useMemo(() => new Set(clients.filter(c => isDnc(c)).map(c => c.id)), [clients]);
+  const leadPerson = (c: Client): CallListPerson => {
+    const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
+    const biz = (c.business_name ?? '').trim();
+    return {
+      clientId: c.id, reason: `New lead · ${c.lead_source || 'Website'} · ${ago(c.created_at)}`, heat: 'hot', view: 'opened', lastCalled: null,
+      askFor: ((c.notes ?? '').split('\n')[0] ?? '').slice(0, 220), rank: -Date.parse(c.created_at),
+      business: /^(none|n\/a|na|-)$/i.test(biz) ? '' : biz, contactName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
+      email: c.email ?? '', phone: c.cell_phone || c.phone || '', category: (c.asset_types ?? []).join(', '), locations: '',
+      emailsSent: 0, emailsOpened: 0, opens: 0, clicks: 0, lastOpen: null, lastSent: null, campaignNames: [],
+      unsubscribed: !!c.unsubscribed_at, dead: false, notEmailed: false, type: c.type, primaryCampaign: '',
+    };
+  };
+  // New website leads that belong in THIS queue: assigned to the agent, or — if nobody is assigned — Brian's.
+  const brianId = useMemo(() => profiles.find(p => (p.email ?? '').toLowerCase() === BRIAN_EMAIL)?.id ?? '', [profiles]);
+  const routedLeads = useMemo(() => {
+    const me = callViewAgentId || profile?.id || '';
+    return newLeadContacts.filter(c => {
+      const a = c.assigned_agent_ids ?? [];
+      const mine = a.includes(me) || (a.length === 0 && !!brianId && me === brianId);
+      return mine && !isDnc(c) && !!(c.cell_phone || c.phone) && !calledLeadIds.has(c.id);
+    });
+  }, [newLeadContacts, callViewAgentId, profile?.id, brianId, calledLeadIds]);
   const callListMeta = useMemo(() => {
     const m = new Map<string, CallListPerson>();
     for (const p of callListPeople) m.set(`p:${p.clientId}`, p);
+    for (const c of routedLeads) if (!m.has(`p:${c.id}`)) m.set(`p:${c.id}`, leadPerson(c));
     return m;
-  }, [callListPeople]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callListPeople, routedLeads]);
   const clientTypeById = useMemo(() => new Map(clients.map(c => [c.id, c.type as string])), [clients]);
   // Call-backs addressed to the agent whose queue this is (mine = assigned to me or to nobody).
   const callbackMeta = useMemo(() => {
@@ -2498,10 +2611,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     for (const cb of callbacks) {
       if (callbackDoneIds.has(cb.id)) continue;
       if (cb.follow_up_assignee && cb.follow_up_assignee !== me) continue;
+      if (cb.contact_id && dncIds.has(cb.contact_id)) continue;   // do-not-call
       m.set(`cb:${cb.id}`, cb);
     }
     return m;
-  }, [callbacks, callbackDoneIds, callViewAgentId, profile?.id]);
+  }, [callbacks, callbackDoneIds, callViewAgentId, profile?.id, dncIds]);
   const callbackTasks = useMemo(() => {
     const t0 = today();
     const out: CRMTask[] = [];
@@ -2520,13 +2634,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (callListMode !== 'tasks') {
       return callListPeople
         .filter(p => (callPropView === 'opened' ? p.view === 'opened' : callPropView === 'cold' ? p.view === 'cold' : p.view !== 'cold')
-          && !!p.phone && !callProspectDoneIds.has(p.clientId) && !callSkippedIds.has(`p:${p.clientId}`))
+          && !!p.phone && !dncIds.has(p.clientId) && !callProspectDoneIds.has(p.clientId) && !callSkippedIds.has(`p:${p.clientId}`))
         .map<CRMTask>(p => ({ id: `p:${p.clientId}`, client_id: p.clientId, agent_id: profile?.id ?? '', type: 'call', title: p.reason, due_date: t0, notes: '', completed_at: null, created_at: '' }));
     }
     if (callOnlyCallbacks) return callbackTasks;
     // Waiting call-backs come first (someone is waiting on us), then the follow-up / call tasks by due date.
     const due = callSource
-      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
+      .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id) && !dncIds.has(t.client_id))
       // Oldest due date first; within a day, whoever's been waiting longest.
       .sort((a, b) => a.due_date.localeCompare(b.due_date) || (a.created_at ?? '').localeCompare(b.created_at ?? ''));
     const plain = due.filter(t => !callGroupOf(t));
@@ -2534,8 +2648,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const size = new Map<string, number>();
     for (const t of grouped) size.set(callGroupOf(t)!, (size.get(callGroupOf(t)!) ?? 0) + 1);
     grouped.sort((a, b) => (size.get(callGroupOf(b)!)! - size.get(callGroupOf(a)!)!) || callGroupOf(a)!.localeCompare(callGroupOf(b)!) || a.title.localeCompare(b.title));
-    return [...callbackTasks, ...plain, ...grouped];
-  }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, callbackTasks, callOnlyCallbacks, profile?.id]);
+    // New website leads go on top — speed-to-lead: longest-waiting uncalled lead first, then call-backs, then tasks.
+    const me = callViewAgentId || profile?.id || '';
+    const leadTasks = routedLeads
+      .filter(c => !callProspectDoneIds.has(c.id) && !callSkippedIds.has(`p:${c.id}`))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map<CRMTask>(c => ({ id: `p:${c.id}`, client_id: c.id, agent_id: me, type: 'call', title: 'New lead', due_date: t0, notes: '', completed_at: null, created_at: c.created_at }));
+    return [...leadTasks, ...callbackTasks, ...plain, ...grouped];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callSource, callSkippedIds, callListMode, callListPeople, callProspectDoneIds, callPropView, callbackTasks, callOnlyCallbacks, profile?.id, routedLeads, dncIds, callViewAgentId]);
   // Counts per segment for the chips (computed before the segment filter), then the filtered queue.
   const callSegmentCounts = useMemo(() => {
     const n: Record<Segment, number> = { tenant: 0, broker: 0, other: 0 };
@@ -2574,12 +2695,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { cancelled = true; };
   }, [page, tasksSubTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // New leads — website forms, lead magnets, tour requests and inbound-call leads saved as contacts: anyone tagged "New Lead"
-  // in the last 30 days, newest first. Same list machinery as the marketing lists, so they can be worked or assigned.
-  const newLeadContacts = useMemo(() => {
-    const cutoff = Date.now() - 30 * 86_400_000;
-    return clients.filter(c => (c.tags ?? []).includes('New Lead') && !(c.tags ?? []).some(t => /^recruiting/i.test(t)) && Date.parse(c.created_at) >= cutoff);
-  }, [clients]);
   useEffect(() => {
     if (page !== 'tasks' || tasksSubTab !== 'calls' || callListMode !== 'leads:web') return;
     let cancelled = false;
@@ -5896,6 +6011,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     </td>
                                     <td style={{ padding: '11px 14px' }}>
                                       <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>{c.type}</span>
+                                      {isDnc(c) && <span style={{ marginLeft: 6, padding: '2px 7px', borderRadius: 4, fontSize: 11, fontWeight: 800, background: '#fee2e2', color: '#991b1b' }}>🚫 DNC</span>}
                                     </td>
                                     <td style={{ padding: '11px 14px', fontSize: 13, color: '#6b7280', whiteSpace: 'nowrap' }}>
                                       {lastDate ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
@@ -6509,7 +6625,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const askLine = (c?.notes ?? '').split('\n')[0].startsWith('📞 ASK FOR:') ? (c!.notes as string).split('\n')[0].replace('📞 ASK FOR:', '').trim() : '';
                   const inits = (cl: Client | null) => cl ? ((cl.first_name?.[0] ?? '') + (cl.last_name?.[0] ?? '') || (cl.business_name?.[0] ?? '?')).toUpperCase() : '?';
                   const cbItems = queue.filter(t => t.id.startsWith('cb:'));
-                  const taskItems = queue.filter(t => !t.id.startsWith('cb:'));
+                  const leadItems = callListMode === 'tasks' ? queue.filter(t => t.id.startsWith('p:')) : [];
+                  const taskItems = queue.filter(t => !t.id.startsWith('cb:') && !(callListMode === 'tasks' && t.id.startsWith('p:')));
                   const plainItems = taskItems.filter(t => !callGroupOf(t));
                   const groupedItems = taskItems.filter(t => callGroupOf(t));
                   const callGroups = (() => {
@@ -6565,6 +6682,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <>
                             <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#c9922c', fontWeight: 800, padding: '6px 10px 4px' }}>To call · {queue.length}</div>
                             {queue.map(row)}
+                          </>
+                        )}
+                        {callListMode === 'tasks' && leadItems.length > 0 && (
+                          <>
+                            <div style={{ fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', color: '#15803d', fontWeight: 800, padding: '6px 10px 4px' }}>🆕 New leads — call first · {leadItems.length}</div>
+                            {leadItems.map(row)}
                           </>
                         )}
                         {callListMode === 'tasks' && cbItems.length > 0 && (
@@ -6637,6 +6760,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                             {c && tcolor && <span style={{ padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: tcolor.bg, color: tcolor.fg }}>{c.type}</span>}
                             {isOverdue && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626' }}>{overdueDays}d OVERDUE</span>}
+                            {curMeta && /^New lead/.test(curMeta.reason) && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 800, background: '#dcfce7', color: '#166534' }}>🆕 NEW LEAD</span>}
+                            {c && isDnc(c) && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 800, background: '#fee2e2', color: '#991b1b' }}>🚫 DO NOT CALL</span>}
                             {carried && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#f3f4f6', color: '#6b7280' }}>CARRIED OVER</span>}
                             {cbm && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fff1f2', color: '#be123c' }}>📞 {cbReason(cbm)} · waiting {ago(cbm.started_at)}</span>}
                             {curMeta && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: curMeta.heat === 'hot' ? '#fff1f2' : curMeta.heat === 'cold' ? '#eff6ff' : '#fffbeb', color: curMeta.heat === 'hot' ? '#be123c' : curMeta.heat === 'cold' ? '#1d4ed8' : '#b45309' }}>{HEAT_ICON[curMeta.heat]} {curMeta.heat === 'hot' ? 'Hot' : curMeta.heat === 'cold' ? 'Cold' : 'Warm'}</span>}
@@ -11335,6 +11460,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <span style={{ ...Object.fromEntries((CLIENT_TYPE_COLORS[c.type] || '').split(';').map(s => s.split(':'))), display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 13, fontWeight: 700 } as React.CSSProperties}>
                     {c.type === 'Buyer' ? '🏡' : c.type === 'Seller' ? '🪧' : c.type === 'Tenant' ? '🔑' : c.type === 'Landlord/Investor' ? '🏢' : c.type === 'Agent' ? '🤝' : '🏛'} {c.type}
                   </span>
+                  {isDnc(c) && <span title="Marked do-not-call — skipped by the call queue" style={{ display: 'inline-block', marginLeft: 8, padding: '2px 10px', borderRadius: 4, fontSize: 12, fontWeight: 800, background: '#fee2e2', color: '#991b1b' }}>🚫 Do not call</span>}
                 </div>
                 <button className="crm-icon-btn" onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
@@ -13584,6 +13710,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             if (url) { const w = window.open(url, '_blank'); if (w) w.opener = null; }
           }}
         />
+      )}
+
+      {/* Undo — Not interested / Wrong number */}
+      {callUndo && (
+        <div style={{ position: 'fixed', ...(isMobile
+          ? { bottom: 'calc(132px + env(safe-area-inset-bottom))', left: 14, right: 14 }
+          : { bottom: 84, right: 26, maxWidth: 360 }),
+          background: '#111', color: '#fff', padding: '10px 10px 10px 16px', borderRadius: 10, fontSize: 14, zIndex: 10000, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>{callUndo.label}</span>
+          <button onClick={() => { const u = callUndo; setCallUndo(null); u.run(); }}
+            style={{ minHeight: 44, padding: '0 18px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#111', fontWeight: 800, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Undo</button>
+        </div>
       )}
 
       {/* Toast */}
