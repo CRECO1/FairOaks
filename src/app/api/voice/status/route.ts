@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { twiml, twilioConfigured, twilioParams, verifyTwilioSignature } from '@/lib/twilio';
 import { flattenTranscript, loadSettings, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
+import { ensureContactForCall } from '@/lib/phone-lead-contact';
 import { junkKind, tidyCallLog } from '@/lib/call-routing';
 
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,9 @@ export async function POST(req: Request) {
   await db.from('crm_call_log').update(patch).eq('id', call.id);
   // Owner + due time for a real call-back; links the caller to a contact if one exists.
   try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }
+  // A real caller becomes a contact now — not whenever someone presses "Save as contact".
+  const saved = await ensureContactForCall(db, call.id);
+  if (saved?.created) contact = { id: saved.contactId, name: (patch.caller_name as string) || call.caller_name || 'New contact' };
 
   if (patch.needs_follow_up) {
     const settings = await loadSettings(db, call.business_unit);
