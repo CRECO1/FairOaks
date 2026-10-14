@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { mirrorCallNote } from '@/lib/call-note-mirror';
 import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { toE164 } from '@/lib/phone';
@@ -201,6 +202,8 @@ export async function POST(req: NextRequest) {
       notes: `Outbound call · ${RESULT_LABEL[result] ?? result}${b.notes ? ` — ${String(b.notes).slice(0, 400)}` : ''}`,
     });
   }
+  // The note this call carries also goes on the contact's card (Activity list).
+  if (b.notes && data?.id) await mirrorCallNote(supabase, data.id as string, ctx.userId);
   return NextResponse.json({ call: data, not_reached: NOT_REACHED.includes(result) });
 }
 
@@ -297,6 +300,8 @@ export async function PATCH(req: NextRequest) {
       notes: `Returned call${data.summary ? `: ${String(data.summary).slice(0, 300)}` : ''}${b.notes ? ` — ${String(b.notes).slice(0, 300)}` : ''}`,
     });
   }
+  // Any change to a call's note, or attaching a contact to it, keeps the card's copy in step.
+  if (b.notes !== undefined || b.contact_id !== undefined || b.outcome !== undefined) await mirrorCallNote(supabase, id, ctx.userId);
   return NextResponse.json({ call: { ...data, has_recording: !!data.recording_url, recording_url: undefined } });
 }
 

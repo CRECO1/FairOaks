@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { mirrorNotesForContact } from '@/lib/call-note-mirror';
 import { randomUUID } from 'crypto';
 import { getCrmContext, isAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
@@ -84,6 +85,9 @@ export async function POST(req: NextRequest) {
       .eq('business_unit', unit).is('contact_id', null)
       .or(`from_number.like.%${tail},to_number.like.%${tail},callback_number.like.%${tail}`);
   }
+  // Notes already written on these calls now belong on the card they were just attached to.
+  await mirrorNotesForContact(db, contact.id, ctx.userId);
+
   // An open call-back with no owner goes to the contact's agent.
   if (call.needs_follow_up && !call.handled_at && !call.follow_up_assignee && contact.agent_id) {
     await db.from('crm_call_log').update({ follow_up_assignee: contact.agent_id }).eq('id', call.id);
