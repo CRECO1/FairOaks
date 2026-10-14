@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 
 // ── Searchable contact picker ────────────────────────────────────────────────
 function ContactSearch({
@@ -132,6 +133,8 @@ interface Props {
   onRefresh: () => void;
   currentUserId?: string;
   onTaskComplete?: (task: Task) => void;
+  /** Teammates newly @tagged in a task's notes — parent creates the bell notification. */
+  onMention?: (ids: string[], message: string, taskId: string) => void;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -494,8 +497,9 @@ function TaskDetailPanel({
           {/* Notes */}
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 10, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600, marginBottom: 6 }}>Notes</div>
-            <textarea value={form.description ?? ''} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Add notes…"
+            <MentionTextarea value={form.description ?? ''} onChange={v => setForm(f => ({ ...f, description: v }))}
+              profiles={profiles}
+              placeholder="Add notes… (@ to tag a teammate)"
               style={{ padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#374151', fontFamily: "'DM Sans',sans-serif", width: '100%', minHeight: 120, resize: 'vertical', background: '#fafafa', boxSizing: 'border-box', lineHeight: 1.6 }} />
           </div>
         </div>
@@ -523,7 +527,7 @@ function TaskDetailPanel({
 // ── Main Component ───────────────────────────────────────────────────────────
 export default function TasksSection({
   tasks, tasksLoading, profiles, clients, isAdmin, isMobile,
-  businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete,
+  businessUnit, authHeaders, onTasksChange, showToast, onRefresh, currentUserId, onTaskComplete, onMention,
 }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>('urgency');
   const [quickFilter, setQuickFilter] = useState<'' | 'overdue' | 'today' | 'week' | 'later' | 'nodate' | 'done'>('');
@@ -691,6 +695,8 @@ export default function TasksSection({
     const task = await apiCreateTask(payload);
     if (task) {
       onTasksChange([task, ...tasks]);
+      const who = parseMentionIds(newForm.description, profiles);
+      if (onMention && who.length) onMention(who, `tagged you on a ${newForm.type === 'call' ? 'call task' : 'task'}: ${newForm.title.trim()}`, task.id);
       showToast(newForm.type === 'call' ? '📞 Call added to the queue ✓' : 'Task created ✓');
     }
     setShowNewModal(false);
@@ -991,7 +997,15 @@ export default function TasksSection({
           clients={clients}
           isAdmin={isAdmin}
           onClose={() => setDetailTask(null)}
-          onSave={async updates => { await handleUpdateTask(detailTask.id, updates); setDetailTask(null); }}
+          onSave={async updates => {
+            await handleUpdateTask(detailTask.id, updates);
+            if (onMention && typeof updates.description === 'string') {
+              const had = new Set(parseMentionIds(detailTask.description ?? '', profiles));
+              const fresh = parseMentionIds(updates.description, profiles).filter(id => !had.has(id));
+              if (fresh.length) onMention(fresh, `tagged you on a task: ${detailTask.title}`, detailTask.id);
+            }
+            setDetailTask(null);
+          }}
           onDelete={() => handleDeleteTask(detailTask.id)}
         />
       )}
@@ -1004,7 +1018,7 @@ export default function TasksSection({
             <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, marginBottom: 20, color: '#111' }}>New Task</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>{LABEL('Title *')}<input autoFocus value={newForm.title} onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleNewTask()} placeholder="Task name…" style={INPUT_STYLE} /></div>
-              <div>{LABEL('Notes')}<textarea value={newForm.description} onChange={e => setNewForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional details…" style={{ ...INPUT_STYLE, minHeight: 60, resize: 'none' }} /></div>
+              <div>{LABEL('Notes')}<MentionTextarea value={newForm.description} onChange={v => setNewForm(f => ({ ...f, description: v }))} profiles={profiles} placeholder="Optional details… (@ to tag a teammate)" style={{ ...INPUT_STYLE, minHeight: 60, resize: 'none' }} /></div>
               <div>{LABEL('Type')}
                 <select value={newForm.type} onChange={e => setNewForm(f => ({ ...f, type: e.target.value as typeof f.type }))} style={INPUT_STYLE}>
                   <option value="">✓ To-Do</option>

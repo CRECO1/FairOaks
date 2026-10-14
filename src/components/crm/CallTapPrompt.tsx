@@ -4,6 +4,7 @@
 // later are covered), pulls context from data-name / data-contact-id / data-call-id /
 // data-pending when the link carries it, and otherwise matches the number to a contact.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 import { clearPendingCall, readPendingCall, writePendingCall, type PendingCall } from '@/lib/call-tap';
 
 interface Props {
@@ -14,6 +15,9 @@ interface Props {
   suppress: boolean;
   findByPhone: (digits10: string) => { id: string; name: string } | null;
   showToast?: (m: string) => void;
+  /** Teammates for the @ picker + the callback that notifies whoever got tagged. */
+  profiles?: { id: string; first_name: string; last_name: string }[];
+  onMention?: (ids: string[], note: string, callId: string | undefined, who: string) => void;
 }
 
 const OUTCOMES = [
@@ -34,7 +38,7 @@ function retryAt(kind: Retry): string | null {
   return d.toISOString();
 }
 
-export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppress, findByPhone, showToast }: Props) {
+export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppress, findByPhone, showToast, profiles, onMention }: Props) {
   const [pending, setPending] = useState<PendingCall | null>(null);
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
@@ -106,6 +110,10 @@ export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppr
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { showToast?.(j.error || 'Could not log the call'); return; }
+      if (profiles?.length && onMention && note.trim()) {
+        const who = parseMentionIds(note, profiles);
+        if (who.length) onMention(who, note.trim(), j.call?.id, pending.name || pending.number);
+      }
       showToast?.(outcome === 'answered' ? 'Call logged ✓' : outcome === 'wrong_number' ? 'Logged as a wrong number' : retry !== 'none' ? 'Logged — reminder set ✓' : 'Call logged ✓');
       dismiss();
       window.dispatchEvent(new Event('crm:calls-changed'));   // the Calling Log refreshes itself
@@ -134,7 +142,7 @@ export default function CallTapPrompt({ businessUnit, authToken, isMobile, suppr
             </button>
           ))}
         </div>
-        <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional) — type it, then tap what happened" style={{ width: '100%', boxSizing: 'border-box', minHeight: 54, padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", marginBottom: 10 }} />
+        <MentionTextarea value={note} onChange={setNote} profiles={profiles ?? []} placeholder="Note (optional) — type it, then tap what happened (@ to tag)" style={{ width: '100%', boxSizing: 'border-box', minHeight: 54, padding: '9px 11px', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", marginBottom: 10 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: '#9ca3af' }}>If no answer / voicemail, remind me to try again:</span>
           {chip('none', 'No reminder')}{chip('hour', 'In 1 hour')}{chip('tmrw', 'Tomorrow 9a')}

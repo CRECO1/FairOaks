@@ -2268,6 +2268,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       notes: taskForm.notes.trim(),
     }]).select().single();
     if (error) { showToast('Error saving task'); return; }
+    {
+      const who = parseMentionIds(`${taskForm.title} ${taskForm.notes}`, profiles);
+      if (who.length) {
+        const n = taskForm.notes.trim();
+        createMentionNotifications(who, `@${profile?.first_name} tagged you on a ${taskForm.type === 'call' ? 'call task' : 'task'}: ${taskForm.title.trim()}${n ? ` — ${n.length > 80 ? n.slice(0, 80) + '…' : n}` : ''}`, 'task', (data as CRMTask).id);
+      }
+    }
     setAllTasks(prev => [...prev, data as CRMTask].sort((a, b) => a.due_date.localeCompare(b.due_date)));
     setShowTaskModal(false);
     setTaskForm({ type: 'follow_up', title: '', due_date: '', notes: '' });
@@ -2393,6 +2400,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
       // Property-based prospecting calls have no linked contact — skip the timeline log.
       if (task.client_id) await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base);
+      else if (jotted) {
+        // No contact to log on, so logActivity (which notifies) never runs — ping tagged teammates here.
+        const who = parseMentionIds(jotted, profiles);
+        if (who.length) createMentionNotifications(who, `@${profile?.first_name} tagged you on a call (${(task.title || 'call').replace(/^🏢\s*/, '').slice(0, 60)}): ${jotted.length > 90 ? jotted.slice(0, 90) + '…' : jotted}`, 'task', task.id.startsWith('p:') || task.id.startsWith('cb:') ? undefined : task.id);
+      }
 
       // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
       //    A chip override (callFollowUpDays) beats the disposition's default cadence.
@@ -6792,8 +6804,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           )}
 
                           {/* Note + next follow-up */}
-                          <input value={callNote} onChange={e => setCallNote(e.target.value)} placeholder="Quick note — saved to the timeline and the next follow-up…"
-                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", marginBottom: 10, boxSizing: 'border-box' }} />
+                          <div style={{ marginBottom: 10 }}>
+                            <MentionTextarea value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
+                              placeholder="Quick note — saved to the timeline and the next follow-up… (@ to tag a teammate)"
+                              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box', minHeight: 44, resize: 'vertical' }} />
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
                             <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, marginRight: 2 }}>Next follow-up:</span>
                             {followChips.map(chip => {
@@ -6851,8 +6866,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   style={{ minHeight: 68, borderRadius: 14, border: 'none', background: bg, color: fg, fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '10px 8px' }}>{label}</button>
                               ))}
                             </div>
-                            <input value={callNote} onChange={e => setCallNote(e.target.value)} placeholder="Quick note (optional) — type it, then tap what happened"
-                              style={{ width: '100%', boxSizing: 'border-box', marginTop: 12, minHeight: 48, padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 16, fontFamily: "'DM Sans',sans-serif" }} />
+                            <div style={{ marginTop: 12 }}>
+                              <MentionTextarea value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
+                                placeholder="Quick note (optional) — type it, then tap what happened (@ to tag)"
+                                style={{ width: '100%', boxSizing: 'border-box', minHeight: 48, padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 16, fontFamily: "'DM Sans',sans-serif", resize: 'none' }} />
+                            </div>
                           </div>
                         </div>
                       )}
@@ -6879,6 +6897,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 showToast={showToast}
                 onRefresh={loadTasks}
                 currentUserId={profile?.id}
+                onMention={(ids, message, taskId) => createMentionNotifications(ids, `@${profile?.first_name} ${message}`, 'task', taskId)}
                 onTaskComplete={task => {
                   if (task.client_id) {
                     logActivity(task.client_id, 'note', `✅ Task completed: ${task.title}`);
@@ -13228,10 +13247,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {/* Notes */}
                 <div>
                   <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 600, display: 'block', marginBottom: 6 }}>Notes <span style={{ color: '#d1d5db', fontWeight: 400 }}>(optional)</span></label>
-                  <textarea className="crm-input" style={{ marginTop: 0, minHeight: 64, resize: 'none', fontSize: 13 }}
-                    placeholder="Any additional context…"
+                  <MentionTextarea className="crm-input" style={{ marginTop: 0, minHeight: 64, resize: 'none', fontSize: 13 }}
+                    placeholder="Any additional context… (@ to tag a teammate or contact)"
+                    profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
                     value={taskForm.notes}
-                    onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
+                    onChange={v => setTaskForm(f => ({ ...f, notes: v }))}
                   />
                 </div>
 
@@ -13359,6 +13379,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         // Today's Calls (Tasks) runs its own connected / voicemail / no-answer flow.
         suppress={page === 'tasks' && tasksSubTab === 'calls'}
         showToast={showToast}
+        profiles={profiles}
+        onMention={(ids, note, callId, who) => createMentionNotifications(ids, `@${profile?.first_name} tagged you on a call with ${who}: ${note.length > 90 ? note.slice(0, 90) + '…' : note}`, 'calls', callId)}
         findByPhone={d => {
           const hit = clients.find(c => [c.phone, c.cell_phone].some(n => (n ?? '').replace(/\D/g, '').slice(-10) === d));
           return hit ? { id: hit.id, name: `${hit.first_name ?? ''} ${hit.last_name ?? ''}`.trim() || hit.business_name || 'Contact' } : null;
