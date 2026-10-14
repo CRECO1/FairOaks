@@ -12,6 +12,7 @@ import RentRoll from '@/components/crm/RentRoll';
 import LeasingActivity from '@/components/crm/LeasingActivity';
 import EmailProspects from '@/components/crm/EmailProspects';
 import PropertyPerformance from '@/components/crm/PropertyPerformance';
+import { useDragScroll } from '@/lib/use-drag-scroll';
 import CamReconciliation from '@/components/crm/CamReconciliation';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
 
@@ -281,6 +282,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [formSearch, setFormSearch] = useState('');   // the library is long — let agents type to find a form
 
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  // The property card's tab row: drag it with the mouse as well as scrolling it.
+  const tabDrag = useDragScroll<HTMLDivElement>();
 
   // ── Load ────────────────────────────────────────────────────────────────────
 
@@ -1309,7 +1312,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                 </div>
               </div>
               {/* Tabs */}
-              <div style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none' }}>
+              <div ref={tabDrag.ref} {...tabDrag.handlers} style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none', ...tabDrag.style }}>
                 {[{ k: 'info', label: '📋 Details' }, { k: 'performance', label: '📈 Performance' }, { k: 'documents', label: '📄 Documents' },
                   ...(canSeeRentRoll ? [{ k: 'rentroll', label: '📊 Rent Roll' }] : []),
                   // The owner's weekly leasing activity report, kept live (LeasingActivity).
