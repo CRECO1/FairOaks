@@ -228,6 +228,18 @@ const BRIAN_EMAIL = 'brian@crecotx.com';   // unassigned new website leads route
 const isListCall = (t: { type?: string | null; description?: string | null; notes?: string | null }) =>
   t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`);
 
+/**
+ * The red number on the Tasks nav: MY dated tasks that are past due. It used to count every open
+ * overdue task the signed-in user could load — for an admin that is the whole team, so Zack's badge
+ * read 116 (Brian's call list included) when his own were 12 — and it counted call-list calls, which
+ * are carried over rather than late (see isListCall).
+ */
+const overdueMine = (all: Task[], meId: string | null | undefined) =>
+  all.filter(t => {
+    const owner = (t as { assigned_to?: string; agent_id?: string }).assigned_to ?? (t as { agent_id?: string }).agent_id;
+    return t.status !== 'done' && t.due_date && t.due_date < today() && owner === meId && !isListCall(t as never);
+  }).length;
+
 function fmtPhone(v: string): string {
   const digits = v.replace(/\D/g, '').slice(0, 10);
   if (digits.length <= 3) return digits;
@@ -4624,9 +4636,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => setPage('dashboard')}>🏠 &nbsp;Dashboard</button>
           <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); }}>
             ✅ &nbsp;Tasks
-            {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+            {overdueMine(tasks, profile?.id) > 0 && (
               <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+                {overdueMine(tasks, profile?.id)}
               </span>
             )}
           </button>
@@ -4810,9 +4822,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'dashboard' ? ' active' : ''}`} onClick={() => { setPage('dashboard'); setMobileMenuOpen(false); }}>🏠 &nbsp;Dashboard</button>
                 <button className={`crm-nav${page === 'tasks' ? ' active' : ''}`} onClick={() => { setPage('tasks'); setTasksSubTab('tasks'); setMobileMenuOpen(false); }}>
                   ✅ &nbsp;Tasks
-                  {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length > 0 && (
+                  {overdueMine(tasks, profile?.id) > 0 && (
                     <span style={{ marginLeft: 'auto', background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                      {tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today()).length}
+                      {overdueMine(tasks, profile?.id)}
                     </span>
                   )}
                 </button>
@@ -10025,7 +10037,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         </div>
         {/* ── Mobile bottom tab bar (5 tabs + Menu) ── */}
         {isMobile && (() => {
-          const overdueCt = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date < today() && !isListCall(t as never)).length;
+          const overdueCt = overdueMine(tasks, profile?.id);
           const tabs = [
             { id: 'dashboard' as typeof page, icon: '🏠', label: 'Home' },
             { id: 'contacts'  as typeof page, icon: '👥', label: 'Contacts' },
