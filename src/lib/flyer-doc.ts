@@ -6,7 +6,7 @@
 // header font (via fontkit) + Helvetica body. All raster inputs (hero, maps, floor
 // plan, logo) are passed in as bytes so this stays pure + unit-testable.
 // ─────────────────────────────────────────────────────────────────────────────
-import { PDFDocument, StandardFonts, rgb, degrees, PDFFont, PDFImage, PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, degrees, PDFFont, PDFImage, PDFPage, pushGraphicsState, popGraphicsState, rectangle, clip, endPath } from 'pdf-lib';
 import type { RGB } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 
@@ -33,6 +33,9 @@ export interface FlyerInput {
   // not in the prose — lot size and zoning are the two that come up on every call.
   statLot?: string | null;       // "1.01 AC"
   statZoning?: string | null;    // "I-1"
+  // "At a glance" rows beside the stat tiles — year built, parking, demising, clear
+  // height… (see flyer-facts.ts). Optional; the column simply ends after the tiles.
+  facts?: Array<{ label: string; value: string }>;
   agentNames: string[];
   contacts: string[];            // email / phone lines
   hero?: { bytes: Uint8Array; png: boolean } | null;
@@ -240,14 +243,19 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const map = await embedPng(input.mapBytes);
   const aerial = await embedPng(input.aerialBytes);
   const floor = await embed(input.floorPlan);
-  const gallery = (await Promise.all((input.galleryPhotos || []).map(embed))).filter((g): g is PDFImage => !!g).slice(0, 6);
+  const gallery = (await Promise.all((input.galleryPhotos || []).map(embed))).filter((g): g is PDFImage => !!g).slice(0, 12);
+  // Page 1 carries a photo strip (up to 4 photos + the location map); page 2's grid
+  // takes whatever is left, so no photo is shown twice.
+  const STRIP_MAX = 4;
+  const stripPhotos = gallery.slice(0, STRIP_MAX);
+  const gridPhotos = gallery.slice(STRIP_MAX);
 
   // ── PAGE 1 ─────────────────────────────────────────────────────────────────
   const p1 = pdf.addPage([W, H]);
   p1.drawRectangle({ x: 0, y: 0, width: W, height: H, color: WHITE });
 
   // Hero (full-bleed top) — cover, then paint white below to erase any spill.
-  const heroY = 462, heroH = H - heroY;   // 330 tall
+  const heroY = 548, heroH = H - heroY;   // 244 tall — the strip below gives the rest of the page's photos room
   if (hero) drawCover(p1, hero, 0, heroY, W, heroH);
   else { p1.drawRectangle({ x: 0, y: heroY, width: W, height: heroH, color: rgb(0.9, 0.91, 0.93) }); p1.drawText('Add a property photo', { x: W / 2 - 70, y: heroY + heroH / 2, size: 12, font: body, color: rgb(0.6, 0.63, 0.67) }); }
   p1.drawRectangle({ x: 0, y: 0, width: W, height: heroY, color: WHITE });
@@ -300,12 +308,39 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   const aSize = fitSize(addr, osw, W - 44, 27, 13);
   p1.drawText(addr, { x: 22, y: bannerY + bannerH / 2 - aSize * 0.34, size: aSize, font: osw, color: gold });
 
+  // ── Photo strip: the next photos (1–4) and the location map, one even row. ──
+  // Driven by however many photos the listing has: cells share the width equally and
+  // each is cover-cropped to its box (clipped, so a crop never spills onto a neighbour).
+  const STRIP_H = 104, STRIP_G = 8, SX = 34, SW = W - 2 * SX;
+  const cells: Array<{ img: PDFImage; tag?: string }> = [
+    ...stripPhotos.map(img => ({ img })),
+    ...(map ? [{ img: map, tag: 'LOCATION' }] : []),
+  ];
+  let bodyTop = bannerY - 24;
+  if (cells.length) {
+    const sTop = bannerY - 14, sBottom = sTop - STRIP_H;
+    const cw = (SW - (cells.length - 1) * STRIP_G) / cells.length;
+    cells.forEach((c, i) => {
+      const cx = SX + i * (cw + STRIP_G);
+      p1.pushOperators(pushGraphicsState(), rectangle(cx, sBottom, cw, STRIP_H), clip(), endPath());
+      drawCover(p1, c.img, cx, sBottom, cw, STRIP_H);
+      p1.pushOperators(popGraphicsState());
+      p1.drawRectangle({ x: cx, y: sBottom, width: cw, height: STRIP_H, borderColor: LINE, borderWidth: 0.75 });
+      if (c.tag) {
+        const tw = labelFont.widthOfTextAtSize(c.tag, 6.5) + 1.2 * c.tag.length + 12;
+        p1.drawRectangle({ x: cx, y: sBottom, width: tw, height: 15, color: BLACK });
+        drawSpaced(p1, c.tag, cx + 6, sBottom + 5, 6.5, labelFont, WHITE, 1.2);
+      }
+    });
+    bodyTop = sBottom - 24;
+  }
+
   // ── Two-column body ──
   const M = 34;
   const colGap = 22;
   const leftX = M, leftW = 250;
   const rightX = leftX + leftW + colGap, rightW = W - M - rightX;   // ~272
-  let ly = bannerY - 24;
+  let ly = bodyTop;
 
   // The left column must never reach the footer, so description and highlights share a
   // fixed budget: highlights reserve their space first (they're the scannable part),
@@ -363,7 +398,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     { kind: 'zoning' as const, value: sanitize(input.statZoning || '').trim() },
   ].filter(t => t.value);
   const tileRows = extra.length ? 2 : 1;
-  const tileTop = bannerY - 24;
+  const tileTop = bodyTop;
   const tileY = tileTop - tileH;                      // first row
   const tilesBottom = tileTop - tileRows * tileH;
   p1.drawRectangle({ x: rightX, y: tilesBottom, width: rightW, height: tileRows * tileH, color: BLACK });
@@ -394,10 +429,26 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   tile(rightX + half, tileY, half, 'size', input.statSize);
   extra.forEach((t, i) => tile(rightX + (extra.length === 1 ? 0 : i * half), tilesBottom, extra.length === 1 ? rightW : half, t.kind, t.value));
 
-  // Right: location map
-  const mapTop = tilesBottom - 12, mapBottom = 140, mapH = mapTop - mapBottom;   // divider sits at 128
-  if (map) { const r = drawContain(p1, map, rightX, mapBottom, rightW, mapH); p1.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: LINE, borderWidth: 1 }); }
-  else { p1.drawRectangle({ x: rightX, y: mapBottom, width: rightW, height: mapH, color: rgb(0.95, 0.96, 0.97), borderColor: LINE, borderWidth: 1 }); p1.drawText('Location map', { x: rightX + rightW / 2 - 30, y: mapBottom + mapH / 2, size: 10, font: body, color: rgb(0.6, 0.63, 0.67) }); }
+  // Right: "at a glance" — the facts a prospect screens on, one hairline row each.
+  // (The location map now lives in the photo strip above.)
+  const facts = (input.facts || [])
+    .map(f => ({ label: sanitize(f.label).trim().toUpperCase(), value: sanitize(f.value).trim() }))
+    .filter(f => f.label && f.value).slice(0, 6);
+  if (facts.length) {
+    let gy = tilesBottom - 22;
+    p1.drawText('AT A GLANCE', { x: rightX, y: gy, size: 13, font: osw, color: INK });
+    p1.drawRectangle({ x: rightX, y: gy - 6, width: 26, height: 2.5, color: gold });
+    gy -= 24;
+    const ROW = 22;
+    for (const f of facts) {
+      if (gy - 9 < 131) break;                       // never into the agent block (divider at 128)
+      const lw = drawSpaced(p1, f.label, rightX, gy + 1, 7, labelFont, rgb(0.42, 0.44, 0.47), 0.9);
+      const vs = fitSize(f.value, osw, rightW - lw - 14, 12.5, 8);
+      p1.drawText(f.value, { x: rightX + rightW - osw.widthOfTextAtSize(f.value, vs), y: gy - 0.5, size: vs, font: osw, color: INK });
+      p1.drawRectangle({ x: rightX, y: gy - 9, width: rightW, height: 0.75, color: LINE });
+      gy -= ROW;
+    }
+  }
 
   // ── Footer — the LOI letterhead footer, on every page we generate. ──
   const FOOT_RULE_Y = 54;
@@ -443,21 +494,21 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
       draw: (x, y, w, h) => drawTradeArea(p2!, ta, x, y, w, h, osw, body, gold),
     });
   }
-  if (gallery.length === 1) {
+  if (gridPhotos.length === 1) {
     // A single gallery photo reads far better as a full-width banner (contained at
     // its own aspect) than as a small centred 4:3 cell — so the rendering is legible.
-    const g = gallery[0];
+    const g = gridPhotos[0];
     p2blocks.push({
       title: input.titles?.photos || 'PHOTOS', weight: 2.2, border: true,
       natural: (w) => w * (g.height / g.width),
       draw: (x, y, w, h) => drawContainTop(p2!, g, x, y, w, h),
     });
-  } else if (gallery.length) p2blocks.push({
+  } else if (gridPhotos.length) p2blocks.push({
     title: input.titles?.photos || 'PHOTOS', weight: 1.9, border: false,
     // The grid holds the photos' 4:3, so it can't use a taller box — say so up front
     // and the leftover goes to the map instead of becoming a hole in the page.
-    natural: (w) => photoGridHeight(gallery.length, w),
-    draw: (x, y, w, h) => drawPhotoGrid(p2!, gallery, x, y, w, h, LINE),
+    natural: (w) => photoGridHeight(gridPhotos.length, w),
+    draw: (x, y, w, h) => drawPhotoGrid(p2!, gridPhotos, x, y, w, h, LINE),
   });
   // Floor plan is the key page-2 visual — weight it to fill most of the width so the
   // site plan is actually legible rather than a small centred letterbox.

@@ -3,6 +3,7 @@ import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { renderFlyer } from '@/lib/flyer-doc';
+import { flyerFacts } from '@/lib/flyer-facts';
 import { OSWALD_BOLD_B64, CRECO_LOGO_PNG_B64 } from '@/lib/flyer-assets';
 import sharp from 'sharp';
 import { geocode, osmStaticMap, roadLabels } from '@/lib/static-map';
@@ -139,7 +140,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Gallery = the next photos, cover-cropped to 4:3 for a clean grid.
   const galleryPhotos: Array<{ bytes: Uint8Array; png: boolean }> = [];
-  for (const f of photoRows.slice(1, 7)) {
+  for (const f of photoRows.slice(1, 11)) {
     const b = await dl(f); if (!b) continue;
     try { const j = await sharp(b).resize(640, 480, { fit: 'cover', position: 'centre' }).jpeg({ quality: 82 }).toBuffer(); galleryPhotos.push({ bytes: new Uint8Array(j), png: false }); } catch { /* skip */ }
   }
@@ -247,10 +248,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? [contactEmail(agent?.email), contactEmail(coAgent?.email), agent?.phone || coAgent?.phone]
     : [contactEmail(agent?.email), agent?.phone, web]).filter(Boolean) as string[];
 
+  const safeHighlights = publicSafeHighlights(String(L.highlights || '').split('\n').map(s => s.trim()).filter(Boolean));
+  const { facts, highlights: bulletHighlights } = flyerFacts(L, safeHighlights);
+
   const bytes = await renderFlyer({
     badge, address,
     description: publicSafeText(L.description || L.notes || ''),
-    highlights: publicSafeHighlights(String(L.highlights || '').split('\n').map(s => s.trim()).filter(Boolean)),
+    highlights: bulletHighlights,
+    facts,
     // Trade-area strip (crm_listings.trade_area jsonb: { tiles: [{ value, label }], caption }).
     // Filled in per property from TxDOT AADT + Census ring pulls; absent on most listings.
     tradeArea: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length
