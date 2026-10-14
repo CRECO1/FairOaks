@@ -11,6 +11,7 @@ import {
   renderLoi, LOI_PURCHASE_SPEC,
   type LoiPurchaseData, type LoiTermRow, type LoiSeller, type LoiSpec,
 } from '@/lib/loi-doc';
+import { leaseSpec, TENANTREP_INTRO } from '@/lib/loi-spec';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 
 interface Prefill {
@@ -134,8 +135,12 @@ function reconstructFromOverlay(values: unknown, base: LoiPurchaseData, spec: Lo
   };
 }
 
-export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissionId, listingId, dealId, deals, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
-  const [data, setData] = useState<LoiPurchaseData>(() => seedData(spec, prefill));
+export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC, submissionId, listingId, dealId, deals, businessUnit, authToken, prefill, onToast, onClose, onSaved }: Props) {
+  // A doc remembers the layout variant it was built with (builder_data.variant), so a
+  // tenant-rep LOI re-opens as one even when it's filed under the generic lease form.
+  const [variant, setVariant] = useState<LoiPurchaseData['variant']>(undefined);
+  const spec: LoiSpec = variant === 'tenantrep' ? leaseSpec('tenantrep') : specProp;
+  const [data, setData] = useState<LoiPurchaseData>(() => seedData(specProp, prefill));
   const [savedId, setSavedId] = useState<string | undefined>(submissionId);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const [loading, setLoading] = useState(!!submissionId);
@@ -155,6 +160,7 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
         if (cancelled) return;
         const bd = j?.submission?.builder_data;
         if (bd && Array.isArray(bd.terms)) {
+          if (bd.variant === 'tenantrep') setVariant('tenantrep');
           setData({
             ...seedData(spec, prefill), ...bd,
             terms: bd.terms.map((t: LoiTermRow) => ({ id: t.id || newId(), label: t.label || '', value: t.value || '' })),
@@ -207,7 +213,7 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
           // detaches a doc from the deal it was filed on.
           form_id: formId, deal_id: dealSel || null, relink_deal: dealSel !== (dealId ?? ''), listing_id: listingId || null,
           business_unit: businessUnit, title: spec.title,
-          values: sigFields, builder_data: data, pdfBase64: bytesToBase64(pdfBytes), submission_id: savedId,
+          values: sigFields, builder_data: variant ? { ...data, variant } : data, pdfBase64: bytesToBase64(pdfBytes), submission_id: savedId,
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -285,6 +291,17 @@ export default function LoiBuilder({ formId, spec = LOI_PURCHASE_SPEC, submissio
             </div>
 
             <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, margin: '0 0 16px' }}>{spec.title}</div>
+            {variant === 'tenantrep' && (
+              <>
+                <div style={{ maxWidth: 420, margin: '-8px auto 14px', textAlign: 'center' }}>
+                  <RichText value={data.subtitle ?? ''} onChange={v => patch({ subtitle: v })} placeholder="Building address (shown under the title)" />
+                </div>
+                <div style={{ marginBottom: 6 }}>Dear Sir or Madam,</div>
+                <div style={{ marginBottom: 14 }}>
+                  <RichText value={data.intro ?? TENANTREP_INTRO} onChange={v => patch({ intro: v })} placeholder="On behalf of our client…" />
+                </div>
+              </>
+            )}
 
             {/* Terms */}
             {data.terms.map((t, i) => (

@@ -135,7 +135,13 @@ export async function renderLoi(
   } else { spacer(6); }
 
   center(page, spec.title, y, TITLE, bold); y -= TITLE * 1.9;
+  if (data.subtitle?.trim()) { center(page, data.subtitle.trim(), y + TITLE * 0.55, BODY, times); y -= BODY * 1.2; }
   spacer(8);
+  // Tenant-rep letters open with a salutation + the "on behalf of our client" paragraph.
+  if (data.intro?.trim()) {
+    staticBlock('Dear Sir or Madam,', 10);
+    leftBlock(data.intro.trim(), M, RIGHT - M, 12);
+  }
 
   // ── Terms (dynamic — removed rows simply aren't here) ────────────────────────
   for (const t of data.terms) {
@@ -192,8 +198,10 @@ export async function renderLoi(
     }
   }
   spacer(6);
-  page.drawText(spec.partyHeading, { x: M, y, size: BODY, font: bold, color: ink });
-  y -= 20;
+  if (spec.partyHeading) {
+    page.drawText(spec.partyHeading, { x: M, y, size: BODY, font: bold, color: ink });
+    y -= 20;
+  }
   const sellers = (data.sellers && data.sellers.length ? data.sellers : [{ entity: '', signatory: '' }]).slice(0, 2);
   sellers.forEach((s, i) => { if (i > 0) spacer(14); acceptanceBlock(s, SELLER_ROLES[i] ?? 'client'); });
 

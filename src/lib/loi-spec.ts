@@ -16,6 +16,13 @@ export interface LoiPurchaseData {
   agentEmail: string;
   agentPhone: string;
   sellers: LoiSeller[];           // 1–2 acceptance blocks
+  /** Tenant-rep letters: the "Dear Sir or Madam," opening paragraph ('' / absent = omit). */
+  intro?: string;
+  /** Line centred under the title (the building address on a tenant-rep letter). */
+  subtitle?: string;
+  /** Which spec variant this doc was built with, so it re-opens (and re-renders) in
+   *  the same layout regardless of which form row it is filed under. */
+  variant?: LeaseAsset;
 }
 // Matches crm_form_submissions.values entries + esign.ts PlacedField.
 export interface LoiSigField { page: number; fx: number; fy: number; fw: number; type: string; signerRole: string }
@@ -135,7 +142,7 @@ const INDUSTRIAL_ROWS: LoiTermRow[] = [
   { label: 'Clear Height:', value: '________ feet clear.' },
 ];
 
-export type LeaseAsset = 'office' | 'industrial' | 'generic' | 'shortterm' | 'elkhorn';
+export type LeaseAsset = 'office' | 'industrial' | 'generic' | 'shortterm' | 'elkhorn' | 'tenantrep';
 
 // Elkhorn Point (8923 Dietz Elkhorn Rd, Fair Oaks Ranch) — the developer's (Headwall)
 // standard retail landlord LOI, adapted 2026-10-12: CRECO is the landlord's broker,
@@ -206,7 +213,32 @@ const LEASE_OVERLAY_KEYS: Record<string, string[]> = {
   'Broker Fee:': ['broker_fee'],
 };
 
+// Tenant-representation letter: CRECO writes to the landlord/listing broker ON BEHALF of
+// its tenant client. Same two-column label : value layout, with the opening paragraph and
+// the building address under the title. Blanks (________) are the values an agent fills.
+const TENANTREP_TERMS: LoiTermRow[] = [
+  { label: 'Tenant:', value: '________, or its affiliate/assignee.' },
+  { label: 'Premises:', value: 'Approximately ________ rentable square feet ("RSF"), subject to final measurement and plans.' },
+  { label: 'Permitted Use:', value: '________' },
+  { label: 'Lease Type:', value: '________' },
+  { label: 'Lease Term:', value: '________' },
+  { label: 'Lease Commencement:', value: '________' },
+  { label: 'Rent Commencement:', value: '________' },
+  { label: 'Base Rental Rate:', value: '________ per RSF per month, with ____% annual escalations.' },
+  { label: "First Month's Rent:", value: 'Due upon Lease execution (________).' },
+  { label: 'Security Deposit:', value: 'Due upon Lease execution, equal to ________.' },
+  { label: 'Operating Expenses:', value: '________' },
+  { label: 'Tenant Improvement Allowance:', value: '________' },
+  { label: 'HVAC:', value: 'Landlord will turn over all HVAC in good working order. Tenant agrees to maintain and pay for a quarterly service contract and provide receipts to Landlord upon request. If any HVAC unit requires replacement during the Term, Landlord accepts full replacement responsibility and expense.' },
+  { label: 'Renewal Option:', value: '________' },
+  { label: 'Compliance With Laws:', value: 'Upon commencement, the Building and Premises shall, at Landlord\u2019s sole cost and expense, comply with all applicable laws, ordinances, and regulations then in existence, including but not limited to the Americans with Disabilities Act and the National Electrical Code.' },
+  { label: 'Signage:', value: 'Tenant shall have the right to install its name/logo on the Building\u2019s monument and/or facade signage at no cost throughout the Lease Term, subject to municipal code.' },
+  { label: 'Broker:', value: 'Landlord shall pay Tenant\u2019s designated Broker, Commercial Real Estate Brokerage, LLC ("CRECO"), a fee equal to ________ of the gross aggregate value of the Lease, pursuant to a separate agreement between Landlord and Broker.' },
+];
+export const TENANTREP_INTRO = 'On behalf of our client, ________ ("Tenant"), we are pleased to submit this Letter of Intent ("LOI") to lease space in the building known as ________ (the "Building") on the following terms:';
+
 export function leaseTerms(asset: LeaseAsset): LoiTermRow[] {
+  if (asset === 'tenantrep') return TENANTREP_TERMS;
   if (asset === 'shortterm') return SHORTTERM_TERMS;   // its own structure, not common + flavour
   if (asset === 'elkhorn') return ELKHORN_TERMS;
   const flavour = asset === 'industrial' ? INDUSTRIAL_ROWS : asset === 'office' ? OFFICE_ROWS : [];
@@ -214,6 +246,21 @@ export function leaseTerms(asset: LeaseAsset): LoiTermRow[] {
 }
 
 export function leaseSpec(asset: LeaseAsset = 'generic'): LoiSpec {
+  if (asset === 'tenantrep') {
+    return {
+      kind: 'lease',
+      title: 'LETTER OF INTENT TO LEASE',
+      partyHeading: '',            // the acceptance blocks carry their own party names
+      partyNoun: 'Party',
+      boilerplate: [
+        'This Letter of Intent is merely a guide to the preparation of a mutually satisfactory lease agreement, and nothing herein shall preclude any other provision from being inserted at the request of either party.',
+        'This Letter of Intent is non-binding on either party until an actual lease agreement is drafted, agreed upon, and executed by both parties.',
+        'Should the foregoing be acceptable, please indicate your acceptance by executing this Letter of Intent in the space provided below.',
+      ],
+      defaultTerms: TENANTREP_TERMS,
+      overlayKeys: {}, overlayFill: 'blanks', overlayMeta: {},
+    };
+  }
   if (asset === 'elkhorn') {
     return {
       kind: 'lease',
@@ -265,6 +312,7 @@ export const LOI_LEASE_CODE = 'LOI-LEASE';
 export function assetFromFormName(name: string): LeaseAsset {
   const n = (name || '').toLowerCase();
   if (n.includes('elkhorn')) return 'elkhorn';
+  if (n.includes('tenant rep')) return 'tenantrep';
   if (n.includes('short')) return 'shortterm';      // check first — "Short-Term Industrial" is still staged
   if (n.includes('industrial')) return 'industrial';
   if (n.includes('office')) return 'office';
