@@ -380,15 +380,7 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
     });
   }, [rows, q, showVacant, sort]);
 
-  const exportCsv = () => {
-    const cols: (keyof RentRollRow)[] = ['suite', 'building', 'tenant_name', 'size_sf', 'lease_type', 'lease_start', 'lease_expiration', 'monthly_rent', 'annual_rent', 'mailbox_box', 'keys', 'email', 'phone', 'contact_name', 'renewal_status', 'notes'];
-    const head = ['Suite', 'Bldg', 'Tenant', 'Sq Ft', 'Lease Type', 'Lease Start', 'Lease Exp', 'Monthly Rent', 'Annual Rent', 'Mailbox', 'Keys', 'Email', 'Contact', 'Renewal', 'Notes'];
-    const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const csv = [head.join(','), ...rows.filter(r => !r.is_backup).map(r => cols.map(c => esc(c === 'contact_name' ? rowContact(r) : r[c])).join(','))].join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a'); a.href = url; a.download = 'rent-roll.csv'; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  };
+
 
   const tile = (label: string, value: string, sub?: string) => (
     <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 10, padding: '9px 13px', minWidth: 108 }}>
@@ -428,7 +420,6 @@ export default function RentRoll({ listingId, authToken, isAdmin, contacts = [],
             {matching ? 'Linking…' : `🔗 Link contacts (${unlinked.length})`}
           </button>
         )}
-        <button onClick={exportCsv} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 12px', cursor: 'pointer' }}>⤓ CSV</button>
         <button onClick={() => setExpanded(v => !v)} title={expanded ? 'Back to the property card' : 'Open the full sheet — every column, full width'}
           style={{ fontSize: 12.5, fontWeight: 700, color: expanded ? '#6b7280' : '#a06a12', background: expanded ? '#fff' : '#fffdf6', border: `1px solid ${expanded ? '#e5e7eb' : '#e6d3a2'}`, borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>{expanded ? '✕ Close' : '⛶ Full screen'}</button>
         <button onClick={addSuite} style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', background: GOLD, border: 'none', borderRadius: 8, padding: '7px 13px', cursor: 'pointer' }}>＋ Suite</button>

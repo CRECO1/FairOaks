@@ -154,7 +154,7 @@ export default function DocPreviewModal({ file, onClose }: {
           <a href={downloadUrl} style={{ ...btn, textDecoration: 'none', color: '#374151' }}>↓ Download</a>
           <button onClick={onClose} style={btn}>✕ Close</button>
         </div>
-        <div className="docprev-print" style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#f3f4f6', padding: 18 }}>
+        <div className="docprev-print crm-print-allowed" style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#f3f4f6', padding: 18 }}>
           {isPdf ? (
             <PdfViewer url={file.url} onReady={() => setReady(true)} />
           ) : isImg ? (

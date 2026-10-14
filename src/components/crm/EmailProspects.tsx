@@ -85,14 +85,7 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
     </div>
   ) : null;
 
-  const exportCsv = () => {
-    const head = ['Business', 'Contact', 'Ask for', 'Locations', 'Email', 'Phone', 'Category', 'Emails sent', 'Emails opened', 'Total opens', 'First open', 'Last open', 'Clicks', 'Unsubscribed', 'Dead email'];
-    const esc = (v: unknown) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const csv = [head.join(','), ...visible.map(p => [p.business, p.name, p.askFor, p.locations, p.email, p.phone, p.category, p.emailsSent, p.emailsOpened, p.opens, day(p.firstOpen), day(p.lastOpen), p.clicks, p.unsubscribed ? 'yes' : '', p.dead ? 'yes' : ''].map(esc).join(','))].join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const a = document.createElement('a'); a.href = url; a.download = view === 'opened' ? 'email-prospects-opened.csv' : view === 'cold' ? 'call-list-not-emailed.csv' : 'email-prospects.csv'; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  };
+
   const th = (label: string, k?: SortKey, right?: boolean) => (
     <th style={{ ...TH, textAlign: right ? 'right' : 'left', cursor: k ? 'pointer' : 'default' }}
       onClick={() => k && setSort(s => ({ key: k, dir: s.key === k ? (s.dir === 1 ? -1 : 1) : (k === 'who' || k === 'category' ? 1 : -1) }))}>
@@ -164,7 +157,6 @@ export default function EmailProspects({ listingId, authToken, emptyHint = false
             </div>
           );
         })()}
-        <button onClick={exportCsv} style={{ fontSize: 12, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '7px 11px', cursor: 'pointer' }}>⬇ CSV</button>
       </div>
 
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff', maxHeight: 520 }}>

@@ -12,6 +12,7 @@ import ContactComms from '@/components/crm/ContactComms';
 import EsignPanel, { SendView, ManageView, type Doc as EsignDoc, type Envelope as EsignEnvelope } from '@/components/crm/EsignPanel';
 import type { ComposerDoc } from '@/components/crm/EsignComposer';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
+import CrmShield, { detectAutomation, reportSecurityEvent } from '@/components/crm/CrmShield';
 import { agentTitle } from '@/lib/agent-title';
 import { recallView, rememberView, useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import DealDocUpload from '@/components/crm/DealDocUpload';
@@ -64,7 +65,6 @@ const supabase = createBrowserClient();
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; daily_call_goal?: number | null; }
-/** A contact-export request awaiting, or carrying, the owner's decision. */
 
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
 interface CallListPerson {
@@ -1301,11 +1301,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // The open deal's tab (the deal itself comes back in loadDeals via activeDealId).
   useEffect(() => { if (activeDeal) rememberView('deal-tab', dealTab); }, [activeDeal, dealTab]);
 
-  // Export-approval queue. Loaded whenever the contacts page is opened, which
-  // is both where the owner answers requests and where an agent finds out
-  // whether theirs was answered.
+  // Automated browsers (Selenium, Playwright, Puppeteer, headless Chrome, AI
+  // browser agents driving a WebDriver) never get the CRM. Checked once on load;
+  // a signed-in session that turns out to be automated is logged and signed out.
+  const [automation, setAutomation] = useState<string | null>(null);
+  useEffect(() => { setAutomation(detectAutomation()); }, []);
   useEffect(() => {
-  }, [page, session]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!automation || !session) return;
+    reportSecurityEvent(session.access_token, 'automation_blocked', automation);
+    void supabase.auth.signOut();
+  }, [automation, session]);
 
   // Responsive resize listener
   useEffect(() => {
@@ -3227,103 +3232,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     showToast(updated.includes(agentId) ? `${label} added to deal` : `${label} removed from deal`);
   }
 
-  /**
-   * Owner-only CSV download. Export is the account owner's alone, so there is no
-   * request path to fall back to — a refusal here means someone reached a button
-   * that should not have rendered, and the endpoint has already logged it.
-   */
-  async function downloadCsv(url: string, filename: string, noun: string) {
-    if (!isSuperAdmin) { showToast('Exporting is limited to the account owner.'); return; }
-    try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const info = await res.json().catch(() => ({}));
-        showToast(info.error ?? 'Export refused.');
-        return;
-      }
-      const blob = new Blob([await res.text()], { type: 'text/csv;charset=utf-8;' });
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = href; a.download = filename; a.click();
-      URL.revokeObjectURL(href);
-      showToast(`Exported ${noun}.`);
-    } catch {
-      showToast('Could not reach the server. Try again.');
-    }
-  }
-
-  // ── Client Export / Import ────────────────────────────────────────────────────
-  async function exportClients() {
-    const toExport = selectedClientIds.size > 0
-      ? clients.filter(c => selectedClientIds.has(c.id))
-      : clients;
-
-    // Owner only. The button is not rendered for anyone else, and the endpoint
-    // refuses them anyway — this guard is the belt to that pair of braces.
-    if (!isSuperAdmin) { showToast('Exporting is limited to the account owner.'); return; }
-
-    const headers = ['First Name', 'Last Name', 'Business Name', 'Type', 'Email', 'Phone', 'Cell Phone', 'Budget', 'Size Range', 'Asset Types', 'Address', 'City', 'State', 'ZIP', 'Brokerage', 'License', 'Notes', 'Date Added'];
-    const rows = toExport.map(c => [
-      c.first_name, c.last_name, c.business_name ?? '', c.type, c.email ?? '', c.phone ?? '', c.cell_phone ?? '', c.budget ?? '', c.size_range ?? '', (c.asset_types ?? []).join(', '), c.address ?? '', c.city ?? '', c.state ?? '', c.zip ?? '', c.brokerage ?? '', c.license ?? '', c.notes ?? '', c.created_at?.slice(0, 10) ?? '',
-    ]);
-    const csv = [headers, ...rows]
-      .map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const filename = `contacts-${today()}.csv`;
-    const label = `${toExport.length} contact${toExport.length !== 1 ? 's' : ''}`;
-
-    /**
-     * Tell the server an export happened.
-     *
-     * This CSV is built here from contacts already in memory, so no request
-     * reaches the server as the file is written and the two server export
-     * routes never see it. Without this call the owner's browser export leaves
-     * no trace at all. Only the scope is sent — the server counts the rows
-     * itself and writes the audit row, so the number in the record is not one
-     * the browser supplied. Fire-and-forget: a logging failure must never cost
-     * the user their download.
-     */
-    const recordExport = () => {
-      void fetch('/api/crm/export-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-        body: JSON.stringify({
-          business_unit: businessUnit,
-          ids: selectedClientIds.size > 0 ? [...selectedClientIds] : null,
-        }),
-      }).catch(() => { /* never block the download on logging */ });
-    };
-
-    // Use native Save As dialog if browser supports it (Chrome / Edge)
-    if ('showSaveFilePicker' in window) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: filename,
-          types: [{ description: 'CSV Spreadsheet', accept: { 'text/csv': ['.csv'] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(csv);
-        await writable.close();
-        recordExport();
-        showToast(`Exported ${label}`);
-        return;
-      } catch (err: unknown) {
-        if (err instanceof Error && err.name === 'AbortError') return; // user cancelled
-        // fall through to standard download
-      }
-    }
-
-    // Fallback: automatic download (Firefox / Safari)
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
-    recordExport();
-    showToast(`Exported ${label}`);
-  }
-
+  // ── Client Import ─────────────────────────────────────────────────────────────
+  // CSV/data export was removed from the CRM entirely (2026-10-14). Nothing
+  // leaves as a file: contacts, commissions, rent rolls and prospect lists stay in the app.
   async function importClients(file: File) {
     try {
       const XLSX = await import('xlsx');
@@ -4463,6 +4374,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   };
 
   // ── Render guards ─────────────────────────────────────────────────────────────
+  if (automation) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif', padding: 24, textAlign: 'center' }}>
+      Automated browsers can&apos;t open the CRM. Sign in from a regular browser window.
+    </div>
+  );
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', fontFamily: 'sans-serif', color: '#fff' }}>
       <div style={{ textAlign: 'center' }}>
@@ -4476,7 +4392,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   if (!profile) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#111', color: '#fff', fontFamily: 'sans-serif' }}>Setting up your profile…</div>;
 
   // super_admin is a strict superset of admin — passes every admin gate, plus
-  // the super-admin-only ones (delete/export contacts, manage admins).
+  // the super-admin-only ones (delete contacts, manage admins).
   const isSuperAdmin = profile.role === 'super_admin';
   const isAdmin = profile.role === 'admin' || isSuperAdmin;
   const isMobile = windowWidth < 768;
@@ -4493,6 +4409,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // ── UI ────────────────────────────────────────────────────────────────────────
   return (
     <div className="crm-app-shell" style={{ fontFamily: "'DM Sans',sans-serif", display: 'flex', flexDirection: isTabletOrMobile ? 'column' : 'row', height: '100vh', overflow: 'hidden', background: '#f2f2f2' }}>
+      <CrmShield exempt={isSuperAdmin} name={`${profile.first_name} ${profile.last_name}`.trim()} email={profile.email} token={session?.access_token} page={page} />
       <style>{`
         /* The marketing site's global base styles (globals.css) leak into the CRM: every input /
            select / textarea got min-height:3rem (= 60px at the site's 20px root) and the site's
@@ -5143,19 +5060,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {selectedClientIds.size} selected
                 </span>
               )}
-              {/* Export is the owner's alone. Everyone else has no affordance at
-                  all — no button, no request flow — and the endpoint refuses
-                  them regardless. */}
-              {isSuperAdmin && (
-                <button
-                  className="crm-btn crm-btn-ghost crm-btn-sm"
-                  onClick={exportClients}
-                  title={selectedClientIds.size > 0 ? `Export ${selectedClientIds.size} selected` : 'Export all clients to CSV'}
-                  style={{ fontSize: 13 }}
-                >
-                  ⬇ Export{selectedClientIds.size > 0 ? ` (${selectedClientIds.size})` : ' All'}
-                </button>
-              )}
               {isSuperAdmin && <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={openMergeDuplicates} title="Find and merge duplicate contacts" style={{ fontSize: 13 }}>⧉ Merge dupes</button>}
               <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => importFileRef.current?.click()} title="Import from XLSX or CSV" style={{ fontSize: 13 }}>⬆ Import</button>
               <button className="crm-btn crm-btn-gold" onClick={() => setShowAddClient(true)}>+ Add Client</button>
@@ -5174,19 +5078,6 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   </button>
                 ))}
               </div>
-              {commissionView === 'list' && isSuperAdmin && (
-                /* Owner only, built server-side. It used to be assembled here from
-                   allCommissions behind nothing but isAdmin, which handed any admin
-                   every agent's splits in one unlogged click. */
-                <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 13 }} onClick={() => {
-                  const qs = new URLSearchParams({ view: 'list', unit: businessUnit });
-                  if (commissionFilterYear) qs.set('year', commissionFilterYear);
-                  if (commissionFilterAgent) qs.set('agent_id', commissionFilterAgent);
-                  if (commissionFilterStatus) qs.set('status', commissionFilterStatus);
-                  downloadCsv(`/api/crm/commissions/export?${qs.toString()}`,
-                    `commissions-${commissionFilterYear || 'all'}.csv`, 'the commission ledger');
-                }}>⬇ Export CSV</button>
-              )}
               {commissionView === '1099' && (
                 <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontSize: 13 }} onClick={() => window.print()}>🖨 Print</button>
               )}
@@ -7693,23 +7584,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </select>
                       </div>
                       <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                        {needsFiling.length > 0 && isSuperAdmin && (
-                          <button style={{ padding: '7px 14px', fontSize: 13, fontWeight: 600, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: 6, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}
-                            onClick={() => {
-                              // Owner only: every contractor's tax total in one file.
-                              const qs = new URLSearchParams({ view: '1099', unit: businessUnit, year: String(commission1099Year) });
-                              downloadCsv(`/api/crm/commissions/export?${qs.toString()}`,
-                                `1099-nec-${commission1099Year}.csv`, `the ${commission1099Year} 1099-NEC summary`);
-                            }}>
-                            ⬇ Export CSV
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Printable report */}
-                  <div id="crm-1099-report">
+                  <div id="crm-1099-report" className="crm-print-allowed">
                     {/* Report header */}
                     <div style={{ marginBottom: 24, paddingBottom: 16, borderBottom: '2px solid #111' }}>
                       <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{buName}</div>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextFetchEvent, NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { validateCsrf } from '@/lib/csrf';
+import { isAutomationUA } from '@/lib/automation-ua';
 import { matchCrawler, logCrawlerHit } from '@/lib/crawler-hits';
 
 // The matcher below covers every page (the crawler tracker needs to see them
@@ -170,8 +171,27 @@ export async function middleware(request: NextRequest, event: NextFetchEvent) {
   return res;
 }
 
+/**
+ * The CRM is for people in a browser. Headless browsers, automation drivers,
+ * HTTP libraries and crawlers are turned away from the CRM shell and its API
+ * before any route runs. The copilot's own server-to-server calls carry the
+ * shared secret and pass. Public site pages are untouched.
+ */
+function automationBlocked(request: NextRequest, pathname: string): NextResponse | null {
+  const isCrm = pathname === '/crm' || pathname.startsWith('/crm/') || pathname.startsWith('/api/crm');
+  if (!isCrm) return null;
+  const internal = request.headers.get('x-crm-internal');
+  if (internal && process.env.CRON_SECRET && internal === process.env.CRON_SECRET) return null;
+  if (!isAutomationUA(request.headers.get('user-agent'))) return null;
+  console.warn('[middleware] automated client blocked', { path: pathname, ua: request.headers.get('user-agent'), ip: request.headers.get('x-forwarded-for') });
+  return withSecurityHeaders(new NextResponse('Forbidden', { status: 403, headers: { 'X-Robots-Tag': 'noindex, nofollow' } }));
+}
+
 async function handle(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
+
+  const blocked = automationBlocked(request, pathname);
+  if (blocked) return blocked;
 
   const gone = await goneListingResponse(request);
   if (gone) return gone;

@@ -37,7 +37,12 @@ export type AuditAction =
   // Merging duplicate contacts destroys records, so it's on the audited trail.
   | 'merge_contacts'
   // Anti-scrape: read volume past the alert threshold.
-  | 'bulk_read_detected';
+  | 'bulk_read_detected'
+  // Screen protection (components/crm/CrmShield.tsx): an automated browser was
+  // detected and signed out, or a screenshot / copy shortcut was used in the CRM.
+  | 'automation_blocked'
+  | 'screenshot_attempt'
+  | 'copy_attempt';
 
 interface AuditParams {
   actorId: string;
