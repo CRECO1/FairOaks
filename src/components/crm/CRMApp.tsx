@@ -2474,6 +2474,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
       const dispLabel = disposition === 'not_interested' ? 'Not interested' : disposition === 'call_back' ? 'Connected — call back requested' : disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : disposition === 'wrong_number' ? 'Wrong number' : 'No answer';
       const jotted = callNote.trim();
+      callNoteSavedRef.current = task.id;   // this call's note is being saved with its outcome — don't flush it again
       let base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
       // Speed-to-lead: the first call on a new website lead records how fast we got to them (business minutes).
       if (task.id.startsWith('p:') && task.created_at && !leadFirstCall[task.client_id] && newLeadContacts.some(l => l.id === task.client_id)) {
@@ -3003,6 +3004,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     })();
     return () => { cancelled = true; };
   }, [page, tasksSubTab, profile?.role, callsDoneThisSession, callAssignNonce]);
+
+  // A note typed in the Call Queue is saved when an outcome button is pressed. Moving to another
+  // call first used to throw it away. Keep it: on leaving a call that still has an unsaved note,
+  // put it on the contact's card as a plain note (clearly labelled as having no outcome).
+  const callNoteRef = useRef('');
+  callNoteRef.current = callNote;
+  const callNoteSavedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const mine = callCurrent ? { id: callCurrent.id, client_id: callCurrent.client_id, title: callCurrent.title } : null;
+    return () => {
+      const n = callNoteRef.current.trim();
+      if (!mine || !n || !mine.client_id || callNoteSavedRef.current === mine.id) return;
+      void logActivity(mine.client_id, 'note', `Call Queue note (no outcome logged) — ${(mine.title || 'call').replace(/^🏢\s*/, '').slice(0, 90)} — ${n}`);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callCurrent?.id]);
 
   // Reset the per-call note + follow-up override whenever the active call changes.
   useEffect(() => { setCallNote(''); setCallFollowUpDays(null); setCallTextOpen(false); setCallScriptOpen(false); setCallScriptEdit(false); setCallSnapOpen(false); }, [callCurrent?.id]);
