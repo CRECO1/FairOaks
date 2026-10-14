@@ -1077,6 +1077,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Closed deal enrollment prompt
   const [closedDealPrompt, setClosedDealPrompt] = useState<Deal | null>(null);
+  // What the deal closed for and what it earned — asked on the Deal Closed popup (they were left blank on 2 of 2 closed deals).
+  const [closedValue, setClosedValue] = useState('');
+  const [closedCommission, setClosedCommission] = useState('');
   const [closedEnrollPlanIds, setClosedEnrollPlanIds] = useState<string[]>([]);
   const [closedEnrollCampaignIds, setClosedEnrollCampaignIds] = useState<string[]>([]);
   const [closedEnrolling, setClosedEnrolling] = useState(false);
@@ -4211,6 +4214,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setClosedEnrollCampaignIds([]);
     setClosedSentPlans({});
     setClosedDealPrompt(deal);
+    setClosedValue(deal.value ? String(deal.value) : '');
+    setClosedCommission(deal.earned_commission ? String(deal.earned_commission) : '');
     // Which plans already went to this client recently — so the agent can't double-send by accident.
     fetch(`/api/action-plans/sent-to?client_id=${encodeURIComponent(deal.client_id)}`)
       .then(r => r.ok ? r.json() : null)
@@ -4223,8 +4228,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .catch(() => {});
   }
 
+  /** Save the value / commission typed on the Deal Closed popup (only what changed and is a number). */
+  async function saveClosedFigures() {
+    const d = closedDealPrompt;
+    if (!d) return;
+    const num = (v: string) => Number(v.replace(/[$,\s]/g, ''));
+    const patch: Partial<Deal> = {};
+    if (closedValue.trim() && Number.isFinite(num(closedValue)) && num(closedValue) !== (d.value || 0)) patch.value = num(closedValue);
+    if (closedCommission.trim() && Number.isFinite(num(closedCommission)) && num(closedCommission) !== (d.earned_commission || 0)) patch.earned_commission = num(closedCommission);
+    if (Object.keys(patch).length) await updateDeal(d.id, patch);
+  }
+
   async function handleClosedEnroll() {
     if (!closedDealPrompt?.client_id) return;
+    await saveClosedFigures();
     setClosedEnrolling(true);
     const clientId = closedDealPrompt.client_id;
     const agentId = session!.user.id;
@@ -13416,7 +13433,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* ── Closed Deal Enrollment Prompt ── */}
       {closedDealPrompt && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-          onClick={() => setClosedDealPrompt(null)}>
+          onClick={() => { void saveClosedFigures(); setClosedDealPrompt(null); }}>
           <div className="crm-sheet-panel" style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.3)', overflow: 'hidden' }}
             onClick={e => e.stopPropagation()}>
             {/* Header */}
@@ -13429,6 +13446,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             </div>
 
             <div style={{ padding: '20px 24px', maxHeight: 400, overflowY: 'auto' }}>
+              {/* The numbers the pipeline and commission reports are built from */}
+              <div style={{ display: 'flex', gap: 12, marginBottom: 18 }}>
+                <label style={{ flex: 1, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700 }}>
+                  Closed for ($)
+                  <input value={closedValue} onChange={e => setClosedValue(e.target.value)} inputMode="decimal" placeholder="e.g. 270,000"
+                    style={{ display: 'block', width: '100%', marginTop: 5, padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontWeight: 500, color: '#111', boxSizing: 'border-box' }} />
+                </label>
+                <label style={{ flex: 1, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700 }}>
+                  Commission earned ($)
+                  <input value={closedCommission} onChange={e => setClosedCommission(e.target.value)} inputMode="decimal" placeholder="e.g. 8,000"
+                    style={{ display: 'block', width: '100%', marginTop: 5, padding: '9px 10px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontWeight: 500, color: '#111', boxSizing: 'border-box' }} />
+                </label>
+              </div>
               {/* Action Plans — only plans that fit this client's type; the matching Closed & Won plan is
                   suggested first but never pre-checked (the agent decides what goes out). */}
               {(() => {
@@ -13505,7 +13535,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
             {/* Footer */}
             <div style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#f9fafb' }}>
               <button
-                onClick={() => setClosedDealPrompt(null)}
+                onClick={() => { void saveClosedFigures(); setClosedDealPrompt(null); }}
                 style={{ padding: '9px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#374151', fontWeight: 500 }}>
                 Skip
               </button>
