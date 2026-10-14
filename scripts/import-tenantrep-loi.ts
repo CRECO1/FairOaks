@@ -90,7 +90,7 @@ function loadEnv(file: string) {
     writeFileSync(path.join(outDir, `${base}.builder_data.json`), JSON.stringify(data, null, 2));
     writeFileSync(path.join(outDir, `${base}.rendered.pdf`), pdfBytes);
     console.log(`parsed ${base}: ${data.terms.length} terms, ${sigFields.length} sig fields`);
-    built.push({ base, data, pdfBytes, sigFields, title: `${spec.title} — ${data.subtitle}` });
+    built.push({ base, data, pdfBytes, sigFields, title: base });   // = the uploaded file's name, which is how the deal's Uploaded Files row finds its editable twin
   }
   if (!apply) { console.log('\nDRY RUN — nothing written to Supabase. Re-run with --apply --env <file>.'); return; }
 

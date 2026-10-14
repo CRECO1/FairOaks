@@ -10875,6 +10875,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 title="Import this PDF into E-Sign and send it for signature"
                                 style={{ padding: '5px 12px', background: '#c9922c', color: '#fff', borderRadius: 6, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✍️ Sign</button>
                             )}
+                            {(() => {
+                              // An upload that has an editable builder doc on this deal (matched by
+                              // file name = doc title, which the importer sets) opens that doc in
+                              // the inline editor instead of only downloading the binary.
+                              const stem = (n?: string) => (n || '').replace(/\.[a-z0-9]{2,5}$/i, '').trim().toLowerCase();
+                              const twin = dealForms.find(f => f.id && f.form_id && f.deal_id === activeDeal.id
+                                && !!specForForm(f.crm_forms?.form_code, f.crm_forms?.name || '') && stem(f.title) === stem(doc.name));
+                              if (!twin) return null;
+                              return (
+                                <button onClick={() => openFormEditor({ id: twin.form_id || '', name: twin.crm_forms?.name || twin.title || 'Form' }, twin.id, twin.crm_forms?.form_code)}
+                                  title="Edit this document inline — no download"
+                                  style={{ padding: '5px 12px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✏️ Edit</button>
+                              );
+                            })()}
                             {(
                               <button onClick={async () => {
                                 // Opened synchronously: window.open() after an await is blocked as a popup.
