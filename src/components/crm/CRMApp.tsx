@@ -13849,7 +13849,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {/* Undo — Not interested / Wrong number */}
       {callUndo && (
         <div style={{ position: 'fixed', ...(isMobile
-          ? { bottom: 'calc(132px + env(safe-area-inset-bottom))', left: 14, right: 14 }
+          ? { bottom: 'calc(250px + env(safe-area-inset-bottom))', left: 14, right: 14 }
           : { bottom: 84, right: 26, maxWidth: 360 }),
           background: '#111', color: '#fff', padding: '10px 10px 10px 16px', borderRadius: 10, fontSize: 14, zIndex: 10000, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ flex: 1, minWidth: 0 }}>
