@@ -785,6 +785,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Phone: filters tucked away, history collapsed, and a one-tap "how did it go?" sheet when you come back from the dialer.
   const [callFiltersOpen, setCallFiltersOpen] = useState(false);
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
+  const [callSnapOpen, setCallSnapOpen] = useState(false);   // phone: campaign stats fold away by default
   const [callDialed, setCallDialed] = useState<{ taskId: string; at: number } | null>(null);
   const [callReturnOpen, setCallReturnOpen] = useState(false);
   const [callListInfo, setCallListInfo] = useState('');
@@ -2382,7 +2383,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return `${cl.first_name ?? ''} ${cl.last_name ?? ''}`.trim() || cl.business_name || null;
   }
 
-  async function dispositionCall(task: CRMTask, disposition: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number') {
+  async function dispositionCall(task: CRMTask, disposition: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number' | 'not_interested' | 'call_back') {
     if (callActionInFlight) return;
     setCallActionInFlight(true);
     try {
@@ -2395,7 +2396,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       else await completeTask(task.id);
 
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
-      const dispLabel = disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : disposition === 'wrong_number' ? 'Wrong number' : 'No answer';
+      const dispLabel = disposition === 'not_interested' ? 'Not interested' : disposition === 'call_back' ? 'Connected — call back requested' : disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : disposition === 'wrong_number' ? 'Wrong number' : 'No answer';
       const jotted = callNote.trim();
       const base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
       // Property-based prospecting calls have no linked contact — skip the timeline log.
@@ -2409,10 +2410,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 3) Auto-create the next follow-up task unless the agent chose "No follow-up".
       //    A chip override (callFollowUpDays) beats the disposition's default cadence.
       // A wrong number needs no callback — the note on the timeline is the follow-up (fix the number on the contact).
-      if (callFollowUpDays !== 'none' && disposition !== 'wrong_number' && !cb) {
-        const defaultDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : 7;
+      // Not interested closes the loop — no follow-up unless the agent explicitly picked a chip.
+      if (callFollowUpDays !== 'none' && disposition !== 'wrong_number' && !(disposition === 'not_interested' && callFollowUpDays === null) && !cb) {
+        const defaultDays = disposition === 'no_answer' ? 1 : disposition === 'voicemail' ? 2 : disposition === 'call_back' ? 1 : 7;
         const addDays = typeof callFollowUpDays === 'number' ? callFollowUpDays : defaultDays;
-        const nextType: 'call' | 'follow_up' = disposition === 'connected' ? 'follow_up' : 'call';
+        const nextType: 'call' | 'follow_up' = disposition === 'connected' || disposition === 'not_interested' ? 'follow_up' : 'call';
         const baseTitle = disposition === 'no_answer' ? 'Call back — no answer' : disposition === 'voicemail' ? 'Follow up — left voicemail' : 'Follow up';
         // Carry the property/subject into the follow-up when there's no contact to anchor it.
         const nextTitle = task.client_id ? baseTitle : `${baseTitle} — ${(task.title || '').replace(/^🏢\s*/, '').slice(0, 90)}`;
@@ -2436,7 +2438,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       //     answer keeps it open and moves its due time (the follow-up chip, else 1 day / 2 days).
       const digits = (task.id.startsWith('cb:') && cb ? (cb.callback_number || cb.from_number || cb.to_number || '') : (callPhoneFor(task) || '')).replace(/\D/g, '').slice(-10);
       if (digits.length === 10) {
-        const result = disposition === 'connected' ? 'answered' : disposition === 'voicemail' ? 'left_voicemail' : disposition === 'wrong_number' ? 'wrong_number' : 'no_answer';
+        const result = disposition === 'connected' || disposition === 'not_interested' || disposition === 'call_back' ? 'answered' : disposition === 'voicemail' ? 'left_voicemail' : disposition === 'wrong_number' ? 'wrong_number' : 'no_answer';
         let retryAt: string | null = null;
         if (cb && (result === 'left_voicemail' || result === 'no_answer') && callFollowUpDays !== 'none') {
           const days = typeof callFollowUpDays === 'number' ? callFollowUpDays : result === 'no_answer' ? 1 : 2;
@@ -2525,7 +2527,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     // Waiting call-backs come first (someone is waiting on us), then the follow-up / call tasks by due date.
     const due = callSource
       .filter(t => (t.type === 'call' || t.type === 'follow_up') && !t.completed_at && t.due_date && t.due_date <= t0 && !callSkippedIds.has(t.id))
-      .sort((a, b) => a.due_date.localeCompare(b.due_date));
+      // Oldest due date first; within a day, whoever's been waiting longest.
+      .sort((a, b) => a.due_date.localeCompare(b.due_date) || (a.created_at ?? '').localeCompare(b.created_at ?? ''));
     const plain = due.filter(t => !callGroupOf(t));
     const grouped = due.filter(t => callGroupOf(t));
     const size = new Map<string, number>();
@@ -2787,6 +2790,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       else if (k === 'n') { e.preventDefault(); dispositionCall(callCurrent, 'no_answer'); }
       else if (k === 's') { e.preventDefault(); skipCall(callCurrent.id); }
       else if (k === 'w') { e.preventDefault(); dispositionCall(callCurrent, 'wrong_number'); }
+      else if (k === 'b') { e.preventDefault(); dispositionCall(callCurrent, 'call_back'); }
+      else if (k === 'i') { e.preventDefault(); dispositionCall(callCurrent, 'not_interested'); }
       else if (k === 'j' || k === 'arrowdown' || k === 'k' || k === 'arrowup') {
         // Move through the queue without acting on a call.
         e.preventDefault();
@@ -6488,8 +6493,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const tcolor = c ? (TYPE_COLORS[c.type] ?? { bg: '#f1f5f9', fg: '#475569' }) : null;
                   const followChips: { label: string; val: number | 'none' | null }[] = [
                     { label: 'Auto', val: null }, { label: 'Tomorrow', val: 1 },
-                    { label: 'In 3 days', val: 3 }, { label: 'Next week', val: 7 }, { label: 'None', val: 'none' },
+                    { label: 'In 3 days', val: 3 }, { label: 'Next week', val: 7 }, { label: '2 weeks', val: 14 }, { label: 'None', val: 'none' },
                   ];
+                  const QUICK_NOTES = ['Left VM', 'Sent info', 'Wants a call back', 'Not the decision maker', 'Touring soon'];
+                  const dayDiffFromToday = (iso: string) => Math.max(1, Math.round((Date.parse(iso + 'T12:00:00') - Date.parse(t0 + 'T12:00:00')) / 86_400_000));
                   const kbdStyle: React.CSSProperties = { marginLeft: 8, fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.10)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' };
                   const briefingReady = !!c && callActivitiesClientId === c.id;
                   const acts = briefingReady ? callActivities : [];
@@ -6618,7 +6625,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                       {/* ── Workspace: the selected call ── */}
                       <section style={{ order: stack ? 1 : 0, minWidth: 0, background: '#fff', borderRadius: 14, border: `1px solid ${isOverdue ? '#fecaca' : '#e8eaed'}`, boxShadow: '0 2px 10px rgba(0,0,0,.05)', overflow: 'hidden' }}>
-                        <div style={{ padding: isMobile ? '16px 16px 6px' : '22px 26px 6px' }}>
+                        <div style={{ padding: isMobile ? '16px 16px 6px' : '22px 26px 6px', ...(isMobile ? { display: 'flex', flexDirection: 'column' as const } : {}) }}>
                           {/* Name · type · overdue */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
                             {c ? (
@@ -6667,8 +6674,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
 
                           {/* Tenant snapshot — what the marketing has done with this person (same numbers as the Rent Roll row) */}
-                          {curMeta && (
-                            <div style={{ background: '#f8fafc', border: '1px solid #e5e9ef', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
+                          {curMeta && isMobile && (
+                            <button onClick={() => setCallSnapOpen(o => !o)}
+                              style={{ order: 20, width: '100%', textAlign: 'left', minHeight: 46, padding: '10px 14px', marginBottom: 12, borderRadius: 10, border: '1px solid #e5e9ef', background: '#f8fafc', fontSize: 13.5, fontWeight: 700, color: '#475569', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                              📣 Emailed {curMeta.emailsSent} · opened {curMeta.emailsOpened} · clicks {curMeta.clicks || 0} {callSnapOpen ? '▴' : '▾'}
+                            </button>
+                          )}
+                          {curMeta && (!isMobile || callSnapOpen) && (
+                            <div style={{ order: 20, background: '#f8fafc', border: '1px solid #e5e9ef', borderRadius: 12, padding: '12px 14px', marginBottom: 12 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                                 {curMeta.category && <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '2px 9px' }}>{curMeta.category}</span>}
                                 {curMeta.locations && <span style={{ fontSize: 12, fontWeight: 700, color: '#475569', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '2px 9px' }}>🏬 {curMeta.locations}</span>}
@@ -6805,39 +6818,66 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           {/* Note + next follow-up */}
                           <div style={{ marginBottom: 10 }}>
+                            {/* One-tap phrases — most calls need three words, not a paragraph */}
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                              {QUICK_NOTES.map(q => (
+                                <button key={q} type="button" onClick={() => setCallNote(n => (n.trim() ? `${n.trim()}. ${q}` : q))}
+                                  style={{ minHeight: isMobile ? 40 : 28, padding: isMobile ? '0 12px' : '0 10px', borderRadius: 20, border: '1px solid #e5e7eb', background: '#fff', color: '#4b5563', fontSize: isMobile ? 13.5 : 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                  + {q}
+                                </button>
+                              ))}
+                            </div>
                             <MentionTextarea value={callNote} onChange={setCallNote} profiles={profiles} contacts={clients} onCreateContact={createContactFromMention}
                               placeholder="Quick note — saved to the timeline and the next follow-up… (@ to tag a teammate)"
-                              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box', minHeight: 44, resize: 'vertical' }} />
+                              style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: isMobile ? 16 : 13.5, fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box', minHeight: 44, resize: 'vertical' }} />
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                            <span style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, marginRight: 2 }}>Next follow-up:</span>
-                            {followChips.map(chip => {
-                              const active = callFollowUpDays === chip.val;
-                              return (
-                                <button key={chip.label} onClick={() => setCallFollowUpDays(chip.val)}
-                                  style={{ padding: '4px 11px', borderRadius: 16, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
-                                    border: `1px solid ${active ? '#c9922c' : '#e5e7eb'}`, background: active ? '#fdf6e8' : '#fff', color: active ? '#a8741a' : '#6b7280' }}>
-                                  {chip.label}
-                                </button>
-                              );
-                            })}
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontSize: 12, color: '#9ca3af', fontWeight: 700, marginBottom: 6 }}>Next follow-up{callFollowUpDays === null ? ' — auto' : ''}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {followChips.map(chip => {
+                                const active = callFollowUpDays === chip.val;
+                                return (
+                                  <button key={chip.label} onClick={() => setCallFollowUpDays(chip.val)}
+                                    style={{ minHeight: isMobile ? 42 : undefined, padding: isMobile ? '0 14px' : '4px 11px', borderRadius: 20, fontSize: isMobile ? 14 : 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                                      border: `1px solid ${active ? '#c9922c' : '#e5e7eb'}`, background: active ? '#fdf6e8' : '#fff', color: active ? '#a8741a' : '#6b7280' }}>
+                                    {chip.label}
+                                  </button>
+                                );
+                              })}
+                              {/* Any other day: the native date picker (phones show their own wheel) */}
+                              {(() => {
+                                const custom = typeof callFollowUpDays === 'number' && ![1, 3, 7, 14].includes(callFollowUpDays);
+                                const d = new Date(); if (custom) d.setDate(d.getDate() + (callFollowUpDays as number));
+                                return (
+                                  <label style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', minHeight: isMobile ? 42 : 28, padding: isMobile ? '0 14px' : '0 11px', borderRadius: 20, fontSize: isMobile ? 14 : 12, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                                    border: `1px solid ${custom ? '#c9922c' : '#e5e7eb'}`, background: custom ? '#fdf6e8' : '#fff', color: custom ? '#a8741a' : '#6b7280' }}>
+                                    📅 {custom ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Pick a date'}
+                                    <input type="date" min={t0} value={custom ? d.toLocaleDateString('en-CA') : ''}
+                                      onChange={e => { if (e.target.value) setCallFollowUpDays(dayDiffFromToday(e.target.value)); }}
+                                      style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }} />
+                                  </label>
+                                );
+                              })()}
+                            </div>
                           </div>
                         </div>
 
                         {/* ── Outcome bar: always in reach (sticks to the bottom of the viewport) ── */}
                         {(() => {
-                          const btn = (label: string, key: string, d: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number', border: string, bg: string, fg: string) => (
+                          const btn = (label: string, key: string, d: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number' | 'not_interested' | 'call_back', border: string, bg: string, fg: string) => (
                             <button key={d} disabled={callActionInFlight} onClick={() => dispositionCall(current, d)}
                               style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 54 : undefined, padding: isMobile ? '12px 8px' : '10px 16px', borderRadius: isMobile ? 12 : 8, border: `1px solid ${border}`, background: bg, color: fg, fontWeight: 700, fontSize: isMobile ? 15 : 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                               {label} {!isMobile && <span style={kbdStyle}>{key}</span>}
                             </button>
                           );
                           return (
-                            <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? '1fr 1fr' : undefined, gap: isMobile ? 8 : 10, flexWrap: 'wrap', alignItems: 'center', padding: isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '14px 26px', background: '#fff', borderTop: '1px solid #eceef1', boxShadow: '0 -4px 14px rgba(0,0,0,.05)' }}>
+                            <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: isMobile ? 'grid' : 'flex', gridTemplateColumns: isMobile ? 'repeat(3, minmax(0, 1fr))' : undefined, gap: isMobile ? 8 : 10, flexWrap: 'wrap', alignItems: 'center', padding: isMobile ? '10px 12px calc(10px + env(safe-area-inset-bottom))' : '14px 26px', background: '#fff', borderTop: '1px solid #eceef1', boxShadow: '0 -4px 14px rgba(0,0,0,.05)' }}>
                               <span style={{ gridColumn: isMobile ? '1 / -1' : undefined, fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 800, marginRight: 4 }}>How did it go?</span>
                               {btn('✓ Connected', 'C', 'connected', '#bbf7d0', '#f0fdf4', '#16a34a')}
                               {btn('📼 Voicemail', 'V', 'voicemail', '#fed7aa', '#fff7ed', '#c2410c')}
                               {btn('✕ No answer', 'N', 'no_answer', '#e5e7eb', '#fff', '#374151')}
+                              {btn('📅 Call back', 'B', 'call_back', '#bfdbfe', '#eff6ff', '#1d4ed8')}
+                              {btn('🙅 Not interested', 'I', 'not_interested', '#e5e7eb', '#f9fafb', '#6b7280')}
                               {btn('⚠ Wrong number', 'W', 'wrong_number', '#fecaca', '#fef2f2', '#b91c1c')}
                               <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
                                 style={{ gridColumn: isMobile ? '1 / -1' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 46 : undefined, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
@@ -6861,9 +6901,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <button onClick={() => setCallReturnOpen(false)} aria-label="Not yet" style={{ background: 'none', border: 'none', fontSize: 26, lineHeight: 1, color: '#9ca3af', minWidth: 44, minHeight: 44, cursor: 'pointer' }}>×</button>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                              {([['✓ Talked to them', 'connected', '#dcfce7', '#166534'], ['📼 Left a voicemail', 'voicemail', '#fef3c7', '#92400e'], ['📵 No answer', 'no_answer', '#f3f4f6', '#374151'], ['⚠ Wrong number', 'wrong_number', '#fee2e2', '#991b1b']] as ['' | string, 'connected' | 'voicemail' | 'no_answer' | 'wrong_number', string, string][]).map(([label, d, bg, fg]) => (
+                              {([['✓ Talked to them', 'connected', '#dcfce7', '#166534'], ['📼 Left a voicemail', 'voicemail', '#fef3c7', '#92400e'], ['📵 No answer', 'no_answer', '#f3f4f6', '#374151'], ['📅 Call back', 'call_back', '#dbeafe', '#1e40af'], ['🙅 Not interested', 'not_interested', '#f3f4f6', '#4b5563'], ['⚠ Wrong number', 'wrong_number', '#fee2e2', '#991b1b']] as ['' | string, 'connected' | 'voicemail' | 'no_answer' | 'wrong_number' | 'call_back' | 'not_interested', string, string][]).map(([label, d, bg, fg]) => (
                                 <button key={d} disabled={callActionInFlight} onClick={() => dispositionCall(current, d)}
-                                  style={{ minHeight: 68, borderRadius: 14, border: 'none', background: bg, color: fg, fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '10px 8px' }}>{label}</button>
+                                  style={{ minHeight: 62, borderRadius: 14, border: 'none', background: bg, color: fg, fontSize: 15.5, fontWeight: 800, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: '10px 8px' }}>{label}</button>
                               ))}
                             </div>
                             <div style={{ marginTop: 12 }}>
