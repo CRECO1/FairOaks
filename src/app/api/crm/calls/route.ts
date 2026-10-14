@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mirrorCallNote } from '@/lib/call-note-mirror';
+import { settleOpenCallTasks } from '@/lib/call-task-settle';
 import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { toE164 } from '@/lib/phone';
@@ -204,6 +205,8 @@ export async function POST(req: NextRequest) {
   }
   // The note this call carries also goes on the contact's card (Activity list).
   if (b.notes && data?.id) await mirrorCallNote(supabase, data.id as string, ctx.userId);
+  // A call logged here (not through the Call Queue's buttons) settles the contact's open call task.
+  if (outbound && contactId) await settleOpenCallTasks(supabase, { contactId, unit, result, callAt: data?.started_at as string | null, direction: 'outbound' });
   return NextResponse.json({ call: data, not_reached: NOT_REACHED.includes(result) });
 }
 
