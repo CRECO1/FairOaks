@@ -1,7 +1,7 @@
 // Dev harness: render the flyer from MOCK photos + listing fields (no Supabase, no
 // network) so a layout change can be eyeballed at 1–4 extra photos.
 //   npx tsx scripts/flyer-mock-render.ts <out-dir> [extraPhotos=0,1,2,4] [--before <path-to-old-flyer-doc.ts>]
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { OSWALD_BOLD_B64, CRECO_LOGO_PNG_B64 } from '../src/lib/flyer-assets';
@@ -23,7 +23,7 @@ async function mock(w: number, h: number, bg: string, fg: string, label: string,
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${bg}"/>${art}<text x="${w * .03}" y="${h * .08}" font-family="Helvetica" font-size="${Math.max(14, h * .045)}" fill="#fff" opacity=".9">${label} (mock)</text></svg>`;
   return sharp(Buffer.from(svg));
 }
-const jpg = async (b: sharp.Sharp) => ({ bytes: new Uint8Array(await b.jpeg({ quality: 85 }).toBuffer()), png: false });
+const jpg = async (b: Sharp) => ({ bytes: new Uint8Array(await b.jpeg({ quality: 85 }).toBuffer()), png: false });
 
 (async () => {
   mkdirSync(outDir, { recursive: true });
