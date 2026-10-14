@@ -4,6 +4,7 @@ import { Resend } from 'resend';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
+import { emailLeadOwner, type OwnerProfile } from '@/lib/email-lead-owner';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -571,9 +572,7 @@ export async function POST(req: import('next/server').NextRequest) {
     // Get all agent profiles for assignment
     const { data: profiles } = await supabase
       .from('crm_profiles')
-      .select('id, business_unit');
-
-    const profileMap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+      .select('id, business_unit, role');
 
     // Already-processed message IDs
     const { data: processed } = await supabase
@@ -599,8 +598,6 @@ export async function POST(req: import('next/server').NextRequest) {
     for (const conn of connections) {
       const token = await getValidToken(conn as any);
       if (!token) continue;
-
-      const agentProfile = profileMap.get(conn.user_id) as any;
 
       // Search for emails from all lead source domains
       const domains = LEAD_SOURCES.map(s => `from:${s.domain}`).join(' OR ');
@@ -629,13 +626,9 @@ export async function POST(req: import('next/server').NextRequest) {
         // Determine business_unit: source domain takes priority over agent profile
         const business_unit = source.business_unit;
 
-        // Find the right agent to assign — prefer an agent matching the business_unit
-        let agentId = conn.user_id;
-        if (agentProfile && agentProfile.business_unit !== business_unit) {
-          // Try to find an agent in the right business unit
-          const rightAgent = (profiles ?? []).find((p: any) => p.business_unit === business_unit);
-          if (rightAgent) agentId = rightAgent.id;
-        }
+        // Every email lead comes to the broker, who delegates (lib/email-lead-owner.ts). The inbox
+        // that received it stays on the contact as a backup so whoever was copied can still see it.
+        const { ownerId: agentId, backupIds } = emailLeadOwner((profiles ?? []) as OwnerProfile[], conn.user_id);
 
         // Skip if no usable contact info
         if (!parsed.email && !parsed.phone && !parsed.fullName) continue;
@@ -656,7 +649,7 @@ export async function POST(req: import('next/server').NextRequest) {
 
           const { data: newClient, error: insertErr } = await supabase.from('crm_clients').insert([{
             agent_id:        agentId,
-            assigned_agent_ids: [agentId],
+            assigned_agent_ids: backupIds,
             first_name:      firstName,
             last_name:        lastName,
             business_name:   parsed.company ?? '',
@@ -745,7 +738,7 @@ export async function POST(req: import('next/server').NextRequest) {
                 `Source: ${source.source}`,
               ].filter(Boolean).join('\n'),
               agent_id:            agentId,
-              assigned_agent_ids:  [agentId],
+              assigned_agent_ids:  [agentId, ...backupIds],
               stage:               'Prospect',
               last_touch:          nowIso,
               business_unit,

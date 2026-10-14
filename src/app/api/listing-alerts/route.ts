@@ -108,7 +108,9 @@ export async function POST(req: NextRequest) {
       const attr = buildLeadContext(req, { ...(body as Record<string, unknown>), surface: 'listing-alerts' });
       const admin = createClient(supabaseUrl, serviceKey);
       const { data: adminProfile } = await admin
-        .from('crm_profiles').select('id').in('role', ['admin', 'super_admin']).limit(1).maybeSingle();
+        .from('crm_profiles').select('id').in('role', ['admin', 'super_admin'])
+          // The broker (super_admin) first — .limit(1) alone returned whichever admin came back first.
+          .order('role', { ascending: false }).limit(1).maybeSingle();
       const adminId = adminProfile?.id;
       const cleanEmail = email.toLowerCase().trim();
 
