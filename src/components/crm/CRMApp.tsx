@@ -65,7 +65,7 @@ type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
 /** A contact-export request awaiting, or carrying, the owner's decision. */
 
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
 interface CallListPerson {
   clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number;
   view: 'opened' | 'emailed' | 'cold';
@@ -200,6 +200,29 @@ function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.g
 // removable from the contact like any tag). The queue, call lists and call-backs all skip it.
 const DNC_TAG = 'Do Not Call';
 const isDnc = (c?: { tags?: string[] | null } | null) => !!c && (c.tags ?? []).includes(DNC_TAG);
+// Lead hotness — deliberately simple and explainable. New lead = 20; fresher = more; real site engagement and a
+// stated ask add; a tour request is the strongest intent. Hot ≥ 60, Warm ≥ 35, else Cold.
+function leadHotness(c: { created_at: string; lead_source?: string | null; notes?: string | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null }, now = Date.now()) {
+  let score = 20; const why: string[] = [];
+  const ageH = (now - Date.parse(c.created_at)) / 3_600_000;
+  if (ageH < 1) { score += 30; } else if (ageH < 6) { score += 20; } else if (ageH < 24) { score += 10; } else if (ageH < 72) { score += 5; }
+  if (/tour/i.test(c.lead_source ?? '')) { score += 15; why.push('asked for a tour'); }
+  const pv = c.page_views ?? 0, vc = c.visit_count ?? 0, ts = c.time_on_site_sec ?? 0;
+  if (pv >= 5) { score += 15; } else if (pv >= 3) { score += 10; } else if (pv >= 2) { score += 5; }
+  if (pv >= 2) why.push(`viewed ${pv} pages`);
+  if (vc >= 2) { score += 10; why.push(`${vc} visits`); }
+  if (ts >= 180) { score += 10; why.push(`${Math.round(ts / 60)} min on site`); } else if (ts >= 60) { score += 5; }
+  const ask = ((c.notes ?? '').split('\n').slice(1).join(' ') || '').trim();
+  if (ask.length >= 30) { score += 10; why.push('left a message'); }
+  const heat: 'hot' | 'warm' | 'cold' = score >= 60 ? 'hot' : score >= 35 ? 'warm' : 'cold';
+  return { score, heat, why: why.join(' · ') };
+}
+// What the lead actually wrote: form notes start with the question or a "📩 Lead from…" header, then the answer.
+function leadAsk(notes?: string | null): string {
+  const lines = (notes ?? '').split('\n').map(l => l.trim()).filter(Boolean);
+  const body = lines.filter((l, i) => !(i === 0 && (/\?\s*$/.test(l) || /^📩/.test(l))) && !/^message:?$/i.test(l));
+  return (body.join(' ') || lines[0] || '').replace(/^message:\s*/i, '');
+}
 const BRIAN_EMAIL = 'brian@crecotx.com';   // unassigned new website leads route to him
 const isListCall = (t: { type?: string | null; description?: string | null; notes?: string | null }) =>
   t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`);
@@ -754,10 +777,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [callActivitiesClientId, setCallActivitiesClientId] = useState<string | null>(null);
   const [callActionInFlight, setCallActionInFlight] = useState(false);
   // Undo for the two outcomes that are easy to fat-finger and hard to see again (Not interested / Wrong number).
-  const [callUndo, setCallUndo] = useState<{ label: string; run: () => Promise<void> } | null>(null);
+  const [callUndo, setCallUndo] = useState<{ label: string; next?: string; run: () => Promise<void> } | null>(null);
   useEffect(() => {
     if (!callUndo) return;
-    const t = setTimeout(() => setCallUndo(null), 8000);
+    const t = setTimeout(() => setCallUndo(null), 7000);
     return () => clearTimeout(t);
   }, [callUndo]);
   const [callsDoneThisSession, setCallsDoneThisSession] = useState(0);
@@ -2406,8 +2429,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       //    is what marks them contacted everywhere else.
       const cb = callbackMeta.get(task.id) ?? null;
       const startedAt = new Date().toISOString();           // undo deletes only what this tap wrote
-      const undoable = disposition === 'not_interested' || disposition === 'wrong_number';
-      const undo: { taskId?: string; cbId?: string; prospectClientId?: string; nextTaskId?: string; dncPrevTags?: string[] } = {};
+      // Who comes after this one — captured BEFORE the queue changes, so auto-advance never skips or repeats.
+      const qi = callQueue.findIndex(t => t.id === task.id);
+      const upNext = qi >= 0 ? (callQueue[qi + 1] ?? null) : null;
+      const undo: { taskId?: string; cbId?: string; cbPrevDue?: string | null; callLogId?: string; prospectClientId?: string; nextTaskId?: string; dncPrevTags?: string[] } = {};
+      if (cb) undo.cbPrevDue = cb.follow_up_due ?? null;
       if (task.id.startsWith('p:')) undo.prospectClientId = task.client_id;
       else if (cb) undo.cbId = cb.id;
       else undo.taskId = task.id;
@@ -2481,7 +2507,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         }
         const dialedAt = callDialed && callDialed.taskId === task.id ? callDialed.at : null;
         try {
-          await fetch('/api/crm/calls', {
+          const postRes = await fetch('/api/crm/calls', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
             body: JSON.stringify({
@@ -2493,6 +2519,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
               resolves_call_id: cb ? cb.id : undefined, retry_at: retryAt,
             }),
           });
+          const pj = await postRes.json().catch(() => null);
+          if (pj?.call?.id) undo.callLogId = pj.call.id as string;
         } catch { /* the activity above is saved; the log entry can be added from the Calling Log */ }
       }
       if (cb) { setCallbackDoneIds(prev => new Set(prev).add(cb.id)); loadCallbacks(); }
@@ -2507,34 +2535,41 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       try { document.querySelector('.crm-page-scroll')?.scrollTo({ top: 0, behavior: 'smooth' }); } catch { /* ignore */ }
       if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
 
-      if (undoable) {
-        const who = nameOfClient(task.client_id) || 'call';
+      // Auto-advance: land on the call that followed this one, and say so — with Undo for any outcome.
+      const labelOf = (t: CRMTask) => callListMeta.get(t.id)?.business || callListMeta.get(t.id)?.contactName || callbackMeta.get(t.id)?.contact?.name || callbackMeta.get(t.id)?.caller_name || nameOfClient(t.client_id) || (t.title || 'next call').replace(/^🏢\s*/, '');
+      if (upNext && !callSkippedIds.has(upNext.id)) setCallSelectedId(upNext.id); else setCallSelectedId(null);
+      {
+        const who = nameOfClient(task.client_id) || labelOf(task);
         setCallUndo({
-          label: `${dispLabel}${undo.dncPrevTags ? ' · marked Do Not Call' : ''}`,
+          label: `✓ ${dispLabel}${undo.dncPrevTags ? ' · marked Do Not Call' : ''}`,
+          next: upNext ? labelOf(upNext) : undefined,
           run: async () => {
             const cid = task.client_id;
+            const hdr = { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) };
             if (undo.nextTaskId) await supabase.from('crm_tasks').delete().eq('id', undo.nextTaskId);
             if (undo.taskId) await supabase.from('crm_tasks').update({ completed_at: null }).eq('id', undo.taskId);
             if (undo.cbId) {
               try {
-                await fetch(`/api/crm/calls?id=${undo.cbId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ handled: false, needs_follow_up: true }) });
+                await fetch(`/api/crm/calls?id=${undo.cbId}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ handled: false, needs_follow_up: true, follow_up_due: undo.cbPrevDue ?? null }) });
               } catch { /* it will show up in the Calling Log */ }
               setCallbackDoneIds(prev => { const n = new Set(prev); n.delete(undo.cbId!); return n; });
               loadCallbacks();
             }
+            // The Calling Log row can't be deleted by an agent — mark it so it isn't read as a real attempt.
+            if (undo.callLogId) { try { await fetch(`/api/crm/calls?id=${undo.callLogId}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ notes: '↩ Outcome undone by agent', needs_follow_up: false }) }); } catch { /* best effort */ } }
             if (undo.prospectClientId) setCallProspectDoneIds(prev => { const n = new Set(prev); n.delete(undo.prospectClientId!); return n; });
             if (undo.dncPrevTags && cid) {
               await supabase.from('crm_clients').update({ tags: undo.dncPrevTags }).eq('id', cid);
               setClients(prev => prev.map(x => x.id === cid ? { ...x, tags: undo.dncPrevTags! } : x));
               setActiveClient(prev => prev && prev.id === cid ? { ...prev, tags: undo.dncPrevTags! } : prev);
             }
-            // Take back the timeline entries this tap wrote (the call + "task completed").
+            // Take back the timeline entries this tap wrote (the call + "task completed" + any follow-up note).
             if (cid && profile?.id) await supabase.from('crm_client_activities').delete().eq('client_id', cid).eq('agent_id', profile.id).gte('created_at', new Date(Date.parse(startedAt) - 5000).toISOString());
             setCallsDoneThisSession(n => Math.max(0, n - 1));
             setCallSkippedIds(prev => { const n = new Set(prev); n.delete(task.id); return n; });
             setCallSelectedId(task.id);
             if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
-            showToast(`Undone — ${who} is back in the queue`);
+            showToast(`Undone — ${who} is back on top`);
           },
         });
       }
@@ -2549,6 +2584,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const d = new Date(); d.setDate(d.getDate() + 1);
     const tomorrow = d.toLocaleDateString('en-CA');
     const cb = callbackMeta.get(task.id) ?? null;
+    const qi = callQueue.findIndex(t => t.id === task.id);
+    const upNext = qi >= 0 ? (callQueue[qi + 1] ?? null) : null;
+    const prevDue = task.due_date;
+    const prevCbDue = cb?.follow_up_due ?? null;
+    const hdr = { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) };
     if (task.id.startsWith('p:')) { skipCall(task.id); showToast('Skipped for now — it will be back next time you open the queue'); return; }
     if (cb) {
       const at = new Date(d); at.setHours(9, 0, 0, 0);
@@ -2561,7 +2601,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
     }
     skipCall(task.id);
-    showToast('Snoozed to tomorrow ✓');
+    if (upNext) setCallSelectedId(upNext.id);
+    setCallUndo({
+      label: '😴 Snoozed to tomorrow',
+      next: upNext ? (callListMeta.get(upNext.id)?.business || callListMeta.get(upNext.id)?.contactName || callbackMeta.get(upNext.id)?.contact?.name || nameOfClient(upNext.client_id) || upNext.title) : undefined,
+      run: async () => {
+        if (cb) await fetch(`/api/crm/calls?id=${cb.id}`, { method: 'PATCH', headers: hdr, body: JSON.stringify({ follow_up_due: prevCbDue }) });
+        else await supabase.from('crm_tasks').update({ due_date: prevDue }).eq('id', task.id);
+        setCallSkippedIds(prev => { const n = new Set(prev); n.delete(task.id); return n; });
+        setCallSelectedId(task.id);
+        if (cb) loadCallbacks(); else if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
+        showToast('Snooze undone');
+      },
+    });
   }
 
   function skipCall(taskId: string) {
@@ -2600,9 +2652,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const leadPerson = (c: Client): CallListPerson => {
     const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
     const biz = (c.business_name ?? '').trim();
+    const hot = leadHotness(c);
     return {
-      clientId: c.id, reason: `New lead · ${c.lead_source || 'Website'} · ${ago(c.created_at)}`, heat: 'hot', view: 'opened', lastCalled: null,
-      askFor: ((c.notes ?? '').split('\n')[0] ?? '').slice(0, 220), rank: -Date.parse(c.created_at),
+      clientId: c.id, reason: `New lead · ${c.lead_source || 'Website'} · ${ago(c.created_at)}${hot.why ? ` · ${hot.why}` : ''}`, heat: hot.heat, view: 'opened', lastCalled: null,
+      askFor: leadAsk(c.notes).slice(0, 220), rank: -hot.score * 1e13 + Date.parse(c.created_at),
       business: /^(none|n\/a|na|-)$/i.test(biz) ? '' : biz, contactName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
       email: c.email ?? '', phone: c.cell_phone || c.phone || '', category: (c.asset_types ?? []).join(', '), locations: '',
       emailsSent: 0, emailsOpened: 0, opens: 0, clicks: 0, lastOpen: null, lastSent: null, campaignNames: [],
@@ -2675,7 +2728,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const me = callViewAgentId || profile?.id || '';
     const leadTasks = routedLeads
       .filter(c => !callProspectDoneIds.has(c.id) && !callSkippedIds.has(`p:${c.id}`))
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      // Hottest first (see leadHotness); equal heat → whoever has waited longest.
+      .sort((a, b) => (leadHotness(b).score - leadHotness(a).score) || a.created_at.localeCompare(b.created_at))
       .map<CRMTask>(c => ({ id: `p:${c.id}`, client_id: c.id, agent_id: me, type: 'call', title: 'New lead', due_date: t0, notes: '', completed_at: null, created_at: c.created_at }));
     return [...leadTasks, ...callbackTasks, ...plain, ...grouped];
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2737,17 +2791,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setCallListLoading(true); setCallSelectedId(null);
     (async () => {
       const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
-      const people: CallListPerson[] = newLeadContacts.map(c => {
-        const biz = (c.business_name ?? '').trim();
-        return {
-          clientId: c.id, reason: `New lead · ${c.lead_source || 'Website'} · ${ago(c.created_at)}`, heat: 'hot', view: 'opened', lastCalled: null,
-          askFor: ((c.notes ?? '').split('\n')[0] ?? '').slice(0, 220), rank: -Date.parse(c.created_at),
-          business: /^(none|n\/a|na|-)$/i.test(biz) ? '' : biz, contactName: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim(),
-          email: c.email ?? '', phone: c.cell_phone || c.phone || '', category: (c.asset_types ?? []).join(', '), locations: '',
-          emailsSent: 0, emailsOpened: 0, opens: 0, clicks: 0, lastOpen: null, lastSent: null, campaignNames: [],
-          unsubscribed: !!c.unsubscribed_at, dead: false, notEmailed: false, type: c.type, primaryCampaign: '',
-        };
-      });
+      const people: CallListPerson[] = newLeadContacts.map(leadPerson);
       // Who already got a call: show the date and put the uncalled first.
       const ids = people.map(p => p.clientId);
       const lastCalled = new Map<string, string>();
@@ -13808,7 +13852,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           ? { bottom: 'calc(132px + env(safe-area-inset-bottom))', left: 14, right: 14 }
           : { bottom: 84, right: 26, maxWidth: 360 }),
           background: '#111', color: '#fff', padding: '10px 10px 10px 16px', borderRadius: 10, fontSize: 14, zIndex: 10000, borderLeft: '4px solid #c9922c', boxShadow: '0 4px 20px rgba(0,0,0,.3)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ flex: 1, minWidth: 0 }}>{callUndo.label}</span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {callUndo.label}
+            {callUndo.next && <span style={{ display: 'block', fontSize: 12.5, color: '#d1d5db', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Next up: <b style={{ color: '#fff' }}>{callUndo.next}</b></span>}
+          </span>
           <button onClick={() => { const u = callUndo; setCallUndo(null); u.run(); }}
             style={{ minHeight: 44, padding: '0 18px', borderRadius: 8, border: 'none', background: '#c9922c', color: '#111', fontWeight: 800, fontSize: 15, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>Undo</button>
         </div>
