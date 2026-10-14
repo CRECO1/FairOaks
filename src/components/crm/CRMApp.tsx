@@ -797,7 +797,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Phone: filters tucked away, history collapsed, and a one-tap "how did it go?" sheet when you come back from the dialer.
   const [callFiltersOpen, setCallFiltersOpen] = useState(false);
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
-  const [callSnapOpen, setCallSnapOpen] = useState(false);   // phone: campaign stats fold away by default
+  const [callSnapOpen, setCallSnapOpen] = useState(false);
+  const [callFocus, setCallFocus] = useState<'all' | 'leads' | 'callbacks' | 'overdue'>('all');   // quick focus chips
+  const [callTextOpen, setCallTextOpen] = useState(false);                                          // Text → templates   // phone: campaign stats fold away by default
   const [callDialed, setCallDialed] = useState<{ taskId: string; at: number } | null>(null);
   const [callReturnOpen, setCallReturnOpen] = useState(false);
   const [callListInfo, setCallListInfo] = useState('');
@@ -2541,6 +2543,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     }
   }
 
+  // Snooze: unlike Skip (this session only) this really moves the call to tomorrow.
+  async function snoozeCall(task: CRMTask) {
+    if (callActionInFlight) return;
+    const d = new Date(); d.setDate(d.getDate() + 1);
+    const tomorrow = d.toLocaleDateString('en-CA');
+    const cb = callbackMeta.get(task.id) ?? null;
+    if (task.id.startsWith('p:')) { skipCall(task.id); showToast('Skipped for now — it will be back next time you open the queue'); return; }
+    if (cb) {
+      const at = new Date(d); at.setHours(9, 0, 0, 0);
+      const r = await fetch(`/api/crm/calls?id=${cb.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) }, body: JSON.stringify({ follow_up_due: at.toISOString() }) });
+      if (!r.ok) { showToast('Could not snooze it'); return; }
+      loadCallbacks();
+    } else {
+      const { error } = await supabase.from('crm_tasks').update({ due_date: tomorrow }).eq('id', task.id);
+      if (error) { showToast('Could not snooze it'); return; }
+      if (callViewAgentId) await loadCallView(callViewAgentId); else await loadAllTasks();
+    }
+    skipCall(task.id);
+    showToast('Snoozed to tomorrow ✓');
+  }
+
   function skipCall(taskId: string) {
     setCallSkippedIds(prev => { const next = new Set(prev); next.add(taskId); return next; });
   }
@@ -2664,10 +2687,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return n;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callQueueBase, callListMeta, clientTypeById]);
-  const callQueue = useMemo(
+  const callQueueSeg = useMemo(
     () => (callSegment === 'all' ? callQueueBase : callQueueBase.filter(t => segOfTask(t) === callSegment)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [callQueueBase, callSegment, callListMeta, clientTypeById]);
+  // Focus chips (My calls only): what kind of call am I working through right now?
+  const focusOf = (t: CRMTask): 'leads' | 'callbacks' | 'overdue' | 'today' =>
+    callListMode !== 'tasks' ? 'today' : t.id.startsWith('p:') ? 'leads' : t.id.startsWith('cb:') ? 'callbacks' : (t.due_date && t.due_date < today() && !isListCall(t as never)) ? 'overdue' : 'today';
+  const callFocusCounts = useMemo(() => {
+    const n = { leads: 0, callbacks: 0, overdue: 0 };
+    for (const t of callQueueSeg) { const f = focusOf(t); if (f !== 'today') n[f]++; }
+    return n;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callQueueSeg, callListMode]);
+  const callQueue = useMemo(
+    () => (callFocus === 'all' || callListMode !== 'tasks' ? callQueueSeg : callQueueSeg.filter(t => focusOf(t) === callFocus)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [callQueueSeg, callFocus, callListMode]);
   const callUpcomingList = useMemo(() => {
     const t0 = today();
     if (callListMode !== 'tasks') return [] as CRMTask[];
@@ -2846,7 +2882,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }, [page, tasksSubTab, profile?.role, callsDoneThisSession, callAssignNonce]);
 
   // Reset the per-call note + follow-up override whenever the active call changes.
-  useEffect(() => { setCallNote(''); setCallFollowUpDays(null); }, [callCurrent?.id]);
+  useEffect(() => { setCallNote(''); setCallFollowUpDays(null); setCallTextOpen(false); }, [callCurrent?.id]);
 
   // Load the current contact's recent activity (attempt history + timeline) for the briefing.
   useEffect(() => {
@@ -6374,8 +6410,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 {isMobile && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 25, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>📞 {queue.length === 0 ? 'All caught up' : `${queue.length} to call`}</div>
+                      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 25, fontWeight: 700, color: '#111', lineHeight: 1.1 }}>📞 {queue.length === 0 ? 'All caught up' : `${queue.length} left`}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {totalCt > 0 ? `${doneCt} of ${totalCt} done · ` : ''}
                         {callListMode === 'tasks' ? (callViewAgentId ? `${profiles.find(p => p.id === callViewAgentId)?.first_name ?? 'Agent'}’s calls` : 'My calls')
                           : callListMode === 'leads:web' ? 'New leads' : callListMode === 'camp:all' ? 'All campaigns' : callListMode.startsWith('camp:') ? (campaigns.find(c => c.id === callListMode.slice(5))?.name ?? 'Campaign') : (callListings.find(l => l.id === callListMode.slice(5))?.name ?? 'Property')}
                         {callSegment !== 'all' ? ` · ${SEGMENT_LABEL[callSegment]}` : ''}{doneCt > 0 ? ` · ${doneCt} done` : ''}
@@ -6385,6 +6422,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       style={{ flexShrink: 0, minHeight: 44, padding: '0 14px', borderRadius: 10, border: `1px solid ${callFiltersOpen ? '#c9922c' : '#e2e5e9'}`, background: callFiltersOpen ? '#fdf3dd' : '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                       ⚙ Filters {callFiltersOpen ? '▴' : '▾'}
                     </button>
+                  </div>
+                )}
+
+                {/* Focus chips: one tap to work just the new leads, just the call-backs, or just what's overdue */}
+                {callListMode === 'tasks' && (callFocusCounts.leads + callFocusCounts.callbacks + callFocusCounts.overdue > 0 || callFocus !== 'all') && (
+                  <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 10, WebkitOverflowScrolling: 'touch' }}>
+                    {([['all', 'All', callQueueSeg.length, '#141414'], ['leads', '🆕 New leads', callFocusCounts.leads, '#15803d'], ['callbacks', '📞 Call-backs', callFocusCounts.callbacks, '#be123c'], ['overdue', '⏰ Overdue', callFocusCounts.overdue, '#dc2626']] as ['all' | 'leads' | 'callbacks' | 'overdue', string, number, string][])
+                      .filter(([k, , n]) => k === 'all' || n > 0 || k === callFocus)
+                      .map(([k, label, n, col]) => {
+                        const on = callFocus === k;
+                        return (
+                          <button key={k} onClick={() => { setCallFocus(k); setCallSelectedId(null); }}
+                            style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: isMobile ? 44 : 34, padding: '0 14px', borderRadius: 22, fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+                              border: `1.5px solid ${on ? col : '#e2e5e9'}`, background: on ? col : '#fff', color: on ? '#fff' : '#374151' }}>
+                            {label}<span style={{ fontSize: 12, fontWeight: 800, padding: '1px 8px', borderRadius: 10, background: on ? 'rgba(255,255,255,.25)' : '#eef1f4', color: on ? '#fff' : '#6b7280' }}>{n}</span>
+                          </button>
+                        );
+                      })}
                   </div>
                 )}
 
@@ -6766,6 +6821,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {cbm && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: '#fff1f2', color: '#be123c' }}>📞 {cbReason(cbm)} · waiting {ago(cbm.started_at)}</span>}
                             {curMeta && <span style={{ padding: '2px 9px', borderRadius: 10, fontSize: 11, fontWeight: 700, background: curMeta.heat === 'hot' ? '#fff1f2' : curMeta.heat === 'cold' ? '#eff6ff' : '#fffbeb', color: curMeta.heat === 'hot' ? '#be123c' : curMeta.heat === 'cold' ? '#1d4ed8' : '#b45309' }}>{HEAT_ICON[curMeta.heat]} {curMeta.heat === 'hot' ? 'Hot' : curMeta.heat === 'cold' ? 'Cold' : 'Warm'}</span>}
                           </div>
+                          {curMeta && /^New lead/.test(curMeta.reason) && (
+                            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px', marginBottom: 12 }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#15803d' }}>{curMeta.reason.replace(/^New lead · /, 'Came in via ')}</div>
+                              {curMeta.askFor ? <div style={{ fontSize: 15, color: '#14532d', lineHeight: 1.45, marginTop: 4 }}><b>They asked:</b> {curMeta.askFor}</div>
+                                : <div style={{ fontSize: 13.5, color: '#166534', marginTop: 4 }}>No message left with the form — ask what they’re looking for.</div>}
+                            </div>
+                          )}
                           {c && (c.city || (c.tags && c.tags.length > 0)) && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14, fontSize: 13, color: '#6b7280' }}>
                               {c.city && <span>📍 {c.city}{c.state ? `, ${c.state}` : ''}</span>}
@@ -6787,7 +6849,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                               {phone && (
-                                <a href={`sms:${phone}`} style={{ flex: isMobile ? 1 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#374151', textDecoration: 'none', height: isMobile ? 52 : undefined, padding: isMobile ? '0 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff' }}>💬 Text</a>
+<button onClick={() => setCallTextOpen(o => !o)} style={{ flex: isMobile ? 1 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#374151', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", height: isMobile ? 52 : undefined, padding: isMobile ? '0 12px' : '9px 14px', borderRadius: 10, border: `1px solid ${callTextOpen ? '#c9922c' : '#e5e7eb'}`, background: callTextOpen ? '#fdf6e8' : '#fff' }}>💬 Text {callTextOpen ? '▴' : '▾'}</button>
                               )}
                               {c?.email && (
                                 <a href={`mailto:${c.email}`} style={{ flex: isMobile ? 1 : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontSize: isMobile ? 14 : 13.5, fontWeight: isMobile ? 700 : 400, color: isMobile ? '#374151' : '#4b5563', textDecoration: 'none', height: isMobile ? 52 : undefined, padding: isMobile ? '0 12px' : '9px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', overflowWrap: 'anywhere' }}>{isMobile ? '✉ Email' : `✉ ${c.email}`}</a>
@@ -6798,6 +6860,30 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           </div>
 
+                          {phone && callTextOpen && (() => {
+                            const first = (c?.first_name || curMeta?.contactName?.split(' ')[0] || '').trim();
+                            const me = profile?.first_name || '';
+                            const org = businessUnit === 'commercial' ? 'CRECO' : 'Fair Oaks Realty Group';
+                            const hi = first ? `Hi ${first}, ` : 'Hi, ';
+                            const isLead = !!curMeta && /^New lead/.test(curMeta.reason);
+                            const tpl: { label: string; body: string }[] = [
+                              ...(isLead ? [{ label: 'Thanks for reaching out', body: `${hi}${me} with ${org} — thanks for reaching out! I'd love to help. Do you have a few minutes to talk today?` }] : []),
+                              { label: 'Tried to reach you', body: `${hi}${me} with ${org} — I just tried to reach you. What's a good time to talk?` },
+                              { label: 'Left you a voicemail', body: `${hi}${me} with ${org} — I left you a voicemail. Call or text me back whenever works for you.` },
+                              { label: 'Blank message', body: '' },
+                            ];
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                                {tpl.map(t => (
+                                  <a key={t.label} href={`sms:${phone}${t.body ? `?&body=${encodeURIComponent(t.body)}` : ''}`}
+                                    onClick={() => { setCallTextOpen(false); if (c && t.body) logActivity(c.id, 'note', `💬 Texted (${t.label}): ${t.body}`); }}
+                                    style={{ display: 'block', minHeight: 48, padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', textDecoration: 'none', color: '#111', fontSize: 14, fontWeight: 700 }}>
+                                    {t.label}{t.body && <span style={{ display: 'block', fontSize: 12.5, fontWeight: 400, color: '#6b7280', marginTop: 2, lineHeight: 1.35 }}>{t.body}</span>}
+                                  </a>
+                                ))}
+                              </div>
+                            );
+                          })()}
                           {/* Tenant snapshot — what the marketing has done with this person (same numbers as the Rent Roll row) */}
                           {curMeta && isMobile && (
                             <button onClick={() => setCallSnapOpen(o => !o)}
@@ -6883,7 +6969,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           )}
 
                           {/* Who to ask for (from the contact research) */}
-                          {(askLine || curMeta?.askFor) && (
+                          {(askLine || curMeta?.askFor) && !(curMeta && /^New lead/.test(curMeta.reason) && !askLine) && (
                             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, color: '#78350f', lineHeight: 1.45 }}>
                               <b style={{ letterSpacing: .5, fontSize: 11, textTransform: 'uppercase', color: '#b45309' }}>{curMeta?.askFor && !askLine ? 'Context' : 'Ask for'}</b><br />{askLine || curMeta?.askFor}
                             </div>
@@ -7004,8 +7090,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {btn('📅 Call back', 'B', 'call_back', '#bfdbfe', '#eff6ff', '#1d4ed8')}
                               {btn('🙅 Not interested', 'I', 'not_interested', '#e5e7eb', '#f9fafb', '#6b7280')}
                               {btn('⚠ Wrong number', 'W', 'wrong_number', '#fecaca', '#fef2f2', '#b91c1c')}
+<button disabled={callActionInFlight} onClick={() => snoozeCall(current)}
+                                style={{ gridColumn: isMobile ? 'span 1' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 46 : undefined, padding: '10px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                😴 Tomorrow
+                              </button>
                               <button disabled={callActionInFlight} onClick={() => skipCall(current.id)}
-                                style={{ gridColumn: isMobile ? '1 / -1' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 46 : undefined, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: callActionInFlight ? 'wait' : 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
+                                style={{ gridColumn: isMobile ? 'span 2' : undefined, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: isMobile ? 46 : undefined, padding: '10px 14px', borderRadius: 8, border: 'none', background: 'none', color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                                 Skip — next call {!isMobile && <span style={kbdStyle}>S</span>}
                               </button>
                               {!isMobile && <span style={{ marginLeft: 'auto', fontSize: 11.5, color: '#b0b5bd' }}>↑ ↓ to move through the list</span>}
