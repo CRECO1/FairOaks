@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Session } from '@supabase/supabase-js';
+import { businessMinutesBetween, fmtMins, stlTone, STL_COLORS, STL_LATE_MIN, waitingLabel, isOpenNow, pickedUpHint, bestHours, hourLabel, isConnectNote } from '@/lib/speed-to-lead';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { sanitizeHtml } from '@/lib/sanitize';
 import dynamic from 'next/dynamic';
@@ -62,7 +63,7 @@ const supabase = createBrowserClient();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Role = 'agent' | 'admin' | 'super_admin';
-interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; }
+interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; daily_call_goal?: number | null; }
 /** A contact-export request awaiting, or carrying, the owner's decision. */
 
 interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
@@ -1428,6 +1429,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       }
 
       setProfile(updated);
+      // Daily call goal follows the agent. Column missing (migration not run yet) → stay on the device value.
+      if ('daily_call_goal' in data) {
+        const g = Number((data as Profile).daily_call_goal);
+        if (g > 0) { setCallGoal(g); try { localStorage.setItem('crm:callGoal', String(g)); } catch { /* ignore */ } }
+        else {
+          // First time on the new column: adopt what this device already had, so nobody's goal resets.
+          let local = 0; try { local = Number(localStorage.getItem('crm:callGoal')) || 0; } catch { /* ignore */ }
+          if (local > 0) supabase.from('crm_profiles').update({ daily_call_goal: local }).eq('id', session.user.id).then(() => { /* best effort */ });
+        }
+      }
       loadDeals(updated);
       loadClients(updated);
       loadProfiles();
@@ -2424,6 +2435,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return `${cl.first_name ?? ''} ${cl.last_name ?? ''}`.trim() || cl.business_name || null;
   }
 
+  function saveCallGoal(v: number) {
+    const g = Math.round(v);
+    setCallGoal(g);
+    try { localStorage.setItem('crm:callGoal', String(g)); } catch { /* ignore */ }
+    if (!profile?.id) return;
+    supabase.from('crm_profiles').update({ daily_call_goal: g }).eq('id', profile.id).then(({ error }) => {
+      if (error) showToast('Goal saved on this device only — ask your admin to run the daily-goal migration to sync it');
+      else setProfile(p => (p ? { ...p, daily_call_goal: g } : p));
+    });
+  }
   async function dispositionCall(task: CRMTask, disposition: 'connected' | 'voicemail' | 'no_answer' | 'wrong_number' | 'not_interested' | 'call_back') {
     if (callActionInFlight) return;
     setCallActionInFlight(true);
@@ -2448,7 +2469,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       // 2) Log the call activity on the client's timeline (fold in the agent's note)
       const dispLabel = disposition === 'not_interested' ? 'Not interested' : disposition === 'call_back' ? 'Connected — call back requested' : disposition === 'connected' ? 'Connected' : disposition === 'voicemail' ? 'Left voicemail' : disposition === 'wrong_number' ? 'Wrong number' : 'No answer';
       const jotted = callNote.trim();
-      const base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
+      let base = task.title ? `Call — ${dispLabel} — ${task.title}` : `Call — ${dispLabel}`;
+      // Speed-to-lead: the first call on a new website lead records how fast we got to them (business minutes).
+      if (task.id.startsWith('p:') && task.created_at && !leadFirstCall[task.client_id] && newLeadContacts.some(l => l.id === task.client_id)) {
+        base += ` — ⚡ First contact ${fmtMins(businessMinutesBetween(task.created_at))} after the lead came in`;
+      }
       // Property-based prospecting calls have no linked contact — skip the timeline log.
       if (task.client_id) await logActivity(task.client_id, 'call', jotted ? `${base} — ${jotted}` : base);
       else if (jotted) {
@@ -2636,22 +2661,59 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return clients.filter(c => (c.tags ?? []).includes('New Lead') && !isDnc(c) && !(c.tags ?? []).some(t => /^recruiting/i.test(t)) && Date.parse(c.created_at) >= cutoff);
   }, [clients]);
   // Who has already had a call logged — new leads that have been called leave the "new" section.
-  const [calledLeadIds, setCalledLeadIds] = useState<Set<string>>(new Set());
+  // client id → when their FIRST call was logged (ignoring anything before the lead existed). Drives speed-to-lead.
+  const [leadFirstCall, setLeadFirstCall] = useState<Record<string, string>>({});
+  const calledLeadIds = useMemo(() => new Set(Object.keys(leadFirstCall)), [leadFirstCall]);
+  // Ticks every 30s on the call queue so "⚡ 4m since it came in" counts up on its own.
+  const [stlNow, setStlNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls') return;
+    const i = setInterval(() => setStlNow(Date.now()), 30_000);
+    return () => clearInterval(i);
+  }, [page, tasksSubTab]);
   useEffect(() => {
     if (page !== 'tasks' || tasksSubTab !== 'calls') return;
     const ids = newLeadContacts.map(c => c.id);
     if (!ids.length) return;
     let cancelled = false;
     (async () => {
-      const got = new Set<string>();
-      for (let i = 0; i < ids.length; i += 150) {
-        const { data } = await supabase.from('crm_client_activities').select('client_id').eq('type', 'call').in('client_id', ids.slice(i, i + 150));
-        for (const a of data ?? []) got.add(a.client_id as string);
+      const got: Record<string, string> = {};
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data } = await supabase.from('crm_client_activities').select('client_id, created_at').eq('type', 'call').in('client_id', ids.slice(i, i + 100)).order('created_at', { ascending: true });
+        for (const a of (data ?? []) as { client_id: string; created_at: string }[]) {
+          // Earliest call wins (ascending order). Any call counts as "contacted", as before.
+          if (!(a.client_id in got)) got[a.client_id] = a.created_at;
+        }
       }
-      if (!cancelled) setCalledLeadIds(got);
+      if (!cancelled) setLeadFirstCall(got);
     })();
     return () => { cancelled = true; };
   }, [page, tasksSubTab, newLeadContacts, callsDoneThisSession]);
+  // Speed-to-lead scoreboard (all agents): how fast the last 7 days of new leads got their first call, and who's still waiting.
+  const leadResponse = useMemo(() => {
+    const weekAgo = stlNow - 7 * 86_400_000;
+    const resp: number[] = []; const waiting: number[] = [];
+    for (const c of newLeadContacts) {
+      const made = Date.parse(c.created_at); const fc = leadFirstCall[c.id];
+      if (fc) { const f = Date.parse(fc); if (made >= weekAgo && f >= made) resp.push(businessMinutesBetween(c.created_at, f)); }
+      else if (c.cell_phone || c.phone) waiting.push(businessMinutesBetween(c.created_at, stlNow));
+    }
+    resp.sort((a, b) => a - b);
+    const median = resp.length ? resp[Math.floor(resp.length / 2)] : null;
+    return { n: resp.length, median, fast: resp.filter(m => m <= 15).length, waiting: waiting.length, late: waiting.filter(m => m >= STL_LATE_MIN).length, oldest: waiting.length ? Math.max(...waiting) : 0 };
+  }, [newLeadContacts, leadFirstCall, stlNow]);
+  // Team-wide: which hours of the day actually connect (last 60 days of logged calls).
+  const [callBestHours, setCallBestHours] = useState<{ hour: number; rate: number; n: number }[]>([]);
+  useEffect(() => {
+    if (page !== 'tasks' || tasksSubTab !== 'calls') return;
+    let cancelled = false;
+    (async () => {
+      const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+      const { data } = await supabase.from('crm_client_activities').select('note, created_at').eq('type', 'call').gte('created_at', since).limit(5000);
+      if (!cancelled) setCallBestHours(bestHours((data ?? []) as { note: string | null; created_at: string }[]));
+    })();
+    return () => { cancelled = true; };
+  }, [page, tasksSubTab]);
   const dncIds = useMemo(() => new Set(clients.filter(c => isDnc(c)).map(c => c.id)), [clients]);
   const leadPerson = (c: Client): CallListPerson => {
     const ago = (iso: string) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
@@ -6646,6 +6708,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     { k: 'Waiting for a call back', v: st?.follow_up ?? callbackTasks.length, sub: st?.overdue ? `${st.overdue} past due` : 'none overdue', tone: (st?.overdue ?? 0) > 0 ? '#b91c1c' : undefined },
                     { k: 'Missed (7 days)', v: st?.missed ?? '—', sub: st ? `${st.voicemail} voicemails` : undefined },
                     { k: 'Calls need a note', v: st?.wrapup ?? '—', tone: (st?.wrapup ?? 0) > 0 ? '#a06a12' : undefined },
+                    { k: 'Lead response (7d median)', v: leadResponse.median === null ? '—' : fmtMins(leadResponse.median), sub: leadResponse.n ? `${leadResponse.fast} of ${leadResponse.n} within 15 min` : 'no leads contacted yet', tone: leadResponse.median === null ? undefined : STL_COLORS[stlTone(leadResponse.median)].fg },
+                    { k: 'New leads waiting', v: leadResponse.waiting, sub: leadResponse.waiting ? `oldest ${fmtMins(leadResponse.oldest)}${leadResponse.late ? ` · ${leadResponse.late} past ${STL_LATE_MIN}m` : ''}` : 'all contacted', tone: leadResponse.late > 0 ? '#b91c1c' : undefined },
                   ];
                   return (
                     <div style={{ marginBottom: 16 }}>
@@ -6666,6 +6730,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                           <div style={{ background: '#fff', border: '1px solid #e8eaed', borderRadius: 10, padding: '8px 12px' }}>
                             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: .7, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4 }}>Agents</div>
+                            {callBestHours.length > 0 && <div style={{ fontSize: 11.5, color: '#6b7280', paddingBottom: 6 }}>💡 People pick up most at {callBestHours.map(b => `${hourLabel(b.hour)} (${Math.round(b.rate * 100)}%)`).join(' · ')}</div>}
                             {agents.map(a => {
                               const d = callPanel?.byAgent[a.id] ?? { calls: 0, talked: 0, voicemail: 0, none: 0 };
                               return (
@@ -6712,7 +6777,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             </div>
                           ))}
                         </div>
-                        <button onClick={() => { const v = Number(window.prompt('Daily call goal', String(callGoal))); if (v > 0 && v < 1000) { setCallGoal(Math.round(v)); try { localStorage.setItem('crm:callGoal', String(Math.round(v))); } catch { /* ignore */ } } }}
+                        <button onClick={() => { const v = Number(window.prompt('Daily call goal', String(callGoal))); if (v > 0 && v < 1000) saveCallGoal(v); }}
                           style={{ marginTop: 12, minHeight: 40, background: 'none', border: 'none', color: '#9ca3af', fontSize: 12.5, textDecoration: 'underline', cursor: 'pointer' }}>change daily goal</button>
                       </div>
                     )}
@@ -6773,6 +6838,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   const todayItems = plainItems.filter(t => !(t.due_date && t.due_date < t0));
                   const HEAT_ICON = { hot: '🔥', warm: '☀️', cold: '❄️' } as const;
                   const curMeta = callListMeta.get(current.id) ?? null;
+                  // Speed-to-lead: business minutes since this new lead came in (they leave the queue once called).
+                  const stlMin = curMeta && /^New lead/.test(curMeta.reason) && c?.created_at ? businessMinutesBetween(c.created_at, stlNow) : null;
+                  const stlC = stlMin !== null ? STL_COLORS[stlTone(stlMin)] : null;
+                  const pickup = briefingReady && !(curMeta && /^New lead/.test(curMeta.reason)) ? pickedUpHint(acts) : null;
                   const row = (t: CRMTask) => {
                     const tc = clientFor(t);
                     const sel = t.id === current.id;
@@ -6797,7 +6866,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             {cbr
                               ? `${cbr.kind === 'voicemail' ? '📼' : '📞'} ${cbReason(cbr)} · waiting ${ago(cbr.started_at)}${cbr.follow_up_due && new Date(cbr.follow_up_due).getTime() < Date.now() ? ' · overdue' : ''}`
                               : meta
-                              ? `${HEAT_ICON[meta.heat]} ${meta.reason}${meta.lastCalled ? ` · called ${new Date(meta.lastCalled).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
+                              ? `${/^New lead/.test(meta.reason) && tc?.created_at ? (() => { const m = businessMinutesBetween(tc.created_at, stlNow); return m >= STL_LATE_MIN ? `⏱ ${fmtMins(m)} — call now · ` : ''; })() : ''}${HEAT_ICON[meta.heat]} ${meta.reason}${meta.lastCalled ? ` · called ${new Date(meta.lastCalled).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`
                               : `${t.type === 'follow_up' ? '🔄' : '📞'} ${ph ? phoneDisp(ph) : 'no phone'}${od > 0 ? ` · ${od}d overdue` : ' · due today'}`}
                           </span>
                         </span>
@@ -6905,9 +6974,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                           {curMeta && /^New lead/.test(curMeta.reason) && (
                             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '10px 14px', marginBottom: 12 }}>
+                              {stlMin !== null && stlC && (
+                                <div title="Business minutes (Mon–Sat 8–6 Central) since the lead came in" style={{ display: 'inline-block', marginBottom: 8, padding: '4px 11px', borderRadius: 20, fontSize: 13, fontWeight: 800, background: stlC.bg, color: stlC.fg, border: `1px solid ${stlC.bd}` }}>
+                                  {waitingLabel(stlMin, !isOpenNow(stlNow))}
+                                </div>
+                              )}
                               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#15803d' }}>{curMeta.reason.replace(/^New lead · /, 'Came in via ')}</div>
                               {curMeta.askFor ? <div style={{ fontSize: 15, color: '#14532d', lineHeight: 1.45, marginTop: 4 }}><b>They asked:</b> {curMeta.askFor}</div>
                                 : <div style={{ fontSize: 13.5, color: '#166534', marginTop: 4 }}>No message left with the form — ask what they’re looking for.</div>}
+                            </div>
+                          )}
+                          {pickup && (
+                            <div style={{ display: 'inline-block', marginBottom: 12, padding: '4px 11px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, background: pickup.nowGood ? '#dcfce7' : '#f1f5f9', color: pickup.nowGood ? '#166534' : '#475569' }}>
+                              💡 {pickup.nowGood ? 'Good time — ' : ''}picked up before: {pickup.text}
                             </div>
                           )}
                           {c && (c.city || (c.tags && c.tags.length > 0)) && (
