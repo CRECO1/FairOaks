@@ -5,7 +5,8 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
-import { generateLoi } from '@/lib/loi-generate';
+import { generateLoi, editLoi, type LoiEdit } from '@/lib/loi-generate';
+import { liveEnvelope, logDocEdit, restampOverlay, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -162,7 +163,11 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 }
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
-  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi']);
+  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi']);
+
+// Tools whose success changes a document the agent may have open on screen — the app is told
+// to reload it so the edit shows up live instead of being overwritten by a stale save.
+export const DOC_EDIT_TOOLS = new Set(['fill_document', 'edit_loi']);
 
 // Contact types the CRM actually uses — kept closed so the copilot can't invent one.
 const CONTACT_TYPES = ['Tenant', 'Buyer', 'Seller', 'Landlord/Investor', 'Broker', 'Agent'];
@@ -238,6 +243,15 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, listing_id: { type: 'string' } } } },
   { name: 'fill_document', description: "Fill in or edit fields on a contract/form document — e.g. dropping a contact's name, company, email and phone into the right blanks. Pass only the fields you're setting; everything else is left alone. Read it with read_document first. WRITE — confirm with the agent first. This edits the draft only; it does not send or sign anything.",
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, fields: { type: 'object', description: 'Field label or id → value, e.g. {"Tenant Name": "Acme LLC", "Email": "a@b.com"}' }, contact_id: { type: 'string', description: "Optional: pull this contact's name/company/email/phone in automatically, then apply `fields` on top." }, title: { type: 'string' } }, required: ['submission_id'] } },
+  { name: 'edit_loi', description: "Edit an EXISTING Letter of Intent (a saved LOI document) live: change term values, add or remove terms, or change the addressee / re line / date / additional terms / signers. It rebuilds the letter's PDF and refiles it, and the agent's open screen refreshes. Read it first with read_document (submission_id) — that lists the exact term labels. Pass only what changes. Never invent a legal value: use only what the agent told you in this conversation. Refuses an executed letter or one out for e-signature. WRITE — confirm with the agent first. It edits the draft only; it never sends or signs.",
+    input_schema: { type: 'object', properties: {
+      submission_id: { type: 'string', description: 'The LOI document id (from read_document / the open document).' },
+      set_terms: { type: 'object', description: 'Existing term label → new value, e.g. {"Purchase Price": "$4,500,000", "Due Diligence Period": "45 days"}. Labels are matched case-insensitively; read_document shows them.' },
+      add_terms: { type: 'array', description: 'New term rows to add', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'string' }, after: { type: 'string', description: 'Optional existing label to insert it after (default: the end).' } }, required: ['label', 'value'] } },
+      remove_terms: { type: 'array', items: { type: 'string' }, description: 'Labels of terms to remove' },
+      fields: { type: 'object', description: 'Letter-level fields: loiDate, addresseeName, addresseeAddr1, addresseeAddr2, reLine, additionalTerms, intro, subtitle, agentName, agentEmail, agentPhone.' },
+      signers: { type: 'array', description: 'Acceptance blocks by position (first = first block)', items: { type: 'object', properties: { entity: { type: 'string' }, signatory: { type: 'string' } } } },
+    }, required: ['submission_id'] } },
   { name: 'open_page', description: `Switch the agent's CRM screen to a section — use it when they ask you to open, show, go to or pull up part of the app. It changes what is on their screen immediately; it does not read or change any data, so just call it. Destinations: ${Object.keys(NAV_DESTINATIONS).join(', ')}.`,
     input_schema: { type: 'object', properties: { destination: { type: 'string', enum: Object.keys(NAV_DESTINATIONS), description: 'Which section to open' } }, required: ['destination'] } },
   { name: 'draft_campaign', description: "Build a marketing campaign and save it as a DRAFT — name, subject and full email body. It is saved unsent and unscheduled; the agent reviews and sends it themselves from the Marketing tab. You cannot send campaigns. Write the real body, no placeholder text. WRITE — confirm with the agent first.",
@@ -678,6 +692,20 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           const { data: sub } = await db.from('crm_form_submissions').select('id, title, status, values, deal_id, listing_id, client_id, business_unit, created_by').eq('id', input.submission_id).maybeSingle();
           if (!sub) return j({ error: 'Document not found' });
           if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+          const { data: bdRow } = await db.from('crm_form_submissions').select('builder_data').eq('id', input.submission_id).maybeSingle();
+          const bd = bdRow?.builder_data as { terms?: { label: string; value: string }[]; [k: string]: unknown } | null;
+          if (bd && Array.isArray(bd.terms)) {
+            // A Letter of Intent: its content is the term list + letter fields, not overlay blanks.
+            const env = await liveEnvelope(db, String(input.submission_id));
+            return j({
+              id: sub.id, title: sub.title, status: sub.status, kind: 'letter_of_intent', deal_id: sub.deal_id, listing_id: sub.listing_id,
+              out_for_signature: !!env,
+              letter: Object.fromEntries(['loiDate', 'addresseeName', 'addresseeAddr1', 'addresseeAddr2', 'reLine', 'additionalTerms', 'intro', 'subtitle', 'agentName', 'agentEmail', 'agentPhone'].map(k => [k, bd[k] ?? ''])),
+              terms: bd.terms.map(t => ({ label: t.label, value: t.value })),
+              signers: Array.isArray(bd.sellers) ? bd.sellers : [],
+              note: 'Edit this with edit_loi (term labels above are the exact ones to use).',
+            });
+          }
           return j({ id: sub.id, title: sub.title, status: sub.status, deal_id: sub.deal_id, listing_id: sub.listing_id, fields: summarizeFields(sub.values) });
         }
         let q = db.from('crm_form_submissions').select('id, title, status, deal_id, listing_id, updated_at').order('updated_at', { ascending: false }).limit(25);
@@ -688,11 +716,16 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         return error ? j({ error: error.message }) : j(data ?? []);
       }
       case 'fill_document': {
-        const { data: sub } = await db.from('crm_form_submissions').select('id, title, values, business_unit, status').eq('id', input.submission_id).maybeSingle();
+        const { data: sub } = await db.from('crm_form_submissions').select('id, title, values, business_unit, status, builder_data').eq('id', input.submission_id).maybeSingle();
         if (!sub) return j({ error: 'Document not found' });
         if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
         // A document that has already been executed is a signed record, not a draft.
         if (sub.status === 'executed' || sub.status === 'completed') return j({ error: 'That document is already executed — it can no longer be edited.' });
+        // A Letter of Intent is a term list, not fillable blanks — it has its own tool.
+        if ((sub.builder_data as { terms?: unknown } | null)?.terms) return j({ error: 'That is a Letter of Intent — use edit_loi to change its terms.' });
+        // Out for signature: the signers hold the current PDF; changing it underneath them is how
+        // two parties end up signing different documents.
+        if (await liveEnvelope(db, String(input.submission_id))) return j({ error: OUT_FOR_SIGNATURE });
 
         const wanted: Record<string, string> = {};
         if (input.contact_id) {
@@ -718,8 +751,32 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (input.title) patch.title = String(input.title).trim();
         const { error } = await db.from('crm_form_submissions').update(patch).eq('id', input.submission_id);
         if (error) return j({ error: error.message });
+        // Re-stamp the PDF too, so what gets e-signed matches what the CRM shows.
+        let pdf: 'refreshed' | 'not_refreshed' = 'not_refreshed'; let pdfNote: string | undefined;
+        if (applied.length) {
+          const r = await restampOverlay(db, String(input.submission_id));
+          if (r.ok) pdf = 'refreshed'; else pdfNote = r.error;
+          await logDocEdit(db, { submissionId: String(input.submission_id), editorId: ctx.userId, unit: sub.business_unit as string | null,
+            summary: `Copilot filled: ${applied.slice(0, 4).join('; ')}${applied.length > 4 ? ` (+${applied.length - 4} more)` : ''}`, changes: { kind: 'copilot_fill', applied } });
+        }
         await logCopilot(db, ctx, `Filled ${applied.length} field${applied.length === 1 ? '' : 's'} on “${sub.title ?? 'a document'}”`);
-        return j({ ok: true, applied, unmatched, note: unmatched.length ? 'Those field names are not on this document — read_document lists the real ones.' : undefined });
+        return j({ ok: true, applied, unmatched, pdf, ...(pdfNote ? { pdfNote: `Values saved but the PDF could not be rebuilt (${pdfNote}). The agent can open the document and press Save to refresh it.` } : {}),
+          note: unmatched.length ? 'Those field names are not on this document — read_document lists the real ones.' : undefined, submission_id: sub.id });
+      }
+      case 'edit_loi': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', input.submission_id, 'Document'); if (bad) return bad;
+        const edit: LoiEdit = {
+          setTerms: input.set_terms && typeof input.set_terms === 'object' ? input.set_terms : undefined,
+          addTerms: Array.isArray(input.add_terms) ? input.add_terms : undefined,
+          removeTerms: Array.isArray(input.remove_terms) ? input.remove_terms.map(String) : undefined,
+          fields: input.fields && typeof input.fields === 'object' ? input.fields : undefined,
+          sellers: Array.isArray(input.signers) ? input.signers : undefined,
+        };
+        const r = await editLoi(db, ctx.userId, ctx.businessUnit, String(input.submission_id), edit, ctx.origin ?? 'https://www.fairoaksrealtygroup.com');
+        if (!r.ok) return j({ error: r.error });
+        await logCopilot(db, ctx, `Edited the Letter of Intent “${r.submission.title ?? ''}” (${r.changes.length} change${r.changes.length === 1 ? '' : 's'})`);
+        return j({ ok: true, edited: r.changes, ...(r.unmatched.length ? { notFound: r.unmatched, note: 'Those labels are not on the letter — read_document lists the exact ones.' } : {}), submission_id: r.submission.id,
+          note2: 'The letter and its PDF are rebuilt and the agent\u2019s screen refreshes. Nothing was sent for signature.' });
       }
       case 'draft_campaign': {
         // status is hard-coded 'draft'. The send cron only picks up 'active', so
@@ -781,6 +838,15 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;
     case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}`;
     case 'draft_campaign': return `Save “${input.name}” as an UNSENT draft campaign — nothing is emailed`;
+    case 'edit_loi': {
+      const lines: string[] = [];
+      for (const [k, v] of Object.entries((input.set_terms ?? {}) as Record<string, string>)) lines.push(`${String(k).replace(/:$/, '')} → ${v}`);
+      for (const t of (input.add_terms ?? []) as { label: string; value: string }[]) lines.push(`add ${String(t.label).replace(/:$/, '')}: ${t.value}`);
+      for (const t of (input.remove_terms ?? []) as string[]) lines.push(`remove ${String(t).replace(/:$/, '')}`);
+      for (const [k, v] of Object.entries((input.fields ?? {}) as Record<string, string>)) lines.push(`${k} → ${v}`);
+      ((input.signers ?? []) as { entity?: string; signatory?: string }[]).forEach((s, i) => { if (s?.entity) lines.push(`signer ${i + 1} → ${s.entity}`); if (s?.signatory) lines.push(`signatory ${i + 1} → ${s.signatory}`); });
+      return `✏️ Edit the Letter of Intent live and rebuild its PDF:\n${lines.slice(0, 12).map(l => `  • ${l}`).join('\n') || '  • (no changes listed)'}\nNothing is sent for signature.`;
+    }
     case 'complete_loi': {
       // The agent is approving legal values, so the summary lists the ones THEY
       // supplied verbatim rather than a count — those are the lines that are not

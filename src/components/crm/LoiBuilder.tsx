@@ -13,6 +13,7 @@ import {
 } from '@/lib/loi-doc';
 import { leaseSpec, TENANTREP_INTRO } from '@/lib/loi-spec';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
+import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
 
 interface Prefill {
   agentName?: string; agentEmail?: string; agentPhone?: string;
@@ -149,6 +150,46 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
   const [showHistory, setShowHistory] = useState(false);
   const logoRef = useRef<Uint8Array | null>(null);
   const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  // Live edits from the Copilot. `syncedRef` is the letter as last loaded/saved, so we can tell
+  // whether the agent has unsaved typing before replacing what is on screen.
+  const syncedRef = useRef<string>('');
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const toastRef = useRef(onToast);
+  toastRef.current = onToast;
+  useEffect(() => {
+    if (!savedId) return;
+    setOpenDoc({ submissionId: savedId, title: spec.title, kind: 'loi' });
+    return () => setOpenDoc(null);
+  }, [savedId, spec.title]);
+  useEffect(() => {
+    if (!savedId) return;
+    const onUpdated = async (e: Event) => {
+      if ((e as CustomEvent).detail?.submissionId !== savedId) return;
+      if (JSON.stringify(dataRef.current) !== syncedRef.current) {
+        toastRef.current('✨ Copilot edited this letter, but you have unsaved changes here — save or close, then reopen it to see them.');
+        return;
+      }
+      try {
+        const r = await fetch(`/api/crm/form-submissions/${savedId}`, { headers: authHeaders });
+        const j = await r.json();
+        const bd = j?.submission?.builder_data;
+        if (bd && Array.isArray(bd.terms)) {
+          const loaded = {
+            ...dataRef.current, ...bd,
+            terms: bd.terms.map((t: LoiTermRow) => ({ id: t.id || newId(), label: t.label || '', value: t.value || '' })),
+            sellers: bd.sellers?.length ? bd.sellers : [{ entity: '', signatory: '' }],
+          };
+          setData(loaded);
+          syncedRef.current = JSON.stringify(loaded);
+          if (Array.isArray(j?.edits)) setEdits(j.edits);
+          toastRef.current('✨ Copilot updated this letter');
+        }
+      } catch { /* the next open will show it */ }
+    };
+    window.addEventListener(DOC_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(DOC_UPDATED_EVENT, onUpdated);
+  }, [savedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!submissionId) return;
@@ -161,11 +202,13 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
         const bd = j?.submission?.builder_data;
         if (bd && Array.isArray(bd.terms)) {
           if (bd.variant === 'tenantrep') setVariant('tenantrep');
-          setData({
+          const loaded = {
             ...seedData(spec, prefill), ...bd,
             terms: bd.terms.map((t: LoiTermRow) => ({ id: t.id || newId(), label: t.label || '', value: t.value || '' })),
             sellers: bd.sellers?.length ? bd.sellers : [{ entity: '', signatory: '' }],
-          });
+          };
+          setData(loaded);
+          syncedRef.current = JSON.stringify(loaded);
         } else {
           // No builder_data — recover values from a doc filled in the old overlay editor.
           const recon = reconstructFromOverlay(j?.submission?.values, seedData(spec, prefill), spec);
@@ -220,6 +263,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
       if (!res.ok) { onToast(j.error || 'Save failed'); return; }
       const id = j.submission?.id as string | undefined;
       if (id) setSavedId(id);
+      syncedRef.current = JSON.stringify(data);
       onSaved();
       if (closeAfter) { onClose(); return; }
       onToast(dealSel ? '✓ Saved to the deal' : listingId ? '✓ Saved to the property' : 'Saved ✓');

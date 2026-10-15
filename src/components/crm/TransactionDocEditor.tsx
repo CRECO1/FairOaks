@@ -7,6 +7,7 @@ import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
 import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-spec';
+import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
 
 // The Letters of Intent are dynamic term-list docs, not fixed overlay forms —
 // whichever surface opens one (deals page, property, Transaction Docs library),
@@ -61,6 +62,10 @@ function adoptIds<T extends { id?: string }>(vals: T[]): (T & { id: string })[] 
     return { ...v, id };
   });
 }
+
+// A fingerprint of what the agent sees in the blanks, to tell "I have unsaved typing" from "the
+// Copilot changed it" when a live edit arrives.
+const valsOf = (fs: { id: string; value: string }[]) => JSON.stringify(fs.map(f => [f.id, f.value]));
 
 // pdf-lib's StandardFonts.Helvetica can only draw WinAnsi (Latin-1) glyphs;
 // any smart quote / dash / check mark / emoji throws mid-render. Map the common
@@ -219,6 +224,45 @@ export default function TransactionDocEditor({
   };
   const authTokenRef = useRef(authToken);
   authTokenRef.current = authToken;
+  // Live edits from the Copilot (see lib/open-doc): register what's on screen, reload when it changes.
+  const syncedVals = useRef<string>('');
+  const fieldsRef = useRef<Field[]>([]);
+  fieldsRef.current = fields;
+  const formNameRef = useRef(form.name);
+  formNameRef.current = form.name;
+  useEffect(() => {
+    if (isLoi || !submissionId) return;
+    setOpenDoc({ submissionId, title: formNameRef.current, kind: 'form' });
+    return () => setOpenDoc(null);
+  }, [submissionId, isLoi]);
+  useEffect(() => {
+    if (isLoi) return;
+    const onUpdated = async (e: Event) => {
+      const id = (e as CustomEvent).detail?.submissionId as string | undefined;
+      if (!id || id !== (subIdRef.current ?? submissionId)) return;
+      if (form.id === LEASE_FORM_ID) return;   // leases are generated from a values form, not edited in place
+      if (valsOf(fieldsRef.current) !== syncedVals.current) {
+        onToast?.('✨ Copilot edited this document, but you have unsaved changes here — save or close, then reopen it to see them.');
+        return;
+      }
+      try {
+        const h: Record<string, string> = {};
+        if (authTokenRef.current) h.Authorization = `Bearer ${authTokenRef.current}`;
+        const r = await fetch(`/api/crm/form-submissions/${id}`, { headers: h });
+        const j = await r.json();
+        const vals = j?.submission?.values;
+        if (Array.isArray(vals) && vals.length) {
+          const adopted = adoptIds(vals as Field[]);
+          setFields(adopted);
+          syncedVals.current = valsOf(adopted);
+          if (Array.isArray(j.edits)) setEdits(j.edits);
+          onToast?.('✨ Copilot updated this document');
+        }
+      } catch { /* the next open will show it */ }
+    };
+    window.addEventListener(DOC_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(DOC_UPDATED_EVENT, onUpdated);
+  }, [isLoi, submissionId, form.id, onToast]);
   useEffect(() => {
     if (isLoi) return;
     let cancelled = false;
@@ -239,7 +283,9 @@ export default function TransactionDocEditor({
           }
           const vals = j.submission?.values;
           if (Array.isArray(vals) && vals.length) {
-            setFields(adoptIds(vals as Field[]));
+            const adopted = adoptIds(vals as Field[]);
+            setFields(adopted);
+            syncedVals.current = valsOf(adopted);
             return;
           }
         }
@@ -507,6 +553,8 @@ export default function TransactionDocEditor({
       if (res.ok) {
         const j = await res.json();
         if (j.submission?.id) subIdRef.current = j.submission.id;
+        syncedVals.current = valsOf(fields);
+        if (subIdRef.current) setOpenDoc({ submissionId: subIdRef.current, title: form.name, kind: 'form' });
         onToast?.(dealSel ? '✓ Saved to the deal' : '✓ Saved to Transaction Docs');
         onSaved?.();
         // Pull the freshly-written audit entry so History reflects this save.

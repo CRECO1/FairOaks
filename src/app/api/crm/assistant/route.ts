@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
+import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DOC_EDIT_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
@@ -64,7 +64,13 @@ interface ReqBody {
   messages?: Anthropic.MessageParam[];
   /** Approval tickets from a previous turn's pendingWrites, one per action the agent confirmed. */
   confirm?: unknown[];
+  /** The document the agent has open on screen right now (so "this LOI" means something). */
+  openDoc?: { submissionId?: unknown; title?: unknown; kind?: unknown } | null;
 }
+
+/** A UI directive for the browser: navigate, or reload a document the Copilot just edited. */
+type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -75,7 +81,7 @@ export async function POST(req: NextRequest) {
   const { success } = await rateLimit(req, 'copilot');
   if (!success) return NextResponse.json({ error: "You're going a bit fast for me — give it a minute." }, { status: 429 });
 
-  const { messages: incoming = [], confirm = [] }: ReqBody = await req.json();
+  const { messages: incoming = [], confirm = [], openDoc }: ReqBody = await req.json();
   if (!Array.isArray(incoming) || incoming.length === 0) return NextResponse.json({ error: 'messages required' }, { status: 400 });
   // The whole conversation is replayed by the client on every turn, so its size is
   // caller-controlled and gets re-sent to the model up to six times per request. Without
@@ -90,6 +96,12 @@ export async function POST(req: NextRequest) {
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
   const { data: prof } = await db.from('crm_profiles').select('first_name').eq('id', ctx.userId).single();
 
+  // The document on the agent's screen, if any. The id is only a hint for the model — every tool
+  // still checks the workspace itself — and the title is clipped so it can't smuggle a paragraph.
+  const open: { submissionId: string; title: string; kind: 'loi' | 'form' } | null = openDoc && typeof openDoc.submissionId === 'string' && UUID.test(openDoc.submissionId)
+    ? { submissionId: openDoc.submissionId, title: String(openDoc.title ?? '').replace(/[\r\n]+/g, ' ').slice(0, 120), kind: openDoc.kind === 'loi' ? 'loi' as const : 'form' as const }
+    : null;
+
   // Enrich the context so tools can call the CRM's own HTTP endpoints as this agent.
   const toolCtx: AgentCtx = { ...ctx, token: req.headers.get('authorization')?.replace(/^Bearer\s+/i, ''), origin: req.nextUrl.origin };
 
@@ -97,6 +109,7 @@ export async function POST(req: NextRequest) {
   // Replaying the approved call is the whole point: the agent read a summary, and this
   // executes exactly the call that summary described. The model is not asked again.
   const confirmed: { summary: string; ok: boolean; error?: string }[] = [];
+  const confirmActions: ClientAction[] = [];
   if (Array.isArray(confirm) && confirm.length) {
     for (const token of confirm.slice(0, 5)) {
       const call = verifyPendingWrite(token, toolCtx);
@@ -107,7 +120,12 @@ export async function POST(req: NextRequest) {
       const result = await runTool(call.name, call.input, toolCtx);
       await logToolCall(toolCtx, req, call.name, call.input, 'executed', result);
       let err: string | undefined;
-      try { const p = JSON.parse(result); if (p?.error) err = String(p.error); } catch { /* non-JSON */ }
+      try {
+        const p = JSON.parse(result);
+        if (p?.error) err = String(p.error);
+        // A document edit just landed: tell the browser so an open editor reloads it live.
+        else if (DOC_EDIT_TOOLS.has(call.name) && typeof p?.submission_id === 'string') confirmActions.push({ type: 'doc-updated', submissionId: p.submission_id });
+      } catch { /* non-JSON */ }
       confirmed.push({ summary, ok: !err, error: err });
     }
   }
@@ -120,21 +138,21 @@ export async function POST(req: NextRequest) {
     const lines = confirmed.map(c => (c.ok ? `✓ ${c.summary}` : `⚠ ${c.summary} — ${c.error ?? 'did not go through'}`));
     const reply = lines.join('\n');
     const out = [...incoming, { role: 'assistant' as const, content: [{ type: 'text' as const, text: reply }] }];
-    return NextResponse.json({ messages: out, reply, pendingWrites: [], clientActions: [], confirmed });
+    return NextResponse.json({ messages: out, reply, pendingWrites: [], clientActions: confirmActions, confirmed });
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages = [...incoming];
   const pendingWrites: { id: string; name: string; summary: string }[] = [];
   // UI directives for the browser to apply when the response lands (navigation).
-  const clientActions: { type: 'navigate'; page: string; tab?: string; label: string }[] = [];
+  const clientActions: ClientAction[] = [];
 
   try {
     for (let round = 0; round < 6; round++) {
       const res = await client.messages.create({
         model: MODEL,
         max_tokens: 4000,
-        system: systemPrompt(ctx, prof?.first_name || 'the agent'),
+        system: systemPrompt(ctx, prof?.first_name || 'the agent', open),
         tools: [...TOOLS, ...WEB_TOOLS],
         messages,
       });

@@ -13833,6 +13833,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       {assistantOpen && (
         <AssistantPanel
           token={session?.access_token}
+          userId={profile?.id}
           onClose={() => setAssistantOpen(false)}
           onNavigate={(p, tab) => {
             // The server sends destinations from a closed set, but this is client
