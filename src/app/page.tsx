@@ -75,6 +75,21 @@ function statusBadge(status: string): { label: string; cls: string } {
 }
 
 /** DOM badge config */
+/** Hero headline with the region in gold, where the headline already names it.
+ *  (It used to strip "Texas Hill Country" and always append it, so a headline
+ *  like "Your Hill Country Home Starts Here" said Hill Country twice.) */
+function heroHeadline(text: string) {
+  const m = text.match(/(Texas )?Hill Country/);
+  if (!m || m.index === undefined) return text;
+  return (
+    <>
+      {text.slice(0, m.index)}
+      <span className="text-gold">{m[0]}</span>
+      {text.slice(m.index + m[0].length)}
+    </>
+  );
+}
+
 function domBadge(days: number | null): { label: string; cls: string } | null {
   if (days === null) return null;
   if (days <= 7)  return { label: 'Just Listed', cls: 'bg-green-500 text-white' };
@@ -191,10 +206,7 @@ export default async function HomePage() {
               ? (s.hero_headline ?? '').split('\n').map((line: string, i: number) => (
                 <span key={i}>{i > 0 && <br />}{line}</span>
               ))
-              : <>
-                  {(s.hero_headline ?? '').replace('Texas Hill Country', '').trimEnd()}{' '}
-                  <span className="text-gold">Texas Hill Country</span>
-                </>
+              : heroHeadline(s.hero_headline ?? '')
             }
           </h1>
           <p className="mx-auto mb-8 sm:mb-10 max-w-2xl animate-fade-in text-base sm:text-body-lg text-white/80 delay-200 fill-both">
