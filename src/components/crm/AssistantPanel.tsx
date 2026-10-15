@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { getOpenDoc, announceDocUpdated } from '@/lib/open-doc';
+import { pruneOld, fitForSend, PENDING_KEEP_MS, STORE_LIMIT_CHARS } from '@/lib/copilot-chat';
 
 // The in-CRM copilot: a slide-out chat that talks to /api/crm/assistant, which runs a
 // Claude tool-use loop over the agent's CRM. Writes are confirmed before they run.
@@ -16,44 +17,12 @@ type ClientAction = { type: 'navigate'; page: string; tab?: string; label: strin
 const GOLD = '#c9922c';
 
 // ── The chat log lives for 24 hours ─────────────────────────────────────────────
-// The panel unmounts when it is closed and the page can refresh, so the conversation is
-// kept in localStorage per agent. Each message carries the time it was written; on load
-// anything older than 24h is dropped — but only at a boundary where a new question starts,
-// so a tool call is never separated from its result (the API rejects that).
-const KEEP_MS = 24 * 60 * 60 * 1000;
-const PENDING_KEEP_MS = 25 * 60 * 1000;     // approval tickets are valid for 30 minutes server-side
-const MAX_SAVED_CHARS = 450_000;            // keep localStorage writes small and fast
-const SEND_LIMIT_CHARS = 100_000;           // the server refuses > 120k chars or > 150 messages
-const SEND_LIMIT_MSGS = 120;
-type Saved = { v: 1; messages: Msg[]; stamps: number[]; pending?: Pending[]; pendingAt?: number };
+// Source of truth is the database (/api/crm/assistant/chat), so a conversation follows the
+// agent from phone to desktop. localStorage is only a fast first paint and an offline
+// fallback. Retention rules (24h, prune at question boundaries) are shared with the server
+// in lib/copilot-chat.
+type Saved = { v: 1; messages: Msg[]; stamps: number[]; pending?: Pending[]; pendingAt?: number; at?: number };
 const storeKey = (userId?: string) => `crm-copilot-chat:v1:${userId || 'anon'}`;
-
-// A plain user question (not a tool_result) — the safe place to start a conversation from.
-function startsQuestion(m: Msg): boolean {
-  if (m.role !== 'user') return false;
-  if (typeof m.content === 'string') return true;
-  return m.content.some(b => b.type === 'text') && !m.content.some(b => b.type === 'tool_result');
-}
-function pruneOld(messages: Msg[], stamps: number[], now = Date.now()): { messages: Msg[]; stamps: number[] } {
-  const cut = now - KEEP_MS;
-  let from = 0;
-  while (from < messages.length && (stamps[from] ?? now) < cut) from++;
-  if (from === 0) return { messages, stamps };
-  // Advance to the next question so no tool_use / tool_result pair is split.
-  while (from < messages.length && !startsQuestion(messages[from])) from++;
-  return { messages: messages.slice(from), stamps: stamps.slice(from) };
-}
-// Drop the oldest whole exchanges until what we send is within the server's limits.
-function fitForSend(messages: Msg[]): Msg[] {
-  let out = messages;
-  while (out.length > 1 && (out.length > SEND_LIMIT_MSGS || JSON.stringify(out).length > SEND_LIMIT_CHARS)) {
-    let i = 1;
-    while (i < out.length && !startsQuestion(out[i])) i++;
-    if (i >= out.length) break;
-    out = out.slice(i);
-  }
-  return out;
-}
 function loadSaved(userId?: string): Saved | null {
   try {
     const raw = localStorage.getItem(storeKey(userId));
@@ -62,7 +31,7 @@ function loadSaved(userId?: string): Saved | null {
     if (j?.v !== 1 || !Array.isArray(j.messages) || !Array.isArray(j.stamps)) return null;
     const { messages, stamps } = pruneOld(j.messages, j.stamps);
     if (!messages.length) { localStorage.removeItem(storeKey(userId)); return null; }
-    return { v: 1, messages, stamps, pending: j.pending, pendingAt: j.pendingAt };
+    return { v: 1, messages, stamps, pending: j.pending, pendingAt: j.pendingAt, at: j.at };
   } catch { return null; }
 }
 
@@ -133,26 +102,92 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate }: {
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, loading]);
 
-  // Save the log whenever it changes. Never throws: private windows / full storage just mean no history.
-  useEffect(() => {
+  // ── Sync with the database ──────────────────────────────────────────────────
+  // Read through a ref: the unmount flush runs a closure from the first render, by which time the token may have rotated.
+  const tokenRef = useRef(token); tokenRef.current = token;
+  const authHeaders = (json = false): Record<string, string> => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), ...(tokenRef.current ? { Authorization: `Bearer ${tokenRef.current}` } : {}) });
+  const serverReady = useRef(false);          // nothing is written until we have read what is already there
+  const serverAt = useRef<string | null>(null); // updated_at of the copy we last read/wrote
+  const applyingRemote = useRef(false);       // a change that came FROM the server must not be echoed back
+
+  const latest = useRef<{ messages: Msg[]; stamps: number[]; pending: Pending[]; pendingAt: number }>({ messages: [], stamps: [], pending: [], pendingAt: 0 });
+  const dirty = useRef(false);   // local changes the database has not seen yet
+  async function putServer(keepalive = false) {
+    const l = latest.current;
+    if (!l.messages.length) return;
     try {
-      if (!messages.length) { localStorage.removeItem(storeKey(userId)); return; }
-      const body: Saved = { v: 1, messages, stamps, pending: pending.length ? pending : undefined, pendingAt: pending.length ? pendingAtRef.current : undefined };
-      const text = JSON.stringify(body);
-      if (text.length <= MAX_SAVED_CHARS) localStorage.setItem(storeKey(userId), text);
+      const r = await fetch('/api/crm/assistant/chat', {
+        method: 'PUT', headers: authHeaders(true), keepalive,
+        body: JSON.stringify({ messages: l.messages, stamps: l.stamps, pending: l.pending, pendingAt: l.pending.length ? l.pendingAt : null }),
+      });
+      if (r.ok) { dirty.current = false; const j = await r.json(); if (j.updatedAt) serverAt.current = j.updatedAt; }
+    } catch { /* the local copy still has it; the next open pushes it */ }
+  }
+
+  async function pullServer(initial = false) {
+    try {
+      const r = await fetch('/api/crm/assistant/chat', { headers: authHeaders() });
+      if (!r.ok) return;
+      const j = await r.json() as { messages: Msg[]; stamps: number[]; pending: Pending[]; pendingAt?: number | null; updatedAt: string | null };
+      const localAt = restoredAtRef.current;
+      const remoteNewer = !!j.updatedAt && (initial ? (!messagesRef.current.length || Date.parse(j.updatedAt) > localAt) : j.updatedAt !== serverAt.current && Date.parse(j.updatedAt) > localAt);
+      let applied = false;
+      if (j.messages.length && remoteNewer && !loadingRef.current) {
+        applyingRemote.current = true; applied = true;
+        pendingAtRef.current = Number(j.pendingAt) || 0;
+        setMessages(j.messages); setStamps(j.stamps); setPending(j.pending ?? []);
+      }
+      serverAt.current = j.updatedAt;
+      // This browser holds a newer copy than the database (an earlier save never landed): push it up.
+      if (initial && !applied && messagesRef.current.length && (!j.updatedAt || localAt > Date.parse(j.updatedAt))) {
+        latest.current = { messages: messagesRef.current, stamps: stampsRef.current, pending: pendingRef.current, pendingAt: pendingAtRef.current };
+        await putServer();
+      }
+    } catch { /* offline: the local copy stands */ }
+    finally { if (initial) serverReady.current = true; }
+  }
+  const messagesRef = useRef<Msg[]>(messages); messagesRef.current = messages;
+  const stampsRef = useRef<number[]>(stamps); stampsRef.current = stamps;
+  const pendingRef = useRef<Pending[]>(pending); pendingRef.current = pending;
+  const loadingRef = useRef(false); loadingRef.current = loading;
+  const restoredAtRef = useRef<number>(restored.current?.at ?? 0);
+  useEffect(() => { pullServer(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Picking the conversation back up on another device: refresh when this tab regains focus.
+  useEffect(() => {
+    const onFocus = () => { if (document.visibilityState === 'visible') pullServer(false); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save the log whenever it changes: instantly to this browser, a moment later to the database.
+  useEffect(() => {
+    const at = Date.now();
+    try {
+      if (!messages.length) { localStorage.removeItem(storeKey(userId)); }
       else {
-        // Too big to keep whole: keep the most recent exchanges.
-        const fit = fitForSend(messages);
-        const skip = messages.length - fit.length;
-        localStorage.setItem(storeKey(userId), JSON.stringify({ v: 1, messages: fit, stamps: stamps.slice(skip) } satisfies Saved));
+        let m = messages, st = stamps;
+        const full = JSON.stringify({ v: 1, messages: m, stamps: st, pending: pending.length ? pending : undefined, pendingAt: pending.length ? pendingAtRef.current : undefined, at } satisfies Saved);
+        if (full.length > STORE_LIMIT_CHARS) { const fit = fitForSend(m); st = st.slice(m.length - fit.length); m = fit; }
+        localStorage.setItem(storeKey(userId), JSON.stringify({ v: 1, messages: m, stamps: st, pending: pending.length ? pending : undefined, pendingAt: pending.length ? pendingAtRef.current : undefined, at } satisfies Saved));
+        restoredAtRef.current = at;
       }
     } catch { /* history is a convenience, never a failure */ }
-  }, [messages, stamps, pending, userId]);
+    if (applyingRemote.current) { applyingRemote.current = false; return; }
+    if (!serverReady.current || !messages.length) return;
+    latest.current = { messages, stamps, pending, pendingAt: pendingAtRef.current };
+    dirty.current = true;
+    const t = setTimeout(() => { putServer(); }, 900);
+    return () => clearTimeout(t);
+  }, [messages, stamps, pending, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Closing the panel inside the debounce window must not lose the last exchange.
+  useEffect(() => () => { if (dirty.current && serverReady.current) putServer(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function newChat() {
     if (loading) return;
     setMessages([]); setStamps([]); setPending([]); setError(null);
     try { localStorage.removeItem(storeKey(userId)); } catch { /* ignore */ }
+    fetch('/api/crm/assistant/chat', { method: 'DELETE', headers: authHeaders() }).then(() => { serverAt.current = null; }).catch(() => { /* ignore */ });
   }
 
   /**
@@ -225,7 +260,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate }: {
         <span style={{ fontSize: 18 }}>✨</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>CRECO Copilot</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)' }}>{messages.length ? 'Chat is kept for 24 hours' : 'Your CRM assistant'}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)' }}>{messages.length ? 'Chat syncs across your devices · kept 24 hours' : 'Your CRM assistant'}</div>
         </div>
         {messages.length > 0 && (
           <button onClick={newChat} disabled={loading} title="Clear this conversation and start fresh" style={{ background: 'rgba(255,255,255,.14)', border: 'none', color: '#fff', borderRadius: 8, padding: '0 10px', height: 36, flexShrink: 0, cursor: loading ? 'default' : 'pointer', fontSize: 12.5, fontWeight: 600, opacity: loading ? 0.5 : 1, fontFamily: 'inherit' }}>New chat</button>
