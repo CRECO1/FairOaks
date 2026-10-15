@@ -224,7 +224,6 @@ export async function toXlsx(header: { property: string; fund: string; agent: st
           p.emailsOpened > 0 ? `Opened ${p.opens}×` : p.emailsSent > 0 ? `Emailed ${p.emailsSent}×, no open yet` : 'Not emailed yet',
           p.clicks > 0 ? `${p.clicks} click${p.clicks === 1 ? '' : 's'}` : '',
           p.primaryCampaign ? p.primaryCampaign.replace(/^.*?—\s*/, '') : '',
-          p.askFor ? `Ask for ${p.askFor}` : '',
           p.locations,
         ].filter(Boolean).join(' · ');
         const vals: ExcelJS.CellValue[] = ['', st, p.business || p.name || p.email, industry.startsWith('Other') ? '' : industry, '', null,
