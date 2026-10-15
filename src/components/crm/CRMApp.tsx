@@ -1205,10 +1205,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Which email campaigns this contact is currently enrolled in (subscription view).
   const [clientEnrollments, setClientEnrollments] = useState<{ id: string; campaign_id: string; active: boolean; campaign_name: string; campaign_status?: string; campaign_frequency?: string; campaign_type?: string }[]>([]);
 
-  function showToast(msg: string) {
+  // Stable identity (setToast never changes) so callbacks/effects that list it as a dependency
+  // don't re-create every render, and a newer toast replaces the older one's timer instead of
+  // being blanked by it a moment later.
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = useCallback((msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(''), 3000);
-  }
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => { setToast(''); toastTimer.current = null; }, 3000);
+  }, []);
 
   // Load activities + campaign sends + emails whenever client modal opens/closes
   useEffect(() => {
@@ -3083,6 +3088,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { document.removeEventListener('visibilitychange', back); window.removeEventListener('focus', back); };
   }, [callDialed]);
 
+  // The shortcuts call these through a ref refreshed every render, so a keypress always runs the
+  // current dispositionCall/skipCall (never a closure from the render the listener was bound in).
+  const callActs = useRef({ dispositionCall, skipCall });
+  callActs.current = { dispositionCall, skipCall };
+
   // Keyboard shortcuts for power-dialing: C connected, V voicemail, N no answer, S skip.
   useEffect(() => {
     if (page !== 'tasks' || tasksSubTab !== 'calls' || !callCurrent) return;
@@ -3092,13 +3102,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
       if (callActionInFlight || !callCurrent) return;
       const k = e.key.toLowerCase();
-      if (k === 'c')      { e.preventDefault(); dispositionCall(callCurrent, 'connected'); }
-      else if (k === 'v') { e.preventDefault(); dispositionCall(callCurrent, 'voicemail'); }
-      else if (k === 'n') { e.preventDefault(); dispositionCall(callCurrent, 'no_answer'); }
-      else if (k === 's') { e.preventDefault(); skipCall(callCurrent.id); }
-      else if (k === 'w') { e.preventDefault(); dispositionCall(callCurrent, 'wrong_number'); }
-      else if (k === 'b') { e.preventDefault(); dispositionCall(callCurrent, 'call_back'); }
-      else if (k === 'i') { e.preventDefault(); dispositionCall(callCurrent, 'not_interested'); }
+      if (k === 'c')      { e.preventDefault(); callActs.current.dispositionCall(callCurrent, 'connected'); }
+      else if (k === 'v') { e.preventDefault(); callActs.current.dispositionCall(callCurrent, 'voicemail'); }
+      else if (k === 'n') { e.preventDefault(); callActs.current.dispositionCall(callCurrent, 'no_answer'); }
+      else if (k === 's') { e.preventDefault(); callActs.current.skipCall(callCurrent.id); }
+      else if (k === 'w') { e.preventDefault(); callActs.current.dispositionCall(callCurrent, 'wrong_number'); }
+      else if (k === 'b') { e.preventDefault(); callActs.current.dispositionCall(callCurrent, 'call_back'); }
+      else if (k === 'i') { e.preventDefault(); callActs.current.dispositionCall(callCurrent, 'not_interested'); }
       else if (k === 'j' || k === 'arrowdown' || k === 'k' || k === 'arrowup') {
         // Move through the queue without acting on a call.
         e.preventDefault();

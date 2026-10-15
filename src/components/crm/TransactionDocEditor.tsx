@@ -576,7 +576,7 @@ export default function TransactionDocEditor({
       onToast?.('Could not save');
     }
     finally { setBusy(false); }
-  }, [build, fields, dealSel, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
+  }, [build, fields, dealSel, dealId, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
 
   // Held in a ref so a caller that re-creates the callback each render can't
   // re-fire this effect and loop.

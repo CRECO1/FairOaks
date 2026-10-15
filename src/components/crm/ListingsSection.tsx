@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiBuilder from '@/components/crm/LoiBuilder';
@@ -281,7 +281,13 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [showMoreForms, setShowMoreForms] = useState(false);
   const [formSearch, setFormSearch] = useState('');   // the library is long — let agents type to find a form
 
-  const authHeaders: Record<string, string> = authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  // Memoised on the token: callbacks list authHeaders as a dependency, and a fresh object each render
+  // re-created all of them (and any effect built on them) on every keystroke.
+  const authHeaders = useMemo<Record<string, string>>(() => {
+    const h: Record<string, string> = {};
+    if (authToken) h.Authorization = `Bearer ${authToken}`;
+    return h;
+  }, [authToken]);
   // The property card's tab row: drag it with the mouse as well as scrolling it.
   const tabDrag = useDragScroll<HTMLDivElement>();
 
