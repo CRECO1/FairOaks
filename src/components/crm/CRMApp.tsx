@@ -751,6 +751,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [propIntel, setPropIntel] = useState<{ detail: any; comps: any[]; error?: string } | null>(null);
   const [propIntelLoading, setPropIntelLoading] = useState(false);
   const emailEditorRef = useRef<HTMLDivElement>(null);
+  const recentActivityRef = useRef<Map<string, number>>(new Map()); // logActivity double-submit guard
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showDealAgentPicker, setShowDealAgentPicker] = useState(false);
@@ -3156,6 +3157,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function logActivity(clientId: string, type: CRMActivity['type'], note: string) {
+    // Idempotent: an identical touch for the same contact within 30s is a double-click / double-submit, not a
+    // second event (the feed had triples of the same call and meeting logged in one second).
+    const dupKey = `${clientId}|${type}|${note}`;
+    const nowMs = Date.now();
+    const seen = recentActivityRef.current.get(dupKey);
+    if (seen && nowMs - seen < 30_000) return;
+    recentActivityRef.current.set(dupKey, nowMs);
+    if (recentActivityRef.current.size > 200) {
+      for (const [k, t] of recentActivityRef.current) if (nowMs - t > 30_000) recentActivityRef.current.delete(k);
+    }
     const now = new Date().toISOString();
     // Who else was on the call / in the meeting, parsed from the note itself so the
     // tag and the sentence can never drift apart.
@@ -3401,10 +3412,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   }
 
   async function setStage(deal: Deal, stage: string) {
-    await updateDeal(deal.id, { stage });
-    showToast('Stage → ' + stage);
-    if (deal.client_id) {
-      logActivity(deal.client_id, 'deal_update', `Stage moved to "${stage}"${deal.property ? ` — ${deal.property}` : ''}`);
+    // Clicking the stage it is already in is not a move: no touch, no toast, no "Stage moved" log line
+    // (the activity feed carried runs of identical "Stage moved to LOI" entries from exactly this).
+    if (deal.stage !== stage) {
+      await updateDeal(deal.id, { stage });
+      showToast('Stage → ' + stage);
+      if (deal.client_id) {
+        logActivity(deal.client_id, 'deal_update', `Stage moved to "${stage}"${deal.property ? ` — ${deal.property}` : ''}`);
+      }
     }
     if (stage === 'Closed') triggerClosedPrompt({ ...deal, stage });
     if (stage === 'Lost') triggerLostPrompt({ ...deal, stage });
