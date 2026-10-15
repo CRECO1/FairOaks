@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { dbError } from '@/lib/crm-auth';
+import { gmailRefreshKey } from '@/lib/broker-ingest/gmail';
 
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -42,11 +43,20 @@ export async function GET(req: NextRequest) {
 
   let refreshed = 0;
   let failed = 0;
+  // A rejected refresh token (invalid_grant: expired/revoked) used to be a console line nobody
+  // read. Record it per connection so the sidebar can say "Reconnect needed" and the watchdog
+  // can alert, instead of a green badge over a dead token.
+  const mark = async (connId: string, status: 'ok' | 'error') => {
+    const { error: e } = await supabase.from('crm_integration_status')
+      .upsert({ id: gmailRefreshKey(connId), last_status: status, updated_at: new Date().toISOString() });
+    if (e) console.error('[gmail-token-refresh] could not record status:', e.message);
+  };
 
   for (const conn of connections) {
     try {
       if (!conn.refresh_token) {
         console.warn(`[gmail-token-refresh] No refresh_token for ${conn.gmail_email} — skipping`);
+        await mark(conn.id, 'error');
         continue;
       }
 
@@ -66,6 +76,7 @@ export async function GET(req: NextRequest) {
       if (!refreshRes.ok || !data.access_token) {
         console.error(`[gmail-token-refresh] Failed for ${conn.gmail_email}:`, data.error, data.error_description);
         failed++;
+        await mark(conn.id, 'error');
         continue;
       }
 
@@ -80,6 +91,7 @@ export async function GET(req: NextRequest) {
         })
         .eq('id', conn.id);
 
+      await mark(conn.id, 'ok');
       refreshed++;
     } catch (e: unknown) {
       console.error(`[gmail-token-refresh] Exception for ${conn.gmail_email}:`, e instanceof Error ? e.message : String(e));

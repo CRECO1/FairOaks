@@ -51,22 +51,84 @@ export interface GmailConnectionRow {
   email?: string | null;
 }
 
-/** Fetch the broker gmail_connections row directly via service-role REST (no user session). */
-export async function fetchBrokerConnection(): Promise<GmailConnectionRow | null> {
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${BROKER_USER_ID}&order=created_at.desc&limit=1`,
-    { headers: serviceHeaders() },
-  );
-  if (!res.ok) return null;
-  const rows: GmailConnectionRow[] = await res.json();
-  return rows?.[0] ?? null;
+/**
+ * The mailbox the crawl reads. The connection is found by this ADDRESS, not by whichever CRM
+ * login happened to click Connect: the sidebar shows "Connected" for the logged-in user's own
+ * rows, so a reconnect made under a different login looked healthy while the cron (pinned to
+ * one user id) found nothing.
+ */
+export const BROKER_GMAIL_EMAIL = (process.env.BROKER_GMAIL_EMAIL || 'zack@crecotx.com').trim().toLowerCase();
+
+export type BrokerGmailErrorCode = 'no_connection' | 'wrong_mailbox' | 'refresh_failed' | 'gmail_auth' | 'lookup_failed';
+
+/** A crawl-blocking Gmail problem with a code the cron and watchdog can word differently. */
+export class BrokerGmailError extends Error {
+  constructor(public code: BrokerGmailErrorCode, message: string) { super(message); this.name = 'BrokerGmailError'; }
+}
+
+/** Per-connection token health, read by the sidebar and the watchdog (crm_integration_status). */
+export const gmailRefreshKey = (connectionId: string) => `gmail_refresh_${connectionId}`;
+
+/** Best-effort status write over service-role REST (this module has no supabase-js on purpose). */
+export async function recordIntegrationStatus(id: string, status: 'ok' | 'error'): Promise<void> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/crm_integration_status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates', ...serviceHeaders() },
+      body: JSON.stringify({ id, last_status: status, updated_at: new Date().toISOString() }),
+    });
+    if (!res.ok) console.error(`[broker-gmail] could not record status ${id}=${status}:`, res.status, await res.text().catch(() => ''));
+  } catch (e) { console.error('[broker-gmail] status write failed:', e); }
+}
+
+export interface BrokerConnectionLookup {
+  conn: GmailConnectionRow | null;
+  /** How it was found: by the Gmail address (preferred) or the legacy user-id fallback. */
+  via: 'email' | 'user' | null;
+  /** Gmail addresses connected under BROKER_USER_ID when none of them is the broker mailbox. */
+  otherMailboxes: string[];
+  /** A REST failure — surfaced instead of being mistaken for "not found". */
+  error: string | null;
 }
 
 /**
- * Returns a valid access token for a GmailConnection row, refreshing + persisting
- * if near expiry. Copied from src/app/api/gmail/sync/route.ts resolveConnection.
+ * THE broker-connection lookup — used by the cron and the integration watchdog so they
+ * cannot disagree. Newest `updated_at` wins among rows for the broker address (any user_id).
+ * Falls back to BROKER_USER_ID only for a row that carries no address; a row under that user
+ * for a DIFFERENT address is reported as `otherMailboxes` (a wrong mailbox is never read).
  */
-export async function resolveConnection(conn: GmailConnectionRow): Promise<string | null> {
+export async function findBrokerConnection(): Promise<BrokerConnectionLookup> {
+  const out: BrokerConnectionLookup = { conn: null, via: null, otherMailboxes: [], error: null };
+  const get = async (qs: string): Promise<(GmailConnectionRow & { gmail_email?: string | null })[] | null> => {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?${qs}`, { headers: serviceHeaders() });
+    if (!res.ok) { out.error = `gmail_connections lookup failed (${res.status}): ${(await res.text().catch(() => '')).slice(0, 160)}`; return null; }
+    return res.json();
+  };
+  const addr = encodeURIComponent(BROKER_GMAIL_EMAIL);
+  const byEmail = await get(`select=*&or=(gmail_email.ilike.${addr},email.ilike.${addr})&order=updated_at.desc&limit=1`);
+  if (byEmail?.length) { out.conn = byEmail[0]; out.via = 'email'; return out; }
+  const byUser = await get(`select=*&user_id=eq.${BROKER_USER_ID}&order=updated_at.desc`);
+  for (const r of byUser ?? []) {
+    const a = (r.gmail_email || r.email || '').trim().toLowerCase();
+    if (!a) { if (!out.conn) { out.conn = r; out.via = 'user'; } }
+    else if (a !== BROKER_GMAIL_EMAIL) out.otherMailboxes.push(a);
+  }
+  return out;
+}
+
+/** Back-compat wrapper for older callers/scripts: the broker row, or null. */
+export async function fetchBrokerConnection(): Promise<GmailConnectionRow | null> {
+  return (await findBrokerConnection()).conn;
+}
+
+export type TokenResult = { token: string } | { error: string; description: string };
+
+/**
+ * Returns a valid access token for a GmailConnection row, refreshing + persisting
+ * if near expiry. A rejected refresh is reported (and recorded) with Google's reason —
+ * `invalid_grant` is what an expired/revoked refresh token looks like.
+ */
+export async function resolveConnectionDetailed(conn: GmailConnectionRow): Promise<TokenResult> {
   const expiresAt = new Date(conn.expires_at).getTime();
   let accessToken = decryptToken(conn.access_token);
 
@@ -81,8 +143,11 @@ export async function resolveConnection(conn: GmailConnectionRow): Promise<strin
         grant_type: 'refresh_token',
       }),
     });
-    const refreshed = await refreshRes.json();
-    if (!refreshRes.ok || !refreshed.access_token) return null;
+    const refreshed = await refreshRes.json().catch(() => ({}));
+    if (!refreshRes.ok || !refreshed.access_token) {
+      await recordIntegrationStatus(gmailRefreshKey(conn.id), 'error');
+      return { error: String(refreshed.error ?? refreshRes.status), description: String(refreshed.error_description ?? '') };
+    }
     accessToken = refreshed.access_token;
     const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
     await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${conn.id}`, {
@@ -94,18 +159,37 @@ export async function resolveConnection(conn: GmailConnectionRow): Promise<strin
         updated_at: new Date().toISOString(),
       }),
     });
+    await recordIntegrationStatus(gmailRefreshKey(conn.id), 'ok');
   }
 
-  return accessToken;
+  return { token: accessToken };
 }
 
-/** Convenience: fetch + resolve the broker connection in one call. */
+/** Token or null (legacy shape). */
+export async function resolveConnection(conn: GmailConnectionRow): Promise<string | null> {
+  const r = await resolveConnectionDetailed(conn);
+  return 'token' in r ? r.token : null;
+}
+
+/** Convenience: find + resolve the broker connection, throwing a BrokerGmailError that says WHICH problem. */
 export async function getBrokerAccessToken(): Promise<string> {
-  const conn = await fetchBrokerConnection();
-  if (!conn) throw new Error(`Broker Gmail connection for user ${BROKER_USER_ID} not found — reconnect zack@crecotx.com in the CRM sidebar`);
-  const token = await resolveConnection(conn);
-  if (!token) throw new Error('Failed to resolve/refresh the broker Gmail access token');
-  return token;
+  const f = await findBrokerConnection();
+  if (!f.conn) {
+    if (f.error) throw new BrokerGmailError('lookup_failed', f.error);
+    if (f.otherMailboxes.length) {
+      throw new BrokerGmailError('wrong_mailbox',
+        `Gmail is connected for the broker user as ${f.otherMailboxes.join(', ')}, not ${BROKER_GMAIL_EMAIL} — the crawl only reads ${BROKER_GMAIL_EMAIL}. Connect that Google account in the CRM sidebar.`);
+    }
+    throw new BrokerGmailError('no_connection',
+      `No Gmail connection for ${BROKER_GMAIL_EMAIL} exists — connect that Google account in the CRM sidebar (any CRM login works).`);
+  }
+  const r = await resolveConnectionDetailed(f.conn);
+  if (!('token' in r)) {
+    throw new BrokerGmailError('refresh_failed',
+      `Google rejected the stored refresh token for ${BROKER_GMAIL_EMAIL} (${r.error}${r.description ? `: ${r.description}` : ''}). ` +
+      `Reconnect Gmail in the CRM sidebar. If this recurs about every 7 days the Google OAuth app is still in "Testing" — move it to Production/Internal.`);
+  }
+  return r.token;
 }
 
 /** List up to `limit` message ids matching `query`, paging as needed. */
@@ -122,7 +206,12 @@ export async function listMessageIds(
     url.searchParams.set('maxResults', String(Math.min(500, limit - ids.length)));
     if (pageToken) url.searchParams.set('pageToken', pageToken);
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!res.ok) break;
+    if (!res.ok) {
+      // An auth failure used to read as "0 messages" and a healthy-looking run.
+      if (res.status === 401 || res.status === 403) throw new BrokerGmailError('gmail_auth', `Gmail rejected the access token while listing messages (${res.status}) — reconnect ${BROKER_GMAIL_EMAIL}.`);
+      if (!ids.length) throw new Error(`Gmail message list failed (${res.status})`);
+      break;   // a later page failing keeps what was already listed
+    }
     const data = await res.json();
     for (const m of data.messages ?? []) ids.push(m.id as string);
     if (!data.nextPageToken) break;
