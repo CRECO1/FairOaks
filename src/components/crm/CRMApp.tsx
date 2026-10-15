@@ -3216,7 +3216,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .eq('recipient_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(30);
-    setMentions(data ?? []);
+    // Only touch state when something changed: this runs every minute for the life of the tab, and a
+    // fresh array each time re-rendered the entire CRM shell for nothing.
+    const next = (data ?? []) as typeof mentions;
+    setMentions(prev => (prev.length === next.length && prev.every((p, i) => p.id === next[i].id && p.read_at === next[i].read_at) ? prev : next));
     setMentionsLoaded(true);
   }
   async function loadMentions() {
@@ -3228,8 +3231,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   useEffect(() => {
     if (!profile?.id) return;
     refreshMentions();
-    const t = setInterval(refreshMentions, 60_000);
-    return () => clearInterval(t);
+    // Skip the tick while the tab is hidden, and catch up the moment it is shown again.
+    const t = setInterval(() => { if (document.visibilityState === 'visible') refreshMentions(); }, 60_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshMentions(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function createMentionNotifications(ids: string[], message: string, entityType?: string, entityId?: string) {

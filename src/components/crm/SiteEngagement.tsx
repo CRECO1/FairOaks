@@ -68,7 +68,7 @@ export default function SiteEngagement({ authToken, isMobile, site, days, humanO
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Failed'); if (!off) { setD(j); setErr(null); } })
       .catch(e => { if (!off) setErr(e.message || 'Could not load engagement'); });
     load();
-    const t = setInterval(load, 30000);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 30000);
     return () => { off = true; clearInterval(t); };
   }, [authToken, site, window, humanOnly]);
 

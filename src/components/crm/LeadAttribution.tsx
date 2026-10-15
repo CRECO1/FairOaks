@@ -334,8 +334,11 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
 
   // Live: silent background poll so new leads surface on their own.
   useEffect(() => {
-    const t = setInterval(() => load(days, site, true), 15000);
-    return () => clearInterval(t);
+    // A background tab nobody is looking at must not keep running the funnel queries every 15s.
+    const t = setInterval(() => { if (document.visibilityState === 'visible') load(days, site, true); }, 15000);
+    const onVisible = () => { if (document.visibilityState === 'visible') load(days, site, true); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [load, days, site]);
 
   // Clear any pending "new lead" flash timer on unmount.
@@ -375,7 +378,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
   useEffect(() => {
     liveFirstRef.current = true;
     loadLive(site);
-    const t = setInterval(() => loadLive(site), 12000);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') loadLive(site); }, 12000);
     return () => clearInterval(t);
   }, [loadLive, site]);
   useEffect(() => () => { if (liveFlash.current) clearTimeout(liveFlash.current); }, []);
