@@ -3223,8 +3223,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   async function createMentionNotifications(ids: string[], message: string, entityType?: string, entityId?: string) {
     if (!ids.length || !profile) return;
+    // Never stack the same unread mention: skip anyone who already has this exact one waiting.
+    const since = new Date(Date.now() - 10 * 60_000).toISOString();
+    const { data: dupes } = await supabase.from('crm_notifications').select('recipient_id')
+      .in('recipient_id', ids).eq('message', message).is('read_at', null).gte('created_at', since);
+    const have = new Set((dupes ?? []).map(d => d.recipient_id as string));
     const rows = ids
-      .filter(id => id !== profile.id) // don't notify yourself
+      .filter(id => id !== profile.id && !have.has(id)) // don't notify yourself, or twice
       .map(id => ({
         recipient_id: id,
         sender_id: profile.id,
@@ -10208,13 +10213,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           onCreateContact={createContactFromMention}
                           value={dealNotesText}
                           onChange={v => setDealNotesText(v)}
-                          onMentionedIds={ids => {
-                            if (ids.length) createMentionNotifications(ids, `@${profile?.first_name} mentioned you in notes for deal: ${activeDeal.property || activeDeal.client}`, 'deal', activeDeal.id);
-                          }}
                         />
                         {dealNotesText !== (activeDeal.notes ?? '') && (
                           <button onClick={() => {
                             const tagged = parseMentionContactIds(dealNotesText, clients);
+                            // Notify once, on save, and only people newly @mentioned — it used to fire on every keystroke.
+                            const already = new Set(parseMentionIds(activeDeal.notes ?? '', profiles));
+                            const fresh = parseMentionIds(dealNotesText, profiles).filter(id => !already.has(id));
+                            if (fresh.length) createMentionNotifications(fresh, `@${profile?.first_name} mentioned you in notes for deal: ${activeDeal.property || activeDeal.client}`, 'deal', activeDeal.id);
                             updateDeal(activeDeal.id, { notes: dealNotesText, tagged_contact_ids: tagged });
                             setActiveDeal(prev => prev ? { ...prev, notes: dealNotesText, tagged_contact_ids: tagged } : prev);
                             showToast(tagged.length ? `Notes saved ✓ · ${tagged.length} contact${tagged.length > 1 ? 's' : ''} tagged` : 'Notes saved ✓');
