@@ -62,10 +62,22 @@ export interface PipelineOptions {
   onProgress?: (msg: string) => void;
   /** Also mine marketplace digests (Crexi/LoopNet roundups) for many listings. Default true. */
   digests?: boolean;
+  /**
+   * Epoch-ms wall-clock cutoff. Once passed, no further emails are started: the chunk in flight is
+   * flushed and the run returns normally with timedOut=true. Gmail lists newest first, so the
+   * newest mail is always handled before the clock runs out. Without this a run that re-extracts
+   * the whole label (one Claude call per email, in sequence) outlasted the 300s function limit,
+   * was killed before it could write its heartbeat, and the watchdog reported a missed crawl.
+   */
+  deadline?: number;
 }
 
 export interface PipelineResult {
   scanned: number;
+  /** Emails actually fetched/extracted before the deadline (== scanned unless timedOut). */
+  processed: number;
+  /** The run hit its deadline and left the older tail of the label for the next run. */
+  timedOut: boolean;
   listings: number;
   nonListings: number;
   extractErrors: number;
@@ -130,11 +142,15 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
 
   const CHUNK = 6;
   let i = 0;
+  let timedOut = false;
   for (let c = 0; c < ids.length; c += CHUNK) {
+    if (opts.deadline && Date.now() > opts.deadline) { timedOut = true; break; }
     const items: Array<{ extraction: Extraction; photos?: GmailImage[] }> = [];
     const digestItems: Array<{ extraction: Extraction }> = [];
 
     for (const id of ids.slice(c, c + CHUNK)) {
+      // Checked per email, not just per chunk: one chunk is six sequential Claude calls.
+      if (opts.deadline && Date.now() > opts.deadline) { timedOut = true; break; }
       i++;
       const email = await fetchEmail(token, id, maxImages);
       if (!email) {
@@ -199,8 +215,12 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     }
   }
 
+  if (timedOut) log(`Time budget reached after ${i}/${ids.length} message(s) — the older tail is left for the next run.`);
+
   return {
     scanned: ids.length,
+    processed: i,
+    timedOut,
     listings,
     nonListings,
     extractErrors,

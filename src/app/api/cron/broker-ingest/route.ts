@@ -84,7 +84,11 @@ export async function GET(req: NextRequest) {
   const limit = Number(sp.get('limit') ?? 60);
 
   try {
-    const r = await runPipeline({ query, limit, commit: true });
+    // Stop starting new emails well inside maxDuration (300s) so geocode/enrich/link and the
+    // heartbeat below always get to run. Override with ?budget=<seconds> for an ad-hoc sweep.
+    const budgetSec = Math.min(Math.max(Number(sp.get('budget') ?? 190), 30), 240);
+    const r = await runPipeline({ query, limit, commit: true, deadline: Date.now() + budgetSec * 1000 });
+    if (r.timedOut) console.warn(`broker-ingest: time budget reached — processed ${r.processed}/${r.scanned} message(s); the rest roll to the next run.`);
 
     // Guard: if we scanned emails but extraction failed on (nearly) all of them
     // and nothing was inserted, the pipeline is systemically broken — Anthropic
@@ -92,8 +96,8 @@ export async function GET(req: NextRequest) {
     // "no new listings". Fail loud (500 + console.error) so the cron registers as
     // failed instead of silently returning 200 with a frozen count, which once
     // hid a multi-day outage (2026-08-14: Anthropic credits ran out).
-    const failureRate = r.scanned > 0 ? r.extractErrors / r.scanned : 0;
-    if (r.scanned >= 3 && failureRate >= 0.5 && r.inserted === 0) {
+    const failureRate = r.processed > 0 ? r.extractErrors / r.processed : 0;
+    if (r.processed >= 3 && failureRate >= 0.5 && r.inserted === 0) {
       const detail = r.errorSample.length ? ` Sample: ${r.errorSample.join(' | ')}` : '';
       console.error(
         `broker-ingest ALERT: extraction failing — ${r.extractErrors}/${r.scanned} emails errored, 0 inserted.${detail}`,
@@ -140,6 +144,8 @@ export async function GET(req: NextRequest) {
     await adminClient().from('crm_integration_status').upsert({ id: CRAWL_HEARTBEAT_KEY, last_status: 'ok', updated_at: new Date().toISOString() });
     return NextResponse.json({
       scanned: r.scanned,
+      processed: r.processed,
+      timedOut: r.timedOut,
       listings: r.listings,
       nonListings: r.nonListings,
       extractErrors: r.extractErrors,
