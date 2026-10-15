@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRememberedSelection } from '@/lib/view-memory';
 import { specForForm } from '@/lib/loi-spec';
 import dynamic from 'next/dynamic';
@@ -51,15 +51,19 @@ export default function TransactionDocsSection({ businessUnit, isAdmin, authToke
     return h;
   }, [authToken]);
 
+  // onToast is a new function on every parent render; as a dependency it re-ran this load (and its
+  // loading flicker) each time. Held in refs so `load` only changes with the workspace.
+  const onToastRef = useRef(onToast); onToastRef.current = onToast;
+  const headersRef = useRef(authHeaders); headersRef.current = authHeaders;
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/crm/forms?business_unit=${businessUnit}`, { headers: authHeaders });
+      const res = await fetch(`/api/crm/forms?business_unit=${businessUnit}`, { headers: headersRef.current });
       const json = await res.json();
       setForms(json.forms ?? []);
-    } catch { onToast('Could not load forms'); }
+    } catch { onToastRef.current('Could not load forms'); }
     setLoading(false);
-  }, [businessUnit, authHeaders, onToast]);
+  }, [businessUnit]);
 
   // Open a form: the list no longer signs every blank PDF up front (that was the bulk
   // of its load time), so fetch this one's signed URL on demand when it's opened.

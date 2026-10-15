@@ -258,7 +258,11 @@ export async function guardRead(req: NextRequest, ctx: CrmContext, resource: str
       // bury the signal — but anything that pulls a meaningful slice of the book is,
       // so a scrape leaves a trail in audit_logs even if it never trips a budget.
       if (n >= BULK_READ_AUDIT_ROWS) {
-        try {
+        // One trail line per user per resource per 10 minutes. A page that legitimately loads its whole
+        // list (Property DB, ~2,600 rows) wrote a row on EVERY load — 220 of them in a few weeks — which
+        // buried real alerts. The hourly row budget below is still counted on every read.
+        const firstInWindow = await bump(`bulkaudit:${ctx.userId}:${resource}`, 600);
+        if (firstInWindow === null || firstInWindow === 1) try {
           await adminClient().from('audit_logs').insert({
             actor_id: ctx.userId, action: 'bulk_read_detected', target_type: resource, target_id: null,
             metadata: { rows: n, resource, role: ctx.role, business_unit: ctx.businessUnit, kind: 'single_response' },

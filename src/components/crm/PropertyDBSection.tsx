@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRememberedSelection, useRememberedState } from '@/lib/view-memory';
 import dynamic from 'next/dynamic';
 
@@ -258,19 +258,26 @@ export default function PropertyDBSection({ businessUnit, authToken, onToast, on
     [authToken],
   );
 
+  // The parent's onToast is a fresh function every render, and its count setter fires back into the
+  // parent — listing either as a dependency made this reload the whole ~2,600-row Property DB on every
+  // parent render (about once a minute, from the notification poll). Hold them in refs instead so
+  // `load` only changes when the workspace does.
+  const onToastRef = useRef(onToast); onToastRef.current = onToast;
+  const onCountRef = useRef(onCount); onCountRef.current = onCount;
+  const headersRef = useRef(authHeaders); headersRef.current = authHeaders;
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/crm/property-db?business_unit=${businessUnit}`, { headers: authHeaders });
+      const res = await fetch(`/api/crm/property-db?business_unit=${businessUnit}`, { headers: headersRef.current });
       const json = await res.json();
       const list = json.properties ?? [];
       setProperties(list);
-      onCount?.(list.length);
+      onCountRef.current?.(list.length);
     } catch {
-      onToast('Could not load the Property DB');
+      onToastRef.current('Could not load the Property DB');
     }
     setLoading(false);
-  }, [businessUnit, authHeaders, onToast, onCount]);
+  }, [businessUnit]);
 
   useEffect(() => { load(); }, [load]);
   // Reopen the property card you had open before a refresh (lib/view-memory).
