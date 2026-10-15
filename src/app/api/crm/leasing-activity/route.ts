@@ -3,7 +3,7 @@ import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-au
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLeasingActivity, type TenantRow } from '@/lib/leasing-activity';
-import { toXlsx, summarize, marketingLines } from '@/lib/leasing-activity-xlsx';
+import { toXlsx, summarize, marketingLines, industryGroups, stageOf, prospectName, prospectNote } from '@/lib/leasing-activity-xlsx';
 import { listingProspects, callsForProspects } from '@/lib/listing-prospects';
 import { syncLeasingLeads } from '@/lib/leasing-leads';
 import { loadPropertyPerformance, websiteLine, type PerfListing } from '@/lib/property-performance';
@@ -52,7 +52,15 @@ export async function GET(req: NextRequest) {
   ]).then(([m, w]) => websiteLine(m.get(listingId), w.get(listingId))).catch(() => null);
 
   if (req.nextUrl.searchParams.get('format') !== 'xlsx') {
-    return NextResponse.json({ header, sections, marketing: { ...summarize(marketing), calls, lines: { ...marketingLines(marketing, calls), website: web } }, synced });
+    const ind = industryGroups(marketing);
+    const industries = {
+      total: ind.total,
+      groups: ind.groups.map(g => ({
+        industry: g.industry, total: g.total, counts: g.counts,
+        rows: g.people.map(p => ({ id: p.client_id, name: prospectName(p), status: stageOf(p), date: p.lastOpen ?? p.lastSent, note: prospectNote(p) })),
+      })),
+    };
+    return NextResponse.json({ header, sections, industries, marketing: { ...summarize(marketing), calls, lines: { ...marketingLines(marketing, calls), website: web } }, synced });
   }
   const buf = await toXlsx(header, sections, marketing, calls, web);
   const stamp = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).replace(/-/g, '');

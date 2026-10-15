@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { LEASING_STATUSES, REPORT_COLUMNS, type ReportLine, type ReportSection } from '@/lib/leasing-activity';
+import { exportStatus, STATUS_CHIP } from '@/lib/leasing-status';
 
 // Leasing Activity — the owner/developer's weekly leasing report (Headwall's sheet) as a
 // living document on the property card. Vacancies and expirations come from the Rent
@@ -9,9 +10,14 @@ import { LEASING_STATUSES, REPORT_COLUMNS, type ReportLine, type ReportSection }
 // Download for the owner's exact .xlsx layout.
 
 interface Header { property: string; fund: string; agent: string }
+interface Ind { total: number; groups: { industry: string; total: number; counts: Record<string, number>; rows: { id: string; name: string; status: string; date: string | null; note: string }[] }[] }
 interface Mk { emailed: number; opened: number; sent: number; openRate: number; lines: { email: string; calls: string; website?: string | null }; campaigns: { name: string; sent: number; opened: number; openRate: number }[] }
 
 const GREEN = '#1f3d2e', GOLD = '#b8972a', MINT = '#d6e4d6';
+const STAGES = ['Interested', 'Reviewing', 'Contacted', 'Not contacted'];
+// The owner's sample shows the stage as a coloured chip; same colours as the .xlsx.
+const chip = (st: string): React.CSSProperties => { const c = STATUS_CHIP[exportStatus(st)]; return c ? { background: '#' + c.fill.slice(2), color: '#' + c.text.slice(2) } : {}; };
+const shortDay = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }).replace(/\//g, '.') : '';
 const SOURCE_ICON: Record<string, string> = { 'Website inquiry': '🌐', 'Email reply': '✉️', 'Call / text': '📞', Deal: '💼' };
 const authOf = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const money = (n: number | null) => n === null || n === undefined ? '' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,11 +43,12 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
   const [header, setHeader] = useState<Header | null>(null);
   const [sections, setSections] = useState<ReportSection[]>([]);
   const [mk, setMk] = useState<Mk | null>(null);
+  const [ind, setInd] = useState<Ind | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const j = await fetch(`/api/crm/leasing-activity?listing_id=${listingId}`, { headers: authOf(authToken) }).then(r => r.json()).catch(() => ({}));
-    setHeader(j.header ?? null); setSections(j.sections ?? []); setMk(j.marketing ?? null);
+    setHeader(j.header ?? null); setSections(j.sections ?? []); setMk(j.marketing ?? null); setInd(j.industries ?? null);
   }, [listingId, authToken]);
   useEffect(() => { load(); }, [load]);
 
@@ -82,17 +89,17 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
   const vacantSuites = (sections[0]?.lines ?? []).filter(l => l.occupant === 'VACANT' && (l.kind === 'vacancy' || l.kind === 'prospect'))
     .reduce<{ suite: string; sf: number | null }[]>((a, l) => (a.some(x => x.suite === l.suite) ? a : [...a, { suite: l.suite, sf: l.sf }]), []);
 
-  const lineRow = (l: ReportLine, s: ReportSection, i: number) => {
-    const bg = s.tone === 'vacant' ? MINT : '#fff';
+  const lineRow = (l: ReportLine, s: ReportSection, i: number, nested = false) => {
+    const bg = s.tone === 'vacant' && !nested ? MINT : '#fff';
     const isProspect = l.kind === 'prospect' || l.kind === 'passed';
     const p = (k: string) => (v: string) => save(l.rowId, { [k]: v });
     const firstOfSuite = l.occupant.startsWith('VACANT') && (i === 0 || s.lines[i - 1].suite !== l.suite);
     return (
       <tr key={`${l.rowId}-${i}`} style={{ background: bg }}>
-        <td style={{ ...TD, fontWeight: 800, whiteSpace: 'nowrap' }}>{l.occupant}</td>
+        <td style={{ ...TD, fontWeight: 800, whiteSpace: 'nowrap', textAlign: nested ? 'left' : undefined }}>{nested ? '' : l.occupant}</td>
         <td style={TD}>{isProspect
-          ? <select value={l.status} onChange={e => save(l.rowId, { leasing_status: e.target.value })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 4px', color: GREEN, background: '#fff' }}>
-              {LEASING_STATUSES.map(x => <option key={x}>{x}</option>)}
+          ? <select value={l.status} onChange={e => save(l.rowId, { leasing_status: e.target.value })} style={{ fontSize: 12, fontWeight: 800, border: '1px solid transparent', borderRadius: 6, padding: '4px 4px', width: '100%', textAlign: 'center', ...chip(l.status) }}>
+              {LEASING_STATUSES.map(x => <option key={x} value={x}>{exportStatus(x)}</option>)}
             </select>
           : l.kind === 'expiring' ? <Edit value={l.status} onSave={p('renewal_status')} placeholder="Renewal status" /> : <span style={{ color: '#6b7280', fontSize: 11.5 }}>Marketing</span>}</td>
         <td style={TD}>{isProspect ? <><Edit value={l.dba} onSave={p('tenant_name')} placeholder="Tenant DBA" />{l.source && <span title="How this lead came in" style={{ display: 'inline-block', margin: '0 0 3px 6px', fontSize: 10, fontWeight: 800, letterSpacing: .3, color: '#a06a12', background: '#fff7e6', border: '1px solid #f0e2c4', borderRadius: 6, padding: '1px 6px' }}>{SOURCE_ICON[l.source] ?? '•'} {l.source}</span>}</> : l.kind === 'expiring' ? l.dba : ''}</td>
@@ -102,26 +109,54 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
               <option value="">TBD</option>{vacantSuites.map(v => <option key={v.suite} value={v.suite}>{v.suite}</option>)}
             </select>
           : <b>{l.suite}</b>}</td>
-        <td style={{ ...TD, textAlign: 'center' }}>{l.sf ? Number(l.sf).toLocaleString() : ''}</td>
+        <td style={{ ...TD, textAlign: 'center' }}>{!nested && l.sf ? Number(l.sf).toLocaleString() : ''}</td>
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit type="date" value={l.date} onSave={p('activity_date')} /> : ''}</td>
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit type="number" value={l.proposedRent} onSave={p('proposed_rent')} placeholder="$/SF" /> : ''}</td>
         <td style={TD}>{isProspect || l.kind === 'expiring' ? <Edit type="number" value={l.proposedTi} onSave={p('proposed_ti')} placeholder="$/SF" /> : ''}</td>
         <td style={{ ...TD, textAlign: 'center' }}>{isProspect || l.kind === 'expiring'
           ? <select value={l.national === null ? '' : l.national ? 'Y' : 'N'} onChange={e => save(l.rowId, { is_national: e.target.value })} style={{ fontSize: 12, border: '1px solid #cbd5c0', borderRadius: 6, padding: '4px 2px', color: GREEN, background: '#fff' }}>
-              <option value="">—</option><option value="Y">Y</option><option value="N">N</option>
+              <option value="">—</option><option value="Y">Yes</option><option value="N">No</option>
             </select> : ''}</td>
         <td style={{ ...TD, textAlign: 'center', whiteSpace: 'nowrap' }}>{day(l.expiration)}</td>
         <td style={TD}>{l.kind === 'expiring' ? <Edit value={l.renewalType} onSave={p('renewal_type')} placeholder="Renewal type" /> : ''}</td>
         <td style={{ ...TD, minWidth: 220 }}><Edit value={l.notes} onSave={p('notes')} placeholder={l.kind === 'vacancy' ? 'Notes for this space' : 'Notes'} /></td>
         <td style={{ ...TD, textAlign: 'center' }}>{money(l.prevRentPsf)}</td>
         <td style={{ ...TD, whiteSpace: 'nowrap', textAlign: 'right' }}>
-          {firstOfSuite && s.tone === 'vacant' && l.occupant === 'VACANT' && (
+          {!nested && firstOfSuite && s.tone === 'vacant' && l.occupant === 'VACANT' && (
             <button onClick={() => addProspect(l.suite, l.sf)} title="Add a prospect for this suite" style={{ fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>＋ Prospect</button>
           )}
           {isProspect && isAdmin && <button onClick={() => remove(l.rowId, l.dba)} title="Remove from the report" style={{ background: 'none', border: 'none', color: '#d9a3a3', fontSize: 13, cursor: 'pointer', padding: '4px 6px' }}>✕</button>}
         </td>
       </tr>
     );
+  };
+
+  // The owner's layout: one mint VACANT row per suite (suite + SF bold) with its prospects listed beneath.
+  const renderLines = (s: ReportSection) => {
+    const out: React.ReactNode[] = [];
+    let lastKey: string | null = null;
+    s.lines.forEach((l, i) => {
+      if (s.tone === 'vacant' && l.kind === 'prospect') {
+        const key = l.suiteRowId ?? `tbd:${l.suite}`;
+        if (key !== lastKey) {
+          lastKey = key;
+          out.push(
+            <tr key={`h-${key}-${i}`} style={{ background: MINT }}>
+              <td style={{ ...TD, fontWeight: 800, whiteSpace: 'nowrap' }}>{l.occupant || 'VACANT'}</td>
+              <td style={TD} colSpan={3} />
+              <td style={{ ...TD, textAlign: 'center', fontWeight: 800 }}>{l.suite}</td>
+              <td style={{ ...TD, textAlign: 'center', fontWeight: 800 }}>{l.sf ? Number(l.sf).toLocaleString() : ''}</td>
+              <td style={TD} colSpan={8} />
+              <td style={{ ...TD, whiteSpace: 'nowrap', textAlign: 'right' }}>
+                {l.suiteRowId && <button onClick={() => addProspect(l.suite, l.sf)} title="Add a prospect for this suite" style={{ fontSize: 11.5, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px dashed #e6d3a2', borderRadius: 7, padding: '4px 8px', cursor: 'pointer' }}>＋ Prospect</button>}
+              </td>
+            </tr>
+          );
+        }
+        out.push(lineRow(l, s, i, true));
+      } else { lastKey = null; out.push(lineRow(l, s, i)); }
+    });
+    return out;
   };
 
   return (
@@ -138,19 +173,47 @@ export default function LeasingActivity({ listingId, authToken, isAdmin, onToast
       </div>
 
       <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'auto', background: '#fff', maxHeight: '70vh' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1280 }}>
+        <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%', minWidth: 1830 }}>
+          <colgroup>{[130, 118, 200, 120, 66, 66, 128, 96, 90, 92, 112, 120, 280, 100, 100].map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
           <thead><tr>{REPORT_COLUMNS.map(c => <th key={c} style={TH}>{c}</th>)}<th style={{ ...TH, width: 90 }} /></tr></thead>
           <tbody>
             {sections.map(s => (
               <React.Fragment key={s.title}>
                 <tr><td colSpan={15} style={{ background: s.tone === 'expiring' ? GOLD : GREEN, color: '#fff', fontWeight: 800, fontSize: 12.5, textAlign: 'center', padding: '7px 8px' }}>{s.title}</td></tr>
-                {s.lines.length ? s.lines.map((l, i) => lineRow(l, s, i))
+                {s.lines.length ? renderLines(s)
                   : <tr><td colSpan={15} style={{ ...TD, color: '#9ca3af', textAlign: 'center', padding: 10 }}>{s.tone === 'passed' ? 'No prospects have passed.' : 'None.'}</td></tr>}
               </React.Fragment>
             ))}
           </tbody>
         </table>
       </div>
+      {ind && ind.total > 0 && (
+        <div style={{ marginTop: 14, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+          <div style={{ background: GREEN, color: '#fff', fontWeight: 800, fontSize: 12.5, textAlign: 'center', padding: '8px 8px' }}>Prospective Tenants by Industry — {ind.total} businesses</div>
+          {ind.groups.map((g, gi) => (
+            <details key={g.industry} open={gi === 0} style={{ borderTop: '1px solid #e5e7eb' }}>
+              <summary style={{ background: MINT, color: GREEN, fontWeight: 800, fontSize: 12.5, padding: '8px 12px', cursor: 'pointer' }}>
+                {g.industry.toUpperCase()}
+                <span style={{ fontWeight: 600, marginLeft: 10, fontSize: 12 }}>
+                  {g.total} {g.total === 1 ? 'business' : 'businesses'} — {STAGES.filter(k => g.counts[k] > 0).map(k => `${g.counts[k]} ${k.toLowerCase()}`).join(' · ')}
+                </span>
+              </summary>
+              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                <tbody>
+                  {g.rows.map(r => (
+                    <tr key={r.id}>
+                      <td style={{ ...TD, width: 130, textAlign: 'center' }}><span style={{ display: 'inline-block', minWidth: 96, fontWeight: 800, fontSize: 12, borderRadius: 6, padding: '3px 8px', ...chip(r.status) }}>{r.status}</span></td>
+                      <td style={{ ...TD, color: '#111827', fontWeight: 600 }}>{r.name}</td>
+                      <td style={{ ...TD, width: 80, textAlign: 'center', whiteSpace: 'nowrap' }}>{shortDay(r.date)}</td>
+                      <td style={{ ...TD, color: '#4b5563' }}>{r.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          ))}
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 7 }}>
         Suites and expirations come from the Rent Roll tab; prospects are its backup / prospective-tenant rows. Set a prospect to <b>Passed</b> to move it to Passed Status. Rent and TI are $/SF.
       </div>

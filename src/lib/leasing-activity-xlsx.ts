@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { REPORT_COLUMNS, type ReportSection } from '@/lib/leasing-activity';
+import { exportStatus, STATUS_CHIP } from '@/lib/leasing-status';
 import type { listingProspects, callsForProspects } from '@/lib/listing-prospects';
 
 // The Leasing Activity report as an .xlsx in the owner's own layout (Headwall's
@@ -8,22 +9,6 @@ import type { listingProspects, callsForProspects } from '@/lib/listing-prospect
 
 const GREEN = 'FF1F3D2E', GOLD = 'FFB8972A', MINT = 'FFD6E4D6', WHITE = 'FFFFFFFF', LAVENDER = 'FFB4A7D6';
 
-
-// The owner's wording for a prospect's stage, and the blue chip it sits in (their sample).
-const STATUS_WORDS: Record<string, string> = { Prospect: 'Reviewing', 'Proposal Out': 'Submitted' };
-const exportStatus = (st: string) => STATUS_WORDS[st] ?? st;
-const STATUS_CHIP: Record<string, { fill: string; text: string }> = {
-  Reviewing: { fill: 'FFD0E0F3', text: 'FF1F5FBF' },
-  Submitted: { fill: 'FFA9C4E8', text: 'FF1A3E8C' },
-  Touring: { fill: 'FFFFF2CC', text: 'FF7F6000' },
-  'LOI Out': { fill: 'FFFCE5CD', text: 'FF8A4B08' },
-  'Lease Out': { fill: 'FFD9EAD3', text: 'FF274E13' },
-  Signed: { fill: 'FF93C47D', text: 'FF1F3D2E' },
-  Passed: { fill: 'FFD9D2E9', text: 'FF4C3A7A' },
-  Interested: { fill: 'FFB6D7A8', text: 'FF1F3D2E' },
-  Contacted: { fill: 'FFEFEFEF', text: 'FF555555' },
-  'Not contacted': { fill: 'FFFFFFFF', text: 'FF999999' },
-};
 
 export type Marketing = Awaited<ReturnType<typeof listingProspects>>;
 export type Calls = Awaited<ReturnType<typeof callsForProspects>>;
@@ -45,6 +30,59 @@ export function marketingLines(m: Marketing, calls: Calls) {
     email: `${sum.sent} emails sent to ${sum.emailed} businesses · ${sum.opened} opened · ${pct}% open rate  (this week: ${sum.sentWeek} sent, ${sum.openedWeek} opens)`,
     calls: `${calls.outbound + calls.inbound} calls logged — ${calls.outbound} outbound, ${calls.inbound} inbound  (this week: ${calls.outboundWeek + calls.inboundWeek})`,
   };
+}
+
+
+// ---- Prospective tenants by industry (shared by the .xlsx and the property-card tab) ----
+// Industry = the tenant-category tag when the contact has one (not a corridor or the property's own
+// prospect-list name); otherwise a best guess from the business name. Stage comes from email engagement.
+type Person = Marketing['prospects'][number];
+export type Stage = 'Interested' | 'Reviewing' | 'Contacted' | 'Not contacted';
+export const STAGES: Stage[] = ['Interested', 'Reviewing', 'Contacted', 'Not contacted'];
+const GUESS: [RegExp, string][] = [
+  [/\b(bank|bancorp|credit union|financial|savings)\b/i, 'Banking & Financial'],
+  [/\b(vet|veterinar|animal|pet|paws)\b/i, 'Veterinary & Pet'],
+  [/\b(dental|dentist|orthodont|smiles|oral surgery|endodont)\b/i, 'Dental'],
+  [/\b(urgent care|emergency|\bER\b|hospital|medical|clinic|health|kidney|dialysis|physician|pediatric|dermatolog|therapy|rehab|imaging|optometr|eye|vision|chiropract)\b/i, 'Medical'],
+  [/\b(school|academy|learning|cheer|gymnastic|dance|tutor|montessori|daycare|child|kids|prep)\b/i, 'Kids & Enrichment'],
+  [/\b(fitness|gym|pilates|yoga|barre|crossfit|boxing|cycle|training|athletic)\b/i, 'Fitness & Studio'],
+  [/\b(car wash|tire|collision|automotive|auto|lube|oil change)\b/i, 'Automotive'],
+  [/\b(coffee|brew|bakery|cafe|café|donut|tea|smoothie|ice cream|dutch bros|starbucks)\b/i, 'Coffee & Bakery'],
+  [/\b(restaurant|grill|burger|pizza|taco|bbq|barbecue|kitchen|bistro|chick-fil-a|chipotle|wings|sushi|diner|eatery|first watch|bar\b)/i, 'Restaurant/F&B'],
+  [/\b(salon|spa|nails|barber|beauty|massage|wellness|med ?spa)\b/i, 'Personal Care'],
+  [/\b(insurance|realty|real estate|title|law|attorney|cpa|accounting|tax)\b/i, 'Business Services'],
+];
+export const stageOf = (p: Person): Stage => p.clicks > 0 ? 'Interested' : p.emailsOpened > 0 ? 'Reviewing' : p.emailsSent > 0 ? 'Contacted' : 'Not contacted';
+export const industryOf = (p: Person) => {
+  const tags = p.category.split(',').map(t => t.trim()).filter(t => t && !/corridor|^elkhorn/i.test(t));
+  if (tags[0]) return tags[0];
+  const hit = GUESS.find(([re]) => re.test(p.business || p.name));
+  return hit ? hit[1] : 'Other / Uncategorized';
+};
+export const prospectName = (p: Person) => p.business || p.name || 'Unnamed business';
+// Engagement only — never a person's name, phone, or email.
+export const prospectNote = (p: Person) => [
+  p.emailsOpened > 0 ? `Opened ${p.opens}×` : p.emailsSent > 0 ? `Emailed ${p.emailsSent}×, no open yet` : 'Not emailed yet',
+  p.clicks > 0 ? `${p.clicks} click${p.clicks === 1 ? '' : 's'}` : '',
+  p.primaryCampaign ? p.primaryCampaign.replace(/^.*?—\s*/, '') : '',
+  p.locations,
+].filter(Boolean).join(' · ');
+export function industryGroups(m: Marketing) {
+  const people = m.prospects.filter(p => !p.dead && !p.unsubscribed);
+  const rank: Record<Stage, number> = { Interested: 0, Reviewing: 1, Contacted: 2, 'Not contacted': 3 };
+  const by = new Map<string, Person[]>();
+  for (const p of people) { const k = industryOf(p); by.set(k, [...(by.get(k) ?? []), p]); }
+  const groups = [...by.entries()]
+    .sort((a, b) => (a[0].startsWith('Other') ? 1 : 0) - (b[0].startsWith('Other') ? 1 : 0) || b[1].length - a[1].length || a[0].localeCompare(b[0]))
+    .map(([industry, list]) => ({
+      industry,
+      total: list.length,
+      counts: Object.fromEntries(STAGES.map(k => [k, list.filter(p => stageOf(p) === k).length])) as Record<Stage, number>,
+      people: [...list].sort((a, b) => rank[stageOf(a)] - rank[stageOf(b)]
+        || String(b.lastOpen ?? b.lastSent ?? '').localeCompare(String(a.lastOpen ?? a.lastSent ?? ''))
+        || prospectName(a).localeCompare(prospectName(b))),
+    }));
+  return { total: people.length, groups };
 }
 
 export async function toXlsx(header: { property: string; fund: string; agent: string }, sections: ReportSection[], m: Marketing, calls: Calls, websiteLine?: string | null) {
@@ -160,74 +198,34 @@ export async function toXlsx(header: { property: string; fund: string; agent: st
 
 
   // Every prospective tenant, broken out by industry with where they stand — the owner's
-  // "who are we talking to" view. Built from the property's campaign list + cold list
-  // (dead and unsubscribed addresses left off).
-  const people = m.prospects.filter(p => !p.dead && !p.unsubscribed);
-  if (people.length) {
-    const stageOf = (p: (typeof people)[number]) => p.clicks > 0 ? 'Interested' : p.emailsOpened > 0 ? 'Reviewing' : p.emailsSent > 0 ? 'Contacted' : 'Not contacted';
-    const stageRank: Record<string, number> = { Interested: 0, Reviewing: 1, Contacted: 2, 'Not contacted': 3 };
-    // Industry = the tenant-category tag when the contact has one (not a corridor or the property's own
-    // prospect-list name); otherwise a best guess from the business name.
-    const GUESS: [RegExp, string][] = [
-      [/\b(bank|bancorp|credit union|financial|savings)\b/i, 'Banking & Financial'],
-      [/\b(vet|veterinar|animal|pet|paws)\b/i, 'Veterinary & Pet'],
-      [/\b(dental|dentist|orthodont|smiles|oral surgery|endodont)\b/i, 'Dental'],
-      [/\b(urgent care|emergency|\bER\b|hospital|medical|clinic|health|kidney|dialysis|physician|pediatric|dermatolog|therapy|rehab|imaging|optometr|eye|vision|chiropract)\b/i, 'Medical'],
-      [/\b(school|academy|learning|cheer|gymnastic|dance|tutor|montessori|daycare|child|kids|prep)\b/i, 'Kids & Enrichment'],
-      [/\b(fitness|gym|pilates|yoga|barre|crossfit|boxing|cycle|training|athletic)\b/i, 'Fitness & Studio'],
-      [/\b(car wash|tire|collision|automotive|auto|lube|oil change)\b/i, 'Automotive'],
-      [/\b(coffee|brew|bakery|cafe|café|donut|tea|smoothie|ice cream|dutch bros|starbucks)\b/i, 'Coffee & Bakery'],
-      [/\b(restaurant|grill|burger|pizza|taco|bbq|barbecue|kitchen|bistro|chick-fil-a|chipotle|wings|sushi|diner|eatery|first watch|bar\b)/i, 'Restaurant/F&B'],
-      [/\b(salon|spa|nails|barber|beauty|massage|wellness|med ?spa)\b/i, 'Personal Care'],
-      [/\b(insurance|realty|real estate|title|law|attorney|cpa|accounting|tax)\b/i, 'Business Services'],
-    ];
-    const industryOf = (p: (typeof people)[number]) => {
-      const tags = p.category.split(',').map(t => t.trim()).filter(t => t && !/corridor|^elkhorn/i.test(t));
-      if (tags[0]) return tags[0];
-      const hit = GUESS.find(([re]) => re.test(p.business || p.name));
-      return hit ? hit[1] : 'Other / Uncategorized';
-    };
-    const groups = new Map<string, (typeof people)>();
-    for (const p of people) { const k = industryOf(p); groups.set(k, [...(groups.get(k) ?? []), p]); }
-    const ordered = [...groups.entries()].sort((a, b) => (a[0].startsWith('Other') ? 1 : 0) - (b[0].startsWith('Other') ? 1 : 0) || b[1].length - a[1].length || a[0].localeCompare(b[0]));
-
+  // "who are we talking to" view (dead and unsubscribed addresses left off).
+  const ind = industryGroups(m);
+  if (ind.total) {
     for (let c = 1; c <= 14; c++) { const x = ws.getCell(r, c); x.fill = fill(GREEN); x.border = { top: thin, bottom: thin }; }
     ws.mergeCells(r, 1, r, 14);
     const pb = ws.getCell(r, 1);
-    pb.value = `Prospective Tenants by Industry — ${people.length} businesses`;
+    pb.value = `Prospective Tenants by Industry — ${ind.total} businesses`;
     pb.font = font({ size: 11, bold: true, color: { argb: WHITE } });
     pb.alignment = { horizontal: 'center', vertical: 'middle' };
     ws.getRow(r).height = 22;
     r++;
-    const fmtDay = (iso: string | null) => iso ? new Date(iso) : null;
-    for (const [industry, list] of ordered) {
-      const counts = (['Interested', 'Reviewing', 'Contacted', 'Not contacted'] as const)
-        .map(k => [k, list.filter(p => stageOf(p) === k).length] as const).filter(([, n]) => n > 0)
-        .map(([k, n]) => `${n} ${k.toLowerCase()}`).join(' · ');
+    for (const g of ind.groups) {
+      const counts = STAGES.filter(k => g.counts[k] > 0).map(k => `${g.counts[k]} ${k.toLowerCase()}`).join(' · ');
       const h = ws.getRow(r);
-      h.getCell(1).value = industry.toUpperCase();
-      h.getCell(3).value = `${list.length} ${list.length === 1 ? 'business' : 'businesses'} — ${counts}`;
+      h.getCell(1).value = g.industry.toUpperCase();
+      h.getCell(3).value = `${g.total} ${g.total === 1 ? 'business' : 'businesses'} — ${counts}`;
       for (let c = 1; c <= 14; c++) {
         const cell = h.getCell(c);
         cell.fill = fill(MINT); cell.font = font({ bold: true, color: { argb: GREEN } });
         cell.alignment = { vertical: 'middle', horizontal: c === 1 ? 'center' : 'left' };
       }
       r++;
-      const sorted = [...list].sort((a, b) => stageRank[stageOf(a)] - stageRank[stageOf(b)]
-        || String(b.lastOpen ?? b.lastSent ?? '').localeCompare(String(a.lastOpen ?? a.lastSent ?? ''))
-        || (a.business || a.name).localeCompare(b.business || b.name));
-      for (const p of sorted) {
+      for (const p of g.people) {
         const st = stageOf(p);
         const row = ws.getRow(r);
         const when = p.lastOpen ?? p.lastSent;
-        const notes = [
-          p.emailsOpened > 0 ? `Opened ${p.opens}×` : p.emailsSent > 0 ? `Emailed ${p.emailsSent}×, no open yet` : 'Not emailed yet',
-          p.clicks > 0 ? `${p.clicks} click${p.clicks === 1 ? '' : 's'}` : '',
-          p.primaryCampaign ? p.primaryCampaign.replace(/^.*?—\s*/, '') : '',
-          p.locations,
-        ].filter(Boolean).join(' · ');
-        const vals: ExcelJS.CellValue[] = ['', st, p.business || p.name || p.email, industry.startsWith('Other') ? '' : industry, '', null,
-          fmtDay(when), null, null, '', null, '', notes, null];
+        const vals: ExcelJS.CellValue[] = ['', st, prospectName(p), g.industry.startsWith('Other') ? '' : g.industry, '', null,
+          when ? new Date(when) : null, null, null, '', null, '', prospectNote(p), null];
         vals.forEach((v, i) => { row.getCell(i + 1).value = v; });
         for (let c = 1; c <= 14; c++) {
           const cell = row.getCell(c);
