@@ -101,6 +101,11 @@ const toLocalInput = (iso: string | null): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 const fromLocalInput = (v: string): string | null => (v ? new Date(v).toISOString() : null);
+// A real conversation with a number that is not on any contact card yet — worth saving as a contact.
+const callNumberOf = (c: CallRow) => c.callback_number || (c.direction === 'outbound' ? c.to_number : c.from_number) || '';
+const last10Digits = (n: string) => n.replace(/\D/g, '').slice(-10);
+const isNewCaller = (c: CallRow) => !c.contact && !c.contact_id && c.outcome !== 'spam' && last10Digits(callNumberOf(c)).length === 10
+  && (c.result === 'answered' || c.kind === 'bot' || c.kind === 'voicemail' || !!c.summary);
 // A conversation someone had (answered or outbound) that has no wrap-up yet.
 const needsWrap = (c: CallRow) => c.source === 'talkroute' && c.kind === 'call' && !c.wrapped_at && !c.answered_by_bot
   && ((c.direction !== 'outbound' && c.result === 'answered') || c.direction === 'outbound');
@@ -117,7 +122,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useRememberedState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup'>('calls-filter', 'all', ['all', 'follow_up', 'voicemail', 'bot', 'missed', 'texts', 'wrapup']);
+  const [filter, setFilter] = useRememberedState<'all' | 'follow_up' | 'voicemail' | 'bot' | 'missed' | 'texts' | 'wrapup' | 'newcaller'>('calls-filter', 'all', ['all', 'follow_up', 'voicemail', 'bot', 'missed', 'texts', 'wrapup', 'newcaller']);
   const [wrapFor, setWrapFor] = useState<string | null>(null);   // call id whose wrap-up panel is open
   const [queueOpen, setQueueOpen] = useState(false);               // the wrap-up queue (step through calls needing a note)
   const [showInternal, setShowInternal] = useState(false);          // calls between us / the team's phones
@@ -157,7 +162,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ filter: filter === 'texts' ? 'all' : filter, days: String(days), business_unit: businessUnit });
+      const params = new URLSearchParams({ filter: filter === 'texts' || filter === 'newcaller' ? 'all' : filter, days: String(days), business_unit: businessUnit });
       if (q) params.set('q', q);
       if (showInternal) params.set('include_internal', '1');
       const j = await fetch(`/api/crm/calls?${params}`, { headers: auth(authToken) }).then(r => r.json());
@@ -342,7 +347,12 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     } finally { setBusy(null); }
   }
 
-  const list = useMemo(() => calls, [calls]);
+  // "Not in contacts": one row per number (the latest call), so a repeat caller is a single save.
+  const newCallers = useMemo(() => {
+    const seen = new Set<string>();
+    return calls.filter(isNewCaller).filter(c => { const k = last10Digits(callNumberOf(c)); if (seen.has(k)) return false; seen.add(k); return true; });
+  }, [calls]);
+  const list = useMemo(() => filter === 'newcaller' ? newCallers : calls, [calls, filter, newCallers]);
   const agentName = useCallback((id: string | null) => {
     if (!id) return null;
     const a = agents.find(x => x.id === id);
@@ -472,7 +482,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
 
       {/* ── Filters ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['wrapup', '📝 Needs a note'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['texts', '💬 Texts']] as const).map(([k, t]) => (
+        {([['all', 'All'], ['follow_up', '🔔 Needs call back'], ['wrapup', '📝 Needs a note'], ['bot', '🤖 Bot'], ['voicemail', '📼 Voicemail'], ['missed', 'Missed'], ['newcaller', `➕ Not in contacts${(filter === 'all' || filter === 'newcaller') && newCallers.length ? ` (${newCallers.length})` : ''}`], ['texts', '💬 Texts']] as const).map(([k, t]) => (
           <button key={k} onClick={() => setFilter(k)} style={{ ...mini, minHeight: 32, padding: '6px 11px', background: filter === k ? '#111' : '#fff', color: filter === k ? '#fff' : '#374151', borderColor: filter === k ? '#111' : '#e5e7eb' }}>{t}</button>
         ))}
         <input value={qLive} onChange={e => setQLive(e.target.value)} placeholder="Search name, number, what they wanted…" style={{ ...input, flex: '1 1 200px', width: 'auto', minHeight: 32, padding: '6px 10px' }} />
@@ -562,7 +572,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         : list.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{filter === 'follow_up' ? 'Nobody is waiting on a call back.' : filter === 'wrapup' ? 'Every answered call has a note.' : 'No calls match.'}</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>{filter === 'follow_up' ? 'Nobody is waiting on a call back.' : filter === 'wrapup' ? 'Every answered call has a note.' : filter === 'newcaller' ? 'Every caller you spoke with is already a contact.' : 'No calls match.'}</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
