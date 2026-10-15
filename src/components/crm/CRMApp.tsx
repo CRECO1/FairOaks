@@ -857,7 +857,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Gmail connection state
   const [gmailConnected, setGmailConnected] = useState(false);
-  const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string }[]>([]);
+  const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string; needsReconnect?: boolean }[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [mlsSyncing, setMlsSyncing] = useState(false);
 
@@ -4738,10 +4738,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* Gmail / Calendar accounts */}
           <div style={{ marginBottom: 10 }}>
             {gmailAccounts.map(acct => (
-              <div key={acct.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'rgba(34,197,94,.08)', border: '1px solid rgba(34,197,94,.2)', borderRadius: 7, marginBottom: 5 }}>
+              <div key={acct.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: acct.needsReconnect ? 'rgba(245,158,11,.10)' : 'rgba(34,197,94,.08)', border: `1px solid ${acct.needsReconnect ? 'rgba(245,158,11,.35)' : 'rgba(34,197,94,.2)'}`, borderRadius: 7, marginBottom: 5 }}>
                 <span style={{ fontSize: 13 }}>✉️</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 10, color: '#4ade80', fontWeight: 600, letterSpacing: .5 }}>Connected</div>
+                  {acct.needsReconnect ? (
+                    <div
+                      onClick={() => { window.location.href = `/api/gmail/auth?userId=${session!.user.id}&bu=${businessUnit}`; }}
+                      title="Google stopped accepting this connection — tap to reconnect"
+                      style={{ fontSize: 10, color: '#fbbf24', fontWeight: 700, letterSpacing: .5, cursor: 'pointer' }}>Reconnect needed</div>
+                  ) : (
+                    <div style={{ fontSize: 10, color: '#4ade80', fontWeight: 600, letterSpacing: .5 }}>Connected</div>
+                  )}
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acct.email}</div>
                 </div>
                 <button onClick={() => disconnectGmailAccount(acct.id)} title="Disconnect" aria-label="Disconnect" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.25)', cursor: 'pointer', fontSize: 14, lineHeight: 1, flexShrink: 0 }}>✕</button>

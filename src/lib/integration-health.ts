@@ -1,4 +1,4 @@
-import { BROKER_USER_ID } from './broker-ingest/gmail';
+import { findBrokerConnection, gmailRefreshKey, BROKER_GMAIL_EMAIL } from './broker-ingest/gmail';
 import { adminClient } from '@/lib/supabase-admin';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -13,6 +13,8 @@ export interface IntegrationHealth {
   propertyCount: number | null;
   lastRunAt: string | null;
   gmailConnected: boolean;
+  /** Why the broker mailbox isn't usable, when it isn't (no connection / wrong mailbox / refresh rejected). */
+  gmailProblem?: 'no_connection' | 'wrong_mailbox' | 'refresh_failed' | 'lookup_failed' | null;
   anthropic: { status: 'ok' | 'low_credit' | 'error'; detail?: string };
 }
 
@@ -22,6 +24,9 @@ export const CRAWL_SCHEDULE_TEXT = '2×/day Mon–Fri, 1×/day Sat–Sun';
 const SLOT_HOURS_UTC = { weekday: [14, 22], weekend: [17] };
 const RUN_GRACE_MS = 90 * 60_000; // allow a late cron + the pipeline's own run time
 export const CRAWL_HEARTBEAT_KEY = 'broker_ingest_run';
+// Written by the cron when a run FAILS. Kept apart from the heartbeat so a failure is never
+// mistaken for a successful run's timestamp.
+export const CRAWL_ERROR_KEY = 'broker_ingest_last_error';
 
 /** Most recent scheduled crawl slot that is at least RUN_GRACE_MS in the past. */
 export function lastExpectedRun(now = Date.now()): Date {
@@ -50,14 +55,27 @@ export async function checkIntegrationHealth(): Promise<IntegrationHealth> {
 
   // Heartbeat written by /api/cron/broker-ingest after each successful run (even a run that
   // finds nothing new). A quiet MLS is fine; a missed/failed scheduled run is not.
-  const { data: beat } = await supabase.from('crm_integration_status').select('updated_at').eq('id', CRAWL_HEARTBEAT_KEY).maybeSingle();
+  const { data: statusRows, error: statusErr } = await supabase.from('crm_integration_status')
+    .select('id, last_status, updated_at').in('id', [CRAWL_HEARTBEAT_KEY, CRAWL_ERROR_KEY]);
+  // A failed read used to look identical to "no heartbeat" — say so instead.
+  if (statusErr) console.error('[integration-health] could not read crm_integration_status:', statusErr.message);
+  const beat = statusRows?.find(r => r.id === CRAWL_HEARTBEAT_KEY);
+  const lastErr = statusRows?.find(r => r.id === CRAWL_ERROR_KEY);
   const lastRunAt: string | null = beat?.updated_at ?? null;
+  const lastFailedAt: string | null = lastErr?.updated_at ?? null;
   const expected = lastExpectedRun();
 
-  // The BROKER inbox specifically — "any Gmail connection exists" stayed green for four days while
-  // the broker one was missing (Brian's connection satisfied it).
-  const { data: gmail } = await supabase.from('gmail_connections').select('gmail_email').eq('user_id', BROKER_USER_ID).limit(1);
-  const gmailConnected = !!(gmail && gmail.length);
+  // The BROKER mailbox, found the same way the cron finds it (by Gmail address, any CRM login) —
+  // so the watchdog and the crawl cannot disagree about whether it is connected.
+  const found = await findBrokerConnection();
+  const gmailConnected = !!found.conn;
+  let gmailProblem: IntegrationHealth['gmailProblem'] = null;
+  if (!found.conn) gmailProblem = found.error ? 'lookup_failed' : found.otherMailboxes.length ? 'wrong_mailbox' : 'no_connection';
+  else {
+    // The refresh cron / crawl record a rejected refresh token here.
+    const { data: rf } = await supabase.from('crm_integration_status').select('last_status').eq('id', gmailRefreshKey(found.conn.id)).maybeSingle();
+    if (rf?.last_status === 'error') gmailProblem = 'refresh_failed';
+  }
 
   // A 1-token probe — Claude powers extraction, so an exhausted balance is exactly what
   // silently kills the crawl. This surfaces it. (Anthropic doesn't expose the remaining
@@ -73,19 +91,28 @@ export async function checkIntegrationHealth(): Promise<IntegrationHealth> {
 
   let status: IntegrationHealth['status'] = 'ok';
   let note = 'Running normally.';
-  if (!gmailConnected) {
-    status = 'error'; note = 'Gmail is not connected — the crawl cannot read the Property DB folder.';
+  if (gmailProblem === 'wrong_mailbox') {
+    status = 'error'; note = `Gmail is connected for the broker user as ${found.otherMailboxes.join(', ')}, not ${BROKER_GMAIL_EMAIL} — the crawl only reads ${BROKER_GMAIL_EMAIL}. Connect that Google account in the CRM sidebar.`;
+  } else if (gmailProblem === 'no_connection') {
+    status = 'error'; note = `No Gmail connection for ${BROKER_GMAIL_EMAIL} — the crawl cannot read the Property DB folder. Connect that Google account in the CRM sidebar (any CRM login works).`;
+  } else if (gmailProblem === 'lookup_failed') {
+    status = 'warn'; note = `Could not look up the broker Gmail connection: ${found.error}`;
+  } else if (gmailProblem === 'refresh_failed') {
+    status = 'error'; note = `Google is rejecting the stored refresh token for ${BROKER_GMAIL_EMAIL} — reconnect Gmail in the CRM sidebar. If this repeats about weekly, the Google OAuth app is still in "Testing" mode (7-day refresh tokens).`;
   } else if (anthropic.status === 'low_credit') {
     status = 'error'; note = 'Anthropic API credits are exhausted — listing extraction is failing. Add credits at console.anthropic.com → Billing.';
   } else if (anthropic.status === 'error') {
     status = 'warn'; note = `Anthropic API error: ${anthropic.detail ?? 'unknown'}`;
+  } else if (lastFailedAt && (!lastRunAt || new Date(lastFailedAt) > new Date(lastRunAt))) {
+    // The newest outcome is a failure (the cron wrote it). The failure email has the detail.
+    status = 'warn'; note = `The last Property DB crawl FAILED (${lastFailedAt.slice(0, 16).replace('T', ' ')} UTC) and nothing has succeeded since — see the "auto-crawl is failing" email or the Vercel logs for /api/cron/broker-ingest.`;
   } else if (!lastRunAt) {
     // Never recorded a successful run — a silent failure used to look identical to "not started yet".
-    status = 'warn'; note = 'The Property DB crawl has no successful run on record — check /api/cron/broker-ingest in the Vercel logs.';
+    status = 'warn'; note = 'The Property DB crawl has no successful run on record — check /api/cron/broker-ingest in the Vercel logs (a run that is killed at the time limit never writes its heartbeat).';
   } else if (new Date(lastRunAt) < expected) {
     const ago = Math.round((Date.now() - new Date(lastRunAt).getTime()) / 3.6e6);
     status = 'warn'; note = `The Property DB crawl missed its scheduled run (expected by ${expected.toISOString().slice(0, 16).replace('T', ' ')} UTC; last successful run ${ago}h ago). Schedule: ${CRAWL_SCHEDULE_TEXT}.`;
   }
 
-  return { status, note, lastIngestAt, hoursSince, propertyCount: count ?? null, lastRunAt, gmailConnected, anthropic };
+  return { status, note, lastIngestAt, hoursSince, propertyCount: count ?? null, lastRunAt, gmailConnected, gmailProblem, anthropic };
 }

@@ -62,6 +62,12 @@ export interface PipelineOptions {
   onProgress?: (msg: string) => void;
   /** Also mine marketplace digests (Crexi/LoopNet roundups) for many listings. Default true. */
   digests?: boolean;
+  /**
+   * Wall-clock deadline (epoch ms). No new email is started past it; the chunk in hand is
+   * flushed and the run returns `partial: true`. Without this a long label ran into
+   * Vercel's 300 s limit, died before the heartbeat, and looked like "never ran".
+   */
+  deadlineMs?: number;
 }
 
 export interface PipelineResult {
@@ -87,6 +93,10 @@ export interface PipelineResult {
   digestInserted: number;
   digestDupSkipped: number;
   digestWouldInsert: PropertyRecord[];
+  /** True when the deadline stopped the run before every listed message was handled. */
+  partial: boolean;
+  /** Messages listed but not reached (only meaningful when `partial`). */
+  remaining: number;
 }
 
 export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineResult> {
@@ -129,12 +139,17 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
   const existing = await fetchExistingRows();
 
   const CHUNK = 6;
+  const deadline = opts.deadlineMs ?? Infinity;
+  let partial = false;
   let i = 0;
   for (let c = 0; c < ids.length; c += CHUNK) {
+    if (Date.now() > deadline) { partial = true; break; }
     const items: Array<{ extraction: Extraction; photos?: GmailImage[] }> = [];
     const digestItems: Array<{ extraction: Extraction }> = [];
 
     for (const id of ids.slice(c, c + CHUNK)) {
+      // Stop starting emails at the deadline, but still flush what this chunk collected.
+      if (Date.now() > deadline) { partial = true; break; }
       i++;
       const email = await fetchEmail(token, id, maxImages);
       if (!email) {
@@ -217,5 +232,7 @@ export async function runPipeline(opts: PipelineOptions = {}): Promise<PipelineR
     digestInserted,
     digestDupSkipped,
     digestWouldInsert,
+    partial,
+    remaining: partial ? Math.max(0, ids.length - i) : 0,
   };
 }

@@ -8,6 +8,9 @@ export * from './types';
 export {
   BROKER_CONNECTION_ID,
   BROKER_USER_ID,
+  BROKER_GMAIL_EMAIL,
+  BrokerGmailError,
+  findBrokerConnection,
   fetchBrokerConnection,
   resolveConnection,
   getBrokerAccessToken,
