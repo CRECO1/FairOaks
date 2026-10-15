@@ -177,8 +177,8 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Name, email, or business to search for' } }, required: ['query'] } },
   { name: 'get_contact', description: "Get a contact's full details — including type, tags, notes, contact info, and their deals — by contact id.",
     input_schema: { type: 'object', properties: { contact_id: { type: 'string' } }, required: ['contact_id'] } },
-  { name: 'list_tasks', description: 'List tasks. Defaults to open tasks assigned to the current agent. Use scope="all" to include the whole team, status="completed" or "all" to change status filter.',
-    input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'completed', 'all'] }, scope: { type: 'string', enum: ['mine', 'all'] } } } },
+  { name: 'list_tasks', description: 'List tasks. Defaults to open tasks assigned to the current agent. Use scope="all" to include the whole team, status="completed" or "all" to change status filter. Every task comes back with a `bucket` (overdue / today / this_week / upcoming / no_date, in Central time) and `kind` (task or call_list). Use `due` to ask for one bucket — "due this week" means due="this_week", which already includes today. Call-list calls are carried over, not overdue: they come back as bucket "call_list".',
+    input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'completed', 'all'] }, scope: { type: 'string', enum: ['mine', 'all'] }, due: { type: 'string', enum: ['overdue', 'today', 'this_week', 'upcoming', 'call_list'], description: 'Only tasks in this bucket.' } } } },
   { name: 'list_deals', description: 'List deals, newest first. Optionally filter by stage. Returns client, property, value, and stage.',
     input_schema: { type: 'object', properties: { stage: { type: 'string', enum: DEAL_STAGES }, scope: { type: 'string', enum: ['mine', 'all'] } } } },
   { name: 'get_deal', description: 'Get a deal\'s full details by id.',
@@ -239,8 +239,8 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, first_name: { type: 'string' }, last_name: { type: 'string' }, business_name: { type: 'string' }, email: { type: 'string' }, phone: { type: 'string' }, cell_phone: { type: 'string' }, type: { type: 'string', enum: CONTACT_TYPES }, brokerage: { type: 'string' } }, required: ['contact_id'] } },
   { name: 'create_property', description: 'Add a property/listing to the CRM. Check find_property first so you don\'t duplicate one. WRITE — confirm the details with the agent first.',
     input_schema: { type: 'object', properties: { name: { type: 'string' }, address: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, zip: { type: 'string' }, type: { type: 'string', description: 'e.g. Industrial, Retail, Office, Land' }, status: { type: 'string', description: 'e.g. active, pending' }, asking_price: { type: 'number' }, sq_ft: { type: 'number' }, lot_size: { type: 'string' }, zoning: { type: 'string' }, description: { type: 'string' }, highlights: { type: 'string' } }, required: ['name'] } },
-  { name: 'read_document', description: 'Read a saved contract/form document (a form submission) — its title, status and the field values currently filled in. Use before fill_document so you edit against what is actually there. Pass deal_id or listing_id to list the documents on that deal/property.',
-    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, listing_id: { type: 'string' } } } },
+  { name: 'read_document', description: 'Read a saved contract/form document (a form submission) — its title, status and the field values currently filled in. Use before fill_document so you edit against what is actually there. Pass deal_id or listing_id to list the documents on that deal/property, or `query` to find documents by title (e.g. "Chestnut") when you do not know the deal.',
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, listing_id: { type: 'string' }, query: { type: 'string', description: 'Case-insensitive words from the document title.' } } } },
   { name: 'fill_document', description: "Fill in or edit fields on a contract/form document — e.g. dropping a contact's name, company, email and phone into the right blanks. Pass only the fields you're setting; everything else is left alone. Read it with read_document first. WRITE — confirm with the agent first. This edits the draft only; it does not send or sign anything.",
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, fields: { type: 'object', description: 'Field label or id → value, e.g. {"Tenant Name": "Acme LLC", "Email": "a@b.com"}' }, contact_id: { type: 'string', description: "Optional: pull this contact's name/company/email/phone in automatically, then apply `fields` on top." }, title: { type: 'string' } }, required: ['submission_id'] } },
   { name: 'edit_loi', description: "Edit an EXISTING Letter of Intent (a saved LOI document) live: change term values, add or remove terms, or change the addressee / re line / date / additional terms / signers. It rebuilds the letter's PDF and refiles it, and the agent's open screen refreshes. Read it first with read_document (submission_id) — that lists the exact term labels. Pass only what changes. Never invent a legal value: use only what the agent told you in this conversation. Refuses an executed letter or one out for e-signature. WRITE — confirm with the agent first. It edits the draft only; it never sends or signs.",
@@ -391,7 +391,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       }
       case 'list_tasks': {
         const status = input.status ?? 'open';
-        let q = db.from('crm_tasks').select('id, title, due_date, status, priority, client_id, deal_id, assigned_to, agent_id, completed_at').order('due_date', { ascending: true, nullsFirst: false }).limit(30);
+        let q = db.from('crm_tasks').select('id, title, due_date, status, priority, type, description, notes, client_id, deal_id, assigned_to, agent_id, completed_at').order('due_date', { ascending: true, nullsFirst: false }).limit(input.due ? 200 : 60);
         q = scoped(q, ctx);
         // "Open" is completed_at IS NULL, matching how the Tasks page itself
         // decides. Filtering on status='open' silently hid in_progress tasks, and
@@ -410,7 +410,25 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         }
         const { data, error } = await q;
         if (error) return j({ error: error.message });
-        return j(data ?? []);
+
+        // Bucket in Central time (the office's day), the way the Tasks page does it. The model was
+        // left to compare dates itself and called 10 of 12 tasks "due this week"; and call-list
+        // calls (type=call, "From:" line) are carried over, never "overdue".
+        const ymd = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(d);
+        const todayStr = ymd(new Date());
+        const [ty, tm, td] = todayStr.split('-').map(Number);
+        const dow = new Date(Date.UTC(ty, tm - 1, td)).getUTCDay();          // 0 = Sunday
+        const weekEnd = new Date(Date.UTC(ty, tm - 1, td + (7 - dow) % 7)).toISOString().slice(0, 10);   // this Sunday
+        const rows = (data ?? []).map(t => {
+          const due = (t.due_date as string | null)?.slice(0, 10) ?? null;
+          const listCall = t.type === 'call' && /(^|\n)From:\s*\S/.test(`${t.description ?? ''}\n${t.notes ?? ''}`);
+          const bucket = listCall ? 'call_list' : !due ? 'no_date' : due < todayStr ? 'overdue' : due === todayStr ? 'today' : due <= weekEnd ? 'this_week' : 'upcoming';
+          const { description: _d, notes: _n, type: _t, ...rest } = t as Record<string, unknown>;
+          return { ...rest, due_date: due, bucket, kind: listCall ? 'call_list' : 'task' };
+        });
+        const want = input.due as string | undefined;
+        const out = want ? rows.filter(r => want === 'this_week' ? (r.bucket === 'today' || r.bucket === 'this_week') : r.bucket === want) : rows;
+        return j({ today: todayStr, week_ends: weekEnd, count: out.length, tasks: out.slice(0, 40) });
       }
       case 'list_deals': {
         let q = db.from('crm_deals').select('id, client, property, value, stage, type, last_touch').order('created_at', { ascending: false }).limit(30);
@@ -712,6 +730,10 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         q = scoped(q, ctx);
         if (input.deal_id) q = q.eq('deal_id', input.deal_id);
         if (input.listing_id) q = q.eq('listing_id', input.listing_id);
+        // Title search: every word must appear (a few words from the name, any order).
+        if (input.query) {
+          for (const w of String(input.query).split(/\s+/).map(x => x.replace(/[%,()]/g, '')).filter(Boolean).slice(0, 5)) q = q.ilike('title', `%${w}%`);
+        }
         const { data, error } = await q;
         return error ? j({ error: error.message }) : j(data ?? []);
       }
