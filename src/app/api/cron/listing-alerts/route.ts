@@ -46,11 +46,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ matched: 0, sent: 0 });
   }
 
-  // Fetch all active alerts
+  // Fetch all alerts. (listing_alerts has no `active` column — an unsubscribe removes the row —
+  // so filtering on it 500'd the whole cron on every day that had a new listing, and nobody got mail.)
   const { data: alerts, error: alertErr } = await supabase
     .from('listing_alerts')
-    .select('*')
-    .eq('active', true);
+    .select('*');
 
   if (alertErr) {
     console.error('listing-alerts cron fetch alerts error:', alertErr.message);
@@ -75,8 +75,9 @@ export async function GET(req: NextRequest) {
       const priceMin = alert.min_price != null ? listing.price >= alert.min_price : true;
       const priceMax = alert.max_price != null ? listing.price <= alert.max_price : true;
       const bedsMatch = alert.min_beds != null ? listing.bedrooms >= alert.min_beds : true;
+      const bathsMatch = alert.min_baths != null ? Number(listing.bathrooms) >= alert.min_baths : true;
 
-      return cityMatch && priceMin && priceMax && bedsMatch;
+      return cityMatch && priceMin && priceMax && bedsMatch && bathsMatch;
     });
 
     if (matches.length === 0) continue;

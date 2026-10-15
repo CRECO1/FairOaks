@@ -176,6 +176,21 @@ export async function getNeighborhoodBySlug(slug: string): Promise<Neighborhood 
   return data;
 }
 
+/**
+ * Like getNeighborhoodBySlug, but tells "no such neighbourhood" (null) apart from "the database
+ * failed" (throws). The page needs the difference: a missing slug is a clean 404, while a hiccup
+ * must surface as an error so ISR keeps serving the last good page instead of caching a 404.
+ */
+export async function getNeighborhoodBySlugStrict(slug: string): Promise<Neighborhood | null> {
+  const { data, error } = await supabase
+    .from('neighborhoods')
+    .select('*')
+    .eq('slug', slug)
+    .maybeSingle();
+  if (error) throw new Error(`neighborhoods lookup failed: ${error.message}`);
+  return data;
+}
+
 /** The fields a listing CARD renders. Everything else on the row is dead weight here. */
 const LISTING_CARD_COLS = 'id, slug, title, price, bedrooms, bathrooms, sqft';
 export type ListingCard = Pick<Listing, 'id' | 'slug' | 'title' | 'price' | 'bedrooms' | 'bathrooms' | 'sqft'>;

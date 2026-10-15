@@ -29,6 +29,14 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ listings: visible });
 }
 
+// The add-listing form's Yes/No/unknown selects post '' / 'true' / 'false'. A bare `?? null` let ''
+// through to a boolean column (22P02 → 500 "Internal server error" on save), so normalise here.
+function triState(v: unknown): boolean | null {
+  if (v === true || v === 'true' || v === 'yes' || v === 'Yes') return true;
+  if (v === false || v === 'false' || v === 'no' || v === 'No') return false;
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -46,7 +54,7 @@ export async function POST(req: NextRequest) {
     flyer_type: flyer_type || null, co_agent_id: co_agent_id || null,
     zoning: zoning || null,
     // Tri-state: unanswered stays null rather than defaulting to "No".
-    elevator: elevator ?? null, grade_level_doors: grade_level_doors ?? null, dock_high_doors: dock_high_doors ?? null,
+    elevator: triState(elevator), grade_level_doors: triState(grade_level_doors), dock_high_doors: triState(dock_high_doors),
     // Owner defaults to the creator; only admins may attribute to another agent or unit.
     listing_agent_id: isAdminRole(ctx.role) ? (listing_agent_id || ctx.userId) : ctx.userId,
     assigned_agent_ids: Array.isArray(assigned_agent_ids) ? assigned_agent_ids : [],

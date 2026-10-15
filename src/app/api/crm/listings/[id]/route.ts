@@ -14,6 +14,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of ALLOWED) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
+  // Yes/No/unknown columns are booleans: anything that isn't clearly yes/no is "unknown", never a stray string.
+  for (const k of ['elevator', 'grade_level_doors', 'dock_high_doors']) {
+    if (k in update) { const v = update[k]; update[k] = (v === true || v === 'true') ? true : (v === false || v === 'false') ? false : null; }
+  }
   // web_paths: extra URL fragments that count as this property's pages (property performance).
   if ('web_paths' in body) {
     const raw = Array.isArray(body.web_paths) ? body.web_paths : [];

@@ -2,14 +2,13 @@ export const revalidate = 3600;
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { unstable_noStore as noStore } from 'next/cache';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, MapPin, Home, DollarSign, School, CheckCircle } from 'lucide-react';
 import { Header, Footer } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
 import { Container } from '@/components/ui/Container';
-import { getNeighborhoodBySlug, getListingsByCity } from '@/lib/supabase';
+import { getNeighborhoodBySlug, getNeighborhoodBySlugStrict, getListingsByCity } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
 import { jsonLdScript } from '@/lib/json-ld';
 
@@ -111,15 +110,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function NeighborhoodDetailPage({ params }: Props) {
   const { slug } = await params;
 
-  let neighborhood = await getNeighborhoodBySlug(slug).catch(() => null);
+  // A database error throws (500, never cached — ISR keeps the last good page); only a genuinely
+  // unknown slug is a 404. Both used to go through noStore() + notFound(), and that combination
+  // returned a 500 for every unknown slug (pearsall, hunt, canyonlake… — crawlers kept hitting them).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!neighborhood && STATIC_GUIDES[slug]) neighborhood = STATIC_GUIDES[slug] as any;
-  if (!neighborhood) {
-    // Not found, or the database hiccupped: either way never cache the 404 over
-    // a good page (a bad regeneration would otherwise replace it for the window).
-    noStore();
-    notFound();
-  }
+  let neighborhood: any = STATIC_GUIDES[slug] ? await getNeighborhoodBySlug(slug).catch(() => null) : await getNeighborhoodBySlugStrict(slug);
+  if (!neighborhood && STATIC_GUIDES[slug]) neighborhood = STATIC_GUIDES[slug];
+  if (!neighborhood) notFound();
 
   const listings = await getListingsByCity(neighborhood!.city).catch(() => []);
 
