@@ -10870,7 +10870,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 </>
                               )}
                             </div>
-                            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}</div>
+                            <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{w ? 'Not started — waiting to be filled' : (f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : '')}{(() => {
+                              // Several saved docs with the same title: number them (oldest first) and show the time, so
+                              // two "Letter of Intent to Purchase" rows can be told apart at a glance.
+                              const key = (x: typeof f) => (x.title || x.crm_forms?.name || '').trim().toLowerCase();
+                              const sib = dealForms.filter(x => x.url && key(x) === key(f)).sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''));
+                              if (w || sib.length < 2) return '';
+                              return ` ${f.updated_at ? new Date(f.updated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''} · copy ${sib.findIndex(x => x.id === f.id) + 1} of ${sib.length}`;
+                            })()}</div>
                           </div>
                           {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
                           {!w && (() => {
@@ -10915,8 +10922,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   ) : dealDocs.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '20px 0', color: '#9ca3af', fontSize: 14 }}>📂 No documents uploaded yet</div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {dealDocs.map(doc => {
+                    (() => {
+                      // An upload whose file name matches a CRM Forms doc on this deal is the ORIGINAL the form was
+                      // imported from. Listing both as peers read as "the same document twice", so originals are
+                      // tucked under a collapsed heading and the live, editable version above is the one you see.
+                      const stem = (n?: string) => (n || '').replace(/\.[a-z0-9]{2,5}$/i, '').trim().toLowerCase();
+                      const twinFor = (doc: { name?: string }) => dealForms.find(f => f.id && f.form_id && f.deal_id === activeDeal.id
+                        && !!specForForm(f.crm_forms?.form_code, f.crm_forms?.name || '') && stem(f.title) === stem(doc.name));
+                      const renderDoc = (doc: typeof dealDocs[number]) => {
                         const isImage = doc.file_type?.startsWith('image/');
                         const isPdf = doc.file_type === 'application/pdf';
                         const icon = isPdf ? '📄' : isImage ? '🖼️' : '📝';
@@ -10945,9 +10958,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               // An upload that has an editable builder doc on this deal (matched by
                               // file name = doc title, which the importer sets) opens that doc in
                               // the inline editor instead of only downloading the binary.
-                              const stem = (n?: string) => (n || '').replace(/\.[a-z0-9]{2,5}$/i, '').trim().toLowerCase();
-                              const twin = dealForms.find(f => f.id && f.form_id && f.deal_id === activeDeal.id
-                                && !!specForForm(f.crm_forms?.form_code, f.crm_forms?.name || '') && stem(f.title) === stem(doc.name));
+                              const twin = twinFor(doc);
                               if (!twin) return null;
                               return (
                                 <button onClick={() => openFormEditor({ id: twin.form_id || '', name: twin.crm_forms?.name || twin.title || 'Form' }, twin.id, twin.crm_forms?.form_code)}
@@ -10974,8 +10985,25 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             )}
                           </div>
                         );
-                      })}
-                    </div>
+                      };
+                      const originals = dealDocs.filter(d => twinFor(d));
+                      const others = dealDocs.filter(d => !twinFor(d));
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {others.map(renderDoc)}
+                          {originals.length > 0 && (
+                            <details style={{ marginTop: others.length ? 6 : 0 }}>
+                              <summary style={{ cursor: 'pointer', fontSize: 13, color: '#6b7280', padding: '6px 2px', fontWeight: 600 }}>
+                                Original uploads already in CRM Forms above ({originals.length})
+                              </summary>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8, opacity: 0.85 }}>
+                                {originals.map(renderDoc)}
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      );
+                    })()
                   )}
                 </div>
               )}
