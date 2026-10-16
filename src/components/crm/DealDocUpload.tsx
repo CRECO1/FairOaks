@@ -41,8 +41,8 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
   });
 
-  // Returns an error message, or null once the file is stored and recorded.
-  async function uploadOne(file: File): Promise<string | null> {
+  // Returns an error message, { dup } when the deal already has this exact file, or null once the file is stored and recorded.
+  async function uploadOne(file: File): Promise<string | { dup: string } | null> {
     if (file.size > MAX_BYTES) return `${file.name} is ${mb(file.size)} MB — the limit is 25 MB`;
     const pre = await fetch('/api/crm/docs', {
       method: 'POST', headers: headers(true),
@@ -63,6 +63,7 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
     });
     const cj = await conf.json().catch(() => ({}));
     if (!conf.ok) return cj.error || `Couldn't save ${file.name} to the deal (${conf.status})`;
+    if (cj.duplicate) return { dup: cj.doc?.name ?? 'an existing file' };   // already attached: nothing was added
     onUploaded(cj.doc);
     return null;
   }
@@ -70,14 +71,15 @@ export default function DealDocUpload({ dealId, authToken, showToast, onUploaded
   async function uploadAll(list: FileList | File[] | null) {
     const files = Array.from(list ?? []);
     if (!files.length || status) return;
-    let ok = 0;
+    let ok = 0, skipped = 0;
     try {
       for (let i = 0; i < files.length; i++) {
         setStatus(files.length > 1 ? `Uploading ${i + 1} of ${files.length}…` : `Uploading ${files[i].name}…`);
         const err = await uploadOne(files[i]).catch(() => 'Upload failed — check your connection and try again');
-        if (err) showToast(err); else ok++;
+        if (err && typeof err === 'object') { skipped++; showToast(`${files[i].name} is already on this deal as “${err.dup}” — not added again`); }
+        else if (err) showToast(err); else ok++;
       }
-      if (ok) showToast(ok === 1 && files.length === 1 ? `${files[0].name} uploaded ✓` : `${ok} of ${files.length} files uploaded ✓`);
+      if (ok) showToast(ok === 1 && files.length === 1 ? `${files[0].name} uploaded ✓` : `${ok} of ${files.length - skipped} new files uploaded ✓`);
     } finally {
       setStatus(null);
       if (inputRef.current) inputRef.current.value = '';

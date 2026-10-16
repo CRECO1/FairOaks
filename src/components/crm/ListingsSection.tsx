@@ -877,6 +877,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       });
       const confirmJson = await confirmRes.json();
       if (!confirmRes.ok) { onToast(confirmJson.error ?? 'Upload failed'); setUploading(false); return; }
+      if (confirmJson.duplicate) { onToast(`${file.name} is already on this property as “${confirmJson.file?.name ?? 'an existing file'}” — not added again`); return; }
 
       setFiles(prev => [confirmJson.file, ...prev]);
       onToast('File uploaded ✓');
@@ -899,7 +900,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const replacingRef = useRef<ListingFile | null>(null);
 
   // One file through presign → PUT → confirm; returns the saved row.
-  const putPhoto = useCallback(async (file: File): Promise<ListingFile | null> => {
+  const putPhoto = useCallback(async (file: File, opts?: { allowDuplicate?: boolean }): Promise<ListingFile | null> => {
     if (!active) return null;
     const pre = await fetch('/api/crm/listing-files/presign', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -911,10 +912,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (!put.ok) { onToast(`Upload failed (storage ${put.status})`); return null; }
     const conf = await fetch('/api/crm/listing-files/confirm', {
       method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders },
-      body: JSON.stringify({ ...pj.meta, storage_path: pj.storagePath }),
+      body: JSON.stringify({ ...pj.meta, storage_path: pj.storagePath, ...(opts?.allowDuplicate ? { allow_duplicate: true } : {}) }),
     });
     const cj = await conf.json().catch(() => ({}));
     if (!conf.ok) { onToast(cj.error ?? 'Upload failed'); return null; }
+    if (cj.duplicate) { onToast(`${file.name} is already on this property as “${cj.file?.name ?? 'an existing file'}” — not added again`); return null; }
     return cj.file as ListingFile;
   }, [active, authHeaders, onToast]);
 
@@ -967,7 +969,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
     if (!active || !old) return;
     setPhotoBusy(true);
     try {
-      const row = await putPhoto(file);
+      const row = await putPhoto(file, { allowDuplicate: true });   // replacing with identical bytes must still work
       if (!row) return;
       await fetch('/api/crm/listing-files', {
         method: 'DELETE', headers: { 'Content-Type': 'application/json', ...authHeaders },

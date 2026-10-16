@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
+import { findIdenticalFile } from '@/lib/dup-files';
 import { adminClient } from '@/lib/supabase-admin';
 
 const BUCKET = 'deal-docs';
@@ -204,11 +205,23 @@ async function confirm(body: Record<string, unknown>, ctx: Ctx) {
   }
   const meta = (obj.metadata ?? {}) as { size?: number; mimetype?: string };
   return record(ctx.userId, dealId, filename, storagePath, meta.size ?? null,
-    meta.mimetype || CONTENT_TYPES[extOf(filename)] || 'application/octet-stream');
+    meta.mimetype || CONTENT_TYPES[extOf(filename)] || 'application/octet-stream', body.allow_duplicate === true);
 }
 
-async function record(userId: string, dealId: string, name: string, storagePath: string, size: number | null, fileType: string) {
+async function record(userId: string, dealId: string, name: string, storagePath: string, size: number | null, fileType: string, allowDuplicate = false) {
   const supabase = adminClient();
+
+  // The same file twice on one deal (even under a different name) is never what anyone wants —
+  // it happened with a floor plan re-uploaded as "Exhibit A". Keep the existing row, drop the new
+  // object, and tell the client so it can say so instead of adding a second row.
+  if (size && !allowDuplicate) {
+    const { data: same } = await supabase.from('crm_deal_docs').select('*').eq('deal_id', dealId).eq('file_size', size).neq('storage_path', storagePath).limit(6);
+    const dup = same?.length ? await findIdenticalFile(supabase, BUCKET, storagePath, same) : null;
+    if (dup) {
+      await supabase.storage.from(BUCKET).remove([storagePath]);
+      return NextResponse.json({ duplicate: true, doc: dup });
+    }
+  }
   const { data: doc, error: dbError } = await supabase
     .from('crm_deal_docs')
     .insert([{ deal_id: dealId, name, storage_path: storagePath, file_size: size, file_type: fileType, uploaded_by: userId }])

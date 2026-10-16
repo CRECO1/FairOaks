@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { findIdenticalFile } from '@/lib/dup-files';
 import { LISTING_FILES_BUCKET as BUCKET, callerCanAccessListing, isPathInsideListing } from '@/lib/listing-files-access';
 
 /**
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  const { listing_id, filename, category, file_size, file_type, storage_path } = body;
+  const { listing_id, filename, category, file_size, file_type, storage_path, allow_duplicate } = body;
 
   if (!listing_id || !filename || !storage_path) {
     return NextResponse.json({ error: 'listing_id, filename, and storage_path required' }, { status: 400 });
@@ -30,6 +31,19 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = adminClient();
+
+  // Same file already on this property (any name, any category): keep the existing row and drop the
+  // new object. `allow_duplicate` is for replacing a photo with identical bytes, which must still work.
+  if (file_size && allow_duplicate !== true) {
+    const { data: same } = await supabase.from('crm_listing_files').select('*').eq('listing_id', listing_id).eq('file_size', file_size).neq('storage_path', storage_path).limit(6);
+    const dup = same?.length ? await findIdenticalFile(supabase, BUCKET, storage_path, same) : null;
+    if (dup) {
+      await supabase.storage.from(BUCKET).remove([storage_path]);
+      const { data: signedDup } = await supabase.storage.from(BUCKET).createSignedUrl(dup.storage_path, 3600);
+      return NextResponse.json({ duplicate: true, file: { ...dup, url: signedDup?.signedUrl ?? null } });
+    }
+  }
+
   const { data: doc, error: dbErr } = await supabase.from('crm_listing_files').insert({
     listing_id,
     name: filename,
