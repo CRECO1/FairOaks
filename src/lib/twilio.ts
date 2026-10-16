@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import crypto from 'crypto';
 import { APP_ORIGIN } from '@/lib/esign';
+import { line } from '@/lib/voice-lines';
 
 export function twilioConfigured(): boolean {
   return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN);
@@ -49,12 +50,25 @@ export const xml = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replac
 // A warm, natural neural voice. Override per deployment without a code change.
 export const VOICE = process.env.TWILIO_VOICE || 'Polly.Joanna-Neural';
 
-export function say(text: string): string {
-  return `<Say voice="${xml(VOICE)}" language="en-US">${xml(text)}</Say>`;
+// US-Spanish neural voice, used when the caller is speaking Spanish (verified against Twilio's voice list).
+export const VOICE_ES = process.env.TWILIO_VOICE_ES || 'Polly.Lupe-Neural';
+
+export function say(text: string, lang: 'en' | 'es' = 'en'): string {
+  return lang === 'es'
+    ? `<Say voice="${xml(VOICE_ES)}" language="es-US">${xml(text)}</Say>`
+    : `<Say voice="${xml(VOICE)}" language="en-US">${xml(text)}</Say>`;
 }
 
-/** Say something, then listen for the caller's reply and POST it to `action`. */
-export function gather(text: string, action: string, opts: { timeoutSec?: number; hints?: string[] } = {}): string {
+/**
+ * Say something, then listen for the caller's reply and POST it to `action`.
+ *
+ * `multi` uses Twilio's Deepgram nova-3 model in multi-language mode, which recognises English AND Spanish
+ * in the same call with no menu — the caller just speaks. (Twilio requires an integer speechTimeout with a
+ * named model, not "auto"; `enhanced` is Google-only and ignored; failover to another provider does not
+ * happen, hence the gating in voicebot.multilingualEnabled.) Without it: the original English recogniser, or
+ * Spanish when the conversation is already in Spanish.
+ */
+export function gather(text: string, action: string, opts: { timeoutSec?: number; hints?: string[]; lang?: 'en' | 'es'; multi?: boolean } = {}): string {
   // `hints` biases speech recognition toward words we expect (our people, properties, streets): without them
   // "Zack Stovall" came back "Zack stoval" and "Dietz Elkhorn" as "diesel, corn".
   // Capped well inside Twilio's limits (phrases ≤100 chars) so a long property list can never make Twilio reject the TwiML.
@@ -63,12 +77,18 @@ export function gather(text: string, action: string, opts: { timeoutSec?: number
     if (h.length + x.length + 2 > 3500) break;
     h += (h ? ', ' : '') + x;
   }
-  return `<Gather input="speech" action="${xml(action)}" method="POST" language="en-US" speechTimeout="auto" speechModel="phone_call" enhanced="true" actionOnEmptyResult="true" timeout="${opts.timeoutSec ?? 6}"${h ? ` hints="${xml(h)}"` : ''}>${say(text)}</Gather>`;
+  const lang = opts.lang ?? 'en';
+  const recog = opts.multi
+    ? `language="multi" speechModel="deepgram_nova-3" speechTimeout="2" profanityFilter="false"`
+    : lang === 'es'
+      ? `language="es-US" speechTimeout="auto" speechModel="phone_call" enhanced="true"`
+      : `language="en-US" speechTimeout="auto" speechModel="phone_call" enhanced="true"`;
+  return `<Gather input="speech" action="${xml(action)}" method="POST" ${recog} actionOnEmptyResult="true" timeout="${opts.timeoutSec ?? 6}"${h ? ` hints="${xml(h)}"` : ''}>${say(text, lang)}</Gather>`;
 }
 
 /** Say a short filler, pause, then have Twilio re-request `url` — used while a slow reply finishes in the background. */
-export function holdThenRedirect(text: string | null, url: string, pauseSec = 2): string {
-  return `${text ? say(text) : ''}<Pause length="${pauseSec}"/><Redirect method="POST">${xml(url)}</Redirect>`;
+export function holdThenRedirect(text: string | null, url: string, pauseSec = 2, lang: 'en' | 'es' = 'en'): string {
+  return `${text ? say(text, lang) : ''}<Pause length="${pauseSec}"/><Redirect method="POST">${xml(url)}</Redirect>`;
 }
 
 export function twiml(inner: string): Response {
@@ -132,11 +152,12 @@ export async function fetchRecording(recordingSid: string): Promise<Response> {
 }
 
 /** TwiML for a finished bot reply: keep listening, hang up, or transfer. Shared by /api/voice/turn and /api/voice/wait. */
-export function renderReply(reply: { say: string; action: 'continue' | 'end' | 'transfer' }, settings: { transfer_number: string | null }, callerNumber: string | null, hints?: string[]): string {
+export function renderReply(reply: { say: string; action: 'continue' | 'end' | 'transfer' }, settings: { transfer_number: string | null }, callerNumber: string | null, hints?: string[], opts: { lang?: 'en' | 'es'; multi?: boolean } = {}): string {
+  const lang = opts.lang ?? 'en';
   const turnUrl = `${voiceOrigin()}/api/voice/turn`;
   if (reply.action === 'transfer' && settings.transfer_number) {
-    return `${say(reply.say)}<Dial timeout="25" callerId="${xml(callerNumber || '')}">${xml(settings.transfer_number)}</Dial>${say("I wasn't able to reach anyone. An agent will call you back as soon as possible. Goodbye.")}<Hangup/>`;
+    return `${say(reply.say, lang)}<Dial timeout="25" callerId="${xml(callerNumber || '')}">${xml(settings.transfer_number)}</Dial>${say(line('transferFailed', lang), lang)}<Hangup/>`;
   }
-  if (reply.action === 'end') return `${say(reply.say)}<Hangup/>`;
-  return gather(reply.say, turnUrl, { hints });
+  if (reply.action === 'end') return `${say(reply.say, lang)}<Hangup/>`;
+  return gather(reply.say, turnUrl, { hints, lang, multi: opts.multi });
 }

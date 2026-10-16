@@ -95,7 +95,7 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
       agent_id: owner, assigned_agent_ids: backup && backup !== owner ? [backup] : [],
       lead_source: call.source === 'voicebot' ? 'Phone (voice bot)' : 'Phone call', channel: 'phone',
       unsubscribe_token: randomUUID(), phone: number,
-      tags: ['New Lead', ...(filing.tag ? [filing.tag] : []), ...(meta.hot ? ['Hot Lead'] : [])],
+      tags: ['New Lead', ...(filing.tag ? [filing.tag] : []), ...(meta.hot ? ['Hot Lead'] : []), ...(meta.language === 'es' ? ['Spanish Speaker'] : [])],
     };
     if (email) rec.email = email;
     if (last) rec.last_name = last;

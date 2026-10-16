@@ -9,6 +9,7 @@ import { last10, prettyPhone, toE164 } from '@/lib/phone';
 import { esc, resendConfig } from '@/lib/esign';
 import { Resend } from 'resend';
 import { describeHome, listingFactSheet, searchHomes } from '@/lib/listing-knowledge';
+import { line, type Lang } from '@/lib/voice-lines';
 
 export const VOICEBOT_MODEL = process.env.VOICEBOT_MODEL || 'claude-opus-5';
 // Phone turns are latency-bound. VOICEBOT_THINKING=off skips reasoning on the live turns
@@ -112,6 +113,23 @@ export async function matchContact(db: SupabaseClient, number: string | null, un
   return null;
 }
 
+/**
+ * Should this call use the multi-language recogniser (English + Spanish, no menu)?
+ * VOICEBOT_MULTILINGUAL = on | off | test (default test). In test mode only the team's own phones
+ * (profiles, our lines, and the phones the office lines forward to — i.e. Zack's cell) and VOICEBOT_MULTI_TEST_NUMBERS are switched on, so the new recogniser can be
+ * proven on a real call before any customer hears it. Flip to `on` once it's confirmed.
+ */
+export async function multilingualEnabled(db: SupabaseClient, fromNumber: string | null, unit = 'commercial'): Promise<boolean> {
+  const mode = (process.env.VOICEBOT_MULTILINGUAL || 'test').toLowerCase();
+  if (mode === 'on') return true;
+  if (mode === 'off') return false;
+  const key = last10(fromNumber);
+  if (key.length < 10) return false;
+  if ((process.env.VOICEBOT_MULTI_TEST_NUMBERS || '').split(',').some(n => last10(n) === key)) return true;
+  const { internalNumbers } = await import('@/lib/call-history');
+  return (await internalNumbers(db, unit)).has(key);
+}
+
 // ── The conversation ──────────────────────────────────────────────────────────
 export interface Turn { role: 'bot' | 'caller'; text: string }
 
@@ -123,6 +141,8 @@ export interface BotReply {
   intent?: string | null;
   property?: string | null;
   caller_email?: string | null;
+  /** The language this reply is spoken in. Absent = unchanged (the route keeps whatever the call was already in). */
+  language?: Lang | null;
   needs_follow_up?: boolean;
 }
 
@@ -139,6 +159,8 @@ Your job on this call:
 3. When a question goes beyond the sheet — or they want to see the space, make an offer, or talk terms — say an agent will get them that answer, and collect what the agent needs to call back: their name, the best number (confirm the caller ID number ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'is unknown, so ask for one'} if they don't offer another), and which property or matter it concerns.
 4. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three to five exchanges is typical. Always get a name and number before ending unless the caller refuses or is a wrong number.
 ${s.transfer_number ? `5. If the caller insists on speaking to a person right now, or describes an urgent building emergency (flooding, fire, no power, break-in), use action "transfer".` : `5. There is no live transfer available on this line; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details.`}
+
+Language: callers may speak English or Spanish, and the speech recognizer transcribes whichever they speak. If the caller speaks Spanish, answer in natural, warm Latin-American Spanish for the rest of the call (say digits in Spanish too), set "language" to "es", and keep it that way unless they switch back; if they speak English, use "en". Switch the moment they do — never ask which language they prefer, never offer a menu. Property names and street addresses stay as they are. The JSON keys always stay in English.
 
 People: Zachary "Zack" Stovall is the broker and owner; Brian Blanco is an agent. If a caller asks for either, or for "an agent" or "the broker", you cannot connect them on this line: say so kindly and that you will make sure they get the message. NEVER say someone is out, in a meeting, unavailable or busy — you don't know. Ask what it's about and for the best number.
 
@@ -160,6 +182,7 @@ Rules:
 - Never promise a specific callback time beyond "as soon as possible" or "during business hours".
 - Do not ask for or repeat sensitive data (card numbers, SSN).
 - If the caller is a vendor or sales call, take a brief message and end.
+- If the caller claims to be a government agency (IRS, sheriff, a warrant), threatens legal action, or asks for payment, card or bank details, it is a scam: say once that you can't help with that and end the call (action "end"). Do not take a message from them.
 - If the caller says goodbye, has no further needs, or has left all the details, end the call with a brief goodbye.
 - If you couldn't hear them (empty or garbled input), say so briefly and ask again; after two failed attempts, ask them to leave their name and number and end.
 ${ctx.contact ? ctx.contact.first
@@ -169,7 +192,7 @@ ${s.instructions ? `\nExtra instructions from the brokerage:\n${s.instructions}`
 The current date and time is ${ctx.now} (Central Time).
 
 Respond with ONLY a JSON object, nothing else:
-{"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "caller_email": "<email address they gave and confirmed, else null>", "needs_follow_up": true|false}
+{"say": "<what to say next, spoken text>", "language": "en" | "es", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "caller_email": "<email address they gave and confirmed, else null>", "needs_follow_up": true|false}
 "say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring). Your ENTIRE reply must be that JSON object, even for a one-line answer — never plain text, never text outside the braces.`;
 }
 
@@ -226,6 +249,7 @@ function parseReply(text: string): BotReply | null {
       intent: typeof j.intent === 'string' && j.intent.trim() ? j.intent.trim().slice(0, 80) : null,
       property: typeof j.property === 'string' && j.property.trim() ? j.property.trim().slice(0, 120) : null,
       caller_email: cleanEmail(j.caller_email),
+      language: j.language === 'es' ? 'es' : j.language === 'en' ? 'en' : null,
       needs_follow_up: j.needs_follow_up !== false,
     };
   } catch { return null; }
@@ -237,7 +261,8 @@ const centralNow = () => new Date().toLocaleString('en-US', { timeZone: 'America
  * One turn of the conversation. `history` is everything said so far (bot + caller,
  * in order); the last entry is the caller's newest utterance.
  */
-export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }): Promise<BotReply> {
+export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null; lang?: Lang }): Promise<BotReply> {
+  const lang: Lang = ctx.lang ?? 'en';
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages: Anthropic.MessageParam[] = [];
   // Claude's own lines are assistant turns; the caller's are user turns. The API
@@ -299,7 +324,7 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
       messages.push({ role: 'user', content: results });
       res = await ask();
     }
-    if (res.stop_reason === 'refusal') return { say: "I'm sorry, I didn't catch that. Could you tell me your name and the best number to reach you?", action: 'continue' };
+    if (res.stop_reason === 'refusal') return { say: line('noCatch', lang), action: 'continue' };
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
     const parsed = parseReply(text);
     if (parsed) return parsed;
@@ -312,10 +337,10 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     if (!/[{}]/.test(prose) && prose.length >= 8 && prose.length <= 700) return { say: prose, action: 'continue' };
     const m = text.match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (m) { try { const say = JSON.parse(`"${m[1]}"`) as string; if (say.trim()) return { say: say.trim(), action: 'continue' }; } catch { /* fall through */ } }
-    return { say: "Sorry, could you say that again?", action: 'continue' };
+    return { say: line('sorryRepeat', lang), action: 'continue' };
   } catch (e) {
     console.error('[voicebot] nextReply', e);
-    return { say: "I'm having trouble hearing you. Please leave your name and number after the tone and an agent will call you back.", action: 'end' };
+    return { say: line('trouble', lang), action: 'end' };
   }
 }
 
@@ -341,7 +366,7 @@ export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | n
 export type LeadType = 'prospective_tenant' | 'buyer' | 'property_owner' | 'seller' | 'broker' | 'current_tenant' | 'vendor' | 'other';
 export const LEAD_LABEL: Record<LeadType, string> = { prospective_tenant: 'Prospective tenant', buyer: 'Buyer', property_owner: 'Property owner', seller: 'Seller', broker: 'Broker / agent', current_tenant: 'Current tenant', vendor: 'Vendor', other: 'Other' };
 const LEAD_TYPES = Object.keys(LEAD_LABEL) as LeadType[];
-export interface CallSummary { summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; caller_email: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high'; lead_type: LeadType; hot: boolean }
+export interface CallSummary { language: Lang; summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; caller_email: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high'; lead_type: LeadType; hot: boolean }
 
 export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }): Promise<CallSummary | null> {
   if (!turns.some(t => t.role === 'caller' && t.text.trim())) return null;
@@ -357,8 +382,8 @@ export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string |
 ${transcript}
 
 Write the note an agent needs before calling back. Respond with ONLY JSON:
-{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "caller_email": "<email they gave or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high", "lead_type": "prospective_tenant"|"buyer"|"property_owner"|"seller"|"broker"|"current_tenant"|"vendor"|"other", "hot": true|false}
-needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is high for building emergencies or a caller ready to transact now. lead_type: prospective_tenant = wants to lease space; buyer = wants to buy; property_owner = owns a property and wants to lease, list, manage or sell it (use seller only for a clear intent to sell now); broker = another broker or agent; current_tenant = already leases from us (maintenance, rent, lease question); vendor = selling us a service. hot is true only for a decision-maker with a specific, current need — an owner ready to list or sell, a tenant with a defined size, area and timeline, or anyone ready to tour or transact — never for vague enquiries, brokers fishing, vendors or spam.` }],
+{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "caller_email": "<email they gave or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high", "lead_type": "prospective_tenant"|"buyer"|"property_owner"|"seller"|"broker"|"current_tenant"|"vendor"|"other", "hot": true|false, "language": "en"|"es"}
+needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is "high" ONLY for a genuine emergency — flooding, fire, a break-in, no power, a gas smell, anyone in danger — or a caller who says it is an emergency. Routine maintenance (an AC not cooling), a tour request, a pricing question, a caller ready to sign, or an upset caller are "normal" (a caller ready to transact is flagged by hot, not urgency). language is "es" if the caller spoke Spanish for most of the call (then begin the summary with "Spanish-speaking caller — " and say the agent should call back in Spanish if possible), else "en". Always write the summary in English. lead_type: prospective_tenant = wants to lease space; buyer = wants to buy; property_owner = owns a property and wants to lease, list, manage or sell it (use seller only for a clear intent to sell now); broker = another broker or agent; current_tenant = already leases from us (maintenance, rent, lease question); vendor = selling us a service. hot is true only for a decision-maker with a specific, current need — an owner ready to list or sell, a tenant with a defined size, area and timeline, or anyone ready to tour or transact — never for vague enquiries, brokers fishing, vendors or spam.` }],
     });
     if (res.stop_reason === 'refusal') return null;
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
@@ -374,6 +399,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls 
       caller_email: cleanEmail(j.caller_email),
       needs_follow_up: j.needs_follow_up !== false,
       urgency: j.urgency === 'high' ? 'high' : j.urgency === 'low' ? 'low' : 'normal',
+      language: j.language === 'es' ? 'es' : 'en',
       lead_type: (LEAD_TYPES as string[]).includes(j.lead_type) ? j.lead_type as LeadType : 'other',
       hot: j.hot === true,
     };
@@ -384,7 +410,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls 
 export async function notifyCallSummary(s: VoicebotSettings, call: {
   id: string; from_number: string | null; caller_name: string | null; contact: MatchedContact | null; started_at: string; duration_sec: number | null;
   summary: string; intent: string | null; property?: string | null; callback_number: string | null; urgency: string; transcript: string;
-  email?: string | null; lead_type?: LeadType | null; hot?: boolean;
+  email?: string | null; lead_type?: LeadType | null; hot?: boolean; language?: Lang | null;
 }): Promise<void> {
   const to = (s.notify_emails ?? []).filter(Boolean);
   if (!to.length) return;
@@ -394,7 +420,7 @@ export async function notifyCallSummary(s: VoicebotSettings, call: {
   const num = call.callback_number || call.from_number;
   const when = new Date(call.started_at).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' });
   const label = call.lead_type && call.lead_type !== 'other' ? LEAD_LABEL[call.lead_type] : null;
-  const subject = `${call.urgency === 'high' ? '🚨 ' : call.hot ? '🔥 ' : ''}📞 ${who}${label ? ` [${label}]` : ''}${call.property ? ` · ${call.property}` : ''}${call.intent ? ` — ${call.intent}` : ''}`;
+  const subject = `${call.urgency === 'high' ? '🚨 ' : call.hot ? '🔥 ' : ''}📞 ${who}${call.language === 'es' ? ' 🇪🇸 (Spanish)' : ''}${label ? ` [${label}]` : ''}${call.property ? ` · ${call.property}` : ''}${call.intent ? ` — ${call.intent}` : ''}`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
     <div style="border-bottom:3px solid #c9922c;padding:14px 0 10px"><span style="font-size:18px;font-weight:800;color:#c9922c">${esc(s.company_name || 'CRM')} · Voice bot answered a call</span></div>
     <div style="padding:16px 2px;font-size:15px;line-height:1.55">

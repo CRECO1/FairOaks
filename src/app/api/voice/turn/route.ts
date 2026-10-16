@@ -4,6 +4,7 @@ import { holdThenRedirect, renderReply, say, startRecordingWhenLive, twiml, twil
 import { loadSettings, nextReply, spokenFirstName, type BotReply, type Turn } from '@/lib/voicebot';
 import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
+import { asLang, holdLine, line, type Lang } from '@/lib/voice-lines';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
 
   const db = adminClient();
   const { data: call } = await db.from('crm_call_log').select('id, business_unit, from_number, contact_id, caller_name, ai_meta, recording_url').eq('source', 'voicebot').eq('external_id', p.CallSid).maybeSingle();
-  if (!call) return twiml(`${say("Sorry, something went wrong on our end. Please call back in a moment.")}<Hangup/>`);
+  if (!call) return twiml(`${say(line('wentWrong'))}<Hangup/>`);
 
   // Backstop: if the recording still hasn't started by the caller's first words, the
   // call is certainly live now — start it (one try, in the background).
@@ -33,6 +34,9 @@ export async function POST(req: Request) {
   }
 
   const heard = (p.SpeechResult || '').trim();
+  const callMeta = (call.ai_meta as Record<string, unknown> | null) || {};
+  const multi = callMeta.stt === 'multi';
+  let lang: Lang = asLang(callMeta.lang);
   // Every round trip here is on the caller's clock — run them together, and build the
   // history from what was already stored plus what was just said.
   const [settings, { data: callerTurn }, { data: priorRows }, contactRow, hints] = await Promise.all([
@@ -50,9 +54,11 @@ export async function POST(req: Request) {
   // Work out the reply, store it with what to do next, and keep the call row current.
   const work = (async (): Promise<BotReply> => {
     const reply: BotReply = callerTurns >= MAX_TURNS
-      ? { say: "Thank you. I have everything I need, and an agent will call you back as soon as possible. Goodbye.", action: 'end' }
-      : await nextReply(settings, history, { callerNumber: call.from_number, contact });
-    await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: reply.say, meta: { action: reply.action, after_turn: callerTurn?.id ?? null } });
+      ? { say: line('maxTurns', lang), action: 'end', language: lang }
+      : await nextReply(settings, history, { callerNumber: call.from_number, contact, lang });
+    // The model says which language it answered in; keep the call there until it changes.
+    if (reply.language) lang = reply.language;
+    await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: reply.say, meta: { action: reply.action, after_turn: callerTurn?.id ?? null, lang } });
     const meta = { ...((call.ai_meta as Record<string, unknown>) || {}) };
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (reply.caller_name) { meta.caller_name = reply.caller_name; if (!call.caller_name || call.caller_name === contact?.name) patch.caller_name = reply.caller_name; }
@@ -61,6 +67,8 @@ export async function POST(req: Request) {
     if (reply.property) meta.property = reply.property;
     if (reply.caller_email) meta.caller_email = reply.caller_email;
     if (reply.needs_follow_up === false) meta.bot_said_no_follow_up = true;
+    meta.lang = lang;
+    if (lang === 'es') meta.spoke_spanish = true;
     patch.ai_meta = meta;
     await db.from('crm_call_log').update(patch).eq('id', call.id);
     return reply;
@@ -69,11 +77,10 @@ export async function POST(req: Request) {
   // Twilio gives a webhook 15 seconds. Answer directly when the reply is quick;
   // otherwise say so, let the work finish in the background, and have Twilio poll.
   const quick = await Promise.race<BotReply | null>([work, new Promise<null>(res => setTimeout(() => res(null), QUICK_BUDGET_MS))]);
-  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints));
+  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints, { lang, multi }));
   after(work.catch(e => console.error('[voice/turn] background', e)));
   const waitUrl = `${voiceOrigin()}/api/voice/wait?after=${encodeURIComponent(callerTurn?.id ?? '')}`;
-  return twiml(holdThenRedirect(HOLD_LINES[callerTurns % HOLD_LINES.length], waitUrl, 2));
+  return twiml(holdThenRedirect(holdLine(callerTurns, lang), waitUrl, 2, lang));
 }
 
 const QUICK_BUDGET_MS = 6500;
-const HOLD_LINES = ['One moment while I look that up.', 'Let me check on that for you.', 'Just a second.'];
