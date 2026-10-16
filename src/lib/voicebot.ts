@@ -235,6 +235,33 @@ export function cleanEmail(v: unknown): string | null {
   return /^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(e) && e.length <= 120 ? e : null;
 }
 
+/**
+ * Residential only. When the caller names an MLS number or a street address, look it up BEFORE the model
+ * runs and hand the result over in the same turn. Otherwise the model first decides to call lookup_listings
+ * (one model call), then writes the answer (a second): 5–10 s of dead air on a phone call. With the lookup
+ * done up front it is one call. Returns null when there's nothing recognisable (or nothing found) — the
+ * normal tool path then handles it, so this can only make an answer faster, never wrong.
+ */
+const NOT_A_STREET = /^(bed|beds|bedroom|bedrooms|bath|baths|bathroom|bathrooms|sq|square|thousand|hundred|million|k|dollars?|percent|acres?|years?|months?|miles?|minutes?|days?|weeks?|am|pm|people|kids|units?|houses?|homes?|stories|story|car|garage)\b/i;
+export async function preLookup(callerText: string): Promise<string | null> {
+  try {
+    const t = callerText.replace(/,/g, ' ');
+    const mls = t.match(/\bmls\D{0,14}(\d{6,8})\b/i)?.[1] ?? t.match(/\b(\d{7})\b/)?.[1];
+    let homes: Awaited<ReturnType<typeof searchHomes>> = [];
+    if (mls) homes = await searchHomes({ mls_number: mls });
+    if (!homes.length) {
+      for (const m of t.matchAll(/\b(\d{2,6})\s+([A-Za-z][A-Za-z']+)(?:\s+([A-Za-z][A-Za-z']+))?/g)) {
+        if (NOT_A_STREET.test(m[2])) continue;
+        // number + first street word: the feed abbreviates ("RUSTIC GRV"), so don't require the full name.
+        homes = await searchHomes({ address: `${m[1]} ${m[2]}` });
+        if (homes.length) break;
+      }
+    }
+    if (!homes.length) return null;
+    return homes.slice(0, 3).map(h => describeHome(h)).join('\n\n');
+  } catch (e) { console.warn('[voicebot] preLookup', e); return null; }
+}
+
 function parseReply(text: string): BotReply | null {
   const start = text.indexOf('{'), end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -301,9 +328,25 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     ? [{ type: 'text', text: sheet.text, cache_control: { type: 'ephemeral' } }, { type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }) }]
     : [{ type: 'text', text: systemPrompt(s, { ...ctx, now: centralNow() }), cache_control: { type: 'ephemeral' } }];
   try {
-    const tools = s.business_unit === 'residential' ? [LOOKUP_TOOL] : undefined;
+    let tools: Anthropic.Tool[] | undefined = s.business_unit === 'residential' ? [LOOKUP_TOOL] : undefined;
+    if (tools) {
+      const last = messages[messages.length - 1];
+      // Newest caller line first, then up to two earlier ones: a follow-up ("how many bedrooms?") is about the
+      // home they named a turn or two ago, and without this the model has to search for it all over again.
+      let found: string | null = null;
+      if (last?.role === 'user' && typeof last.content === 'string') {
+        for (const t of history.filter(x => x.role === 'caller' && x.text.trim()).slice(-3).reverse()) {
+          found = await preLookup(t.text);
+          if (found) break;
+        }
+      }
+      if (found && last) {
+        last.content = `${last.content}\n\n[MLS lookup already done for you from the caller's address/MLS number — answer from this, there is nothing more to search:\n${found}]`;
+        tools = undefined;
+      }
+    }
     let model = VOICEBOT_TURN_MODEL;
-    const ask = () => client.messages.create({
+    const ask = (forceAnswer = false) => client.messages.create({
       model,
       // The budget covers the model's THINKING as well as the JSON answer. At 400 a long thought left the JSON
       // cut off mid-sentence, parseReply failed, and callers heard "Sorry, could you say that again?" on the very
@@ -318,6 +361,8 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
       system,
       messages,
       ...(tools ? { tools } : {}),
+      // After two lookups the caller has waited long enough: the model must answer with what it has.
+      ...(tools && forceAnswer ? { tool_choice: { type: 'none' as const } } : {}),
     });
     let res: Anthropic.Message;
     try { res = await ask(); }
@@ -338,7 +383,9 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
       }
       messages.push({ role: 'assistant', content: res.content });
       messages.push({ role: 'user', content: results });
-      res = await ask();
+      // The second lookup's answer is forced to be text: a third tool request used to end the loop with no
+      // reply at all, and the caller heard "Sorry, could you say that again?".
+      res = await ask(round >= 1);
     }
     if (res.stop_reason === 'refusal') return { say: line('noCatch', lang), action: 'continue' };
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');

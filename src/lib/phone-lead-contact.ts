@@ -89,7 +89,12 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
     const detail = [call.intent, meta.property ? `Asked about: ${meta.property}` : null, call.summary].filter(Boolean).join('\n');
     const { first, last } = splitName(name);
 
-    const filing = FILING[(meta.lead_type as LeadType) in FILING ? (meta.lead_type as LeadType) : 'other'];
+    const lt = (meta.lead_type as LeadType) in FILING ? (meta.lead_type as LeadType) : 'other';
+    // The residential book only knows Buyer / Seller (and Agent): a renter or a homeowner maps onto those.
+    const filing = unit === 'residential'
+      ? ({ prospective_tenant: { type: 'Buyer', tag: 'Renter' }, buyer: { type: 'Buyer', tag: null }, property_owner: { type: 'Seller', tag: null }, seller: { type: 'Seller', tag: null },
+          broker: { type: 'Agent', tag: 'Broker/Agent' }, current_tenant: { type: 'Buyer', tag: null }, vendor: { type: 'Other', tag: null }, other: { type: 'Other', tag: null } } as Record<LeadType, { type: string; tag: string | null }>)[lt]
+      : FILING[lt];
     const rec: Record<string, unknown> = {
       first_name: first, type: filing.type, business_unit: unit,
       agent_id: owner, assigned_agent_ids: backup && backup !== owner ? [backup] : [],
