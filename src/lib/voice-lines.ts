@@ -4,8 +4,8 @@ export type Lang = 'en' | 'es';
 const LINES = {
   sorryRepeat: { en: 'Sorry, could you say that again?', es: 'Perdón, ¿me lo puede repetir?' },
   trouble: {
-    en: "I'm having trouble hearing you. Please leave your name and number after the tone and an agent will call you back.",
-    es: 'Tengo problemas para escucharle. Por favor deje su nombre y número después del tono y un agente le devolverá la llamada.',
+    en: "I'm having trouble on my end. An agent will call you back at the number you're calling from as soon as possible. Goodbye.",
+    es: 'Tengo un problema de mi lado. Un agente le devolverá la llamada al número desde el que llama lo antes posible. Adiós.',
   },
   noCatch: {
     en: "I'm sorry, I didn't catch that. Could you tell me your name and the best number to reach you?",

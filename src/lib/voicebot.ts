@@ -255,6 +255,22 @@ function parseReply(text: string): BotReply | null {
   } catch { return null; }
 }
 
+/** "GMT-05:00"-style offset of America/Chicago right now, as "-05:00" — so the model can write a correct ISO time. */
+function centralOffset(at = new Date()): string {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', timeZoneName: 'longOffset' }).formatToParts(at).find(x => x.type === 'timeZoneName')?.value ?? 'GMT-05:00';
+  const m = p.match(/GMT([+-]\d{2}):?(\d{2})?/);
+  return m ? `${m[1]}:${m[2] ?? '00'}` : '-05:00';
+}
+
+/** A time the caller asked to be called back, validated: a real date, not in the past, within 30 days. */
+export function cleanCallbackAt(v: unknown, now = new Date()): string | null {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v.trim())) return null;
+  const d = new Date(v.trim());
+  if (Number.isNaN(d.getTime())) return null;
+  if (d.getTime() < now.getTime() - 10 * 60_000 || d.getTime() > now.getTime() + 30 * 86_400_000) return null;
+  return d.toISOString();
+}
+
 const centralNow = () => new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /**
@@ -366,7 +382,7 @@ export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | n
 export type LeadType = 'prospective_tenant' | 'buyer' | 'property_owner' | 'seller' | 'broker' | 'current_tenant' | 'vendor' | 'other';
 export const LEAD_LABEL: Record<LeadType, string> = { prospective_tenant: 'Prospective tenant', buyer: 'Buyer', property_owner: 'Property owner', seller: 'Seller', broker: 'Broker / agent', current_tenant: 'Current tenant', vendor: 'Vendor', other: 'Other' };
 const LEAD_TYPES = Object.keys(LEAD_LABEL) as LeadType[];
-export interface CallSummary { language: Lang; summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; caller_email: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high'; lead_type: LeadType; hot: boolean }
+export interface CallSummary { callback_at: string | null; language: Lang; summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; caller_email: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high'; lead_type: LeadType; hot: boolean }
 
 export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }): Promise<CallSummary | null> {
   if (!turns.some(t => t.role === 'caller' && t.text.trim())) return null;
@@ -382,8 +398,8 @@ export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string |
 ${transcript}
 
 Write the note an agent needs before calling back. Respond with ONLY JSON:
-{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "caller_email": "<email they gave or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high", "lead_type": "prospective_tenant"|"buyer"|"property_owner"|"seller"|"broker"|"current_tenant"|"vendor"|"other", "hot": true|false, "language": "en"|"es"}
-needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is "high" ONLY for a genuine emergency — flooding, fire, a break-in, no power, a gas smell, anyone in danger — or a caller who says it is an emergency. Routine maintenance (an AC not cooling), a tour request, a pricing question, a caller ready to sign, or an upset caller are "normal" (a caller ready to transact is flagged by hot, not urgency). language is "es" if the caller spoke Spanish for most of the call (then begin the summary with "Spanish-speaking caller — " and say the agent should call back in Spanish if possible), else "en". Always write the summary in English. lead_type: prospective_tenant = wants to lease space; buyer = wants to buy; property_owner = owns a property and wants to lease, list, manage or sell it (use seller only for a clear intent to sell now); broker = another broker or agent; current_tenant = already leases from us (maintenance, rent, lease question); vendor = selling us a service. hot is true only for a decision-maker with a specific, current need — an owner ready to list or sell, a tenant with a defined size, area and timeline, or anyone ready to tour or transact — never for vague enquiries, brokers fishing, vendors or spam.` }],
+{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "caller_email": "<email they gave or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high", "lead_type": "prospective_tenant"|"buyer"|"property_owner"|"seller"|"broker"|"current_tenant"|"vendor"|"other", "hot": true|false, "language": "en"|"es", "callback_at": "<ISO 8601 or null>"}
+needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is "high" ONLY for a genuine emergency — flooding, fire, a break-in, no power, a gas smell, anyone in danger — or a caller who says it is an emergency. Routine maintenance (an AC not cooling), a tour request, a pricing question, a caller ready to sign, or an upset caller are "normal" (a caller ready to transact is flagged by hot, not urgency). language is "es" if the caller spoke Spanish for most of the call (then begin the summary with "Spanish-speaking caller — " and say the agent should call back in Spanish if possible), else "en". Always write the summary in English. callback_at: ONLY if the caller asked to be called at a particular time or day ("tomorrow morning", "after three", "Monday", "this afternoon"), the earliest moment that satisfies them as ISO 8601 with the Central offset ${centralOffset()} (right now it is ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'full', timeStyle: 'short' })} Central — the year is ${new Date().getFullYear()}); morning = 09:00, afternoon = 13:00, evening = 17:00, "anytime" on a day = 09:00 that day. Otherwise null — never invent a time. lead_type: prospective_tenant = wants to lease space; buyer = wants to buy; property_owner = owns a property and wants to lease, list, manage or sell it (use seller only for a clear intent to sell now); broker = another broker or agent; current_tenant = already leases from us (maintenance, rent, lease question); vendor = selling us a service. hot is true only for a decision-maker with a specific, current need — an owner ready to list or sell, a tenant with a defined size, area and timeline, or anyone ready to tour or transact — never for vague enquiries, brokers fishing, vendors or spam.` }],
     });
     if (res.stop_reason === 'refusal') return null;
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
@@ -400,6 +416,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls 
       needs_follow_up: j.needs_follow_up !== false,
       urgency: j.urgency === 'high' ? 'high' : j.urgency === 'low' ? 'low' : 'normal',
       language: j.language === 'es' ? 'es' : 'en',
+      callback_at: cleanCallbackAt(j.callback_at),
       lead_type: (LEAD_TYPES as string[]).includes(j.lead_type) ? j.lead_type as LeadType : 'other',
       hot: j.hot === true,
     };
@@ -410,7 +427,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls 
 export async function notifyCallSummary(s: VoicebotSettings, call: {
   id: string; from_number: string | null; caller_name: string | null; contact: MatchedContact | null; started_at: string; duration_sec: number | null;
   summary: string; intent: string | null; property?: string | null; callback_number: string | null; urgency: string; transcript: string;
-  email?: string | null; lead_type?: LeadType | null; hot?: boolean; language?: Lang | null;
+  email?: string | null; lead_type?: LeadType | null; hot?: boolean; language?: Lang | null; callback_at?: string | null;
 }): Promise<void> {
   const to = (s.notify_emails ?? []).filter(Boolean);
   if (!to.length) return;
@@ -426,6 +443,7 @@ export async function notifyCallSummary(s: VoicebotSettings, call: {
     <div style="padding:16px 2px;font-size:15px;line-height:1.55">
       <p><strong>${esc(who)}</strong>${call.contact ? ' <span style="color:#6b7280">(existing contact)</span>' : ''}<br>
       ${num ? `<a href="tel:${esc(num)}" style="color:#1d4ed8">${esc(prettyPhone(num))}</a>` : 'No number captured'}${call.email ? ` · <a href="mailto:${esc(call.email)}" style="color:#1d4ed8">${esc(call.email)}</a>` : ''} · ${esc(when)}${call.duration_sec ? ` · ${Math.round(call.duration_sec / 60)} min` : ''}</p>
+      ${call.callback_at ? `<p style="margin:0 0 10px;font-weight:700;color:#92400e">⏰ Caller asked for a call ${esc(new Date(call.callback_at).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</p>` : ''}
       <p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px">${esc(call.summary)}</p>
       <p><a href="https://www.fairoaksrealtygroup.com/crm/${s.business_unit}#calls" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px;display:inline-block">Open the Calling Log</a></p>
       <details><summary style="color:#6b7280;cursor:pointer">Transcript</summary><pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:#374151">${esc(call.transcript)}</pre></details>

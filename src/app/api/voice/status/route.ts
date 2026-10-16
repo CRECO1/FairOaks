@@ -58,6 +58,8 @@ export async function POST(req: Request) {
     updated_at: new Date().toISOString(),
   };
   if (s?.caller_name && (!call.caller_name || call.caller_name === contact?.name)) patch.caller_name = s.caller_name;
+  // The caller named a time: the call-back is due then (tidyCallLog only fills a due time when none is set).
+  if (s?.callback_at) { patch.follow_up_due = s.callback_at; (patch.ai_meta as Record<string, unknown>).callback_at = s.callback_at; }
   // Silent calls and robocalls are not call-backs: no queue entry, no email.
   if (junkKind({ intent: patch.intent as string | null, summary: patch.summary as string })) patch.needs_follow_up = false;
   await db.from('crm_call_log').update(patch).eq('id', call.id);
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
       id: call.id, from_number: call.from_number, caller_name: (patch.caller_name as string) || call.caller_name, contact,
       started_at: call.started_at, duration_sec: duration, summary: patch.summary as string, intent: patch.intent as string | null,
       callback_number: patch.callback_number as string | null, property: (s?.property ?? (meta.property as string | undefined)) ?? null, urgency: s?.urgency ?? 'normal', transcript,
-      email: (s?.caller_email ?? (meta.caller_email as string | undefined)) ?? null, lead_type: s?.lead_type ?? null, hot: s?.hot ?? false, language: (s?.language === 'es' || meta.spoke_spanish) ? 'es' : 'en',
+      email: (s?.caller_email ?? (meta.caller_email as string | undefined)) ?? null, lead_type: s?.lead_type ?? null, hot: s?.hot ?? false, language: (s?.language === 'es' || meta.spoke_spanish) ? 'es' : 'en', callback_at: s?.callback_at ?? null,
     });
   }
   return NextResponse.json({ ok: true });
