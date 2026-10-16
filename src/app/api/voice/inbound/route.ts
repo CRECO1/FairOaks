@@ -2,6 +2,7 @@ import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { gather, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin, startRecordingWhenLive } from '@/lib/twilio';
 import { defaultGreeting, loadSettings, matchContact, unitForNumber } from '@/lib/voicebot';
+import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
@@ -50,5 +51,5 @@ export async function POST(req: Request) {
     await db.from('crm_call_log').update({ recording_url: `twilio:${sid}` }).eq('source', 'voicebot').eq('external_id', callSid).is('recording_url', null);
   }));
 
-  return twiml(gather(greeting, `${voiceOrigin()}/api/voice/turn`));
+  return twiml(gather(greeting, `${voiceOrigin()}/api/voice/turn`, { hints: await speechHints(unit) }));
 }

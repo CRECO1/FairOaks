@@ -54,8 +54,16 @@ export function say(text: string): string {
 }
 
 /** Say something, then listen for the caller's reply and POST it to `action`. */
-export function gather(text: string, action: string, opts: { timeoutSec?: number } = {}): string {
-  return `<Gather input="speech" action="${xml(action)}" method="POST" language="en-US" speechTimeout="auto" speechModel="phone_call" enhanced="true" actionOnEmptyResult="true" timeout="${opts.timeoutSec ?? 6}">${say(text)}</Gather>`;
+export function gather(text: string, action: string, opts: { timeoutSec?: number; hints?: string[] } = {}): string {
+  // `hints` biases speech recognition toward words we expect (our people, properties, streets): without them
+  // "Zack Stovall" came back "Zack stoval" and "Dietz Elkhorn" as "diesel, corn".
+  // Capped well inside Twilio's limits (phrases ≤100 chars) so a long property list can never make Twilio reject the TwiML.
+  let h = '';
+  for (const x of (opts.hints ?? []).map(x => x.replace(/[,"<>&]/g, ' ').replace(/\s+/g, ' ').trim()).filter(x => x && x.length <= 80).slice(0, 120)) {
+    if (h.length + x.length + 2 > 3500) break;
+    h += (h ? ', ' : '') + x;
+  }
+  return `<Gather input="speech" action="${xml(action)}" method="POST" language="en-US" speechTimeout="auto" speechModel="phone_call" enhanced="true" actionOnEmptyResult="true" timeout="${opts.timeoutSec ?? 6}"${h ? ` hints="${xml(h)}"` : ''}>${say(text)}</Gather>`;
 }
 
 /** Say a short filler, pause, then have Twilio re-request `url` — used while a slow reply finishes in the background. */
@@ -124,11 +132,11 @@ export async function fetchRecording(recordingSid: string): Promise<Response> {
 }
 
 /** TwiML for a finished bot reply: keep listening, hang up, or transfer. Shared by /api/voice/turn and /api/voice/wait. */
-export function renderReply(reply: { say: string; action: 'continue' | 'end' | 'transfer' }, settings: { transfer_number: string | null }, callerNumber: string | null): string {
+export function renderReply(reply: { say: string; action: 'continue' | 'end' | 'transfer' }, settings: { transfer_number: string | null }, callerNumber: string | null, hints?: string[]): string {
   const turnUrl = `${voiceOrigin()}/api/voice/turn`;
   if (reply.action === 'transfer' && settings.transfer_number) {
     return `${say(reply.say)}<Dial timeout="25" callerId="${xml(callerNumber || '')}">${xml(settings.transfer_number)}</Dial>${say("I wasn't able to reach anyone. An agent will call you back as soon as possible. Goodbye.")}<Hangup/>`;
   }
   if (reply.action === 'end') return `${say(reply.say)}<Hangup/>`;
-  return gather(reply.say, turnUrl);
+  return gather(reply.say, turnUrl, { hints });
 }

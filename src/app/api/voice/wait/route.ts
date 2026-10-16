@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { holdThenRedirect, renderReply, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
+import { speechHints } from '@/lib/listing-knowledge';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
   if (botTurn) {
     const settings = await loadSettings(db, call.business_unit);
     const action = ((botTurn.meta as { action?: string } | null)?.action ?? 'continue') as 'continue' | 'end' | 'transfer';
-    return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number));
+    return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number, await speechHints(call.business_unit)));
   }
   const waited = callerTurn ? Date.now() - new Date(callerTurn.created_at).getTime() : MAX_WAIT_MS;
   if (waited > MAX_WAIT_MS) {

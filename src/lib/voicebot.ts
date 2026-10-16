@@ -69,7 +69,20 @@ export async function unitForNumber(db: SupabaseClient, ourNumber: string | null
   return 'commercial';
 }
 
-export interface MatchedContact { id: string; name: string; type?: string | null; business_name?: string | null }
+export interface MatchedContact { id: string; name: string; type?: string | null; business_name?: string | null; first?: string | null }
+
+/** "LIANG" / "liang" → "Liang". Mixed case is left alone (McDonald, DeLeon). */
+function niceCase(s: string): string {
+  const t = s.trim();
+  return t === t.toUpperCase() || t === t.toLowerCase() ? t.toLowerCase().replace(/(^|[\s'’-])([a-z])/g, (_m, a, b) => a + b.toUpperCase()) : t;
+}
+/** A first name we can safely say aloud — never a placeholder ("Contact"), a phone number, an email, or a company word. */
+export function spokenFirstName(raw: string | null | undefined): string | null {
+  const f = String(raw ?? '').trim().split(/\s+/)[0];
+  if (!/^[A-Za-z][A-Za-z'’-]{1,19}$/.test(f)) return null;
+  if (/^(contact|unknown|caller|customer|client|tenant|owner|broker|agent|admin|info|sales|office|mr|mrs|ms|dr)$/i.test(f)) return null;
+  return niceCase(f);
+}
 
 /** Find the CRM contact behind a caller ID, however the number was typed into the card. */
 export async function matchContact(db: SupabaseClient, number: string | null, unit: string): Promise<MatchedContact | null> {
@@ -84,8 +97,12 @@ export async function matchContact(db: SupabaseClient, number: string | null, un
     .limit(50);
   for (const c of data ?? []) {
     if (last10(c.phone) === key || last10(c.cell_phone) === key) {
-      const name = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact';
-      return { id: c.id, name, type: c.type, business_name: c.business_name };
+      // Greet only by a real PERSON'S first name. A company-only card ("Texas Plumbing Supply") or a placeholder
+      // ("Unknown caller (210) …") used to be greeted as "Is this Texas?" / "Is this Contact?".
+      const person = `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim();
+      const first = spokenFirstName(c.first_name);
+      const name = person ? niceCase(person) : c.business_name || 'Contact';
+      return { id: c.id, name, type: c.type, business_name: c.business_name, first };
     }
   }
   return null;
@@ -118,8 +135,17 @@ Your job on this call:
 4. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three to five exchanges is typical. Always get a name and number before ending unless the caller refuses or is a wrong number.
 ${s.transfer_number ? `5. If the caller insists on speaking to a person right now, or describes an urgent building emergency (flooding, fire, no power, break-in), use action "transfer".` : `5. There is no live transfer available on this line; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details.`}
 
+People: Zachary "Zack" Stovall is the broker and owner; Brian Blanco is an agent. If a caller asks for either, or for "an agent" or "the broker", you cannot connect them on this line: say so kindly and that you will make sure they get the message. NEVER say someone is out, in a meeting, unavailable or busy — you don't know. Ask what it's about and for the best number.
+
 Rules:
 - Speak like a warm, competent front-desk person: short sentences, plain words, no lists, no markdown, no emojis. One question at a time.
+- Keep every reply short — about two sentences, thirty words. When you describe a listing, give at most three facts (what and where, size, rate) and offer more; never recite the whole sheet, because a caller can't absorb it by ear.
+- Say phone numbers as separate digit words in groups with commas ("two one zero, three five five, eight six eight three"), never as one number.
+- Only name a property when the caller named it or clearly described it. If you think you know which one they mean, ask "Do you mean …?" — never state a guess as fact, and never put words in their mouth.
+- If the caller says you got something wrong (a name, number, property, or what they asked), apologize in a few words, have them say it again, then repeat back exactly what they said and check it. Never defend or repeat a guess.
+- You asked for first AND last name in the greeting. If they gave only a first name, ask for the last name ONCE, as its own short question ("And your last name?") just before you wrap up — never combined with another question; if they skip it, move on.
+- If someone asks whether you are a person or a robot, say plainly that you're the virtual receptionist, then carry on helping.
+- The office is ${officeOpen() ? 'open now (Monday–Saturday, 8 a.m.–6 p.m. Central)' : 'closed now (hours are Monday–Saturday, 8 a.m.–6 p.m. Central)'}. ${officeOpen() ? '' : 'After hours, an agent calls back the next business morning; for a true building emergency say an agent will be alerted right away.'}
 - ${s.business_unit === 'residential' ? 'The lookup_listings tool is the only thing you can look up, and only within this same reply.' : 'You cannot look anything up and there is no hold: everything you know is in the sheet below.'} Never say "let me check", "let me find that" or "one moment", and never ask the caller to wait.
 - Never ask the caller to confirm something they already told you, and never ask the same question twice.
 - As soon as you have their name, a callback number and what they need, thank them, say in one sentence what the agent will follow up on, and end the call (action "end").
@@ -129,13 +155,15 @@ Rules:
 - If the caller is a vendor or sales call, take a brief message and end.
 - If the caller says goodbye, has no further needs, or has left all the details, end the call with a brief goodbye.
 - If you couldn't hear them (empty or garbled input), say so briefly and ask again; after two failed attempts, ask them to leave their name and number and end.
-${ctx.contact ? `\nThe caller ID matches an existing contact in our CRM: ${ctx.contact.name}${ctx.contact.business_name ? ` (${ctx.contact.business_name})` : ''}${ctx.contact.type ? `, ${ctx.contact.type}` : ''}. Greet them by first name and confirm it's them.` : ''}
+${ctx.contact ? ctx.contact.first
+  ? `\nThe caller ID matches an existing contact in our CRM: ${ctx.contact.name}${ctx.contact.business_name ? ` (${ctx.contact.business_name})` : ''}${ctx.contact.type ? `, ${ctx.contact.type}` : ''}. The greeting already asked if this is ${ctx.contact.first}; if they say no or give another name, go with what they tell you.`
+  : `\nThe caller ID matches ${ctx.contact.business_name || ctx.contact.name} in our CRM, but we have no person's name on file. Don't guess a name — ask who is calling.` : ''}
 ${s.instructions ? `\nExtra instructions from the brokerage:\n${s.instructions}` : ''}
 The current date and time is ${ctx.now} (Central Time).
 
 Respond with ONLY a JSON object, nothing else:
 {"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "needs_follow_up": true|false}
-"say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring).`;
+"say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring). Your ENTIRE reply must be that JSON object, even for a one-line answer — never plain text, never text outside the braces.`;
 }
 
 // Residential only: the MLS feed is ~10k homes, so the bot looks them up instead of reading a sheet.
@@ -222,7 +250,10 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     let model = VOICEBOT_TURN_MODEL;
     const ask = () => client.messages.create({
       model,
-      max_tokens: 400,
+      // The budget covers the model's THINKING as well as the JSON answer. At 400 a long thought left the JSON
+      // cut off mid-sentence, parseReply failed, and callers heard "Sorry, could you say that again?" on the very
+      // turn they asked about a listing (reproduced 3 of 4 runs). Thinking is already capped by effort: low.
+      max_tokens: 1800,
       // Phone latency matters more than depth here.
       ...turnOptions(model),
       // {type:'disabled'} is a 400 on the x.5 models and unneeded on Haiku. Sonnet 5.5 runs
@@ -256,20 +287,40 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     }
     if (res.stop_reason === 'refusal') return { say: "I'm sorry, I didn't catch that. Could you tell me your name and the best number to reach you?", action: 'continue' };
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
-    return parseReply(text) ?? { say: "Sorry, could you say that again?", action: 'continue' };
+    const parsed = parseReply(text);
+    if (parsed) return parsed;
+    // Truncated or malformed: salvage the spoken line if it is intact, else the caller is better served by
+    // a plain re-ask than by silence — but log it, so a recurrence is visible.
+    console.warn('[voicebot] unparseable reply', res.stop_reason, text.slice(0, 160));
+    // The model sometimes answers in plain prose instead of the JSON envelope. If it's clean speech (no braces),
+    // say it as-is — far better than "say that again" to a caller who just asked a clear question.
+    const prose = text.replace(/```[\s\S]*?```/g, '').replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim();
+    if (!/[{}]/.test(prose) && prose.length >= 8 && prose.length <= 700) return { say: prose, action: 'continue' };
+    const m = text.match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m) { try { const say = JSON.parse(`"${m[1]}"`) as string; if (say.trim()) return { say: say.trim(), action: 'continue' }; } catch { /* fall through */ } }
+    return { say: "Sorry, could you say that again?", action: 'continue' };
   } catch (e) {
     console.error('[voicebot] nextReply', e);
     return { say: "I'm having trouble hearing you. Please leave your name and number after the tone and an agent will call you back.", action: 'end' };
   }
 }
 
-export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | null): string {
+/** Office hours (Central): Mon–Sat 8am–6pm, matching the Talkroute business-hours schedule. */
+export function officeOpen(at: Date = new Date()): boolean {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', hour12: false }).formatToParts(at).map(x => [x.type, x.value]));
+  const hour = Number(p.hour) % 24;
+  return p.weekday !== 'Sun' && hour >= 8 && hour < 18;
+}
+
+export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | null, at: Date = new Date()): string {
   if (s.greeting?.trim()) return s.greeting.trim();
   const company = s.company_name || (DEFAULTS[s.business_unit] ?? DEFAULTS.commercial).company;
-  const first = contact?.name?.split(' ')[0];
-  return first
-    ? `Thanks for calling ${company}, this is ${s.bot_name}. Is this ${first}? How can I help you today?`
-    : `Thanks for calling ${company}, this is ${s.bot_name}. Our agents are with other clients right now, but I can take the details and have someone call you back. May I have your name?`;
+  const first = contact?.first ?? null;
+  if (first) return `Thanks for calling ${company}, this is ${s.bot_name}. Is this ${first}? How can I help you today?`;
+  // Honest about why we picked up: in business hours the team is on other calls; after hours the office is closed.
+  return officeOpen(at)
+    ? `Thanks for calling ${company}, this is ${s.bot_name}. Everyone is helping other clients right now, so I'll take your details and get you a call back. May I have your first and last name?`
+    : `Thanks for calling ${company}, this is ${s.bot_name}. Our office is closed right now, but I can take your details and an agent will call you back. May I have your first and last name?`;
 }
 
 // ── After the call ────────────────────────────────────────────────────────────

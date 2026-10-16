@@ -251,3 +251,31 @@ export async function listingFactSheet(unit: string): Promise<{ text: string; co
   const text = `CRECO PROPERTY INVENTORY. Everything below is OUR property or listing — if a caller names any of these (by name, address or nickname), acknowledge that it is CRECO's, never say it isn't ours. These are the only property facts you may state. Prices, sizes and features come from here verbatim; if a caller asks something not listed for a property (e.g. parking count, HVAC, availability date, lease terms, whether an offer is in), say an agent will confirm and take their details.\n\n${parts.join('\n\n')}`;
   return { text, count: web.length + live.length };
 }
+
+// ── Speech-recognition hints ──────────────────────────────────────────────────
+// Words a caller is likely to say, handed to Twilio's recogniser so names and streets come back right.
+const STATIC_HINTS = [
+  'Zack Stovall', 'Zachary Stovall', 'Zack', 'Brian Blanco', 'Brian', 'CRECO', 'Fair Oaks Realty Group', 'Fair Oaks Ranch', 'Fair Oaks Parkway',
+  'Dietz Elkhorn', 'Elkhorn Point', 'Boerne', 'Helotes', 'Leon Springs', 'Comfort', 'Kendall County', 'Bexar County', 'San Antonio', 'Texas Hill Country',
+  'triple net', 'NNN', 'square feet', 'warehouse', 'retail space', 'office space', 'flex space', 'industrial', 'build to suit', 'pre-leasing', 'tenant rep', 'landlord rep',
+];
+let hintCache: { at: number; unit: string; hints: string[] } | null = null;
+/** Property names, streets and cities from the live inventory, plus our people and trade words. Cached with the sheet. */
+export async function speechHints(unit: string): Promise<string[]> {
+  if (hintCache && hintCache.unit === unit && Date.now() - hintCache.at < TTL_MS) return hintCache.hints;
+  const out = new Set<string>(STATIC_HINTS);
+  const street = (a: string | null | undefined) => String(a ?? '').replace(/^\d+\s+/, '').replace(/[,#].*$/, '').trim();
+  const add = (v: string | null | undefined) => { const t = String(v ?? '').trim(); if (t && t.length <= 60) out.add(t); };
+  try {
+    if (unit === 'residential') {
+      for (const h of await fetchOurHomes()) { add(street(h.address)); add(h.city); add(h.subdivision_name); }
+    } else {
+      const [web, crm] = await Promise.all([fetchListings(unit), fetchCrmProperties(unit)]);
+      for (const l of web) { add(l.title.replace(/^\d+\s+/, '')); add(street(l.address)); add(l.city); add(l.submarket); }
+      for (const p of crm) { add(p.name.replace(/^\d+\s+/, '').split(/\s+[—-]\s+/)[0]); add(street(p.address)); add(p.city); }
+    }
+  } catch (e) { console.warn('[listing-knowledge] hints', e); }
+  const hints = [...out].slice(0, 110);
+  hintCache = { at: Date.now(), unit, hints };
+  return hints;
+}

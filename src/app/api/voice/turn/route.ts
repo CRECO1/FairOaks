@@ -1,7 +1,8 @@
 import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { holdThenRedirect, renderReply, say, startRecordingWhenLive, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
-import { loadSettings, nextReply, type BotReply, type Turn } from '@/lib/voicebot';
+import { loadSettings, nextReply, spokenFirstName, type BotReply, type Turn } from '@/lib/voicebot';
+import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
@@ -34,16 +35,17 @@ export async function POST(req: Request) {
   const heard = (p.SpeechResult || '').trim();
   // Every round trip here is on the caller's clock — run them together, and build the
   // history from what was already stored plus what was just said.
-  const [settings, { data: callerTurn }, { data: priorRows }, contactRow] = await Promise.all([
+  const [settings, { data: callerTurn }, { data: priorRows }, contactRow, hints] = await Promise.all([
     loadSettings(db, call.business_unit),
     db.from('crm_call_turns').insert({ call_id: call.id, role: 'caller', text: heard || '(silence)' }).select('id').single(),
     db.from('crm_call_turns').select('role, text').eq('call_id', call.id).order('created_at'),
     call.contact_id ? db.from('crm_clients').select('id, first_name, last_name, business_name').eq('id', call.contact_id).maybeSingle() : Promise.resolve({ data: null }),
+    speechHints(call.business_unit),
   ]);
   const history = [...((priorRows ?? []) as Turn[]), { role: 'caller' as const, text: heard || '(silence)' }];
   const callerTurns = history.filter(t => t.role === 'caller').length;
   const c = contactRow?.data;
-  const contact = c ? { id: c.id as string, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || (c.business_name as string) || 'Contact' } : null;
+  const contact = c ? { id: c.id as string, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || (c.business_name as string) || 'Contact', business_name: (c.business_name as string | null) ?? null, first: spokenFirstName(c.first_name as string | null) } : null;
 
   // Work out the reply, store it with what to do next, and keep the call row current.
   const work = (async (): Promise<BotReply> => {
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
   // Twilio gives a webhook 15 seconds. Answer directly when the reply is quick;
   // otherwise say so, let the work finish in the background, and have Twilio poll.
   const quick = await Promise.race<BotReply | null>([work, new Promise<null>(res => setTimeout(() => res(null), QUICK_BUDGET_MS))]);
-  if (quick) return twiml(renderReply(quick, settings, call.from_number));
+  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints));
   after(work.catch(e => console.error('[voice/turn] background', e)));
   const waitUrl = `${voiceOrigin()}/api/voice/wait?after=${encodeURIComponent(callerTurn?.id ?? '')}`;
   return twiml(holdThenRedirect(HOLD_LINES[callerTurns % HOLD_LINES.length], waitUrl, 2));
