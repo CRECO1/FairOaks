@@ -37,13 +37,17 @@ export interface VoicebotSettings {
   missed_call_assignee?: string | null;
 }
 
-const DEFAULTS: Record<string, { company: string; blurb: string }> = {
+const DEFAULTS: Record<string, { company: string; blurb: string; website: string; phone: string }> = {
   commercial: {
     company: 'CRECO',
+    website: 'crecotx dot com',
+    phone: 'two one zero, eight one seven, three four four three',
     blurb: 'CRECO (Commercial Real Estate Co.) is a commercial real estate brokerage in the San Antonio / Texas Hill Country area: office, retail, industrial and land — leasing, sales, tenant and landlord representation, and property management including the Fair Oaks Plaza office park at 8000 Fair Oaks Parkway.',
   },
   residential: {
     company: 'Fair Oaks Realty Group',
+    website: 'fair oaks realty group dot com',
+    phone: 'two one zero, three nine zero, nine nine nine seven',
     blurb: 'Fair Oaks Realty Group is a residential real estate brokerage serving Fair Oaks Ranch, Boerne and the Texas Hill Country near San Antonio: buying, selling, luxury homes, relocation and new construction.',
   },
 };
@@ -118,6 +122,7 @@ export interface BotReply {
   callback_number?: string | null;
   intent?: string | null;
   property?: string | null;
+  caller_email?: string | null;
   needs_follow_up?: boolean;
 }
 
@@ -144,6 +149,8 @@ Rules:
 - Only name a property when the caller named it or clearly described it. If you think you know which one they mean, ask "Do you mean …?" — never state a guess as fact, and never put words in their mouth.
 - If the caller says you got something wrong (a name, number, property, or what they asked), apologize in a few words, have them say it again, then repeat back exactly what they said and check it. Never defend or repeat a guess.
 - You asked for first AND last name in the greeting. If they gave only a first name, ask for the last name ONCE, as its own short question ("And your last name?") just before you wrap up — never combined with another question; if they skip it, move on.
+- Company facts you may share: ${d.blurb} Our website is ${d.website}; the main number is ${d.phone}. Services: tenant and landlord representation, leasing, investment and land sales, build-to-suit, site selection and property management. If you're asked anything about the company that isn't here, say an agent will answer it.
+- You cannot send texts or emails from this line. If the caller wants information, a listing or a flyer sent to them, ask for their email address: have them say it slowly, read it back ("john dot smith at gmail dot com"), and only put it in caller_email once they confirm. Say an agent will send it — never promise a text.
 - If someone asks whether you are a person or a robot, say plainly that you're the virtual receptionist, then carry on helping.
 - The office is ${officeOpen() ? 'open now (Monday–Saturday, 8 a.m.–6 p.m. Central)' : 'closed now (hours are Monday–Saturday, 8 a.m.–6 p.m. Central)'}. ${officeOpen() ? '' : 'After hours, an agent calls back the next business morning; for a true building emergency say an agent will be alerted right away.'}
 - ${s.business_unit === 'residential' ? 'The lookup_listings tool is the only thing you can look up, and only within this same reply.' : 'You cannot look anything up and there is no hold: everything you know is in the sheet below.'} Never say "let me check", "let me find that" or "one moment", and never ask the caller to wait.
@@ -162,7 +169,7 @@ ${s.instructions ? `\nExtra instructions from the brokerage:\n${s.instructions}`
 The current date and time is ${ctx.now} (Central Time).
 
 Respond with ONLY a JSON object, nothing else:
-{"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "needs_follow_up": true|false}
+{"say": "<what to say next, spoken text>", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "caller_email": "<email address they gave and confirmed, else null>", "needs_follow_up": true|false}
 "say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring). Your ENTIRE reply must be that JSON object, even for a one-line answer — never plain text, never text outside the braces.`;
 }
 
@@ -199,6 +206,12 @@ async function runLookup(input: Record<string, unknown>): Promise<string> {
   return homes.map(h => describeHome(h)).join('\n\n');
 }
 
+/** A plausible email address, lower-cased — or null. Spoken addresses are error-prone, so be strict. */
+export function cleanEmail(v: unknown): string | null {
+  const e = String(v ?? '').trim().toLowerCase().replace(/\s+/g, '');
+  return /^[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(e) && e.length <= 120 ? e : null;
+}
+
 function parseReply(text: string): BotReply | null {
   const start = text.indexOf('{'), end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -212,6 +225,7 @@ function parseReply(text: string): BotReply | null {
       callback_number: typeof j.callback_number === 'string' && j.callback_number.replace(/\D/g, '').length >= 7 ? toE164(j.callback_number) : null,
       intent: typeof j.intent === 'string' && j.intent.trim() ? j.intent.trim().slice(0, 80) : null,
       property: typeof j.property === 'string' && j.property.trim() ? j.property.trim().slice(0, 120) : null,
+      caller_email: cleanEmail(j.caller_email),
       needs_follow_up: j.needs_follow_up !== false,
     };
   } catch { return null; }
@@ -324,7 +338,10 @@ export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | n
 }
 
 // ── After the call ────────────────────────────────────────────────────────────
-export interface CallSummary { summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high' }
+export type LeadType = 'prospective_tenant' | 'buyer' | 'property_owner' | 'seller' | 'broker' | 'current_tenant' | 'vendor' | 'other';
+export const LEAD_LABEL: Record<LeadType, string> = { prospective_tenant: 'Prospective tenant', buyer: 'Buyer', property_owner: 'Property owner', seller: 'Seller', broker: 'Broker / agent', current_tenant: 'Current tenant', vendor: 'Vendor', other: 'Other' };
+const LEAD_TYPES = Object.keys(LEAD_LABEL) as LeadType[];
+export interface CallSummary { summary: string; intent: string | null; property: string | null; caller_name: string | null; callback_number: string | null; caller_email: string | null; needs_follow_up: boolean; urgency: 'low' | 'normal' | 'high'; lead_type: LeadType; hot: boolean }
 
 export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null }): Promise<CallSummary | null> {
   if (!turns.some(t => t.role === 'caller' && t.text.trim())) return null;
@@ -333,15 +350,15 @@ export async function summarizeCall(turns: Turn[], ctx: { callerNumber: string |
   try {
     const res = await client.messages.create({
       model: VOICEBOT_MODEL,
-      max_tokens: 600,
+      max_tokens: 1500,   // thinking shares this budget; 600 risked a truncated JSON (and a lost summary) on a long call
       output_config: { effort: 'low' },
       messages: [{ role: 'user', content: `This is the transcript of a phone call our AI receptionist answered for a real estate brokerage. Caller ID: ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'unknown'}${ctx.contact ? ` (CRM contact: ${ctx.contact.name})` : ''}.
 
 ${transcript}
 
 Write the note an agent needs before calling back. Respond with ONLY JSON:
-{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high"}
-needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is high for building emergencies or a caller ready to transact now.` }],
+{"summary": "<2-4 plain sentences: who called, what they want, what they were told, what still needs an answer from an agent>", "intent": "<3-8 word label>", "property": "<the listing or building they asked about, or null>", "caller_name": "<name or null>", "callback_number": "<digits or null>", "caller_email": "<email they gave or null>", "needs_follow_up": true|false, "urgency": "low"|"normal"|"high", "lead_type": "prospective_tenant"|"buyer"|"property_owner"|"seller"|"broker"|"current_tenant"|"vendor"|"other", "hot": true|false}
+needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls where the caller never said anything usable, or callers who explicitly said no callback is needed. For those, start the intent with exactly \"Silent call\", \"Wrong number\" or \"Spam / robocall\" (the Calling Log closes them on those words). urgency is high for building emergencies or a caller ready to transact now. lead_type: prospective_tenant = wants to lease space; buyer = wants to buy; property_owner = owns a property and wants to lease, list, manage or sell it (use seller only for a clear intent to sell now); broker = another broker or agent; current_tenant = already leases from us (maintenance, rent, lease question); vendor = selling us a service. hot is true only for a decision-maker with a specific, current need — an owner ready to list or sell, a tenant with a defined size, area and timeline, or anyone ready to tour or transact — never for vague enquiries, brokers fishing, vendors or spam.` }],
     });
     if (res.stop_reason === 'refusal') return null;
     const text = res.content.filter(b => b.type === 'text').map(b => (b as Anthropic.TextBlock).text).join('');
@@ -354,8 +371,11 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls 
       property: j.property ? String(j.property).slice(0, 120) : null,
       caller_name: j.caller_name ? String(j.caller_name).slice(0, 80) : null,
       callback_number: j.callback_number ? toE164(String(j.callback_number)) : null,
+      caller_email: cleanEmail(j.caller_email),
       needs_follow_up: j.needs_follow_up !== false,
       urgency: j.urgency === 'high' ? 'high' : j.urgency === 'low' ? 'low' : 'normal',
+      lead_type: (LEAD_TYPES as string[]).includes(j.lead_type) ? j.lead_type as LeadType : 'other',
+      hot: j.hot === true,
     };
   } catch (e) { console.error('[voicebot] summarizeCall', e); return null; }
 }
@@ -364,6 +384,7 @@ needs_follow_up is false only for wrong numbers, spam/sales calls, silent calls 
 export async function notifyCallSummary(s: VoicebotSettings, call: {
   id: string; from_number: string | null; caller_name: string | null; contact: MatchedContact | null; started_at: string; duration_sec: number | null;
   summary: string; intent: string | null; property?: string | null; callback_number: string | null; urgency: string; transcript: string;
+  email?: string | null; lead_type?: LeadType | null; hot?: boolean;
 }): Promise<void> {
   const to = (s.notify_emails ?? []).filter(Boolean);
   if (!to.length) return;
@@ -372,12 +393,13 @@ export async function notifyCallSummary(s: VoicebotSettings, call: {
   const who = call.caller_name || call.contact?.name || 'Unknown caller';
   const num = call.callback_number || call.from_number;
   const when = new Date(call.started_at).toLocaleString('en-US', { timeZone: 'America/Chicago', dateStyle: 'medium', timeStyle: 'short' });
-  const subject = `${call.urgency === 'high' ? '🚨 ' : ''}📞 ${who}${call.property ? ` · ${call.property}` : ''}${call.intent ? ` — ${call.intent}` : ''}`;
+  const label = call.lead_type && call.lead_type !== 'other' ? LEAD_LABEL[call.lead_type] : null;
+  const subject = `${call.urgency === 'high' ? '🚨 ' : call.hot ? '🔥 ' : ''}📞 ${who}${label ? ` [${label}]` : ''}${call.property ? ` · ${call.property}` : ''}${call.intent ? ` — ${call.intent}` : ''}`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
     <div style="border-bottom:3px solid #c9922c;padding:14px 0 10px"><span style="font-size:18px;font-weight:800;color:#c9922c">${esc(s.company_name || 'CRM')} · Voice bot answered a call</span></div>
     <div style="padding:16px 2px;font-size:15px;line-height:1.55">
       <p><strong>${esc(who)}</strong>${call.contact ? ' <span style="color:#6b7280">(existing contact)</span>' : ''}<br>
-      ${num ? `<a href="tel:${esc(num)}" style="color:#1d4ed8">${esc(prettyPhone(num))}</a>` : 'No number captured'} · ${esc(when)}${call.duration_sec ? ` · ${Math.round(call.duration_sec / 60)} min` : ''}</p>
+      ${num ? `<a href="tel:${esc(num)}" style="color:#1d4ed8">${esc(prettyPhone(num))}</a>` : 'No number captured'}${call.email ? ` · <a href="mailto:${esc(call.email)}" style="color:#1d4ed8">${esc(call.email)}</a>` : ''} · ${esc(when)}${call.duration_sec ? ` · ${Math.round(call.duration_sec / 60)} min` : ''}</p>
       <p style="background:#faf7ef;border-left:3px solid #c9922c;padding:10px 12px;border-radius:4px">${esc(call.summary)}</p>
       <p><a href="https://www.fairoaksrealtygroup.com/crm/${s.business_unit}#calls" style="background:#c9922c;color:#fff;text-decoration:none;font-weight:700;padding:10px 18px;border-radius:8px;display:inline-block">Open the Calling Log</a></p>
       <details><summary style="color:#6b7280;cursor:pointer">Transcript</summary><pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;color:#374151">${esc(call.transcript)}</pre></details>

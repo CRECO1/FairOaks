@@ -59,6 +59,7 @@ export async function POST(req: Request) {
     if (reply.callback_number) { meta.callback_number = reply.callback_number; patch.callback_number = toE164(reply.callback_number); }
     if (reply.intent) { meta.intent = reply.intent; patch.intent = reply.intent; }
     if (reply.property) meta.property = reply.property;
+    if (reply.caller_email) meta.caller_email = reply.caller_email;
     if (reply.needs_follow_up === false) meta.bot_said_no_follow_up = true;
     patch.ai_meta = meta;
     await db.from('crm_call_log').update(patch).eq('id', call.id);

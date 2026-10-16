@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
-import { matchContact } from '@/lib/voicebot';
+import { cleanEmail, matchContact, type LeadType } from '@/lib/voicebot';
 import { backupFor, junkKind, ownerFor, type Profile } from '@/lib/call-routing';
 import { toE164 } from '@/lib/phone';
 
@@ -17,6 +17,13 @@ import { toE164 } from '@/lib/phone';
  * a follow-up or carrying a name. An existing contact (same number) is linked, never duplicated.
  */
 export type PhoneLeadResult = { contactId: string; created: boolean } | null;
+
+// What the bot learned about the caller → how the contact is filed (existing CRM types and tags).
+const FILING: Record<LeadType, { type: string; tag: string | null }> = {
+  prospective_tenant: { type: 'Tenant', tag: 'Prospective Tenant' }, buyer: { type: 'Buyer', tag: null },
+  property_owner: { type: 'Landlord/Investor', tag: 'Property Owner' }, seller: { type: 'Seller', tag: null },
+  broker: { type: 'Broker', tag: 'Broker/Agent' }, current_tenant: { type: 'Tenant', tag: null }, vendor: { type: 'Other', tag: null }, other: { type: 'Other', tag: null },
+};
 
 const splitName = (full: string) => {
   const parts = full.trim().replace(/\s+/g, ' ').split(' ');
@@ -54,11 +61,24 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
     const number = toE164((call.callback_number as string | null) || (call.from_number as string | null));
     if (!number) return null;
 
-    // Same number as someone already in the book: link, don't duplicate.
+    const meta = (call.ai_meta as Record<string, unknown> | null) ?? {};
+    const email = cleanEmail(meta.caller_email);
+
+    // Same number as someone already in the book: link, don't duplicate. (And give them the email they just
+    // dictated if their card has none.)
     const known = await matchContact(db, number, unit);
     if (known) {
       await db.from('crm_call_log').update({ contact_id: known.id, updated_at: new Date().toISOString() }).eq('id', call.id);
+      if (email) await db.from('crm_clients').update({ email }).eq('id', known.id).or('email.is.null,email.eq.');
       return { contactId: known.id, created: false };
+    }
+    // Same email as someone already in the book (new phone number): link to them rather than make a twin.
+    if (email) {
+      const { data: byEmail } = await db.from('crm_clients').select('id').eq('business_unit', unit).ilike('email', email).limit(1).maybeSingle();
+      if (byEmail) {
+        await db.from('crm_call_log').update({ contact_id: byEmail.id, updated_at: new Date().toISOString() }).eq('id', call.id);
+        return { contactId: byEmail.id as string, created: false };
+      }
     }
 
     const { data: profileRows } = await db.from('crm_profiles').select('id, email, first_name, last_name, role');
@@ -66,17 +86,18 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
     // The contact belongs to whoever the call-back was routed to, so card and call-back agree.
     const owner = (call.follow_up_assignee as string | null) ?? ownerFor(call as never, null, profiles);
     const backup = backupFor(owner, profiles);
-    const meta = (call.ai_meta as Record<string, unknown> | null) ?? {};
     const detail = [call.intent, meta.property ? `Asked about: ${meta.property}` : null, call.summary].filter(Boolean).join('\n');
     const { first, last } = splitName(name);
 
+    const filing = FILING[(meta.lead_type as LeadType) in FILING ? (meta.lead_type as LeadType) : 'other'];
     const rec: Record<string, unknown> = {
-      first_name: first, type: 'Other', business_unit: unit,
+      first_name: first, type: filing.type, business_unit: unit,
       agent_id: owner, assigned_agent_ids: backup && backup !== owner ? [backup] : [],
       lead_source: call.source === 'voicebot' ? 'Phone (voice bot)' : 'Phone call', channel: 'phone',
       unsubscribe_token: randomUUID(), phone: number,
-      tags: ['New Lead'],
+      tags: ['New Lead', ...(filing.tag ? [filing.tag] : []), ...(meta.hot ? ['Hot Lead'] : [])],
     };
+    if (email) rec.email = email;
     if (last) rec.last_name = last;
     if (detail) rec.notes = `📞 ${detail}`.slice(0, 2000);
     const { data: created, error } = await db.from('crm_clients').insert(rec).select('id').single();
