@@ -272,7 +272,7 @@ Rules:
 - If the caller is a vendor or sales call, take a brief message and end.
 - If the caller claims to be a government agency (IRS, sheriff, a warrant), threatens legal action, or asks for payment, card or bank details, it is a scam: say once that you can't help with that and end the call (action "end"). Do not take a message from them.
 - If they say "hold on", "one second" or put you down mid-call, say "No problem, take your time" and wait (action "continue"). If they say "hello?" or sound confused, answer right away and restate your last question in a few words.
-- When they give a callback number other than the caller ID, read it back once in digit groups and let them confirm it.
+- When they give a callback number other than the caller ID, your very next reply reads it back in digit groups ("two one zero, five five five, zero one four seven") and asks if that's right — before you answer anything else. Skip the read-back only when it's the caller ID number or they've already confirmed it.
 - If the caller says goodbye, has no further needs, or has left all the details, end the call with a brief goodbye.
 - If you couldn't hear them (empty or garbled input), say so briefly and ask again. After two failed attempts, say kindly that you can't hear them and invite them to call back anytime, then end. Don't promise a callback (you have no details) and never ask them to "leave a message" — there is no voicemail on this line.
 ${ctx.contact ? ctx.contact.first
@@ -372,6 +372,30 @@ function parseReply(text: string): BotReply | null {
       needs_follow_up: j.needs_follow_up !== false,
     };
   } catch { return null; }
+}
+
+/**
+ * A reply whose JSON is broken but whose "say" is intact (seen ~1 in 30 on Spanish turns): keep the spoken line AND the
+ * fields that decide how the call goes on — language (or the Spanish read-aloud voice would be dropped), action and
+ * who to ring — instead of throwing them away with the parse error.
+ */
+export function salvageReply(text: string): BotReply | null {
+  const m = text.match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return null;
+  let say: string;
+  try { say = (JSON.parse(`"${m[1]}"`) as string).trim(); } catch { return null; }
+  if (!say) return null;
+  const str = (k: string) => text.match(new RegExp(`"${k}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`))?.[1]?.trim() || null;
+  const act = str('action');
+  const lang = str('language');
+  const action: BotReply['action'] = act === 'end' || act === 'transfer' ? act : 'continue';
+  return {
+    say, action,
+    language: lang === 'es' ? 'es' : lang === 'en' ? 'en' : (/[¿¡áéíóúñ]/i.test(say) ? 'es' : null),
+    caller_name: str('caller_name'),
+    transfer_to: str('transfer_to')?.toLowerCase() ?? null,
+    urgent: /"urgent"\s*:\s*true/.test(text),
+  };
 }
 
 /** "GMT-05:00"-style offset of America/Chicago right now, as "-05:00" — so the model can write a correct ISO time. */
@@ -490,8 +514,8 @@ export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { cal
     // say it as-is — far better than "say that again" to a caller who just asked a clear question.
     const prose = text.replace(/```[\s\S]*?```/g, '').replace(/[*_#`]/g, '').replace(/\s+/g, ' ').trim();
     if (!/[{}]/.test(prose) && prose.length >= 8 && prose.length <= 700) return { say: prose, action: 'continue' };
-    const m = text.match(/"say"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (m) { try { const say = JSON.parse(`"${m[1]}"`) as string; if (say.trim()) return { say: say.trim(), action: 'continue' }; } catch { /* fall through */ } }
+    const salvaged = salvageReply(text);
+    if (salvaged) return salvaged;
     return { say: line('sorryRepeat', lang), action: 'continue' };
   } catch (e) {
     console.error('[voicebot] nextReply', e);
