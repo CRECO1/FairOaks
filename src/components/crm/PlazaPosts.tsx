@@ -2,6 +2,7 @@
 // Plaza Site — post news, events, notices and specials to fairoaksranchplaza.com.
 // Published posts appear on the public site within ~5 minutes; drafts stay private.
 import React, { useCallback, useEffect, useState } from 'react';
+import PlazaVendors from '@/components/crm/PlazaVendors';
 
 interface Post {
   id: string; slug: string; kind: 'news' | 'event' | 'notice' | 'promo'; title: string; summary: string; body: string;
@@ -33,6 +34,7 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'posts' | 'vendors'>('posts');
 
   const load = useCallback(async () => {
     const r = await fetch('/api/crm/plaza-posts', { headers: auth(authToken) });
@@ -77,8 +79,18 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
 
   const set = (k: keyof typeof blank, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
 
+  const tabBtn = (id: 'posts' | 'vendors', text: string): React.CSSProperties => ({ ...btn, ...(tab === id ? { background: '#111827', color: '#fff', border: '1px solid #111827' } : {}) });
+  const tabs = (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <button style={tabBtn('posts', 'News & events')} onClick={() => setTab('posts')}>News &amp; events</button>
+      <button style={tabBtn('vendors', 'Local businesses')} onClick={() => setTab('vendors')}>Local businesses</button>
+    </div>
+  );
+  if (tab === 'vendors') return (<div><h2 style={{ margin: '0 0 12px', fontSize: 22 }}>Plaza Site</h2>{tabs}<PlazaVendors authToken={authToken} showToast={showToast} isMobile={isMobile} /></div>);
+
   return (
     <div>
+      {tabs}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22 }}>Plaza Site</h2>
