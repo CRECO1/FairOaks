@@ -3,7 +3,7 @@
 import type { AgentCtx } from '@/lib/crm-assistant-tools';
 
 export function systemPrompt(ctx: AgentCtx, agentName: string, openDoc?: { submissionId: string; title: string; kind: 'loi' | 'form' } | null): string {
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const today = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const unit = ctx.businessUnit === 'commercial' ? 'CRECO (commercial real estate)' : ctx.businessUnit === 'residential' ? 'Fair Oaks Realty Group (residential)' : 'the brokerage (all workspaces)';
   // What is physically on the agent's screen. "This LOI", "this form", "the one I have open" means this.
   const onScreen = openDoc

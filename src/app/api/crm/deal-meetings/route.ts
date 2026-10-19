@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { chicagoToday } from '@/lib/chicago-time';
 
 // Logged meetings on a deal, each with tagged attendee CONTACTS (crm_clients). Purely
 // internal record-keeping — contacts are never notified. Access is gated by the parent
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     deal_id,
     agent_id: ctx.userId,
     business_unit: unit,
-    meeting_date: meeting_date || new Date().toISOString().slice(0, 10),
+    meeting_date: meeting_date || chicagoToday(),
     title: title || null,
     note: note || null,
     attendee_ids: Array.isArray(attendee_ids) ? attendee_ids.filter((x: unknown) => typeof x === 'string') : [],

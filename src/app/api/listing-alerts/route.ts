@@ -8,6 +8,7 @@ import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
 import { buildLeadContext } from '@/lib/lead-context';
 import crypto from 'crypto';
+import { chicagoToday } from '@/lib/chicago-time';
 
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'noreply@fairoaksrealtygroup.com';
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
         if (existing?.id) {
           // Already a contact — append the criteria rather than creating a twin.
           const { data: prior } = await admin.from('crm_clients').select('notes').eq('id', existing.id).maybeSingle();
-          const appended = [String(prior?.notes ?? '').trim(), `🔔 Listing alert signup — ${new Date().toISOString().slice(0, 10)}`, ...criteria]
+          const appended = [String(prior?.notes ?? '').trim(), `🔔 Listing alert signup — ${chicagoToday()}`, ...criteria]
             .filter(Boolean).join('\n');
           await admin.from('crm_clients').update({ notes: appended }).eq('id', existing.id);
           console.log(`[listing_alerts] existing contact ${existing.id} updated with alert criteria`);

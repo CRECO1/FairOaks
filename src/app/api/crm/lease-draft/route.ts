@@ -4,6 +4,7 @@ import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLease, normalizeLeaseValues, type LeaseValues } from '@/lib/lease-doc';
+import { chicagoToday } from '@/lib/chicago-time';
 
 /**
  * POST /api/crm/lease-draft
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
     .eq('listing_id', listing_id).order('suite');
 
   const tenants = (roll ?? []).filter(t => t.suite && !/^vacant$/i.test(t.tenant_name ?? ''));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = chicagoToday();
 
   const system = [
     'You prepare lease values for a commercial brokerage. You do not write the lease;',

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden } from '@/lib/crm-auth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { chicagoToday } from '@/lib/chicago-time';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -237,7 +238,7 @@ export async function POST(req: NextRequest) {
       if (!clientInFrom && !clientInTo && !clientInCc) continue;
 
       // email_date column is type 'date' — use YYYY-MM-DD only
-      const emailDate = dateStr ? new Date(dateStr).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+      const emailDate = chicagoToday(dateStr ? new Date(dateStr) : new Date());
       const direction = clientInFrom ? 'received' : 'sent';
 
       const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/crm_deal_emails`, {

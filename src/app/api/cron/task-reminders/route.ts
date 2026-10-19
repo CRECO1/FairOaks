@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { chicagoToday } from '@/lib/chicago-time';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = chicagoToday();
   const supabase = adminClient();
   const resend = new Resend(RESEND_KEY);
 
@@ -188,7 +189,7 @@ export async function GET(req: NextRequest) {
     <div style="background:#111;color:#fff;padding:20px 28px;">
       <div style="font-size:20px;font-weight:700;color:#c9922c;">📋 Daily Task Digest</div>
       <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:4px;">
-        ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'long', month: 'long', day: 'numeric' })}
       </div>
     </div>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { chicagoToday } from '@/lib/chicago-time';
 
 // Hand a call list to an agent: one open 'call' task per person in that agent's Call Queue.
 // POST { assigned_to, due_date?: 'YYYY-MM-DD', items: [{ client_id, title, description?, priority? }] }
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
   const assignee = String(body.assigned_to || ctx.userId);
   if (assignee !== ctx.userId && !admin) return forbidden('Only an admin can assign calls to someone else');
   const unit = admin ? (body.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit || 'commercial');
-  const due = /^\d{4}-\d{2}-\d{2}$/.test(String(body.due_date ?? '')) ? String(body.due_date) : new Date().toISOString().slice(0, 10);
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(String(body.due_date ?? '')) ? String(body.due_date) : chicagoToday();
 
   const db = adminClient();
   const { data: who } = await db.from('crm_profiles').select('id, first_name, last_name, business_unit, role').eq('id', assignee).maybeSingle();

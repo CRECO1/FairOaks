@@ -11,6 +11,7 @@ import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
 import { generateLoi, editLoi, type LoiEdit } from '@/lib/loi-generate';
 import { exhibitLetter, type LoiExhibit } from '@/lib/loi-spec';
 import { liveEnvelope, logDocEdit, restampOverlay, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
+import { chicagoToday, chicagoDateUS } from '@/lib/chicago-time';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -648,7 +649,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data: c } = await db.from('crm_clients').select('notes, business_unit').eq('id', input.contact_id).single();
         if (!c) return j({ error: 'Contact not found' });
         if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
-        const stamp = new Date().toLocaleDateString('en-US');
+        const stamp = chicagoDateUS();
         const merged = `${c?.notes ? c.notes + '\n\n' : ''}[${stamp}] ${input.note}`;
         const { error } = await db.from('crm_clients').update({ notes: merged }).eq('id', input.contact_id);
         if (error) return j({ error: error.message });
@@ -660,7 +661,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { data: deal } = await db.from('crm_deals').select('client_id, business_unit').eq('id', input.deal_id).maybeSingle();
         if (!deal || (await hiddenDeals(db, ctx)).includes(input.deal_id)) return j({ error: 'Deal not found' });
         if (ctx.businessUnit && deal.business_unit !== ctx.businessUnit) return j({ error: 'That deal is in a different workspace' });
-        const { error } = await db.from('crm_deals').update({ stage: input.stage, last_touch: new Date().toISOString().slice(0, 10) }).eq('id', input.deal_id);
+        const { error } = await db.from('crm_deals').update({ stage: input.stage, last_touch: chicagoToday() }).eq('id', input.deal_id);
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Moved a deal to “${input.stage}”`, deal?.client_id);
         return j({ ok: true, stage: input.stage });
@@ -891,7 +892,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
             if (input.property === undefined && !deal.property) patch.property = l.name;
           }
         }
-        if (input.append_note) patch.notes = `${deal.notes ? deal.notes + '\n\n' : ''}[${new Date().toLocaleDateString('en-US')}] ${String(input.append_note).trim()}`;
+        if (input.append_note) patch.notes = `${deal.notes ? deal.notes + '\n\n' : ''}[${chicagoDateUS()}] ${String(input.append_note).trim()}`;
         if (!Object.keys(patch).length) return j({ error: 'Nothing to update' });
         patch.last_touch = centralToday();
         const { data, error } = await db.from('crm_deals').update(patch).eq('id', input.deal_id).select('id, client, type, property, value, stage, representation_side, listing_id').single();

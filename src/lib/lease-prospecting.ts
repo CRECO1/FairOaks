@@ -1,10 +1,11 @@
 import { adminClient } from '@/lib/supabase-admin';
+import { chicagoToday } from '@/lib/chicago-time';
 
 // Renewal outreach starts this many days before a lease expires when the contact
 // doesn't specify its own lead time (lxp_follow_up_days). ~4 months.
 export const DEFAULT_LEAD_DAYS = 120;
 
-function todayISO() { return new Date().toISOString().slice(0, 10); }
+function todayISO() { return chicagoToday(); }
 function shiftDays(dateStr: string, n: number) {
   const d = new Date(dateStr + 'T12:00:00'); d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);

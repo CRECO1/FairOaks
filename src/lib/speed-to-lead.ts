@@ -1,3 +1,4 @@
+import { chicagoHourDow } from '@/lib/chicago-time';
 /**
  * Speed-to-lead + best-time-to-call helpers for the call queue. Pure and client-safe.
  *
@@ -80,13 +81,13 @@ export function pickedUpHint(acts: { type: string; note?: string | null; created
   let nowGood = false;
   for (const h of hits) {
     const d = new Date(h.created_at);
-    const hr = d.getHours();
-    const key = `${d.getDay()}-${hr}`;
+    const { hour: hr, dow } = chicagoHourDow(d);
+    const key = `${dow}-${hr}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const label = `${d.toLocaleDateString('en-US', { weekday: 'short' })} ~${hr % 12 || 12} ${hr < 12 ? 'am' : 'pm'}`;
+    const label = `${d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'short' })} ~${hr % 12 || 12} ${hr < 12 ? 'am' : 'pm'}`;
     parts.push(label);
-    if (Math.abs(hr - now.getHours()) <= 1) nowGood = true;
+    if (Math.abs(hr - chicagoHourDow(now).hour) <= 1) nowGood = true;
   }
   return { text: parts.slice(0, 3).join(' · '), nowGood };
 }
@@ -96,8 +97,8 @@ export function bestHours(rows: { note?: string | null; created_at: string }[], 
   const tot = new Array(24).fill(0) as number[], hit = new Array(24).fill(0) as number[];
   for (const r of rows) {
     const d = new Date(r.created_at);
-    if (d.getDay() === 0) continue;
-    const h = d.getHours();
+    const { hour: h, dow } = chicagoHourDow(d);
+    if (dow === 0) continue;
     tot[h]++; if (isConnectNote(r.note)) hit[h]++;
   }
   return tot.map((n, hour) => ({ hour, n, rate: n ? hit[hour] / n : 0 }))

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { chicagoToday, chicagoLocalToUTC } from '@/lib/chicago-time';
 
 function toUnit(v: string | null) {
   return v === 'residential' ? 'residential' : 'commercial';
@@ -35,6 +36,9 @@ export async function GET(req: NextRequest) {
   const end = new Date(weekStart + 'T12:00:00Z');
   end.setDate(end.getDate() + 6);
   const weekEnd = end.toISOString().split('T')[0];
+  // the week as the team lives it: Central midnight to Central midnight, not UTC
+  const weekStartUtc = chicagoLocalToUTC(weekStart, '00:00');
+  const weekEndUtc = chicagoLocalToUTC(new Date(end.getTime() + 86_400_000).toISOString().split('T')[0], '00:00');
 
   // ── Activity logs for the week ─────────────────────────────────────────
   const { data: logs } = await supabase
@@ -51,8 +55,8 @@ export async function GET(req: NextRequest) {
     .from('crm_clients')
     .select('created_at')
     .eq('business_unit', unit)
-    .gte('created_at', weekStart + 'T00:00:00Z')
-    .lte('created_at', weekEnd + 'T23:59:59Z');
+    .gte('created_at', weekStartUtc)
+    .lt('created_at', weekEndUtc);
 
   // Tasks completed each day this week
   const { data: tasksDone } = await supabase
@@ -60,8 +64,8 @@ export async function GET(req: NextRequest) {
     .select('updated_at')
     .eq('business_unit', unit)
     .eq('status', 'done')
-    .gte('updated_at', weekStart + 'T00:00:00Z')
-    .lte('updated_at', weekEnd + 'T23:59:59Z');
+    .gte('updated_at', weekStartUtc)
+    .lt('updated_at', weekEndUtc);
 
   // Tasks that were overdue (due_date within the week, not yet done)
   const { data: tasksOverdue } = await supabase
@@ -80,11 +84,11 @@ export async function GET(req: NextRequest) {
     auto_stats[d.toISOString().split('T')[0]] = { new_records: 0, tasks_done: 0, tasks_overdue: 0 };
   }
   (newContacts ?? []).forEach(c => {
-    const day = c.created_at?.split('T')[0];
+    const day = c.created_at ? chicagoToday(new Date(c.created_at)) : null;
     if (day && auto_stats[day]) auto_stats[day].new_records++;
   });
   (tasksDone ?? []).forEach(t => {
-    const day = t.updated_at?.split('T')[0];
+    const day = t.updated_at ? chicagoToday(new Date(t.updated_at)) : null;
     if (day && auto_stats[day]) auto_stats[day].tasks_done++;
   });
   (tasksOverdue ?? []).forEach(t => {

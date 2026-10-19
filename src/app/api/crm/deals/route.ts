@@ -3,6 +3,7 @@ import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole 
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { guardRead, capLimit } from '@/lib/crm-read-guard';
+import { chicagoToday } from '@/lib/chicago-time';
 
 // Deals (crm_deals) for the property-workspace "Deals" tab: list the deals at a
 // listing, create a deal pre-linked to a property, and link/unlink an existing
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     agent_id: b.agent_id || ctx.userId,
     listing_id: b.listing_id || null,
     business_unit: unit,
-    last_touch: new Date().toISOString().slice(0, 10),
+    last_touch: chicagoToday(),
   };
   const { data, error } = await supabase.from('crm_deals').insert([row]).select(DEAL_COLS).single();
   if (error) { console.error('[api/deals] POST', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
@@ -86,7 +87,7 @@ export async function PATCH(req: NextRequest) {
     patch.representation_side = b.representation_side;
   }
   if (Object.keys(patch).length === 0) return NextResponse.json({ error: 'nothing to update' }, { status: 400 });
-  patch.last_touch = new Date().toISOString().slice(0, 10);
+  patch.last_touch = chicagoToday();
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_deals').update(patch).eq('id', id).select(DEAL_COLS).single();
   if (error) { console.error('[api/deals] PATCH', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }

@@ -12,6 +12,7 @@ import { isBrokerFilled } from '@/lib/esign-fields';
 import { PDFDocument, StandardFonts, rgb, PDFImage } from 'pdf-lib';
 import { Resend } from 'resend';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { chicagoDateUS } from '@/lib/chicago-time';
 
 // The CRM (and therefore the /sign page) is served from this origin. Mirrors the
 // hardcoded BASE_URL convention in action-plans/send-now + review-request.
@@ -314,7 +315,7 @@ export async function buildExecutedParts(
         pg.drawText('X', { x: x + Math.max(0, (box - xw) / 2), y: baseline + Math.max(1, (box - sz * 0.72) / 2), size: sz, font: bold, color: rgb(0.06, 0.06, 0.1) });
       }
     } else {
-      pg.drawText(winAnsi(s.signedAt ? new Date(s.signedAt).toLocaleDateString('en-US') : ''), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
+      pg.drawText(winAnsi(s.signedAt ? chicagoDateUS(new Date(s.signedAt)) : ''), { x, y: baseline + 2, size: 10, font, color: rgb(0.06, 0.06, 0.1) });
       inline.add(s.email);
     }
   }

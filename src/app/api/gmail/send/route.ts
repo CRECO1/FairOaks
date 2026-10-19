@@ -3,6 +3,7 @@ import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
+import { chicagoToday } from '@/lib/chicago-time';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -220,7 +221,7 @@ export async function POST(req: NextRequest) {
 
     const fromLine = agentName ? `${encodeHeader(agentName)} <${gmailEmail}>` : gmailEmail;
     const plainBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
-    const emailDate = new Date().toISOString().slice(0, 10);
+    const emailDate = chicagoToday();
 
     // One Gmail send + one logged row. Each copy carries its OWN tracking id, so a copy
     // addressed to a single person makes an open attributable to that person.
