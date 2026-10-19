@@ -84,6 +84,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [actFor, setActFor] = useState<string | null>(null);        // envelope whose activity is open
   const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
   const [stats, setStats] = useState<Stats | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);     // envelope whose ⋯ menu is open
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = useCallback(async () => {
@@ -275,103 +276,66 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const closedEnvs = shown.filter(isClosed);
   const groups: Array<{ key: string; label: string; rows: Envelope[] }> = [
     { key: 'active', label: 'Out for signature', rows: activeEnvs },
-    { key: 'done', label: '✓ Signed & completed', rows: completedEnvs },
+    { key: 'done', label: 'Signed & completed', rows: completedEnvs },
     ...(showAll ? [{ key: 'closed', label: 'Cancelled & archived', rows: closedEnvs }] : []),
   ].filter(g => g.rows.length > 0);
 
+  const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
+  const median = stats?.median_hours_to_sign ?? null;
+  const turn = median == null ? null : median < 1 ? `${Math.round(median * 60)}m` : median < 48 ? `${Math.round(median)}h` : `${Math.round(median / 24)}d`;
+  // One quiet line instead of a wall of cards. Email-open is only meaningful once
+  // delivery tracking has reported back, so it is dropped until it has.
+  const metrics: string[] = stats && stats.sent > 0 ? [
+    `${stats.sent} sent`,
+    ...(stats.tracked ? [`${stats.email_opened_pct}% email opened`] : []),
+    `${stats.viewed_pct}% doc opened`,
+    `${stats.signed_pct}% signed`,
+    ...(turn ? [`${turn} typical turnaround`] : []),
+    ...(stats.bounced ? [`${stats.bounced} bounced`] : []),
+    ...(stats.declined ? [`${stats.declined} declined`] : []),
+  ] : [];
+
+  const primaryBtn: React.CSSProperties = { ...mini, background: '#c9922c', color: '#fff', border: 'none' };
+
   return (
-    <div className="es-touch" style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif" }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap', rowGap: 8 }}>
-        <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>✍️ Signature requests</h2>
-        <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${activeEnvs.length} out for signature${completedEnvs.length ? ` · ${completedEnvs.length} signed` : ''}${byAgent ? ` · ${byAgent}` : ''}`}</span>
-        {/* Pushes the controls right without forcing them onto their own line;
-            `flex-grow` on a zero-basis spacer was wrapping Refresh on desktop. */}
-        <span style={{ flex: '1 1 auto', minWidth: 0 }} />
-        {(() => {
-          const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
-          if (agents.length < 2) return null;
-          return (
-            <select value={byAgent} onChange={e => setByAgent(e.target.value)} title="Show only one agent's documents"
-              style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
-              <option value="">All agents</option>
-              {agents.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
-          );
-        })()}
+    <div className="es-touch" style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif", ...(dragging ? { outline: '2px dashed #c9922c', outlineOffset: 6, borderRadius: 12 } : {}) }}
+      onDragOver={e => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
+      onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }}>
+      <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10, marginBottom: 6 }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111' }}>Signature requests</h2>
+          <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 1 }}>
+            {loading ? ' ' : `${activeEnvs.length} out for signature${completedEnvs.length ? ` · ${completedEnvs.length} signed` : ''}`}
+          </div>
+        </div>
+        <button onClick={() => { setPickDeal(true); setDealPick(null); setDealDocs(null); }} disabled={uploading} style={mini}>From a deal</button>
+        <button onClick={() => fileRef.current?.click()} disabled={uploading} style={primaryBtn}>{uploading ? 'Importing…' : '+ Upload PDF'}</button>
+      </div>
+
+      {metrics.length > 0 && (
+        <div title={stats && stats.tracked < stats.sent ? `Email opens are tracked for ${stats.tracked} of ${stats.sent} invites — only mail sent since delivery tracking was switched on reports back.` : undefined}
+          style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 12 }}>
+          {metrics.join('  ·  ')}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f2f4' }}>
+        <span style={{ fontSize: 12.5, color: '#9ca3af', flex: '1 1 auto' }}>Drop a PDF anywhere to start a request.</span>
+        {agents.length > 1 && (
+          <select value={byAgent} onChange={e => setByAgent(e.target.value)} title="Show only one agent's documents"
+            style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+            <option value="">All agents</option>
+            {agents.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; archived
         </label>
-        <button onClick={load} style={{ ...mini, color: '#9ca3af', flexShrink: 0 }}>⟳ Refresh</button>
-      </div>
-      <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 14 }}>Import a document to be signed, or track the ones already out. Nudge the current signer or jump to the deal to manage.</p>
-
-      {stats && stats.sent > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18 }}>
-          {(() => {
-            // Email opened and document opened are deliberately separate: a signer
-            // can read the email and never click through, and that is the most
-            // common way a signature stalls.
-            const median = stats.median_hours_to_sign;
-            const turn = median == null ? '—' : median < 1 ? `${Math.round(median * 60)}m` : median < 48 ? `${Math.round(median)}h` : `${Math.round(median / 24)}d`;
-            const cards: Array<{ label: string; value: string; sub: string; tone?: 'good' | 'warn' | 'bad' }> = [
-              { label: 'Sent', value: String(stats.sent), sub: stats.sent === 1 ? 'invite' : 'invites' },
-              { label: 'Email opened', value: stats.tracked ? `${stats.email_opened_pct}%` : '—',
-                sub: stats.tracked ? `${stats.email_opened} of ${stats.sent}` : 'not tracked yet',
-                tone: !stats.tracked ? undefined : stats.email_opened_pct >= 60 ? 'good' : stats.email_opened_pct >= 30 ? 'warn' : 'bad' },
-              { label: 'Doc opened', value: `${stats.viewed_pct}%`, sub: `${stats.viewed} of ${stats.sent}`,
-                tone: stats.viewed_pct >= 60 ? 'good' : stats.viewed_pct >= 30 ? 'warn' : 'bad' },
-              { label: 'Signed', value: `${stats.signed_pct}%`, sub: `${stats.signed} of ${stats.sent}`,
-                tone: stats.signed_pct >= 60 ? 'good' : stats.signed_pct >= 30 ? 'warn' : 'bad' },
-              { label: 'Typical turnaround', value: turn, sub: stats.signed ? 'median, sent to signed' : 'none signed yet' },
-            ];
-            if (stats.bounced) cards.push({ label: 'Bounced', value: String(stats.bounced), sub: 'bad address', tone: 'bad' });
-            if (stats.declined) cards.push({ label: 'Declined', value: String(stats.declined), sub: `${stats.declined_pct}% of sent`, tone: 'bad' });
-            const toneColor = { good: '#15803d', warn: '#92400e', bad: '#b91c1c' } as const;
-            return cards.map(c => (
-              <div key={c.label} style={{ flex: '1 1 120px', minWidth: 112, background: '#fff', border: '1px solid #eef0f3', borderRadius: 10, padding: '10px 13px' }}>
-                <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.06em', color: '#9ca3af', fontWeight: 700 }}>{c.label}</div>
-                <div style={{ fontSize: 21, fontWeight: 700, marginTop: 3, color: c.tone ? toneColor[c.tone] : '#111827', fontFamily: "'DM Sans',sans-serif" }}>{c.value}</div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.sub}</div>
-              </div>
-            ));
-          })()}
-        </div>
-      )}
-      {stats && stats.sent > 0 && stats.tracked < stats.sent && (
-        <p style={{ fontSize: 11.5, color: '#9ca3af', marginTop: -8, marginBottom: 18 }}>
-          Email opens are tracked for {stats.tracked} of {stats.sent} invites — only mail sent since delivery tracking was switched on reports back. Document opens and signatures cover all of them.
-        </p>
-      )}
-
-      {/* ── Import ── */}
-      <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
-        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
-      <div
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }}
-        onClick={() => !uploading && fileRef.current?.click()}
-        style={{ border: `2px dashed ${dragging ? '#c9922c' : '#e6d3a2'}`, background: dragging ? '#fdf6e9' : '#fffdf6', borderRadius: 12,
-          padding: '20px 18px', textAlign: 'center', cursor: uploading ? 'default' : 'pointer', marginBottom: 22 }}>
-        <div style={{ fontSize: 26, marginBottom: 4 }}>{uploading ? '⏳' : '📥'}</div>
-        <div style={{ fontSize: 14, fontWeight: 800, color: '#111' }}>{uploading ? 'Importing…' : 'Send a document for signature'}</div>
-        <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 3 }}>
-          Drop a PDF here, or pick where it comes from — add the signers, drag where each of them signs and dates, then review before it goes out.
-        </div>
-        {!uploading && (
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 12 }}>
-            {/* Both buttons stopPropagation: the zone itself opens the file browser, so
-                without it "From a deal" would open the picker AND the file dialog. */}
-            <button onClick={e => { e.stopPropagation(); setPickDeal(true); setDealPick(null); setDealDocs(null); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 9, border: '1px solid #e6d3a2', background: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700, color: '#a06a12' }}>
-              📁 From a deal
-            </button>
-            <button onClick={e => { e.stopPropagation(); fileRef.current?.click(); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 9, border: 'none', background: '#c9922c', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 700 }}>
-              💻 From my computer
-            </button>
-          </div>
-        )}
+        <button onClick={load} title="Refresh" style={{ ...mini, color: '#9ca3af', border: 'none', background: 'none', padding: '6px 4px' }}>Refresh</button>
       </div>
 
       {/* ── Pick a document out of a deal's folder ── */}
@@ -438,7 +402,6 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {queue.map(({ doc: d, dupes }) => (
               <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
                 <div style={{ flex: '1 1 190px', minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Document'}</div>
                   <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
@@ -446,8 +409,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                     {dupes > 0 && ` · newest of ${dupes + 1} copies`}
                   </div>
                 </div>
-                <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }}>✕</button>
-                {onCompose && <button onClick={() => onCompose({ doc: d })} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Prepare &amp; send →</button>}
+                <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#b91c1c', borderColor: '#f3e4e4' }}>Remove</button>
+                {onCompose && <button onClick={() => onCompose({ doc: d })} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Prepare &amp; send</button>}
               </div>
             ))}
           </div>
@@ -459,7 +422,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
           <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
             <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is waiting to be signed.</div>
-            <div style={{ fontSize: 13 }}>Import a document above, or send one from a deal&apos;s E-Sign tab.</div>
+            <div style={{ fontSize: 13 }}>Upload a PDF above, or send one from a deal&apos;s E-Sign tab.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -474,7 +437,6 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               const dealName = env.crm_deals?.property || env.crm_deals?.client || 'Deal';
               return (
                 <div key={env.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 22, flexShrink: 0 }}>📄</span>
                   {/* Needs a basis wide enough to be worth a line of its own; below that
                       the actions wrap underneath instead of off the side of the screen. */}
                   <div style={{ flex: '1 1 190px', minWidth: 0 }}>
@@ -487,16 +449,16 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                           · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status === 'declined' ? 'Declined' : env.status}
                         </span>
                       )}
-                      {env.archived_at && <span style={{ marginLeft: 6, fontWeight: 700, color: '#6b7280' }}>· 🗄 Archived</span>}
+                      {env.archived_at && <span style={{ marginLeft: 6, fontWeight: 700, color: '#6b7280' }}>· Archived</span>}
                     </div>
                     {declinedBy ? (
                       <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 3, fontWeight: 600 }}>
-                        ✋ Declined by {declinedBy.name}
+                        Declined by {declinedBy.name}
                         {declinedBy.decline_reason && <span style={{ color: '#6b7280', fontWeight: 400 }}> — “{declinedBy.decline_reason}”</span>}
                       </div>
                     ) : current && (
                       <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
-                        {current.in_person ? '🖊 To sign in person: ' : '⏳ Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · opened the doc' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
+                        {current.in_person ? 'To sign in person: ' : 'Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · opened the doc' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
                         {!current.in_person && current.delivery && (() => {
                           const d = current.delivery;
                           const bad = d === 'bounced' || d === 'complained' || d === 'failed';
@@ -528,43 +490,45 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                       </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginLeft: 'auto' }}>
-                  {/* A completed request is where you come to fetch the executed
-                      document — view it, or save it without the certificate. */}
-                  {env.status === 'completed' && (env.executed_clean_url || env.executed_url) && (() => {
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', position: 'relative' }}>
+                  {/* One primary action per row; everything else lives under ⋯. */}
+                  {env.status === 'completed' && (env.executed_clean_url || env.executed_url) ? (() => {
                     const view = env.executed_clean_url || env.executed_url!;
                     const file = `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`;
-                    const dl = (u: string) => `${u}${u.includes('?') ? '&' : '?'}download=${encodeURIComponent(file)}`;
+                    return <button onClick={() => onPreview?.({ url: view, name: file })} title="View the signed document"
+                      style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>View signed</button>;
+                  })()
+                  : current && !current.in_person ? <button disabled={busy === env.id} onClick={() => nudge(env)} title="Email the current signer a reminder" style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : 'Nudge'}</button>
+                  : env.deal_id && onOpenDeal ? <button onClick={() => onOpenDeal(env.deal_id!)} style={primaryBtn}>Open deal</button> : null}
+                  <button onClick={() => setMenuFor(menuFor === env.id ? null : env.id)} aria-label="More actions" aria-expanded={menuFor === env.id}
+                    style={{ ...mini, padding: '8px 11px', fontSize: 16, lineHeight: 1 }}>⋯</button>
+                  {menuFor === env.id && (() => {
+                    const close = () => setMenuFor(null);
+                    const item: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textDecoration: 'none', boxSizing: 'border-box' };
+                    const dl = (u: string) => `${u}${u.includes('?') ? '&' : '?'}download=${encodeURIComponent(`${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`)}`;
                     return (
                       <>
-                        <button onClick={() => onPreview?.({ url: view, name: file })} title="View the signed document"
-                          style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>📄 View signed</button>
-                        <a href={dl(view)} title="Download the signed document (no Certificate of Completion)"
-                          style={{ ...mini, textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4', display: 'inline-flex', alignItems: 'center' }}>⬇</a>
-                        {env.executed_url && env.executed_clean_url && (
-                          <a href={dl(env.executed_url)} title="Download with the Certificate of Completion"
-                            style={{ ...mini, textDecoration: 'none', color: '#6b7280', display: 'inline-flex', alignItems: 'center' }}>⬇ + cert</a>
-                        )}
+                        <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                        <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 41, minWidth: 190, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 28px rgba(0,0,0,.14)', padding: '5px 0' }}>
+                          {env.deal_id && onOpenDeal && <button role="menuitem" style={item} onClick={() => { close(); onOpenDeal(env.deal_id!); }}>Open deal</button>}
+                          <button role="menuitem" style={item} onClick={() => { close(); toggleActivity(env); }}>{actFor === env.id ? 'Hide activity' : 'View activity'}</button>
+                          {env.status === 'completed' && (env.executed_clean_url || env.executed_url) && (
+                            <a role="menuitem" style={item} href={dl(env.executed_clean_url || env.executed_url!)} onClick={close}>Download signed</a>
+                          )}
+                          {env.status === 'completed' && env.executed_url && env.executed_clean_url && (
+                            <a role="menuitem" style={item} href={dl(env.executed_url)} onClick={close}>Download with certificate</a>
+                          )}
+                          {current && <button role="menuitem" style={item} disabled={busy === env.id} onClick={() => { close(); signInPerson(env); }}>Sign in person</button>}
+                          <div style={{ borderTop: '1px solid #f1f2f4', margin: '5px 0' }} />
+                          {env.archived_at
+                            ? <button role="menuitem" style={item} disabled={busy === env.id} onClick={() => { close(); restoreEnv(env); }}>Restore</button>
+                            : <button role="menuitem" style={item} disabled={busy === env.id} onClick={() => { close(); archiveEnv(env); }}>Archive</button>}
+                          {env.status !== 'voided' && !env.archived_at && env.status !== 'completed' && <button role="menuitem" style={{ ...item, color: '#b91c1c' }} disabled={busy === env.id} onClick={() => { close(); voidEnv(env); }}>Cancel request</button>}
+                          {isSuperAdmin && <button role="menuitem" style={{ ...item, color: '#b91c1c' }} disabled={busy === env.id} onClick={() => { close(); purgeEnv(env); }}>Delete permanently</button>}
+                        </div>
                       </>
                     );
                   })()}
-                  {/* Offered for whoever's turn it is, not only pre-marked recipients —
-                      a tenant can turn up at the office without anyone planning for it. */}
-                  {current && (
-                    <button disabled={busy === env.id} onClick={() => signInPerson(env)}
-                      title={`Open ${current.name}'s signing page on this device`}
-                      style={{ ...mini, color: '#5b3d91', borderColor: '#ded2f2', background: '#faf7ff' }}>
-                      {busy === env.id ? '…' : '🖊 In person'}
-                    </button>
-                  )}
-                  <button onClick={() => toggleActivity(env)} title="Every open, signature and send on this document" style={{ ...mini, ...(actFor === env.id ? { color: '#1e40af', borderColor: '#bfdbfe', background: '#eff6ff' } : {}) }}>📊 Activity</button>
-                  {current && !current.in_person && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : '🔔 Nudge'}</button>}
-                  {env.status !== 'voided' && !env.archived_at && <button disabled={busy === env.id} onClick={() => voidEnv(env)} title="Stop this request — the document stays" style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>⊘ Void</button>}
-                  {env.archived_at
-                    ? <button disabled={busy === env.id} onClick={() => restoreEnv(env)} title="Put this back in the active list" style={{ ...mini }}>↩︎ Restore</button>
-                    : <button disabled={busy === env.id} onClick={() => archiveEnv(env)} title="File this away — everything is kept" style={{ ...mini }}>🗄 Archive</button>}
-                  {isSuperAdmin && <button disabled={busy === env.id} onClick={() => purgeEnv(env)} title="Permanently delete — destroys the signatures and the executed copy" style={{ ...mini, color: '#fff', background: '#b91c1c', border: 'none' }}>🗑</button>}
-                  {env.deal_id && onOpenDeal && <button onClick={() => onOpenDeal(env.deal_id!)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Open →</button>}
                   </div>
                   {actFor === env.id && (
                     // Its own full-width line inside the (wrapping) envelope card, rather than
