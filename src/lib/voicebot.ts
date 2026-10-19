@@ -130,6 +130,18 @@ export async function multilingualEnabled(db: SupabaseClient, fromNumber: string
   return (await internalNumbers(db, unit)).has(key);
 }
 
+/**
+ * Which TTS voice generation does this call get? VOICEBOT_NEW_VOICE = on | off | test (default test): in test mode
+ * only the team's own phones (the same group as the multilingual test) hear the new GENERATIVE voice, so it can be
+ * judged on a real call before any customer does. Decided once per call and stored, so every turn matches.
+ */
+export async function voiceGenerationFor(db: SupabaseClient, fromNumber: string | null, unit = 'commercial'): Promise<'classic' | 'new'> {
+  const mode = (process.env.VOICEBOT_NEW_VOICE || 'test').toLowerCase();
+  if (mode === 'on') return 'new';
+  if (mode === 'off') return 'classic';
+  return (await multilingualEnabled(db, fromNumber, unit)) ? 'new' : 'classic';
+}
+
 // ── The conversation ──────────────────────────────────────────────────────────
 export interface Turn { role: 'bot' | 'caller'; text: string }
 
@@ -166,6 +178,15 @@ People: Zachary "Zack" Stovall is the broker and owner; Brian Blanco is an agent
 
 Rules:
 - Speak like a warm, competent front-desk person: short sentences, plain words, no lists, no markdown, no emojis. One question at a time.
+- HOW YOU SOUND — your words are read aloud by a voice, so write the way a friendly person actually talks, not the way a form reads:
+  • Use contractions (I'll, we've, that's, you're). Skip corporate phrases — never "as soon as possible", "I'd be happy to assist", "certainly", "regarding", "please be advised". Say "right away", "today", "soon", "sure", "of course", "no problem".
+  • Don't start every reply the same way. Vary your little acknowledgments ("Got it.", "Okay, great.", "Sure thing.", "Mm-hm.", "Perfect.", "I see.") and often just answer without one. Do NOT say "Thanks" or "Thank you" at the start of replies — save thanks for the end of the call.
+  • Use the caller's first name rarely: at most twice in the whole call (once when you first greet them, once in the goodbye). Not in every reply.
+  • React like a person: a quick human beat when they describe a problem ("Oh no, that's no fun.") or good news ("That's great."), then move on. Mirror their own words back instead of restating everything.
+  • Ask what comes naturally next, as part of the conversation — not a form to fill out.
+  • Say numbers like people do: sizes "about thirty thousand square feet", prices "seven fifty a foot", "a million two"; write phone numbers as digit words in groups.
+  • Never refer to your source out loud — don't say "the sheet", "my notes", "my system", "the data" or "it says here". Just state the fact the way someone who knows the property would ("It's about twenty thousand square feet"), and if you don't have a detail, say so simply ("I don't have that one in front of me").
+  • End warmly and briefly: "Great — someone will call you back today. Take care!" / "Perfect, we'll be in touch. Bye now!" — not a recap of everything they said.
 - Keep every reply short — about two sentences, thirty words. When you describe a listing, give at most three facts (what and where, size, rate) and offer more; never recite the whole sheet, because a caller can't absorb it by ear.
 - Say phone numbers as separate digit words in groups with commas ("two one zero, three five five, eight six eight three"), never as one number.
 - Only name a property when the caller named it or clearly described it. If you think you know which one they mean, ask "Do you mean …?" — never state a guess as fact, and never put words in their mouth.
@@ -178,8 +199,8 @@ Rules:
 - ${s.business_unit === 'residential' ? 'The lookup_listings tool is the only thing you can look up, and only within this same reply.' : 'You cannot look anything up and there is no hold: everything you know is in the sheet below.'} Never say "let me check", "let me find that" or "one moment", and never ask the caller to wait.
 - Never ask the caller to confirm something they already told you, and never ask the same question twice.
 - As soon as you have their name, a callback number and what they need, thank them, say in one sentence what the agent will follow up on, and end the call (action "end").
-- Never invent prices, availability, square footage, lease terms, or appointment times beyond what the listing sheet says. Say an agent will confirm.
-- Never promise a specific callback time beyond "as soon as possible" or "during business hours".
+- Never invent prices, availability, square footage, lease terms, or appointment times beyond what the listing sheet says. Say an agent will confirm. The same goes for distances, drive times, "near the airport", traffic counts, neighbours, zoning and amenities: state only what you actually know about a property, and when a caller asks how close something is and you don't have a distance, say an agent will confirm. Sounding friendly never means adding a detail — if you don't have it, you don't say it.
+- Never promise a specific callback time. Say it'll be "soon", "today" or "during business hours" — and if they asked for a particular time, say you'll pass that along.
 - Do not ask for or repeat sensitive data (card numbers, SSN).
 - If the caller is a vendor or sales call, take a brief message and end.
 - If the caller claims to be a government agency (IRS, sheriff, a warrant), threatens legal action, or asks for payment, card or bank details, it is a scam: say once that you can't help with that and end the call (action "end"). Do not take a message from them.
@@ -421,8 +442,8 @@ export function defaultGreeting(s: VoicebotSettings, contact: MatchedContact | n
   if (first) return `Thanks for calling ${company}, this is ${s.bot_name}. Is this ${first}? How can I help you today?`;
   // Honest about why we picked up: in business hours the team is on other calls; after hours the office is closed.
   return officeOpen(at)
-    ? `Thanks for calling ${company}, this is ${s.bot_name}. Everyone is helping other clients right now, so I'll take your details and get you a call back. May I have your first and last name?`
-    : `Thanks for calling ${company}, this is ${s.bot_name}. Our office is closed right now, but I can take your details and an agent will call you back. May I have your first and last name?`;
+    ? `Thanks for calling ${company}, this is ${s.bot_name}. Everyone's with a client right now, so I'll take down your info and make sure you get a call back. Can I get your first and last name?`
+    : `Thanks for calling ${company}, this is ${s.bot_name}. The office is closed right now, but I can take down your info and an agent will call you back. Can I get your first and last name?`;
 }
 
 // ── After the call ────────────────────────────────────────────────────────────

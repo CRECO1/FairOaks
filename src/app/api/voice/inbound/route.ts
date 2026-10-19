@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { gather, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin, startRecordingWhenLive } from '@/lib/twilio';
-import { defaultGreeting, loadSettings, matchContact, unitForNumber, multilingualEnabled } from '@/lib/voicebot';
+import { defaultGreeting, loadSettings, matchContact, unitForNumber, multilingualEnabled, voiceGenerationFor } from '@/lib/voicebot';
 import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
 
@@ -38,12 +38,13 @@ export async function POST(req: Request) {
   const greeting = defaultGreeting(settings, contact);
   // English + Spanish recognition for this call (see multilingualEnabled); remembered so every later turn matches.
   const multi = await multilingualEnabled(db, from, unit).catch(() => false);
+  const voice = await voiceGenerationFor(db, from, unit).catch(() => 'classic' as const);
   const { data: call } = await db.from('crm_call_log').insert({
     business_unit: unit, source: 'voicebot', kind: 'bot', external_id: callSid, direction: 'inbound', result: 'in_progress',
     from_number: from, to_number: to, caller_name: p.CallerName || contact?.name || null, contact_id: contact?.id ?? null,
     started_at: new Date().toISOString(), needs_follow_up: true,
     raw: { From: p.From, To: p.To, ForwardedFrom: p.ForwardedFrom || null, CallerName: p.CallerName, FromCity: p.FromCity, FromState: p.FromState },
-    ai_meta: { stt: multi ? 'multi' : 'legacy', lang: 'en' },
+    ai_meta: { stt: multi ? 'multi' : 'legacy', lang: 'en', voice },
   }).select('id').single();
   if (call?.id) await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: greeting });
 
@@ -54,5 +55,5 @@ export async function POST(req: Request) {
     await db.from('crm_call_log').update({ recording_url: `twilio:${sid}` }).eq('source', 'voicebot').eq('external_id', callSid).is('recording_url', null);
   }));
 
-  return twiml(gather(greeting, `${voiceOrigin()}/api/voice/turn`, { hints: await speechHints(unit), multi }));
+  return twiml(gather(greeting, `${voiceOrigin()}/api/voice/turn`, { hints: await speechHints(unit), multi, voice }));
 }

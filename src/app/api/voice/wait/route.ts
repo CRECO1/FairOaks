@@ -34,13 +34,15 @@ export async function POST(req: Request) {
     const action = ((botTurn.meta as { action?: string } | null)?.action ?? 'continue') as 'continue' | 'end' | 'transfer';
     const lang = asLang((botTurn.meta as { lang?: string } | null)?.lang ?? (call.ai_meta as { lang?: string } | null)?.lang);
     const multi = (call.ai_meta as { stt?: string } | null)?.stt === 'multi';
-    return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number, await speechHints(call.business_unit), { lang, multi }));
+    const voice = (call.ai_meta as { voice?: string } | null)?.voice === 'new' ? 'new' as const : 'classic' as const;
+    return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number, await speechHints(call.business_unit), { lang, multi, voice }));
   }
   const waited = callerTurn ? Date.now() - new Date(callerTurn.created_at).getTime() : MAX_WAIT_MS;
   if (waited > MAX_WAIT_MS) {
     await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: '[timed out waiting for a reply]', meta: { action: 'end' } });
     const lang = asLang((call.ai_meta as { lang?: string } | null)?.lang);
-    return twiml(`${say(line('timedOut', lang), lang)}<Hangup/>`);
+    const vgen = (call.ai_meta as { voice?: string } | null)?.voice === 'new' ? 'new' as const : 'classic' as const;
+    return twiml(`${say(line('timedOut', lang), lang, vgen)}<Hangup/>`);
   }
   return twiml(holdThenRedirect(null, `${voiceOrigin()}/api/voice/wait?after=${encodeURIComponent(after)}`, 2));
 }

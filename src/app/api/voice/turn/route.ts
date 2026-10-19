@@ -36,6 +36,7 @@ export async function POST(req: Request) {
   const heard = (p.SpeechResult || '').trim();
   const callMeta = (call.ai_meta as Record<string, unknown> | null) || {};
   const multi = callMeta.stt === 'multi';
+  const voice = callMeta.voice === 'new' ? 'new' as const : 'classic' as const;
   let lang: Lang = asLang(callMeta.lang);
   // Every round trip here is on the caller's clock — run them together, and build the
   // history from what was already stored plus what was just said.
@@ -77,10 +78,10 @@ export async function POST(req: Request) {
   // Twilio gives a webhook 15 seconds. Answer directly when the reply is quick;
   // otherwise say so, let the work finish in the background, and have Twilio poll.
   const quick = await Promise.race<BotReply | null>([work, new Promise<null>(res => setTimeout(() => res(null), QUICK_BUDGET_MS))]);
-  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints, { lang, multi }));
+  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints, { lang, multi, voice }));
   after(work.catch(e => console.error('[voice/turn] background', e)));
   const waitUrl = `${voiceOrigin()}/api/voice/wait?after=${encodeURIComponent(callerTurn?.id ?? '')}`;
-  return twiml(holdThenRedirect(holdLine(callerTurns, lang), waitUrl, 2, lang));
+  return twiml(holdThenRedirect(holdLine(callerTurns, lang), waitUrl, 2, lang, voice));
 }
 
 const QUICK_BUDGET_MS = 6500;
