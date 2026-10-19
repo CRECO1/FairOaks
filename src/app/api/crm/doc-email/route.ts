@@ -98,8 +98,10 @@ export async function POST(req: NextRequest) {
   if (!ctx) return unauthorized();
   const { submission_id, to, subject, body } = await req.json().catch(() => ({}));
   if (!submission_id || !to || !subject || !body) return NextResponse.json({ error: 'submission_id, to, subject and body are required' }, { status: 400 });
-  const toClean = String(to).trim();
-  if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(toClean)) return NextResponse.json({ error: 'Enter one valid email address' }, { status: 400 });
+  // One or more addresses, separated by commas or semicolons.
+  const addrs = String(to).split(/[,;]+/).map(a => a.trim()).filter(Boolean);
+  if (!addrs.length || addrs.length > 10 || !addrs.every(a => /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(a))) return NextResponse.json({ error: 'Enter valid email addresses, separated by commas' }, { status: 400 });
+  const toClean = addrs.join(', ');
   const l = await load(submission_id, ctx);
   if (!l) return notFound('Document not found');
   if (!l.sub.filled_path) return NextResponse.json({ error: 'This document has no saved PDF yet.' }, { status: 400 });
@@ -108,7 +110,7 @@ export async function POST(req: NextRequest) {
   // Gmail logging needs a deal or a contact. A property-only document goes to a contact if the address matches one.
   let clientId = l.clientRow?.id ?? null;
   if (!l.sub.deal_id && !clientId) {
-    const { data } = await db.from('crm_clients').select('id').ilike('email', toClean).limit(1).maybeSingle();
+    const { data } = await db.from('crm_clients').select('id').ilike('email', addrs[0]).limit(1).maybeSingle();
     clientId = (data?.id as string | undefined) ?? null;
     if (!clientId) return NextResponse.json({ error: 'This document is not linked to a deal or contact, and that address is not a saved contact — add the recipient as a contact first so the email can be logged.' }, { status: 400 });
   }
@@ -144,12 +146,19 @@ export async function POST(req: NextRequest) {
   const out = await res.json().catch(() => ({}));
   if (!res.ok) return NextResponse.json({ error: out.error || `Send failed (${res.status})` }, { status: res.status });
 
-  // Contact activity line (the deal side is logged by the send route).
-  const logClient = clientId ?? l.deal?.client_id ?? null;
-  if (logClient) {
+  // Contact activity lines (the deal side is logged by the send route): the deal's contact plus
+  // every recipient who is a saved contact.
+  const ids = new Set<string>();
+  if (clientId ?? l.deal?.client_id) ids.add((clientId ?? l.deal?.client_id) as string);
+  for (const a of addrs) {
+    const { data } = await db.from('crm_clients').select('id').ilike('email', a).limit(1).maybeSingle();
+    if (data?.id) ids.add(data.id as string);
+  }
+  if (ids.size) {
     const now = new Date().toISOString();
-    await db.from('crm_client_activities').insert([{ client_id: logClient, agent_id: ctx.userId, type: 'email', note: `Sent email: ${plainFromHtml(String(subject))} (PDF attached)`, tagged_contact_ids: [] }]);
-    await db.from('crm_clients').update({ last_touched_at: now }).eq('id', logClient);
+    const note = `Sent email: ${plainFromHtml(String(subject))} (PDF attached)`;
+    await db.from('crm_client_activities').insert([...ids].map(cid => ({ client_id: cid, agent_id: ctx.userId, type: 'email', note, tagged_contact_ids: [] })));
+    await db.from('crm_clients').update({ last_touched_at: now }).in('id', [...ids]);
   }
   return NextResponse.json({ success: true, emailId: out.emailId ?? null });
 }

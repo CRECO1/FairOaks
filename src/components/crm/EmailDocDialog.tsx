@@ -70,7 +70,7 @@ export default function EmailDocDialog({ submissionId, token, onClose, onSent }:
         {pre && (
           <>
             <label style={LBL}>To{pre.toName ? ` — ${pre.toName}` : ''}</label>
-            <input type="email" value={to} onChange={e => setTo(e.target.value)} placeholder="client@example.com" style={{ ...INP, marginBottom: 12 }} />
+            <input type="text" value={to} onChange={e => setTo(e.target.value)} placeholder="name@example.com, another@example.com" style={{ ...INP, marginBottom: 12 }} />
             <label style={LBL}>Subject</label>
             <input value={subject} onChange={e => setSubject(e.target.value)} style={{ ...INP, marginBottom: 12 }} />
             <label style={LBL}>Message</label>
