@@ -11079,6 +11079,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     agentEmail={session?.user?.email}
                     authToken={session?.access_token}
                     showToast={showToast}
+                    onPreview={f => setPreviewFile({ url: f.url, name: f.name, type: 'application/pdf' })}
                   />
                 </div>
               )}

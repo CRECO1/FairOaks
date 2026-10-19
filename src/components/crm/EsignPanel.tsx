@@ -410,9 +410,11 @@ interface Props {
   agentEmail?: string;
   authToken?: string;
   showToast?: (m: string) => void;
+  // Opens a PDF in the app's own viewer instead of a new browser tab.
+  onPreview?: (file: { url: string; name: string }) => void;
 }
 
-export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloadSignal, clients = [], dealClient, agentName, agentEmail, authToken, isSuperAdmin, showToast }: Props) {
+export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloadSignal, clients = [], dealClient, agentName, agentEmail, authToken, isSuperAdmin, showToast, onPreview }: Props) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [envByDoc, setEnvByDoc] = useState<Record<string, Envelope>>({});
   const [loading, setLoading] = useState(true);
@@ -480,11 +482,17 @@ export default function EsignPanel({ dealId, onPlaceFields, onAddDocument, reloa
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginLeft: 'auto' }}>
-                  {doc.url && <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280', display: 'inline-flex', alignItems: 'center' }}>PDF ↗</a>}
+                  {doc.url && (onPreview
+                    ? <button onClick={() => onPreview({ url: doc.url!, name: `${doc.title || doc.crm_forms?.name || 'Document'}.pdf` })} title="Preview this document" style={{ ...mini, color: '#6b7280' }}>Preview</button>
+                    : <a href={doc.url} target="_blank" rel="noreferrer" style={{ ...mini, textDecoration: 'none', color: '#6b7280', display: 'inline-flex', alignItems: 'center' }}>PDF ↗</a>)}
                   {st === 'sent' ? <button onClick={() => setView({ t: 'manage', doc })} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>Manage</button>
                     : st === 'completed' ? (env?.executed_url ? (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
                           {/* The document on its own — what you'd send a counterparty. */}
+                          {env.executed_clean_url && onPreview && (
+                            <button onClick={() => onPreview({ url: env.executed_clean_url!, name: `${doc.title || 'Document'}-signed.pdf` })} title="View the signed document"
+                              style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>View signed</button>
+                          )}
                           {env.executed_clean_url && (
                             <a href={env.executed_clean_url} target="_blank" rel="noreferrer" title="The signed document only — no Certificate of Completion"
                               style={{ ...mini, textDecoration: 'none', color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>Signed doc ↗</a>
