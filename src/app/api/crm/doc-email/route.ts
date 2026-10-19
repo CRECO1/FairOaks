@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
       + terms.map(t => `<li><strong>${esc((t.label || '').replace(/:\s*$/, ''))}:</strong> ${esc((t.value || '').replace(/\s*\n+\s*/g, '; '))}</li>`).join('')
       + '</ul><p>Let me know if you have any questions or would like to discuss.</p>';
   } else {
-    body += `<p>Please find the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''} attached.${/[.!?]$/.test(property) ? '' : ''} Let me know if you have any questions.</p>`;
+    body += `<p>Please find the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''} attached. Let me know if you have any questions.</p>`;
   }
   body += me.signature ? `<br/><div class="gmail_signature">${me.signature}</div>` : (me.name ? `<p>Thank you,<br/>${esc(me.name)}</p>` : '');
 
