@@ -8,6 +8,7 @@ import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
 import { signPendingWrite, verifyPendingWrite, consumePendingWrite } from '@/lib/copilot-confirm';
 import { WEB_TOOLS, compactWebTurns } from '@/lib/copilot-web';
+import { hydrateAttachments } from '@/lib/copilot-attachments';
 
 export const runtime = 'nodejs';
 // Web research adds server-side search/fetch rounds inside each Claude call.
@@ -146,6 +147,10 @@ export async function POST(req: NextRequest) {
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages = [...incoming];
+  // Attached files are stored as small references in the chat; they're turned into real content for the model
+  // on each call (and only the caller's own files, newest few). `messages` itself stays reference-only so the
+  // history returned to the browser never carries file bytes.
+  const attachmentCache = new Map<string, { parts: Anthropic.ContentBlockParam[]; bytes: number }>();
   const pendingWrites: { id: string; name: string; summary: string }[] = [];
   // UI directives for the browser to apply when the response lands (navigation).
   const clientActions: ClientAction[] = [];
@@ -157,7 +162,7 @@ export async function POST(req: NextRequest) {
         max_tokens: 4000,
         system: systemPrompt(ctx, prof?.first_name || 'the agent', open),
         tools: [...TOOLS, ...WEB_TOOLS],
-        messages,
+        messages: await hydrateAttachments(db, ctx.userId, messages, attachmentCache),
       });
       messages.push({ role: 'assistant', content: res.content });
 

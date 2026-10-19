@@ -2,6 +2,8 @@
 // runs server-side as the signed-in agent, scoped to their business unit (super_admins,
 // who have no unit, see everything). Read tools run automatically; WRITE_TOOLS mutate data
 // and are gated behind an explicit confirmation in the API route.
+import { ATT_BUCKET, findAttachmentById } from '@/lib/copilot-attachments';
+import { findIdenticalFile } from '@/lib/dup-files';
 import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
@@ -210,7 +212,7 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
-  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal']);
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment']);
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
 // copilot just created shows up in the pipeline without a page refresh.
@@ -257,6 +259,8 @@ export const TOOLS: Anthropic.Tool[] = [
       also_contact_ids: { type: 'array', items: { type: 'string' }, description: 'Other contacts to tag onto the deal (co-buyer, landlord, attorney, lender…).' },
       force: { type: 'boolean', description: 'Create even though a similar open deal exists — ONLY when the agent explicitly says they want a second deal.' } },
       required: ['contact_id', 'type'] } },
+  { name: 'save_attachment', description: "File a document the agent attached to this chat onto a DEAL's Docs tab or a PROPERTY's documents (use the attachment id shown as 'id …' next to the file in the conversation). Deals accept PDF, Word and JPG/PNG/WebP; properties accept those plus Excel, CSV and text. Skips it if the identical file is already there. WRITE — confirm with the agent first; pass exactly one of deal_id / listing_id.",
+    input_schema: { type: 'object', properties: { attachment_id: { type: 'string', description: 'The 10-character id from the attachment header, e.g. 3fa9c1d20b' }, deal_id: { type: 'string' }, listing_id: { type: 'string' }, name: { type: 'string', description: 'Optional new file name (keep the extension).' } }, required: ['attachment_id'] } },
   { name: 'add_contacts_to_deal', description: "Pull one or more existing contacts onto a deal: they are tagged on it (the deal then shows on their record). Optionally make one of them the deal's primary client — the previous primary stays tagged, nothing is lost. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, contact_ids: { type: 'array', items: { type: 'string' } }, make_primary_contact_id: { type: 'string', description: 'Optional: promote this contact to primary client.' } }, required: ['deal_id', 'contact_ids'] } },
   { name: 'remove_contacts_from_deal', description: "Take tagged contacts off a deal (not the primary client — promote someone else with add_contacts_to_deal first). WRITE.",
@@ -614,6 +618,51 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const tagged = people.filter(c => c.id !== primary.id).map(contactLabel);
         await logCopilot(db, ctx, `Created ${input.type} deal${property ? ` for ${property}` : ''}${tagged.length ? ` and tagged ${tagged.join(', ')}` : ''}`, primary.id);
         return j({ ok: true, created, tagged_contacts: tagged, note: 'The deal is now in the Deal Flow pipeline at this stage.' });
+      }
+      case 'save_attachment': {
+        if (!!input.deal_id === !!input.listing_id) return j({ error: 'Pass exactly one of deal_id or listing_id.' });
+        const att = await findAttachmentById(db, ctx.userId, String(input.attachment_id ?? ''));
+        if (!att) return j({ error: 'I can’t find that attachment any more (they’re kept for a few days) — ask the agent to attach it again.' });
+        const { data: blob, error: dlErr } = await db.storage.from(ATT_BUCKET).download(att.path);
+        if (dlErr || !blob) return j({ error: 'Could not read the attachment.' });
+        const buf = Buffer.from(await blob.arrayBuffer());
+        const fileName = String(input.name || att.name).replace(/[\r\n/\\]+/g, ' ').trim().slice(0, 200) || att.name;
+        const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+        const ext = (fileName.split('.').pop() ?? '').toLowerCase();
+        const MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain' };
+        const contentType = MIME[ext];
+        if (!contentType) return j({ error: `.${ext} files can’t be filed here.` });
+
+        if (input.deal_id) {
+          const deal = await loadDealForWrite(db, ctx, input.deal_id);
+          if (typeof deal === 'string') return deal;
+          if (!['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp'].includes(ext)) return j({ error: 'Deals accept PDF, Word and JPG/PNG/WebP files. Save this one to a property instead, or convert it.' });
+          const storagePath = `${input.deal_id}/${Date.now()}_${safe}`;
+          const { error: upErr } = await db.storage.from('deal-docs').upload(storagePath, buf, { contentType, upsert: false });
+          if (upErr) return j({ error: upErr.message });
+          // Same file already on the deal (any name): don't attach it twice.
+          const { data: same } = await db.from('crm_deal_docs').select('*').eq('deal_id', input.deal_id).eq('file_size', buf.length).limit(6);
+          const dup = same?.length ? await findIdenticalFile(db, 'deal-docs', storagePath, same) : null;
+          if (dup) { await db.storage.from('deal-docs').remove([storagePath]); return j({ error: `Not saved — this exact file is already on the deal as “${dup.name}”.`, duplicate: true }); }
+          const { error } = await db.from('crm_deal_docs').insert({ deal_id: input.deal_id, name: fileName, storage_path: storagePath, file_size: buf.length, file_type: contentType, uploaded_by: ctx.userId });
+          if (error) { await db.storage.from('deal-docs').remove([storagePath]); return j({ error: error.message }); }
+          await logCopilot(db, ctx, `Filed “${fileName}” on a deal`, deal.client_id);
+          return j({ ok: true, saved: fileName, to: `the deal “${deal.client}${deal.property ? ` — ${deal.property}` : ''}” (Docs tab)` });
+        }
+        const { data: l } = await db.from('crm_listings').select('id, name, business_unit, is_restricted, listing_agent_id, assigned_agent_ids').eq('id', input.listing_id).maybeSingle();
+        if (!l || !canSeeListing(l, ctx)) return j({ error: 'Property not found' });
+        if (ctx.businessUnit && l.business_unit !== ctx.businessUnit) return j({ error: 'That property is in a different workspace' });
+        const dest = `${l.id}/${Date.now()}_${safe}`;
+        const { error: cpErr } = await db.storage.from(ATT_BUCKET).copy(att.path, dest);
+        if (cpErr) return j({ error: cpErr.message });
+        const { data: same } = await db.from('crm_listing_files').select('*').eq('listing_id', l.id).eq('file_size', buf.length).limit(6);
+        const dup = same?.length ? await findIdenticalFile(db, ATT_BUCKET, dest, same) : null;
+        if (dup) { await db.storage.from(ATT_BUCKET).remove([dest]); return j({ error: `Not saved — this exact file is already on the property as “${dup.name}”.`, duplicate: true }); }
+        const category = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) ? 'photo' : 'document';
+        const { error } = await db.from('crm_listing_files').insert({ listing_id: l.id, name: fileName, storage_path: dest, file_size: buf.length, file_type: contentType, category, uploaded_by: ctx.userId });
+        if (error) { await db.storage.from(ATT_BUCKET).remove([dest]); return j({ error: error.message }); }
+        await logCopilot(db, ctx, `Filed “${fileName}” on a property`);
+        return j({ ok: true, saved: fileName, to: `the property “${l.name}”${category === 'photo' ? ' (Photos)' : ' (Documents)'}` });
       }
       case 'add_contacts_to_deal':
       case 'remove_contacts_from_deal': {
@@ -1025,6 +1074,16 @@ export async function describeWriteRich(name: string, input: Record<string, any>
     } catch { /* fall through to the generic text */ }
   }
   // Deal writes carry opaque ids: show the agent WHO and WHAT they're approving, and warn about a duplicate up front.
+  if (name === 'save_attachment') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const att = await findAttachmentById(db, ctx.userId, String(input.attachment_id ?? ''));
+      let where = 'the record';
+      if (input.deal_id) { const { data: d } = await db.from('crm_deals').select('client, property').eq('id', input.deal_id).maybeSingle(); if (d) where = `the deal ${d.client}${d.property ? ` — ${d.property}` : ''} (Docs tab)`; }
+      else if (input.listing_id) { const { data: l } = await db.from('crm_listings').select('name').eq('id', input.listing_id).maybeSingle(); if (l) where = `the property ${l.name} (Documents)`; }
+      return `📎 File “${input.name || att?.name || 'the attachment'}” onto ${where}`;
+    } catch { /* fall through */ }
+  }
   if (name === 'create_deal' || name === 'add_contacts_to_deal' || name === 'remove_contacts_from_deal') {
     try {
       const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -1060,6 +1119,7 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'complete_task': return `Mark task complete`;
     case 'add_note': return `Add a note to the contact: “${input.note}”`;
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
+    case 'save_attachment': return `Save the attached file${input.name ? ` as “${input.name}”` : ''} to the ${input.deal_id ? 'deal' : 'property'}`;
     case 'create_deal': return `Create a ${input.type} deal${input.property ? ` for ${input.property}` : ''}${input.value ? ` at $${Number(input.value).toLocaleString()}` : ''} (stage ${input.stage ?? 'Prospect'})${(input.also_contact_ids ?? []).length ? ` and tag ${(input.also_contact_ids as string[]).length} other contact${(input.also_contact_ids as string[]).length === 1 ? '' : 's'}` : ''}`;
     case 'add_contacts_to_deal': return `Add ${(input.contact_ids ?? []).length || 1} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} to the deal${input.make_primary_contact_id ? ' (and make one the primary client)' : ''}`;
     case 'remove_contacts_from_deal': return `Remove ${(input.contact_ids ?? []).length} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} from the deal`;

@@ -3,10 +3,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getOpenDoc, announceDocUpdated } from '@/lib/open-doc';
 import { pruneOld, fitForSend, PENDING_KEEP_MS, STORE_LIMIT_CHARS } from '@/lib/copilot-chat';
+import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, attachmentInfo, type AttachmentRef } from '@/lib/copilot-attachment-types';
 
 // The in-CRM copilot: a slide-out chat that talks to /api/crm/assistant, which runs a
 // Claude tool-use loop over the agent's CRM. Writes are confirmed before they run.
-type Block = { type: string; text?: string; name?: string; input?: unknown };
+type Block = { type: string; text?: string; name?: string; input?: unknown; copilot_attachment?: AttachmentRef };
 type Msg = { role: 'user' | 'assistant'; content: string | Block[] };
 /** A write the copilot has queued. `id` is the server's signed approval ticket: sending
  *  it back is what authorises that exact call, so it is never inspected here. */
@@ -58,8 +59,17 @@ function linkify(text: string): React.ReactNode[] {
 
 function textOf(content: string | Block[]): string {
   if (typeof content === 'string') return content;
-  return content.filter(b => b.type === 'text').map(b => b.text || '').join('\n').trim();
+  // An attachment's own "[Attached file: …]" line is shown as a chip, not as text.
+  return content.filter(b => b.type === 'text' && !b.copilot_attachment).map(b => b.text || '').join('\n').trim();
 }
+function attachmentsOf(content: string | Block[]): AttachmentRef[] {
+  if (typeof content === 'string') return [];
+  return content.filter(b => b.type === 'text' && b.copilot_attachment).map(b => b.copilot_attachment as AttachmentRef);
+}
+const kindIcon = (name: string) => { const k = attachmentInfo(name)?.kind; return k === 'image' ? '🖼️' : k === 'pdf' ? '📄' : k === 'xlsx' ? '📊' : k === 'docx' ? '📝' : '📎'; };
+const prettySize = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+/** A file the agent is attaching to their next message. */
+type Pick = { key: string; name: string; size: number; status: 'uploading' | 'ready' | 'error'; error?: string; ref?: AttachmentRef; preview?: string };
 function toolsOf(content: string | Block[]): string[] {
   if (typeof content === 'string') return [];
   return content.filter(b => b.type === 'tool_use').map(b => b.name || 'tool');
@@ -101,6 +111,11 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
   const pendingAtRef = useRef<number>(restored.current?.pendingAt ?? 0);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [picks, setPicks] = useState<Pick[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploading = picks.some(p => p.status === 'uploading');
+  const readyRefs = picks.filter(p => p.status === 'ready' && p.ref).map(p => p.ref as AttachmentRef);
 
   useEffect(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }); }, [messages, loading]);
 
@@ -185,8 +200,42 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
   // Closing the panel inside the debounce window must not lose the last exchange.
   useEffect(() => () => { if (dirty.current && serverReady.current) putServer(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Attachments: straight to private storage, then a small reference rides along with the message ──
+  function dropPreview(p: Pick) { if (p.preview) { try { URL.revokeObjectURL(p.preview); } catch { /* ignore */ } } }
+  function removePick(key: string) { setPicks(prev => { prev.filter(p => p.key === key).forEach(dropPreview); return prev.filter(p => p.key !== key); }); }
+  async function uploadOne(file: File, key: string) {
+    const patch = (u: Partial<Pick>) => setPicks(prev => prev.map(p => p.key === key ? { ...p, ...u } : p));
+    try {
+      const pre = await fetch('/api/crm/assistant/attachments', { method: 'POST', headers: authHeaders(true), body: JSON.stringify({ filename: file.name, size: file.size }) });
+      const pj = await pre.json().catch(() => ({}));
+      if (!pre.ok) { patch({ status: 'error', error: pj.error || `Couldn't start the upload (${pre.status})` }); return; }
+      const put = await fetch(pj.uploadUrl, { method: 'PUT', headers: { 'Content-Type': pj.type || file.type || 'application/octet-stream' }, body: file });
+      if (!put.ok) { patch({ status: 'error', error: `Upload failed (${put.status})` }); return; }
+      patch({ status: 'ready', ref: { id: pj.id, path: pj.path, name: file.name, type: pj.type, size: file.size } });
+    } catch { patch({ status: 'error', error: 'Upload failed — check your connection' }); }
+  }
+  function addFiles(list: FileList | File[] | null) {
+    const files = Array.from(list ?? []);
+    if (!files.length) return;
+    setError(null);
+    const room = ATTACHMENT_MAX_FILES - picks.length;
+    if (room <= 0) { setError(`You can attach up to ${ATTACHMENT_MAX_FILES} files per message.`); return; }
+    const added: Pick[] = [];
+    for (const f of files.slice(0, room)) {
+      const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (!attachmentInfo(f.name)) { setError(`I can read photos, PDFs, Word (.docx), Excel (.xlsx), CSV and text files — not “${f.name}”.`); continue; }
+      if (f.size > ATTACHMENT_MAX_BYTES) { setError(`${f.name} is over the ${ATTACHMENT_MAX_BYTES / 1024 / 1024} MB limit.`); continue; }
+      added.push({ key, name: f.name, size: f.size, status: 'uploading', preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : undefined });
+      void uploadOne(f, key);
+    }
+    if (files.length > room) setError(`You can attach up to ${ATTACHMENT_MAX_FILES} files per message — added the first ${room}.`);
+    if (added.length) setPicks(prev => [...prev, ...added]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   function newChat() {
     if (loading) return;
+    setPicks(prev => { prev.forEach(dropPreview); return []; });
     setMessages([]); setStamps([]); setPending([]); setError(null);
     try { localStorage.removeItem(storeKey(userId)); } catch { /* ignore */ }
     fetch('/api/crm/assistant/chat', { method: 'DELETE', headers: authHeaders() }).then(() => { serverAt.current = null; }).catch(() => { /* ignore */ });
@@ -199,12 +248,19 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
    */
   async function send(text: string, confirmTickets: string[] = []) {
     const confirming = confirmTickets.length > 0;
-    if ((!text.trim() && !confirming) || loading) return;
+    const files = confirming ? [] : readyRefs;
+    if ((!text.trim() && !files.length && !confirming) || loading || (!confirming && uploading)) return;
     setError(null); setPending([]);
+    // A message with files carries them as small references (the bytes are already in storage); the server
+    // turns them back into real content for the model. The reference block's own text is just a label.
+    const content: string | Block[] = files.length
+      ? [{ type: 'text', text: text.trim() || (files.length === 1 ? 'Please take a look at the attached file.' : 'Please take a look at the attached files.') },
+         ...files.map(r => ({ type: 'text', text: `[Attached file: ${r.name}]`, copilot_attachment: r }) as Block)]
+      : text;
     // Confirming adds no new question — the conversation carries on from where it was.
-    const next: Msg[] = confirming ? messages : [...messages, { role: 'user', content: text }];
+    const next: Msg[] = confirming ? messages : [...messages, { role: 'user', content }];
     const prevStamps = confirming ? stamps : [...stamps, Date.now()];
-    setMessages(next); setStamps(prevStamps); if (!confirming) setInput(''); setLoading(true);
+    setMessages(next); setStamps(prevStamps); if (!confirming) { setInput(''); setPicks(prev => { prev.forEach(dropPreview); return []; }); } setLoading(true);
     try {
       const res = await fetch('/api/crm/assistant', {
         method: 'POST',
@@ -239,12 +295,22 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
   const bubbles = messages.map((m, i) => {
     const txt = textOf(m.content);
     const tools = toolsOf(m.content);
-    if (!txt && tools.length === 0) return null; // tool_result turns
+    const atts = attachmentsOf(m.content);
+    if (!txt && tools.length === 0 && atts.length === 0) return null; // tool_result turns
     return (
       <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
         <div style={{ maxWidth: '86%' }}>
           {tools.length > 0 && (
             <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>🔧 {tools.map(t => TOOL_LABEL[t] || t).join(' · ')}</div>
+          )}
+          {atts.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end', marginBottom: txt ? 5 : 0 }}>
+              {atts.map(a => (
+                <span key={a.id} title={a.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#fff', border: '1px solid #e5e7eb', color: '#374151', borderRadius: 8, padding: '4px 9px', fontSize: 12.5, maxWidth: '100%' }}>
+                  <span aria-hidden>{kindIcon(a.name)}</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 190 }}>{a.name}</span>
+                </span>
+              ))}
+            </div>
           )}
           {txt && (
             <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, lineHeight: 1.55, padding: '9px 13px', borderRadius: 12,
@@ -257,7 +323,14 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
   });
 
   return (
-    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(430px, 100vw)', background: '#f7f7f5', boxShadow: '-8px 0 30px rgba(0,0,0,.14)', zIndex: 1200, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
+    <div
+      onDragOver={e => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
+      onDrop={e => { if (e.dataTransfer?.files?.length) { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); } }}
+      style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(430px, 100vw)', background: '#f7f7f5', boxShadow: '-8px 0 30px rgba(0,0,0,.14)', zIndex: 1200, display: 'flex', flexDirection: 'column', fontFamily: "'DM Sans',sans-serif" }}>
+      {dragging && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 5, background: 'rgba(201,146,44,.12)', border: `3px dashed ${GOLD}`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', color: '#92400e', fontWeight: 700, fontSize: 16 }}>Drop files to attach</div>
+      )}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(14px + env(safe-area-inset-top)) 16px 14px', background: '#1a1a1a', color: '#fff', flexShrink: 0 }}>
         <span style={{ fontSize: 18 }}>✨</span>
@@ -298,12 +371,30 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
         </div>
       )}
 
+      {/* Files waiting to go with the next message */}
+      {picks.length > 0 && (
+        <div style={{ padding: '8px 12px 0', background: '#fff', borderTop: '1px solid #e5e7eb', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
+          {picks.map(p => (
+            <span key={p.key} title={p.error || p.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: `1px solid ${p.status === 'error' ? '#fecaca' : '#e5e7eb'}`, background: p.status === 'error' ? '#fef2f2' : '#f9fafb', borderRadius: 8, padding: '3px 4px 3px 7px', fontSize: 12.5, color: p.status === 'error' ? '#b91c1c' : '#374151', maxWidth: '100%' }}>
+              {p.preview ? <img src={p.preview} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: 4 }} /> : <span aria-hidden>{kindIcon(p.name)}</span>}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>{p.name}</span>
+              <span style={{ color: '#9ca3af', fontSize: 11.5 }}>{p.status === 'uploading' ? 'uploading…' : p.status === 'error' ? 'failed' : prettySize(p.size)}</span>
+              <button onClick={() => removePick(p.key)} aria-label={`Remove ${p.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: 16, lineHeight: 1, padding: '2px 5px', minWidth: 24, minHeight: 24 }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Input */}
-      <div style={{ padding: '12px 12px calc(12px + env(safe-area-inset-bottom))', borderTop: '1px solid #e5e7eb', background: '#fff', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <textarea value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder="Ask or tell me to do something…"
+      <div style={{ padding: '12px 12px calc(12px + env(safe-area-inset-bottom))', borderTop: picks.length ? 'none' : '1px solid #e5e7eb', background: '#fff', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <input ref={fileInputRef} type="file" multiple accept={ATTACHMENT_ACCEPT} onChange={e => addFiles(e.target.files)} style={{ display: 'none' }} aria-hidden tabIndex={-1} />
+        <button onClick={() => fileInputRef.current?.click()} disabled={loading || picks.length >= ATTACHMENT_MAX_FILES} aria-label="Attach a file or photo" title="Attach a photo, PDF, Word, Excel or CSV"
+          style={{ background: '#fff', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: loading || picks.length >= ATTACHMENT_MAX_FILES ? 'default' : 'pointer', fontSize: 19, opacity: picks.length >= ATTACHMENT_MAX_FILES ? 0.5 : 1 }}>📎</button>
+        <textarea value={input} onChange={e => setInput(e.target.value)} rows={1} placeholder={picks.length ? 'Say what to do with the file…' : 'Ask or tell me to do something…'}
+          onPaste={e => { const fs = Array.from(e.clipboardData?.files ?? []); if (fs.length) { e.preventDefault(); addFiles(fs); } }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
           style={{ flex: 1, resize: 'none', border: '1px solid #e5e7eb', borderRadius: 10, padding: '11px 12px', fontSize: 16, fontFamily: 'inherit', outline: 'none', minHeight: 44, maxHeight: 120, boxSizing: 'border-box' }} />
-        <button onClick={() => send(input)} disabled={loading || !input.trim()} aria-label="Send" style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, cursor: loading || !input.trim() ? 'default' : 'pointer', opacity: loading || !input.trim() ? 0.5 : 1, fontSize: 18 }}>↑</button>
+        <button onClick={() => send(input)} disabled={loading || uploading || (!input.trim() && readyRefs.length === 0)} aria-label="Send" style={{ background: GOLD, color: '#fff', border: 'none', borderRadius: 10, width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, cursor: loading || !input.trim() ? 'default' : 'pointer', opacity: loading || !input.trim() ? 0.5 : 1, fontSize: 18 }}>↑</button>
       </div>
     </div>
   );
