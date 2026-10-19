@@ -34,6 +34,7 @@ const PropertyDBSection = dynamic(() => import('@/components/crm/PropertyDBSecti
 const TransactionDocsSection = dynamic(() => import('@/components/crm/TransactionDocsSection'), { ssr: false });
 const ListingsSection = dynamic(() => import('@/components/crm/ListingsSection'), { ssr: false });
 const TasksSection = dynamic(() => import('@/components/crm/TasksSection'), { ssr: false });
+const EmailDocDialog = dynamic(() => import('@/components/crm/EmailDocDialog'), { ssr: false });
 const EsignComposer = dynamic(() => import('@/components/crm/EsignComposer'), { ssr: false });
 const EsignDashboard = dynamic(() => import('@/components/crm/EsignDashboard'), { ssr: false });
 const LeadAttribution = dynamic(() => import('@/components/crm/LeadAttribution'), { ssr: false });
@@ -724,6 +725,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [dealFormPick, setDealFormPick] = useState(''); // Docs tab "add a form" dropdown selection
   const [dealFormAdding, setDealFormAdding] = useState(false);
   const [dealEnvMap, setDealEnvMap] = useState<Record<string, EsignEnvelope>>({}); // submission_id -> newest envelope
+  const [emailDocId, setEmailDocId] = useState<string | null>(null);
   const [esignModal, setEsignModal] = useState<{ mode: 'send' | 'manage'; doc: EsignDoc } | null>(null);
   // General "e-sign changed" tick — bumped when placements change AND whenever the
   // composer sends/closes or an import is sent; consumed as reloadSignal/refreshKey by
@@ -10916,6 +10918,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             })()}</div>
                           </div>
                           {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
+                          {f.url && <button onClick={() => setEmailDocId(f.id)} title="Email this PDF as an attachment" style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✉ Email</button>}
                           {!w && (() => {
                             const env = dealEnvMap[f.id];
                             if (env && env.status !== 'voided') {
@@ -13958,6 +13961,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       )}
       {copilotActivityOpen && <CopilotActivity token={session?.access_token} isMobile={isMobile} isBroker={isSuperAdmin} onClose={() => setCopilotActivityOpen(false)} />}
 
+      {emailDocId && <EmailDocDialog submissionId={emailDocId} token={session?.access_token} onClose={() => setEmailDocId(null)} onSent={() => { if (activeDeal) loadDealEmails(activeDeal.id); }} />}
       {/* Deal → Docs: inline send / manage a signature request (reuses the E-Sign views) */}
       {esignModal && activeDeal && (
         <div className="crm-sheet" onClick={e => { if (e.target === e.currentTarget) setEsignModal(null); }}

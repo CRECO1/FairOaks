@@ -13,6 +13,7 @@ import {
 } from '@/lib/loi-doc';
 import { leaseSpec, exhibitLetter, TENANTREP_INTRO } from '@/lib/loi-spec';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
+import EmailDocDialog from '@/components/crm/EmailDocDialog';
 import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
 
 interface Prefill {
@@ -143,6 +144,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
   const spec: LoiSpec = variant === 'tenantrep' ? leaseSpec('tenantrep') : specProp;
   const [data, setData] = useState<LoiPurchaseData>(() => seedData(specProp, prefill));
   const [savedId, setSavedId] = useState<string | undefined>(submissionId);
+  const [emailDocId, setEmailDocId] = useState<string | null>(null);
   const [dealSel, setDealSel] = useState<string>(dealId ?? '');
   const [loading, setLoading] = useState(!!submissionId);
   const [busy, setBusy] = useState(false);
@@ -259,8 +261,8 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
     return logoRef.current;
   }
 
-  async function save(closeAfter: boolean) {
-    if (!data.terms.some(t => t.value.trim() || t.label.trim())) { onToast('Add at least one term'); return; }
+  async function save(closeAfter: boolean): Promise<string | null> {
+    if (!data.terms.some(t => t.value.trim() || t.label.trim())) { onToast('Add at least one term'); return null; }
     setBusy(true);
     try {
       const { pdfBytes, sigFields } = await renderLoi(data, await getLogo(), spec, await getExhibit(), await getExhibitFiles());
@@ -276,20 +278,24 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
         }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { onToast(j.error || 'Save failed'); return; }
-      const id = j.submission?.id as string | undefined;
+      if (!res.ok) { onToast(j.error || 'Save failed'); return null; }
+      const id = (j.submission?.id as string | undefined) ?? savedId;
       if (id) setSavedId(id);
       syncedRef.current = JSON.stringify(data);
       onSaved();
-      if (closeAfter) { onClose(); return; }
+      if (closeAfter) { onClose(); return id ?? null; }
       onToast(dealSel ? '✓ Saved to the deal' : listingId ? '✓ Saved to the property' : 'Saved ✓');
       if (id) {
         fetch(`/api/crm/form-submissions/${id}`, { headers: authHeaders }).then(r => r.json())
           .then(h => { if (Array.isArray(h?.edits)) setEdits(h.edits); }).catch(() => {});
       }
-    } catch (e) { console.error(e); onToast(e instanceof Error && /exhibit/i.test(e.message) ? e.message : 'Save failed'); }
+      return id ?? null;
+    } catch (e) { console.error(e); onToast(e instanceof Error && /exhibit/i.test(e.message) ? e.message : 'Save failed'); return null; }
     finally { setBusy(false); }
   }
+
+  // Save the current text, then open the "Email as attachment" dialog on the saved PDF.
+  async function saveAndEmail() { const id = await save(false); if (id) setEmailDocId(id); }
 
   const twoSellers = data.sellers.length > 1;
   const SIGLINE: React.CSSProperties = { flex: 1, borderBottom: '1px solid #9ca3af', height: 15, marginLeft: 8 };
@@ -323,6 +329,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
             {deals.map(d => <option key={d.id} value={d.id}>{[d.client, d.property].filter(Boolean).join(' · ') || 'Deal'}</option>)}
           </select>
         )}
+        <button onClick={saveAndEmail} disabled={busy} title="Save, then email the PDF as an attachment" style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 8, cursor: 'pointer' }}>✉ Email</button>
         <button onClick={() => save(false)} disabled={busy} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}>Save</button>
         <button onClick={() => save(true)} disabled={busy} style={{ padding: '8px 16px', fontSize: 13, fontWeight: 800, color: '#fff', background: '#c9922c', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Saving…' : 'Save & close'}</button>
         <button onClick={onClose} style={{ padding: '8px 10px', fontSize: 16, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
@@ -472,6 +479,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
           </div>
         </div>
       )}
+      {emailDocId && <EmailDocDialog submissionId={emailDocId} token={authToken} onClose={() => setEmailDocId(null)} />}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { recallView, rememberView, useRememberedSelection } from '@/lib/view-memory';
 import TransactionDocEditor from '@/components/crm/TransactionDocEditor';
 import LoiBuilder from '@/components/crm/LoiBuilder';
+import EmailDocDialog from '@/components/crm/EmailDocDialog';
 import { specForForm, type LoiSpec } from '@/lib/loi-spec';
 import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
@@ -278,6 +279,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
   const [sendMsg, setSendMsg] = useState('');
   const [sendBusy, setSendBusy] = useState(false);
+  const [emailDocId, setEmailDocId] = useState<string | null>(null);
   const [showMoreForms, setShowMoreForms] = useState(false);
   const [formSearch, setFormSearch] = useState('');   // the library is long — let agents type to find a form
 
@@ -1401,6 +1403,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                             </div>
                             {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
                             <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
+                            {f.url && <button onClick={() => setEmailDocId(f.id)} title="Email this PDF as an attachment" style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✉ Email</button>}
                             {(() => {
                               const env = envMap[f.id];
                               if (env && env.status !== 'voided') {
@@ -1664,6 +1667,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                                       <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
                                     </div>
                                     {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
+                                    {f.url && <button onClick={() => setEmailDocId(f.id)} title="Email this PDF as an attachment" style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✉ Email</button>}
+
                                     {(() => {
                                       const env = envMap[f.id];
                                       if (env && env.status !== 'voided') {
@@ -2071,6 +2076,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         );
       })()}
 
+      {emailDocId && <EmailDocDialog submissionId={emailDocId} token={authToken} onClose={() => setEmailDocId(null)} />}
       {/* Send for signature */}
       {sendModal && (
         <div className="crm-sheet" style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '40px 16px', overflowY: 'auto' }}

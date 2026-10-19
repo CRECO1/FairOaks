@@ -7,6 +7,7 @@ import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import LoiBuilder from '@/components/crm/LoiBuilder';
 import LeaseDraftModal, { type LeaseDraftValues } from '@/components/crm/LeaseDraftModal';
 import { LOI_PURCHASE_SPEC, leaseSpec, assetFromFormName } from '@/lib/loi-spec';
+import EmailDocDialog from '@/components/crm/EmailDocDialog';
 import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
 
 // The Letters of Intent are dynamic term-list docs, not fixed overlay forms —
@@ -146,6 +147,7 @@ export default function TransactionDocEditor({
   // regenerated — never as overlay fields on the blank master (see load below).
   const [leaseValues, setLeaseValues] = useState<LeaseDraftValues | null>(null);
   const subIdRef = useRef<string | undefined>(submissionId);
+  const [emailDocId, setEmailDocId] = useState<string | null>(null);
   // Pages used to render at a hard 850px, which overflows any phone. They now fill
   // the available width, capped at RENDER_W — so desktop still lands on exactly 850
   // and narrower screens scale down. 'full' pins the page back to 850 with
@@ -532,9 +534,10 @@ export default function TransactionDocEditor({
 
   const saveToDeal = useCallback(async () => {
     setBusy(true);
+    let saved = false;
     try {
       const out = await build();
-      if (!out) return;
+      if (!out) return false;
       // base64-encode the PDF in chunks (avoids call-stack limits on big files)
       let bin = '';
       const bytes = new Uint8Array(out);
@@ -551,6 +554,7 @@ export default function TransactionDocEditor({
         body: JSON.stringify({ form_id: form.id || null, deal_id: dealSel || null, relink_deal: dealSel !== (dealId ?? ''), listing_id: listingId ?? null, business_unit: businessUnit, title: form.name, values: fields, pdfBase64, submission_id: subIdRef.current }),
       });
       if (res.ok) {
+        saved = true;
         const j = await res.json();
         if (j.submission?.id) subIdRef.current = j.submission.id;
         syncedVals.current = valsOf(fields);
@@ -576,6 +580,7 @@ export default function TransactionDocEditor({
       onToast?.('Could not save');
     }
     finally { setBusy(false); }
+    return saved;
   }, [build, fields, dealSel, dealId, listingId, authToken, form.id, form.name, businessUnit, onToast, onSaved]);
 
   // Held in a ref so a caller that re-creates the callback each render can't
@@ -739,6 +744,7 @@ export default function TransactionDocEditor({
             </select>
           )}
           {!onSend && <button onClick={saveToDeal} disabled={busy} style={{ ...actionBtn, background: '#fff', color: '#166534', border: '1px solid #bbf7d0' }}>{busy ? '…' : (dealSel ? '💾 Save to deal' : listingId ? '💾 Save to property' : '💾 Save')}</button>}
+          {!onSend && <button onClick={async () => { if (await saveToDeal() && subIdRef.current) setEmailDocId(subIdRef.current); }} disabled={busy} title="Save, then email the PDF as an attachment" style={{ ...actionBtn, background: '#fff', color: '#a06a12', border: '1px solid #f0e2c4' }}>✉ Email</button>}
           <button onClick={download} disabled={busy} style={{ ...actionBtn, background: onSend ? '#fff' : '#c9922c', color: onSend ? '#6b7280' : '#fff', border: onSend ? '1px solid #e5e7eb' : 'none' }}>{busy ? 'Working…' : '⬇ Download'}</button>
           {onSend && <button onClick={sendNow} disabled={busy} style={{ ...actionBtn, background: '#c9922c', color: '#fff', border: 'none' }}>{busy ? 'Working…' : 'Review & Send →'}</button>}
           {!isMobile && <button onClick={onClose} aria-label="Close" style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, width: 34, height: 34, cursor: 'pointer', fontSize: 16, color: '#6b7280' }}>✕</button>}
@@ -1054,6 +1060,7 @@ export default function TransactionDocEditor({
       )}
 
       </div>
+      {emailDocId && <EmailDocDialog submissionId={emailDocId} token={authToken} onClose={() => setEmailDocId(null)} />}
     </div>
   );
 }
