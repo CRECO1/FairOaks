@@ -280,6 +280,12 @@ export default function CareersPage() {
                     </div>
                   ))}
                 </div>
+                <p className="mt-5 text-body-sm text-foreground-muted">
+                  Our office is part of Fair Oaks Ranch Plaza, where local businesses hire local people.{' '}
+                  <a href="https://fairoaksranchplaza.com/jobs" className="font-semibold text-gold-dark hover:text-gold">
+                    See local openings &rarr;
+                  </a>
+                </p>
               </div>
             </div>
           </Container>

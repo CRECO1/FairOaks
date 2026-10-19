@@ -135,6 +135,11 @@ export default function ContactPage() {
                         8000 Fair Oaks Pkwy Suite 102<br />
                         Fair Oaks Ranch, TX 78015
                       </a>
+                      <a
+                        href="https://fairoaksranchplaza.com"
+                        className="mt-1 inline-block text-body-sm font-semibold text-gold-dark hover:text-gold transition-colors">
+                        Find us at Fair Oaks Ranch Plaza &rarr;
+                      </a>
                     </div>
                   </div>
 
