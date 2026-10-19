@@ -929,6 +929,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Extra people on one group email (comma-separated). The client stays the first To.
   const [composeMoreTo, setComposeMoreTo] = useState('');
   const [composeCc, setComposeCc] = useState('');
+  // Group email as separate copies (per-person open tracking) vs one shared message.
+  const [composeIndividual, setComposeIndividual] = useState(true);
   const [composeSending, setComposeSending] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
@@ -3730,7 +3732,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
       });
       const json = await res.json();
       if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); }
@@ -3781,7 +3783,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, individual: composeIndividual, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
       });
       let j: any = {};
       try { j = await res.json(); } catch {}
@@ -10565,7 +10567,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
                           </div>
                         </div>
-                        {(composeMoreTo.trim() || composeCc.trim()) && <div style={{ fontSize: 12, color: '#92400e', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 9px' }}>One shared email — opens can&apos;t be tied to a single person, and everyone can reply-all.</div>}
+                        {(composeMoreTo.trim() || composeCc.trim()) && (
+                          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: '#92400e', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 6, padding: '7px 9px', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={composeIndividual} onChange={e => setComposeIndividual(e.target.checked)} style={{ marginTop: 2 }} />
+                            <span><strong>Track each person&apos;s opens.</strong> {composeIndividual
+                              ? 'Everyone gets their own copy, so you can see who opened it. Replies still go to the whole group.'
+                              : 'One shared email — everyone sees the same To/Cc, but opens can’t be tied to one person.'}</span>
+                          </label>
+                        )}
                         {activeDeal.assigned_agent_ids?.filter(id => id !== session!.user.id).length > 0 && (
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>CC (tagged agents)</label>
@@ -12606,7 +12615,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
                             </div>
                           </div>
-                          {(composeMoreTo.trim() || composeCc.trim()) && <div style={{ fontSize: 12, color: '#92400e', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 9px' }}>One shared email — opens can&apos;t be tied to a single person, and everyone can reply-all.</div>}
+                          {(composeMoreTo.trim() || composeCc.trim()) && (
+                          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: '#92400e', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 6, padding: '7px 9px', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={composeIndividual} onChange={e => setComposeIndividual(e.target.checked)} style={{ marginTop: 2 }} />
+                            <span><strong>Track each person&apos;s opens.</strong> {composeIndividual
+                              ? 'Everyone gets their own copy, so you can see who opened it. Replies still go to the whole group.'
+                              : 'One shared email — everyone sees the same To/Cc, but opens can’t be tied to one person.'}</span>
+                          </label>
+                        )}
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject</label>
                             <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
@@ -12857,6 +12873,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cc</label>
                                           <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
                                         </div>
+                                        {(composeMoreTo.trim() || composeCc.trim()) && (
+                                          <label style={{ flexBasis: '100%', display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: '#92400e', cursor: 'pointer' }}>
+                                            <input type="checkbox" checked={composeIndividual} onChange={e => setComposeIndividual(e.target.checked)} style={{ marginTop: 2 }} />
+                                            <span><strong>Track each person&apos;s opens</strong> — separate copies; replies still go to the whole group.</span>
+                                          </label>
+                                        )}
                                       </div>
                                       <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         {/* Toolbar */}

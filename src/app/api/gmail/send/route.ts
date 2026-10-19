@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     const caller = await getCrmUser(req);
     if (!caller) return unauthorized();
 
-    const { userId, dealId, clientId, to: toRaw, cc: ccRaw, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
+    const { userId, dealId, clientId, to: toRaw, cc: ccRaw, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
     // One group email: any number of To and Cc people on the same message, so everyone
     // sees the thread and can reply-all. Per-person open tracking isn't possible then —
     // the single pixel can't say which recipient loaded it.
@@ -218,51 +218,82 @@ export async function POST(req: NextRequest) {
     const sigDb = createClient(SUPABASE_URL, serviceRoleKey);
     const outBody = withSignature(body, await resolveSignature(sigDb, { agentId: userId }));
 
-    const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${trackingId}" width="1" height="1" style="display:none" />`;
-    const bodyWithPixel = `${outBody}${pixel}`;
-
     const fromLine = agentName ? `${encodeHeader(agentName)} <${gmailEmail}>` : gmailEmail;
+    const plainBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
+    const emailDate = new Date().toISOString().slice(0, 10);
 
-    // Send to client ONLY — no Cc header so the pixel only fires when the client opens it
-    const clientHeaderLines = [
-      `From: ${fromLine}`,
-      `To: ${to}`,
-      ...(ccList.length ? [`Cc: ${ccList.join(', ')}`] : []),
-      `Subject: ${encodeHeader(finalSubject)}`,
-      'MIME-Version: 1.0',
-      'Content-Type: text/html; charset=utf-8',
-    ];
-    if (inReplyTo) {
-      clientHeaderLines.push(`In-Reply-To: ${inReplyTo}`);
-      clientHeaderLines.push(`References: ${inReplyTo}`);
+    // One Gmail send + one logged row. Each copy carries its OWN tracking id, so a copy
+    // addressed to a single person makes an open attributable to that person.
+    const sendCopy = async (opts: { toHeader: string; ccHeader?: string; replyTo?: string; note?: string; tid: string }) => {
+      const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${opts.tid}" width="1" height="1" style="display:none" />`;
+      const html = `${opts.note ?? ''}${outBody}${pixel}`;
+      const headerLines = [
+        `From: ${fromLine}`,
+        `To: ${opts.toHeader}`,
+        ...(opts.ccHeader ? [`Cc: ${opts.ccHeader}`] : []),
+        ...(opts.replyTo ? [`Reply-To: ${opts.replyTo}`] : []),
+        `Subject: ${encodeHeader(finalSubject)}`,
+        'MIME-Version: 1.0',
+        'Content-Type: text/html; charset=utf-8',
+        ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+      ];
+      const encoded = Buffer.from(buildMimeEmail(headerLines, html, attList)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const sendBody: Record<string, string> = { raw: encoded };
+      if (threadId) sendBody.threadId = threadId;
+      const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody),
+      });
+      const sendData = await sendRes.json();
+      if (!sendRes.ok) throw new Error(sendData.error?.message ?? 'Gmail send failed');
+      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/crm_deal_emails`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}`, Prefer: 'return=representation' },
+        body: JSON.stringify({
+          ...(dealId ? { deal_id: dealId } : {}),
+          ...(clientId ? { client_id: clientId } : {}),
+          direction: 'sent',
+          from_email: gmailEmail,
+          to_email: opts.toHeader,
+          subject: finalSubject,
+          body: plainBody,
+          email_date: emailDate,
+          gmail_message_id: sendData.id,
+          tracking_id: opts.tid,
+          gmail_thread_id: threadId ?? sendData.threadId ?? null,
+          ...(opts.ccHeader ? { cc_emails: opts.ccHeader } : {}),
+        }),
+      });
+      if (!insertRes.ok) {
+        const errText = await insertRes.text();
+        console.error('Failed to insert sent email:', errText);
+        throw new Error('Email sent but failed to log: ' + errText);
+      }
+      const inserted = await insertRes.json();
+      return Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
+    };
+
+    // Individual copies (per-person open tracking): everyone gets their own message, but
+    // Reply-To lists the whole group + you, so Reply / Reply-all still reaches everybody.
+    const everyone = [...toList, ...ccList];
+    const individual = individualRaw === true && everyone.length > 1;
+    let emailId: string | undefined;
+    try {
+      if (individual) {
+        const replyAll = Array.from(new Set([...everyone, gmailEmail].filter(Boolean))).join(', ');
+        const note = `<div style="font-size:12px;color:#6b7280;margin-bottom:14px">Sent to ${everyone.map(a => a.replace(/&/g, '&amp;').replace(/</g, '&lt;')).join(', ')} — reply to include everyone.</div>`;
+        for (let k = 0; k < everyone.length; k++) {
+          const id = await sendCopy({ toHeader: everyone[k], replyTo: replyAll, note, tid: k === 0 ? trackingId : crypto.randomUUID() });
+          if (k === 0) emailId = id;
+        }
+      } else {
+        emailId = await sendCopy({ toHeader: to, ccHeader: ccList.length ? ccList.join(', ') : undefined, tid: trackingId });
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Gmail send failed';
+      return NextResponse.json({ error: msg }, { status: 500 });
     }
 
-    const rawEmail = buildMimeEmail(clientHeaderLines, bodyWithPixel, attList);
-
-    const encoded = Buffer.from(rawEmail)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-
-    const sendBody: Record<string, string> = { raw: encoded };
-    if (threadId) sendBody.threadId = threadId;
-
-    const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(sendBody),
-    });
-
-    const sendData = await sendRes.json();
-    if (!sendRes.ok) {
-      return NextResponse.json({ error: sendData.error?.message ?? 'Gmail send failed' }, { status: 500 });
-    }
-
-    // Send a separate copy to CC agents — NO tracking pixel so only the client's open counts
+    // Separate copy to the CC'd agents — NO tracking pixel so only the client's open counts.
     if (ccEmails.length) {
       const ccNoticeBody = `
         <div style="background:#f3f4f6;border-left:4px solid #c9922c;padding:10px 16px;margin-bottom:20px;font-family:sans-serif;font-size:13px;color:#374151;">
@@ -289,44 +320,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Strip HTML tags for the stored plain-text body summary
-    const plainBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
-    const emailDate = new Date().toISOString().slice(0, 10);
-
-    const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/crm_deal_emails`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: anonKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        Prefer: 'return=representation',
-      },
-      body: JSON.stringify({
-        ...(dealId ? { deal_id: dealId } : {}),
-        ...(clientId ? { client_id: clientId } : {}),
-        direction: 'sent',
-        from_email: gmailEmail,
-        to_email: to,
-        subject: finalSubject,
-        body: plainBody,
-        email_date: emailDate,
-        gmail_message_id: sendData.id,
-        tracking_id: trackingId,
-        gmail_thread_id: threadId ?? sendData.threadId ?? null,
-        ...(ccList.length || ccEmails.length ? { cc_emails: Array.from(new Set([...ccList, ...ccEmails])).join(', ') } : {}),
-      }),
-    });
-
-    if (!insertRes.ok) {
-      const errText = await insertRes.text();
-      console.error('Failed to insert sent email:', errText);
-      return NextResponse.json({ error: 'Email sent but failed to log: ' + errText }, { status: 500 });
-    }
-
-    const inserted = await insertRes.json();
-    const emailId = Array.isArray(inserted) ? inserted[0]?.id : inserted?.id;
-
-    return NextResponse.json({ success: true, emailId });
+    return NextResponse.json({ success: true, emailId, copies: individual ? everyone.length : 1 });
   } catch (err) {
     console.error('Gmail send error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
