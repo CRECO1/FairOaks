@@ -27,7 +27,7 @@ type Party = { role: string; name: string; order: number; status: string };
 // A spot this signer has to confirm. Positions are page fractions, y measured from
 // the top to the field's baseline — the same frame the editor placed them in.
 type SignField = { id: string; page: number; fx: number; fy: number; fw: number; type: string; label?: string; value?: string; required?: boolean };
-type SignData = { status: string; doc_url: string | null; title: string; business_unit?: string; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
+type SignData = { status: string; doc_url: string | null; title: string; business_unit?: string; sender_name?: string | null; fields?: SignField[]; signer: { name: string; role: string; email: string; in_person?: boolean }; parties: Party[] };
 const typeLabel = (t: string) => t === 'signature' ? 'Sign' : t === 'initial' ? 'Initial' : t === 'text' ? 'Fill in' : t === 'check' ? 'Check' : 'Date';
 const isInput = (t: string) => t === 'text' || t === 'check';
 // Imported documents carry their file name as the title ("Commercial_Lease_Amendment__filled_").
@@ -654,11 +654,23 @@ export default function SignPage() {
     </div>
   );
 
-  const msg = (icon: string, title: string, body: string) => (
+  // Every dead end says who to ask, so nobody is left holding a link that doesn't work
+  // with nothing to do next. The sender's name comes with the envelope; the office line is
+  // the brand's.
+  const officePhone = data?.business_unit === 'residential' ? '(210) 390-9997' : '(210) 817-3443';
+  const officeTel = officePhone.replace(/\D/g, '');
+  const msg = (icon: string, title: string, body: string, extra?: string) => (
     <div style={wrap}>{header}<div style={{ padding: '40px 16px' }}><div style={{ ...card, textAlign: 'center', maxWidth: 480 }}>
       <div style={{ fontSize: 44, marginBottom: 12 }}>{icon}</div>
       <h1 style={{ fontSize: 20, margin: '0 0 8px' }}>{title}</h1>
       <p style={{ fontSize: 14, color: '#6b7280', lineHeight: 1.5, margin: 0 }}>{body}</p>
+      {extra && <p style={{ fontSize: 13, color: '#374151', background: '#f9fafb', border: '1px solid #eef0f2', borderRadius: 8, padding: '9px 12px', margin: '16px 0 0', lineHeight: 1.5 }}>{extra}</p>}
+      {data && (
+        <p style={{ fontSize: 12.5, color: '#9ca3af', margin: '18px 0 0', lineHeight: 1.5 }}>
+          Questions?{data?.sender_name ? <> Contact {data.sender_name}</> : <> Contact your broker</>} at{' '}
+          <a href={`tel:${officeTel}`} style={{ color: GOLD, fontWeight: 700, textDecoration: 'none' }}>{officePhone}</a>.
+        </p>
+      )}
     </div></div></div>
   );
 
@@ -681,6 +693,7 @@ export default function SignPage() {
         // they hand a document on: who has it now, and what am I waiting for.
         ? `Your signature has been recorded. It goes to ${nextParty.name} (${nextParty.role}) next${ordered.length > 2 ? `, then the remaining ${ordered.length - (myPos ?? 0) - 1} ${ordered.length - (myPos ?? 0) - 1 === 1 ? 'party' : 'parties'}` : ''}. You’ll be emailed the fully executed copy once everyone has signed — nothing more is needed from you.`
         : 'Your signature has been recorded. We’ll route the document to the next party and email you the final copy when it’s complete.',
+    `${displayTitle(data?.title)} — signed as ${typed.trim() || data?.signer?.name} on ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}.`,
   );
 
   // view === 'ready'
@@ -718,6 +731,25 @@ export default function SignPage() {
             underneath, so it's ready the moment they continue. */}
         {adoptStep && (
           <div style={{ ...card, maxWidth: 720, scrollMarginTop: 12 }}>
+            {/* What this is and who sent it, before asking for anything — the first screen is
+                a signature form, and a signer who doesn't yet know what they're signing has
+                little reason to trust it. */}
+            <div style={{ background: '#f9fafb', border: '1px solid #eef0f2', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>
+                {data?.sender_name ? `${data.sender_name} sent you` : 'You’ve been sent'}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: INK, overflowWrap: 'anywhere' }}>{displayTitle(data?.title)}</div>
+              {fields.length > 0 && (() => {
+                const marks = fields.filter(f => !isInput(f.type)).length;
+                const details = inputFields.length;
+                return (
+                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4, lineHeight: 1.5 }}>
+                    You&apos;ll sign, initial or date in <strong>{marks}</strong> {marks === 1 ? 'place' : 'places'}
+                    {details > 0 && <> and fill in <strong>{details}</strong> {details === 1 ? 'detail' : 'details'}</>}. You&apos;ll read the whole document before you finish.
+                  </div>
+                );
+              })()}
+            </div>
             <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .6, color: GOLD, marginBottom: 6 }}>Step 1 of 2 · Adopt your signature</div>
             <p style={{ fontSize: 14, color: '#4b5563', lineHeight: 1.5, margin: '0 0 16px' }}>
               Confirm your name and choose how your signature and initials will look. They’re placed wherever the document asks you to sign or initial — you’ll see each spot next.

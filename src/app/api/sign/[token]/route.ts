@@ -108,8 +108,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
       .sort((a, b) => a.page - b.page || a.fy - b.fy || a.fx - b.fx);
   }
 
+  // Who is asking them to sign — shown to the signer so an unexpected link from a stranger
+  // isn't their only clue, and so a dead-end screen can say who to contact.
+  let sender_name: string | null = null;
+  if (env.created_by) {
+    const { data: sp } = await db.from('crm_profiles').select('first_name, last_name').eq('id', env.created_by).maybeSingle();
+    sender_name = [sp?.first_name, sp?.last_name].filter(Boolean).join(' ').trim() || null;
+  }
+
   return NextResponse.json({
-    status, doc_url, fields,
+    status, doc_url, fields, sender_name,
     title: env.title ?? 'Document',
     // Which brand the signer sees — the same field that picks the email sender.
     business_unit: env.business_unit,
