@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DOC_EDIT_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
+import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
@@ -69,7 +69,7 @@ interface ReqBody {
 }
 
 /** A UI directive for the browser: navigate, or reload a document the Copilot just edited. */
-type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string };
+type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: NextRequest) {
@@ -125,6 +125,9 @@ export async function POST(req: NextRequest) {
         if (p?.error) err = String(p.error);
         // A document edit just landed: tell the browser so an open editor reloads it live.
         else if (DOC_EDIT_TOOLS.has(call.name) && typeof p?.submission_id === 'string') confirmActions.push({ type: 'doc-updated', submissionId: p.submission_id });
+        // The CRM loads deals/contacts once; without this a deal the copilot just created isn't in the pipeline until a reload.
+        else if (DEAL_WRITE_TOOLS.has(call.name)) confirmActions.push({ type: 'refresh', scope: 'deals' });
+        else if (CONTACT_WRITE_TOOLS.has(call.name)) confirmActions.push({ type: 'refresh', scope: 'contacts' });
       } catch { /* non-JSON */ }
       confirmed.push({ summary, ok: !err, error: err });
     }

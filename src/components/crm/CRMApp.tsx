@@ -10247,7 +10247,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         />
                         {dealNotesText !== (activeDeal.notes ?? '') && (
                           <button onClick={() => {
-                            const tagged = parseMentionContactIds(dealNotesText, clients);
+                            // Contacts tagged OUTSIDE the notes (pulled onto the deal by the Copilot) must survive a notes edit:
+                            // keep every existing tag the OLD notes didn't produce, then add what the new notes mention. Removing an
+                            // @mention from the text still untags that contact. (This used to rebuild the list from the text alone.)
+                            const fromOldNotes = new Set(parseMentionContactIds(activeDeal.notes ?? '', clients));
+                            const tagged = [...new Set([...(activeDeal.tagged_contact_ids ?? []).filter(id => !fromOldNotes.has(id)), ...parseMentionContactIds(dealNotesText, clients)])];
                             // Notify once, on save, and only people newly @mentioned — it used to fire on every keystroke.
                             const already = new Set(parseMentionIds(activeDeal.notes ?? '', profiles));
                             const fresh = parseMentionIds(dealNotesText, profiles).filter(id => !already.has(id));
@@ -13879,6 +13883,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           token={session?.access_token}
           userId={profile?.id}
           onClose={() => setAssistantOpen(false)}
+          onRefresh={scope => { if (!profile) return; if (scope === 'deals') loadDeals(profile); else loadClients(profile); }}
           onNavigate={(p, tab) => {
             // The server sends destinations from a closed set, but this is client
             // state being set from a network response — validate against the real

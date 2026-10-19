@@ -17,6 +17,9 @@ function admin(): SupabaseClient {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 }
 const DEAL_STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
+// Mirrors DEAL_TYPES in CRMApp and the crm_deals_representation_side_check constraint.
+const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
+const REPRESENTATION_SIDES = ['buyer', 'tenant', 'seller', 'landlord', 'intermediary', 'unknown'];
 
 // Call a CRM API route as the agent (same auth + RBAC as the UI).
 async function crmFetch(ctx: AgentCtx, path: string, method: string, body: unknown): Promise<{ ok: boolean; status: number; data: any }> {
@@ -50,6 +53,49 @@ async function logCopilot(db: SupabaseClient, ctx: AgentCtx, action: string, cli
 // Scope a query to the agent's business unit (a super_admin with no unit sees all).
 function scoped<T>(q: T, ctx: AgentCtx): T {
   return ctx.businessUnit ? (q as any).eq('business_unit', ctx.businessUnit) : q;
+}
+
+const centralToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(new Date());
+const contactLabel = (c: { first_name?: string | null; last_name?: string | null; business_name?: string | null }) =>
+  `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact';
+const normText = (s: unknown) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const STREET_ABBR: Record<string, string> = { cir: 'circle', dr: 'drive', st: 'street', rd: 'road', pkwy: 'parkway', ln: 'lane', blvd: 'boulevard', ct: 'court', hwy: 'highway', trl: 'trail', ave: 'avenue', pl: 'place', fm: 'farm to market' };
+/** Same property however it was typed: "2250 Chipley Cir" = "2250 Chipley Circle" = "2250 chipley". */
+function samePropertyText(a: unknown, b: unknown): boolean {
+  const expand = (s: unknown) => normText(s).split(' ').map(w => STREET_ABBR[w] ?? w).join(' ');
+  const x = expand(a), y = expand(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const key = (s: string) => s.match(/^(\d+)\s+([a-z]+)/)?.slice(1, 3).join(' ') ?? '';   // street number + first street word
+  return !!key(x) && key(x) === key(y);
+}
+
+/**
+ * Load contacts for a deal write. Every one must exist, be in the agent's workspace and — for an agent —
+ * be theirs (the same visibility search_contacts gives them). Returns the rows, or a ready-to-return
+ * JSON error string.
+ */
+async function loadDealContacts(db: SupabaseClient, ctx: AgentCtx, ids: string[]): Promise<Array<Record<string, any>> | string> {
+  const want = [...new Set(ids.filter(Boolean))];
+  if (!want.length) return [];
+  const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, business_unit, agent_id, assigned_agent_ids').in('id', want);
+  const rows = data ?? [];
+  for (const id of want) {
+    const c = rows.find(r => r.id === id);
+    if (!c) return JSON.stringify({ error: `Contact ${id} not found` });
+    if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return JSON.stringify({ error: `${contactLabel(c)} is in a different workspace` });
+    if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return JSON.stringify({ error: `${contactLabel(c)} isn't assigned to you` });
+  }
+  return rows;
+}
+
+/** Load a deal for a write: in workspace, and for an agent one they own or are assigned to. */
+async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: string): Promise<Record<string, any> | string> {
+  const { data: d } = await db.from('crm_deals').select('*').eq('id', dealId).maybeSingle();
+  if (!d) return JSON.stringify({ error: 'Deal not found' });
+  if (ctx.businessUnit && d.business_unit !== ctx.businessUnit) return JSON.stringify({ error: 'That deal is in a different workspace' });
+  if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return JSON.stringify({ error: "That deal isn't assigned to you" });
+  return d;
 }
 
 // Guard a by-id WRITE: the service-role client bypasses RLS, so every direct mutation
@@ -163,7 +209,13 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 }
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
-  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi']);
+  'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal']);
+
+// Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
+// copilot just created shows up in the pipeline without a page refresh.
+export const DEAL_WRITE_TOOLS = new Set(['create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'update_deal_stage']);
+export const CONTACT_WRITE_TOOLS = new Set(['create_contact', 'update_contact', 'add_note']);
 
 // Tools whose success changes a document the agent may have open on screen — the app is told
 // to reload it so the edit shows up live instead of being overwritten by a stale save.
@@ -191,6 +243,26 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { contact_id: { type: 'string' }, note: { type: 'string' } }, required: ['contact_id', 'note'] } },
   { name: 'update_deal_stage', description: `Move a deal to a new stage (${DEAL_STAGES.join(', ')}). WRITE — confirm with the agent first.`,
     input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, stage: { type: 'string', enum: DEAL_STAGES } }, required: ['deal_id', 'stage'] } },
+
+  { name: 'create_deal', description: `Create a pipeline deal for a contact and (optionally) attach other contacts to it. WRITE — confirm with the agent first. Steps: find the contact with search_contacts (create_contact first, as its own step, if they aren't in the CRM); if a property is involved find it with find_property and pass its id as listing_id. The deal starts at stage Prospect unless told otherwise. Types: ${DEAL_TYPES.join(', ')}. If this contact already has an open deal for that property it is NOT created — you get the existing deal back; tell the agent and offer to add contacts to / update that one instead.`,
+    input_schema: { type: 'object', properties: {
+      contact_id: { type: 'string', description: "The deal's primary client (a contact id)." },
+      type: { type: 'string', enum: DEAL_TYPES },
+      property: { type: 'string', description: 'Address or property name as the agent said it (filled from the listing if listing_id is given).' },
+      listing_id: { type: 'string', description: 'A property id from find_property, to link the deal to that building.' },
+      value: { type: 'number', description: 'Deal value in dollars, only if the agent gave one.' },
+      stage: { type: 'string', enum: DEAL_STAGES },
+      representation_side: { type: 'string', enum: REPRESENTATION_SIDES, description: 'Which side we represent, only if the agent said.' },
+      notes: { type: 'string' },
+      also_contact_ids: { type: 'array', items: { type: 'string' }, description: 'Other contacts to tag onto the deal (co-buyer, landlord, attorney, lender…).' },
+      force: { type: 'boolean', description: 'Create even though a similar open deal exists — ONLY when the agent explicitly says they want a second deal.' } },
+      required: ['contact_id', 'type'] } },
+  { name: 'add_contacts_to_deal', description: "Pull one or more existing contacts onto a deal: they are tagged on it (the deal then shows on their record). Optionally make one of them the deal's primary client — the previous primary stays tagged, nothing is lost. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, contact_ids: { type: 'array', items: { type: 'string' } }, make_primary_contact_id: { type: 'string', description: 'Optional: promote this contact to primary client.' } }, required: ['deal_id', 'contact_ids'] } },
+  { name: 'remove_contacts_from_deal', description: "Take tagged contacts off a deal (not the primary client — promote someone else with add_contacts_to_deal first). WRITE.",
+    input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, contact_ids: { type: 'array', items: { type: 'string' } } }, required: ['deal_id', 'contact_ids'] } },
+  { name: 'update_deal', description: `Change a deal's details: type, property text, linked property (listing_id, or null to unlink), value, which side we represent, or append a dated note. To move its stage use update_deal_stage. WRITE — confirm with the agent first.`,
+    input_schema: { type: 'object', properties: { deal_id: { type: 'string' }, type: { type: 'string', enum: DEAL_TYPES }, property: { type: 'string' }, listing_id: { type: ['string', 'null'] }, value: { type: 'number' }, representation_side: { type: 'string', enum: REPRESENTATION_SIDES }, append_note: { type: 'string' } }, required: ['deal_id'] } },
 
   // ── Leases, forms & e-sign (Layer 2) ──────────────────────────────────────
   { name: 'find_property', description: "Find a property/listing in the CRM by name or address. Returns id, name, address, type, status, asking price and size. Listings are SEPARATE from deals — a property the brokerage is marketing (with an asking price) lives here, not in the deals pipeline, so search here too whenever the agent asks about a property, an address, or a dollar figure you couldn't find in deals. Also the first step before drafting a lease (use the id as listing_id).",
@@ -454,7 +526,10 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (!d) return j({ error: 'Deal not found' });
         if (ctx.businessUnit && d.business_unit !== ctx.businessUnit) return j({ error: 'Deal is in a different workspace' });
         if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That deal isn't assigned to you" });
-        return j(d);
+        // Ids alone are opaque: name the tagged contacts so "who's on this deal?" is answerable.
+        const tagIds = ((d.tagged_contact_ids as string[] | null) ?? []);
+        const { data: tagRows } = tagIds.length ? await db.from('crm_clients').select('id, first_name, last_name, business_name, type').in('id', tagIds) : { data: [] as any[] };
+        return j({ ...d, tagged_contacts: (tagRows ?? []).map(c => ({ id: c.id, name: contactLabel(c), type: c.type })) });
       }
       case 'create_task': {
         // Don't let a task link to a contact/deal in another workspace.
@@ -498,6 +573,115 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Moved a deal to “${input.stage}”`, deal?.client_id);
         return j({ ok: true, stage: input.stage });
+      }
+
+      case 'create_deal': {
+        if (!DEAL_TYPES.includes(input.type)) return j({ error: `type must be one of: ${DEAL_TYPES.join(', ')}` });
+        const stage = input.stage ?? 'Prospect';
+        if (!DEAL_STAGES.includes(stage)) return j({ error: `stage must be one of: ${DEAL_STAGES.join(', ')}` });
+        if (input.representation_side && !REPRESENTATION_SIDES.includes(input.representation_side)) return j({ error: `representation_side must be one of: ${REPRESENTATION_SIDES.join(', ')}` });
+        const extraIds = ((input.also_contact_ids ?? []) as string[]).filter(id => id && id !== input.contact_id);
+        const people = await loadDealContacts(db, ctx, [input.contact_id, ...extraIds]);
+        if (typeof people === 'string') return people;
+        const primary = people.find(c => c.id === input.contact_id)!;
+
+        let listing: Record<string, any> | null = null;
+        if (input.listing_id) {
+          const { data: l } = await db.from('crm_listings').select('id, name, address, business_unit, is_restricted, listing_agent_id, assigned_agent_ids').eq('id', input.listing_id).maybeSingle();
+          if (!l || !canSeeListing(l, ctx)) return j({ error: 'Property not found' });
+          if (ctx.businessUnit && l.business_unit !== ctx.businessUnit) return j({ error: 'That property is in a different workspace' });
+          listing = l;
+        }
+        const property = String(input.property ?? '').trim() || listing?.name || '';
+
+        // One open deal per contact per property. The copilot (like the New Deal form) will happily make a second one
+        // if asked twice, and duplicates were exactly what agents kept having to clean up.
+        const { data: open } = await db.from('crm_deals').select('id, property, stage, type, value, listing_id').eq('client_id', primary.id).not('stage', 'in', '("Closed","Lost")');
+        const same = (open ?? []).filter(d => (listing && d.listing_id === listing.id) || (property && samePropertyText(d.property, property)) || (listing && samePropertyText(d.property, listing.address || listing.name)) || (!listing && !property && d.type === input.type));
+        if (same.length && input.force !== true) {
+          return j({ error: `Not created: ${contactLabel(primary)} already has an open deal${property ? ` for ${property}` : ''} (${same.map(d => `${d.stage}${d.property ? ` · ${d.property}` : ''}`).join('; ')}). Tell the agent, and offer to add contacts to or update that deal instead.`, duplicate: true, existing: same });
+        }
+
+        const row: Record<string, any> = {
+          client_id: primary.id, client: contactLabel(primary), client_email: primary.email || '', client_phone: primary.phone || primary.cell_phone || '',
+          type: input.type, property, value: Number(input.value) > 0 ? Number(input.value) : 0, notes: input.notes ? String(input.notes) : '',
+          agent_id: ctx.userId, stage, last_touch: centralToday(), business_unit: ctx.businessUnit ?? primary.business_unit ?? 'commercial',
+          listing_id: listing?.id ?? null, tagged_contact_ids: extraIds,
+        };
+        if (input.representation_side) row.representation_side = input.representation_side;
+        const { data: created, error } = await db.from('crm_deals').insert(row).select('id, client, type, property, value, stage').single();
+        if (error) return j({ error: error.message });
+        const tagged = people.filter(c => c.id !== primary.id).map(contactLabel);
+        await logCopilot(db, ctx, `Created ${input.type} deal${property ? ` for ${property}` : ''}${tagged.length ? ` and tagged ${tagged.join(', ')}` : ''}`, primary.id);
+        return j({ ok: true, created, tagged_contacts: tagged, note: 'The deal is now in the Deal Flow pipeline at this stage.' });
+      }
+      case 'add_contacts_to_deal':
+      case 'remove_contacts_from_deal': {
+        const adding = name === 'add_contacts_to_deal';
+        const deal = await loadDealForWrite(db, ctx, input.deal_id);
+        if (typeof deal === 'string') return deal;
+        const ids = [...new Set(((input.contact_ids ?? []) as string[]).filter(Boolean))];
+        if (!ids.length && !input.make_primary_contact_id) return j({ error: 'Give at least one contact.' });
+        const tagged = new Set<string>(((deal.tagged_contact_ids as string[] | null) ?? []));
+        const patch: Record<string, any> = { last_touch: centralToday() };
+        let primaryId: string | null = deal.client_id ?? null;
+        const named: string[] = [], already: string[] = [];
+
+        if (adding) {
+          const wantIds = [...ids, ...(input.make_primary_contact_id ? [input.make_primary_contact_id] : [])];
+          const people = await loadDealContacts(db, ctx, wantIds);
+          if (typeof people === 'string') return people;
+          if (input.make_primary_contact_id) {
+            const np = people.find(c => c.id === input.make_primary_contact_id)!;
+            // The old primary stays on the deal as a tagged contact — promoting someone must never drop anyone.
+            if (deal.client_id && deal.client_id !== np.id) tagged.add(deal.client_id);
+            tagged.delete(np.id);
+            Object.assign(patch, { client_id: np.id, client: contactLabel(np), client_email: np.email || '', client_phone: np.phone || np.cell_phone || '' });
+            primaryId = np.id;
+            named.push(`${contactLabel(np)} (now the primary client)`);
+          }
+          for (const c of people) {
+            if (c.id === primaryId) continue;
+            if (tagged.has(c.id)) already.push(contactLabel(c)); else { tagged.add(c.id); named.push(contactLabel(c)); }
+          }
+        } else {
+          if (ids.includes(deal.client_id)) return j({ error: "That's the deal's primary client — promote someone else first (add_contacts_to_deal with make_primary_contact_id), then remove them." });
+          for (const id of ids) { if (tagged.delete(id)) named.push(id); else already.push(id); }
+          const { data: ppl } = named.length ? await db.from('crm_clients').select('id, first_name, last_name, business_name').in('id', named) : { data: [] as any[] };
+          const label = new Map((ppl ?? []).map(c => [c.id, contactLabel(c)]));
+          for (let i = 0; i < named.length; i++) named[i] = label.get(named[i]) ?? named[i];
+        }
+        patch.tagged_contact_ids = [...tagged].filter(id => id !== primaryId);
+        const { error } = await db.from('crm_deals').update(patch).eq('id', input.deal_id);
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `${adding ? 'Added' : 'Removed'} ${named.join(', ') || 'contacts'} ${adding ? 'to' : 'from'} a deal`, deal.client_id);
+        return j({ ok: true, [adding ? 'added' : 'removed']: named, [adding ? 'already_on_deal' : 'not_on_deal']: already, deal_now_tags: patch.tagged_contact_ids.length });
+      }
+      case 'update_deal': {
+        const deal = await loadDealForWrite(db, ctx, input.deal_id);
+        if (typeof deal === 'string') return deal;
+        const patch: Record<string, any> = {};
+        if (input.type !== undefined) { if (!DEAL_TYPES.includes(input.type)) return j({ error: `type must be one of: ${DEAL_TYPES.join(', ')}` }); patch.type = input.type; }
+        if (input.property !== undefined) patch.property = String(input.property).trim();
+        if (input.value !== undefined) patch.value = Number(input.value) >= 0 ? Number(input.value) : 0;
+        if (input.representation_side !== undefined) { if (!REPRESENTATION_SIDES.includes(input.representation_side)) return j({ error: `representation_side must be one of: ${REPRESENTATION_SIDES.join(', ')}` }); patch.representation_side = input.representation_side; }
+        if (input.listing_id !== undefined) {
+          if (input.listing_id === null) patch.listing_id = null;
+          else {
+            const { data: l } = await db.from('crm_listings').select('id, name, business_unit, is_restricted, listing_agent_id, assigned_agent_ids').eq('id', input.listing_id).maybeSingle();
+            if (!l || !canSeeListing(l, ctx)) return j({ error: 'Property not found' });
+            if (ctx.businessUnit && l.business_unit !== ctx.businessUnit) return j({ error: 'That property is in a different workspace' });
+            patch.listing_id = l.id;
+            if (input.property === undefined && !deal.property) patch.property = l.name;
+          }
+        }
+        if (input.append_note) patch.notes = `${deal.notes ? deal.notes + '\n\n' : ''}[${new Date().toLocaleDateString('en-US')}] ${String(input.append_note).trim()}`;
+        if (!Object.keys(patch).length) return j({ error: 'Nothing to update' });
+        patch.last_touch = centralToday();
+        const { data, error } = await db.from('crm_deals').update(patch).eq('id', input.deal_id).select('id, client, type, property, value, stage, representation_side, listing_id').single();
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Updated a deal (${Object.keys(patch).filter(k => k !== 'last_touch').join(', ')})`, deal.client_id);
+        return j({ ok: true, updated: data });
       }
 
       // ── Layer 2: leases, forms & e-sign ────────────────────────────────────
@@ -840,6 +1024,32 @@ export async function describeWriteRich(name: string, input: Record<string, any>
       }
     } catch { /* fall through to the generic text */ }
   }
+  // Deal writes carry opaque ids: show the agent WHO and WHAT they're approving, and warn about a duplicate up front.
+  if (name === 'create_deal' || name === 'add_contacts_to_deal' || name === 'remove_contacts_from_deal') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const ids = [...new Set([input.contact_id, input.make_primary_contact_id, ...((input.contact_ids ?? []) as string[]), ...((input.also_contact_ids ?? []) as string[])].filter(Boolean))] as string[];
+      const { data: ppl } = ids.length ? await db.from('crm_clients').select('id, first_name, last_name, business_name').in('id', ids) : { data: [] as any[] };
+      const nm = (id: string) => { const c = (ppl ?? []).find(x => x.id === id); return c ? contactLabel(c) : 'a contact'; };
+      if (name === 'create_deal') {
+        const lines = [`🗂 Create a deal in the pipeline`, `  • Client: ${nm(input.contact_id)}`, `  • Type: ${input.type}`, `  • Property: ${input.property || '—'}${input.listing_id ? ' (linked to the property record)' : ''}`,
+          `  • Value: ${input.value ? `$${Number(input.value).toLocaleString()}` : '—'}`, `  • Stage: ${input.stage ?? 'Prospect'}`];
+        if (input.representation_side) lines.push(`  • We represent: ${input.representation_side}`);
+        const extra = ((input.also_contact_ids ?? []) as string[]).map(nm);
+        if (extra.length) lines.push(`  • Also tagged: ${extra.join(', ')}`);
+        if (input.notes) lines.push(`  • Notes: ${String(input.notes).slice(0, 200)}`);
+        const { data: open } = await db.from('crm_deals').select('property, stage').eq('client_id', input.contact_id).not('stage', 'in', '("Closed","Lost")');
+        const dup = (open ?? []).filter(d => input.property && samePropertyText(d.property, input.property));
+        if (dup.length && input.force !== true) lines.push(`⚠️ ${nm(input.contact_id)} already has an open deal for this property (${dup[0].stage}) — it will NOT be duplicated.`);
+        return lines.join('\n');
+      }
+      const verb = name === 'add_contacts_to_deal' ? 'Add' : 'Remove';
+      const who = ((input.contact_ids ?? []) as string[]).map(nm);
+      const { data: dl } = await db.from('crm_deals').select('client, property, type, stage').eq('id', input.deal_id).maybeSingle();
+      const dealName = dl ? `${dl.client}${dl.property ? ` — ${dl.property}` : ''} (${dl.type}, ${dl.stage})` : 'the deal';
+      return `${verb} ${who.join(', ') || 'the contacts'} ${name === 'add_contacts_to_deal' ? 'to' : 'from'} the deal: ${dealName}${input.make_primary_contact_id ? `\nMake ${nm(input.make_primary_contact_id)} the primary client (the current one stays tagged)` : ''}`;
+    } catch { /* fall through to the generic text */ }
+  }
   return describeWrite(name, input);
 }
 
@@ -850,6 +1060,10 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'complete_task': return `Mark task complete`;
     case 'add_note': return `Add a note to the contact: “${input.note}”`;
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
+    case 'create_deal': return `Create a ${input.type} deal${input.property ? ` for ${input.property}` : ''}${input.value ? ` at $${Number(input.value).toLocaleString()}` : ''} (stage ${input.stage ?? 'Prospect'})${(input.also_contact_ids ?? []).length ? ` and tag ${(input.also_contact_ids as string[]).length} other contact${(input.also_contact_ids as string[]).length === 1 ? '' : 's'}` : ''}`;
+    case 'add_contacts_to_deal': return `Add ${(input.contact_ids ?? []).length || 1} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} to the deal${input.make_primary_contact_id ? ' (and make one the primary client)' : ''}`;
+    case 'remove_contacts_from_deal': return `Remove ${(input.contact_ids ?? []).length} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} from the deal`;
+    case 'update_deal': return `Update the deal's ${Object.keys(input).filter(k => k !== 'deal_id').map(k => k.replace(/_/g, ' ')).join(', ') || 'details'}`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'start_form': return `Start a new form document`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;
