@@ -126,6 +126,8 @@ export interface LoiEdit {
   addExhibit?: LoiExhibit;
   /** Exhibits to take off, by id, "Exhibit B" label, or title. */
   removeExhibits?: string[];
+  /** Change an attached exhibit: switch its cover sheet on/off and/or retitle it (matched like removeExhibits). */
+  updateExhibits?: { exhibit: string; cover?: boolean; title?: string }[];
 }
 
 const EXHIBIT_BUCKET = 'listing-files';
@@ -217,6 +219,14 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
     const [gone] = next.exhibits!.splice(i, 1);
     removedPaths.push(gone.path);
     changes.push(`Removed exhibit “${gone.title}”`);
+  }
+  for (const u of edit.updateExhibits ?? []) {
+    const k = normLabel(String(u.exhibit));
+    const i = (next.exhibits ?? []).findIndex((e, n) => e.id === u.exhibit || normLabel(e.title) === k || normLabel(`exhibit ${exhibitLetter(n)}`) === k || normLabel(e.name) === k);
+    if (i === -1) { unmatched.push(String(u.exhibit)); continue; }
+    const ex = next.exhibits![i];
+    if (u.cover !== undefined && (ex.cover !== false) !== u.cover) { ex.cover = u.cover ? undefined : false; changes.push(`Exhibit ${exhibitLetter(i)} (${ex.title}): ${u.cover ? 'added the cover sheet' : 'removed the cover sheet — the file is merged straight in'}`); }
+    if (u.title && u.title.trim() && u.title.trim() !== ex.title) { changes.push(`Exhibit ${exhibitLetter(i)} retitled “${u.title.trim()}”`); ex.title = u.title.trim().slice(0, 100); }
   }
   if (edit.addExhibit) {
     next.exhibits = [...(next.exhibits ?? []), edit.addExhibit];

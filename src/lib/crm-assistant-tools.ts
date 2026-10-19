@@ -259,7 +259,7 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
-  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'edit_file']);
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file']);
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
 // copilot just created shows up in the pipeline without a page refresh.
@@ -268,7 +268,7 @@ export const CONTACT_WRITE_TOOLS = new Set(['create_contact', 'update_contact', 
 
 // Tools whose success changes a document the agent may have open on screen — the app is told
 // to reload it so the edit shows up live instead of being overwritten by a stale save.
-export const DOC_EDIT_TOOLS = new Set(['fill_document', 'edit_loi', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi']);
+export const DOC_EDIT_TOOLS = new Set(['fill_document', 'edit_loi', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit']);
 
 // Contact types the CRM actually uses — kept closed so the copilot can't invent one.
 const CONTACT_TYPES = ['Tenant', 'Buyer', 'Seller', 'Landlord/Investor', 'Broker', 'Agent'];
@@ -327,7 +327,9 @@ export const TOOLS: Anthropic.Tool[] = [
       name: { type: 'string', description: 'Optional name for the edited file (keep the extension).' } },
       required: ['edits'] } },
   { name: 'attach_exhibit_to_loi', description: "Staple a PDF or image INTO a Letter of Intent as a labelled exhibit (EXHIBIT A, B, … — a cover sheet followed by the file's pages) so the LOI, its signature page and the exhibit are ONE combined PDF, rebuilt on the spot. Use this when the agent says 'add this to the LOI', 'attach the floor plan as an exhibit', 'put the site plan on the letter'. The file is either something they attached to this chat (attachment_id, the 10-character id in the file's header) or a file already on the deal (deal_file_id from list_deal_files). Works on a draft letter only — not one already out for signature. Do NOT use save_attachment for this (that only files a separate copy on the deal). WRITE — confirm with the agent first.",
-    input_schema: { type: 'object', properties: { submission_id: { type: 'string', description: 'The LOI (use the one on screen, or find it with read_document).' }, attachment_id: { type: 'string' }, deal_file_id: { type: 'string' }, title: { type: 'string', description: 'Exhibit title as it should read, e.g. "Suite 210 Floor Plan" (the EXHIBIT letter is added automatically).' } }, required: ['submission_id'] } },
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string', description: 'The LOI (use the one on screen, or find it with read_document).' }, attachment_id: { type: 'string' }, deal_file_id: { type: 'string' }, title: { type: 'string', description: 'Exhibit title as it should read, e.g. "Suite 210 Floor Plan" (the EXHIBIT letter is added automatically).' }, cover_sheet: { type: 'boolean', description: 'Default true: a cover sheet ("EXHIBIT A" + title) precedes the file. Pass FALSE when the agent wants the file merged straight in with NO cover sheet.' } }, required: ['submission_id'] } },
+  { name: 'update_loi_exhibit', description: "Change an exhibit that is ALREADY on a Letter of Intent without removing it: turn its cover sheet off or back on (cover_sheet), and/or retitle it. Use this when the agent says 'take the cover sheet off the exhibit' / 'no cover page' / 'just merge it in'. The PDF is rebuilt immediately. Match the exhibit by its 'Exhibit A' label, title, or id (read_document lists them). WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, exhibit: { type: 'string', description: "id, 'Exhibit A', or the title" }, cover_sheet: { type: 'boolean' }, title: { type: 'string' } }, required: ['submission_id', 'exhibit'] } },
   { name: 'remove_exhibit_from_loi', description: "Take an exhibit back off a Letter of Intent (by its id, its 'Exhibit B' label, or its title) and rebuild the PDF. Replacing an exhibit = remove, then attach_exhibit_to_loi. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, exhibit: { type: 'string', description: "id, 'Exhibit A', or the title" } }, required: ['submission_id', 'exhibit'] } },
   { name: 'list_deal_files', description: "List the uploaded files on a deal's Docs tab (id, name, type, size) — to find a file to attach to a letter as an exhibit. Read-only.",
@@ -747,6 +749,14 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Edited “${srcName}” (${result.report.length} change${result.report.length === 1 ? '' : 's'}) and filed the copy as “${outName}”`);
         return j({ ok: true, saved: outName, to: filed.to, changes: result.report, ...(result.warnings.length ? { warnings: result.warnings } : {}), note: 'The original file is untouched. Tell the agent exactly what changed and any warning (especially whether a PDF removal was only covered or permanent), and that they can click 👁 View on the new file.' });
       }
+      case 'update_loi_exhibit': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', input.submission_id, 'Document'); if (bad) return bad;
+        if (input.cover_sheet === undefined && !input.title) return j({ error: 'Say what to change: cover_sheet (true/false) and/or title.' });
+        const r = await editLoi(db, ctx.userId, ctx.businessUnit, String(input.submission_id), { updateExhibits: [{ exhibit: String(input.exhibit), cover: typeof input.cover_sheet === 'boolean' ? input.cover_sheet : undefined, title: input.title ? String(input.title) : undefined }] }, ctx.origin ?? 'https://www.fairoaksrealtygroup.com');
+        if (!r.ok) return j({ error: r.error });
+        await logCopilot(db, ctx, `Changed an exhibit on the Letter of Intent “${r.submission.title ?? ''}”`);
+        return j({ ok: true, edited: r.changes, submission_id: r.submission.id, note: 'The letter\u2019s PDF was rebuilt. Nothing was sent for signature.' });
+      }
       case 'attach_exhibit_to_loi': {
         const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', input.submission_id, 'Document'); if (bad) return bad;
         if (!!input.attachment_id === !!input.deal_file_id) return j({ error: 'Pass exactly one of attachment_id (a file attached to this chat) or deal_file_id (a file on the deal).' });
@@ -793,7 +803,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         const { error: upErr } = await db.storage.from(ATT_BUCKET).upload(path, bytes, { contentType: kind === 'pdf' ? 'application/pdf' : `image/${storeExt === 'jpg' ? 'jpeg' : 'png'}`, upsert: false });
         if (upErr) return j({ error: upErr.message });
         const title = (String(input.title ?? '').trim() || fileName.replace(/\.[a-z0-9]+$/i, '').replace(/[_]+/g, ' ')).replace(/^exhibit\s+[a-z0-9]+\s*[-–—:]\s*/i, '').trim().slice(0, 100) || 'Attachment';
-        const exhibit: LoiExhibit = { id: exId, title, name: fileName, path, kind };
+        const exhibit: LoiExhibit = { id: exId, title, name: fileName, path, kind, ...(input.cover_sheet === false ? { cover: false } : {}) };
         const r = await editLoi(db, ctx.userId, ctx.businessUnit, String(input.submission_id), { addExhibit: exhibit }, ctx.origin ?? 'https://www.fairoaksrealtygroup.com');
         if (!r.ok) { await db.storage.from(ATT_BUCKET).remove([path]); return j({ error: r.error }); }
         await logCopilot(db, ctx, `Attached “${title}” to the Letter of Intent “${r.submission.title ?? ''}” as an exhibit`);
@@ -1252,7 +1262,7 @@ export async function describeWriteRich(name: string, input: Record<string, any>
       let file = 'the file';
       if (input.attachment_id) file = (await findAttachmentById(db, ctx.userId, String(input.attachment_id)))?.name ?? file;
       else if (input.deal_file_id) { const { data: f } = await db.from('crm_deal_docs').select('name').eq('id', input.deal_file_id).maybeSingle(); file = f?.name ?? file; }
-      return `📎 Staple “${file}” onto the end of “${sub?.title ?? 'the Letter of Intent'}” as EXHIBIT ${exhibitLetter(n)}${input.title ? ` — ${input.title}` : ''}\nThe letter, its signature page and the exhibit become one PDF, rebuilt now. Nothing is sent for signature.`;
+      return `📎 Staple “${file}” onto the end of “${sub?.title ?? 'the Letter of Intent'}” as EXHIBIT ${exhibitLetter(n)}${input.title ? ` — ${input.title}` : ''}\nThe letter, its signature page and the exhibit become one PDF${input.cover_sheet === false ? ' — the file merged straight in, NO cover sheet' : ''}, rebuilt now. Nothing is sent for signature.`;
     } catch { /* fall through */ }
   }
   if (name === 'save_attachment') {
@@ -1301,7 +1311,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'add_note': return `Add a note to the contact: “${input.note}”`;
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
     case 'edit_file': return `✏️ Edit the file (${(input.edits ?? []).length} change${(input.edits ?? []).length === 1 ? '' : 's'}) and file the edited copy — the original is not changed`;
-    case 'attach_exhibit_to_loi': return `📎 Attach “${input.title || 'the file'}” to the Letter of Intent as an exhibit and rebuild the PDF — nothing is sent for signature`;
+    case 'attach_exhibit_to_loi': return `📎 Attach “${input.title || 'the file'}” to the Letter of Intent as an exhibit${input.cover_sheet === false ? ' (no cover sheet)' : ''} and rebuild the PDF — nothing is sent for signature`;
+    case 'update_loi_exhibit': return `Change exhibit “${input.exhibit}” on the Letter of Intent${input.cover_sheet === false ? ': remove its cover sheet' : input.cover_sheet === true ? ': add its cover sheet' : ''} and rebuild the PDF`;
     case 'remove_exhibit_from_loi': return `Remove exhibit “${input.exhibit}” from the Letter of Intent and rebuild the PDF`;
     case 'save_attachment': return `Save the attached file${input.name ? ` as “${input.name}”` : ''} to the ${input.deal_id ? 'deal' : 'property'}`;
     case 'create_deal': return `Create a ${input.type} deal${input.property ? ` for ${input.property}` : ''}${input.value ? ` at $${Number(input.value).toLocaleString()}` : ''} (stage ${input.stage ?? 'Prospect'})${(input.also_contact_ids ?? []).length ? ` and tag ${(input.also_contact_ids as string[]).length} other contact${(input.also_contact_ids as string[]).length === 1 ? '' : 's'}` : ''}`;

@@ -229,13 +229,15 @@ export async function renderLoi(
   for (const [i, ex] of (data.exhibits ?? []).entries()) {
     const bytes = exhibitFiles?.get(ex.id);
     if (!bytes?.length) continue;
-    const cover = doc.addPage([PW, PH]);
-    const midY = PH / 2 + 30;
-    center(cover, `EXHIBIT ${exhibitLetter(i + letterBase)}`, midY, 34, bold);
-    cover.drawLine({ start: { x: PW / 2 - 70, y: midY - 16 }, end: { x: PW / 2 + 70, y: midY - 16 }, thickness: 1.6, color: BLACK });
-    let ty = midY - 44;
-    for (const l of wrapText(ex.title, times, 16, RIGHT - M - 40).slice(0, 4)) { center(cover, l, ty, 16, times); ty -= 21; }
-    center(cover, `Attached to the ${spec.title}${data.reLine ? ` - ${data.reLine}` : ''}`, ty - 14, 9.5, italic, GRAY);
+    if (ex.cover !== false) {
+      const cover = doc.addPage([PW, PH]);
+      const midY = PH / 2 + 30;
+      center(cover, `EXHIBIT ${exhibitLetter(i + letterBase)}`, midY, 34, bold);
+      cover.drawLine({ start: { x: PW / 2 - 70, y: midY - 16 }, end: { x: PW / 2 + 70, y: midY - 16 }, thickness: 1.6, color: BLACK });
+      let ty = midY - 44;
+      for (const l of wrapText(ex.title, times, 16, RIGHT - M - 40).slice(0, 4)) { center(cover, l, ty, 16, times); ty -= 21; }
+      center(cover, `Attached to the ${spec.title}${data.reLine ? ` - ${data.reLine}` : ''}`, ty - 14, 9.5, italic, GRAY);
+    }
     if (ex.kind === 'pdf') {
       const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
       for (const p of await doc.copyPages(src, src.getPageIndices())) doc.addPage(p);

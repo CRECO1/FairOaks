@@ -430,6 +430,9 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
                   <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
                     <span aria-hidden>{ex.kind === 'pdf' ? '📄' : '🖼️'}</span>
                     <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><b>Exhibit {exhibitLetter(i + (spec.exhibit ? 1 : 0))}</b> — {ex.title}</span>
+                    <label title="A cover sheet (“EXHIBIT A” + title) before the file's pages" style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#6b7280', cursor: 'pointer', flexShrink: 0 }}>
+                      <input type="checkbox" checked={ex.cover !== false} onChange={e => setData(d => ({ ...d, exhibits: (d.exhibits ?? []).map(x => x.id === ex.id ? { ...x, cover: e.target.checked ? undefined : false } : x) }))} /> Cover sheet
+                    </label>
                     <button onClick={() => setData(d => ({ ...d, exhibits: (d.exhibits ?? []).filter(e => e.id !== ex.id) }))} title="Take this exhibit off the letter" aria-label={`Remove exhibit ${ex.title}`}
                       style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, minWidth: 28, minHeight: 28 }}>✕</button>
                   </div>
