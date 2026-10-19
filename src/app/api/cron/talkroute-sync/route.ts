@@ -4,6 +4,7 @@ import { syncTalkroute, syncTexts, talkrouteConfigured } from '@/lib/talkroute';
 import { dbError } from '@/lib/crm-auth';
 import { tidyCallLog } from '@/lib/call-routing';
 import { sendMissedCallTexts } from '@/lib/missed-call-text';
+import { sendBotCallTexts } from '@/lib/bot-call-text';
 import { sendInstantMissedAlerts } from '@/lib/call-sla';
 
 export const dynamic = 'force-dynamic';
@@ -37,7 +38,10 @@ export async function GET(req: NextRequest) {
     // "Sorry we missed you" texts (off unless MISSED_CALL_TEXTBACK is set — lib/missed-call-text.ts).
     let textback: Record<string, unknown> = {};
     try { textback = await sendMissedCallTexts(db); } catch (e) { textback = { error: e instanceof Error ? e.message : String(e) }; }
-    return NextResponse.json({ ok: true, ...r, texts, tidy, textback, instant });
+    // "Confirm your info" texts after an AI-receptionist lead call (off unless BOT_CALL_TEXT is set — lib/bot-call-text.ts).
+    let botText: Record<string, unknown> = {};
+    try { botText = await sendBotCallTexts(db); } catch (e) { botText = { error: e instanceof Error ? e.message : String(e) }; }
+    return NextResponse.json({ ok: true, ...r, texts, tidy, textback, botText, instant });
   } catch (e) {
     console.error('[cron/talkroute-sync]', e);
     return dbError('cron/talkroute-sync', e);
