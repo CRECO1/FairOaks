@@ -325,7 +325,11 @@ export async function POST(req: NextRequest) {
 
   // New website leads can be enrolled in the brand's welcome sequence. Off
   // unless LEAD_AUTOENROLL_UNITS names this unit; see lib/lead-autoenroll.ts.
-  if (isNew) await maybeAutoEnrollLead(supabase, { clientId, agentId: adminId ?? null, businessUnit: unit });
+  // Not for subscribers: someone who only asked for a community newsletter (e.g. fairoaksranchplaza.com) is not a sales lead
+  // and must not receive the brand's lead-nurture sequence.
+  if (isNew && !isSubscriptionLead({ source, event: body.event, subscriptionType: body.subscription_type })) {
+    await maybeAutoEnrollLead(supabase, { clientId, agentId: adminId ?? null, businessUnit: unit });
+  }
 
   return NextResponse.json({ success: true, clientId, isNew });
 }
