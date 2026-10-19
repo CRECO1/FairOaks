@@ -430,7 +430,7 @@ function KanbanBoard({ deals, isAdmin, agentName, draggedDealId, dragOverStage, 
                 {stageDeals.map(deal => (
                   <div key={deal.id} onClick={() => openDeal(deal)}
                     style={{ background: '#fff', border: '1px solid #e5e7eb', borderLeft: `3px solid ${col.dot}`, borderRadius: 10, padding: '11px 14px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.04)' }}>
-                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111', marginBottom: 4 }}>{deal.client}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#111', marginBottom: 4 }}>{deal.is_restricted && <span title="Private deal" style={{ marginRight: 4 }}>🔒</span>}{deal.client}</div>
                     {deal.property && <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</div>}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ ...Object.fromEntries((TYPE_COLORS[deal.type] || '').split(';').map((s: string) => s.split(':'))), display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600 } as React.CSSProperties}>
@@ -1145,6 +1145,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const CONTACTS_PAGE_SIZE = 100;
 
   // New deal form
+  const [ndPrivate, setNdPrivate] = useState(true); // super admin only: your new deals are private unless you untick this
   const [nd, setNd] = useState({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' });
   const [ndNewClient, setNdNewClient] = useState({ show: false, name: '', email: '', phone: '', saving: false });
   // Closing-form packets to attach when the deal is created (keys into FORM_PACKETS).
@@ -3411,6 +3412,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       business_unit: businessUnit,
     }]).select('id').single();
     if (error) { showToast('Error: ' + error.message); setSaving(false); return; }
+    // The database marks a super admin's new deals private automatically; unticking the box lifts it.
+    if (isSuperAdmin && !ndPrivate && created?.id) await supabase.from('crm_deals').update({ is_restricted: false }).eq('id', created.id);
     // Attach the selected closing-form packet(s) to the new deal.
     let attached = 0;
     const pkts = FORM_PACKETS.filter(p => ndPackets.includes(p.key));
@@ -10245,12 +10248,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     </div>
                     {/* Private deal: hidden (with its notes, emails, docs, tasks) from everyone
                         except the owner, super_admin and agents added to the deal. */}
-                    {(isSuperAdmin || activeDeal.agent_id === profile?.id) && (
+                    {isSuperAdmin && (
                       <div><label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Visibility</label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 13, cursor: 'pointer' }}>
                           <input type="checkbox" checked={!!activeDeal.is_restricted}
                             onChange={e => { updateDeal(activeDeal.id, { is_restricted: e.target.checked }); setActiveDeal(prev => prev ? { ...prev, is_restricted: e.target.checked } : prev); }} />
-                          🔒 Private — only me and agents I add to this deal can see it
+                          🔒 Private — only you and agents you add to this deal can see it
                         </label>
                       </div>
                     )}
@@ -11423,6 +11426,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <textarea className="crm-input" style={{ marginTop: 4, minHeight: 70, resize: 'vertical' }} value={nd.notes} onChange={e => setNd({ ...nd, notes: e.target.value })} placeholder="Initial notes…" />
                 </div>
               </div>
+              {isSuperAdmin && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, fontSize: 13, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={ndPrivate} onChange={e => setNdPrivate(e.target.checked)} style={{ accentColor: '#c9922c' }} />
+                  🔒 Private — only you and agents you add to the deal can see it
+                </label>
+              )}
               <div style={{ display: 'flex', gap: 10, marginTop: 16, justifyContent: 'flex-end' }}>
                 <button className="crm-btn crm-btn-ghost" onClick={() => { setShowAddDeal(false); setNd({ client_id: '', client: '', client_email: '', client_phone: '', type: 'Buyer Purchase', property: '', value: 0, notes: '' }); setNdPackets([]); }}>Cancel</button>
                 <button className="crm-btn crm-btn-gold" onClick={createDeal} disabled={saving || !nd.client_id}>{saving ? 'Creating…' : 'Create Deal'}</button>
