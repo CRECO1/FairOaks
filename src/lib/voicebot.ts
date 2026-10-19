@@ -205,7 +205,7 @@ function peopleRule(t: TransferCtx | undefined): string {
 /** Live transfer, as the prompt needs it: who can be rung, whether the office is open, and whether a ring already failed on this call. */
 export interface TransferCtx { names: string[]; open: boolean; tried: boolean }
 
-function systemPrompt(s: VoicebotSettings, ctx: { callerNumber: string | null; contact: MatchedContact | null; now: string; transfer?: TransferCtx; forwarded?: boolean }): string {
+function systemPrompt(s: VoicebotSettings, ctx: { callerNumber: string | null; contact: MatchedContact | null; now: string; transfer?: TransferCtx }): string {
   const d = DEFAULTS[s.business_unit] ?? DEFAULTS.commercial;
   const company = s.company_name || d.company;
   return `You are ${s.bot_name}, the phone receptionist for ${company}. You are answering a live phone call; your words are read aloud by text-to-speech.
@@ -252,7 +252,7 @@ Rules:
 - If the caller is a vendor or sales call, take a brief message and end.
 - If the caller claims to be a government agency (IRS, sheriff, a warrant), threatens legal action, or asks for payment, card or bank details, it is a scam: say once that you can't help with that and end the call (action "end"). Do not take a message from them.
 - If the caller says goodbye, has no further needs, or has left all the details, end the call with a brief goodbye.
-- If you couldn't hear them (empty or garbled input), say so briefly and ask again. After two failed attempts, say kindly that you can't hear them and ${ctx.forwarded ? 'that it sounds like a bad connection on our end and someone from the team will call them back shortly, then end' : 'invite them to call back anytime, then end. Don\'t promise a callback (you have no details)'}. Never ask them to "leave a message" — there is no voicemail on this line.
+- If you couldn't hear them (empty or garbled input), say so briefly and ask again. After two failed attempts, say kindly that you can't hear them and invite them to call back anytime, then end. Don't promise a callback (you have no details) and never ask them to "leave a message" — there is no voicemail on this line.
 ${ctx.contact ? ctx.contact.first
   ? `\nThe caller ID matches an existing contact in our CRM: ${ctx.contact.name}${ctx.contact.business_name ? ` (${ctx.contact.business_name})` : ''}${ctx.contact.type ? `, ${ctx.contact.type}` : ''}. The greeting already asked if this is ${ctx.contact.first}; if they say no or give another name, go with what they tell you.`
   : `\nThe caller ID matches ${ctx.contact.business_name || ctx.contact.name} in our CRM, but we have no person's name on file. Don't guess a name — ask who is calling.` : ''}
@@ -374,7 +374,7 @@ const centralNow = () => new Date().toLocaleString('en-US', { timeZone: 'America
  * One turn of the conversation. `history` is everything said so far (bot + caller,
  * in order); the last entry is the caller's newest utterance.
  */
-export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null; lang?: Lang; transfer?: TransferCtx; forwarded?: boolean }): Promise<BotReply> {
+export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null; lang?: Lang; transfer?: TransferCtx }): Promise<BotReply> {
   const lang: Lang = ctx.lang ?? 'en';
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages: Anthropic.MessageParam[] = [];

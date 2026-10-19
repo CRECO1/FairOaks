@@ -64,17 +64,6 @@ export async function POST(req: Request) {
   if (s?.callback_at) { patch.follow_up_due = s.callback_at; (patch.ai_meta as Record<string, unknown>).callback_at = s.callback_at; }
   // Silent calls and robocalls are not call-backs: no queue entry, no email.
   if (junkKind({ intent: patch.intent as string | null, summary: patch.summary as string })) patch.needs_follow_up = false;
-  // A forwarded Fair Oaks call where nothing from the caller ever reached Ava is a real person we lost, not a robocall:
-  // the recordings show the caller channel dead silent (digital zero, no room noise) on every one, and some of those
-  // people were rung back by hand. Once Talkroute's leg gives us their number (tidyCallLog, below) it becomes a call-back.
-  const heardNothing = !turns.some(t => t.role === 'caller' && t.text !== '(silence)');
-  const lostCaller = heardNothing && meta.caller_id_unknown === true && (duration ?? 0) >= 8;
-  const quietSummary = patch.summary as string, quietIntent = patch.intent as string | null;
-  if (lostCaller) {
-    patch.needs_follow_up = true;
-    patch.intent = "Couldn't hear caller — call back";
-    patch.summary = `Someone called, stayed on for about ${duration} seconds and heard Ava, but no sound from them reached the line (a connection problem, not a robocall). Call them back.`;
-  }
   // Rang an agent's cell: say so on the call, and keep it on the call-back list unless they actually talked.
   const tr = meta.transfer as { to?: string; status?: string; duration_sec?: number } | undefined;
   if (tr?.to) {
@@ -88,23 +77,13 @@ export async function POST(req: Request) {
   // Owner + due time for a real call-back; links the caller to a contact if one exists.
   try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }
   // A real caller becomes a contact now — not whenever someone presses "Save as contact".
-  // No number recovered → nobody to call back; fall back to the plain silent-call handling.
-  let notifyFrom = realFrom;
-  if (lostCaller) {
-    const { data: now } = await db.from('crm_call_log').select('from_number').eq('id', call.id).maybeSingle();
-    notifyFrom = await callerNumberOrNull(db, now?.from_number);
-    if (!notifyFrom) {
-      patch.needs_follow_up = false; patch.summary = quietSummary; patch.intent = quietIntent;
-      await db.from('crm_call_log').update({ needs_follow_up: false, summary: quietSummary, intent: quietIntent, updated_at: new Date().toISOString() }).eq('id', call.id);
-    }
-  }
   const saved = await ensureContactForCall(db, call.id);
   if (saved?.created) contact = { id: saved.contactId, name: (patch.caller_name as string) || call.caller_name || 'New contact' };
 
   if (patch.needs_follow_up) {
     const settings = await loadSettings(db, call.business_unit);
     await notifyCallSummary(settings, {
-      id: call.id, from_number: notifyFrom, caller_name: (patch.caller_name as string) || call.caller_name, contact,
+      id: call.id, from_number: realFrom, caller_name: (patch.caller_name as string) || call.caller_name, contact,
       started_at: call.started_at, duration_sec: duration, summary: patch.summary as string, intent: patch.intent as string | null,
       callback_number: patch.callback_number as string | null, property: (s?.property ?? (meta.property as string | undefined)) ?? null, urgency: s?.urgency ?? 'normal', transcript,
       email: (s?.caller_email ?? (meta.caller_email as string | undefined)) ?? null, lead_type: s?.lead_type ?? null, hot: s?.hot ?? false, language: (s?.language === 'es' || meta.spoke_spanish) ? 'es' : 'en', callback_at: s?.callback_at ?? null,

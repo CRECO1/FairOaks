@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     let reply: BotReply = callerTurns >= MAX_TURNS
       ? { say: line('maxTurns', lang), action: 'end', language: lang }
       : await nextReply(settings, history, { callerNumber: callMeta.caller_id_unknown === true ? null : call.from_number, contact, lang,
-          transfer: { names: options.map(o => o.key), open: officeOpen(), tried }, forwarded: callMeta.caller_id_unknown === true });
+          transfer: { names: options.map(o => o.key), open: officeOpen(), tried } });
     // A transfer only happens to someone we can ring right now; otherwise Ava takes the message instead of promising a connection she can't make.
     let target = null as ReturnType<typeof pickTarget>;
     if (reply.action === 'transfer') {
