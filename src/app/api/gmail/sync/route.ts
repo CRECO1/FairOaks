@@ -255,6 +255,8 @@ export async function POST(req: NextRequest) {
           direction,
           from_email: from,
           to_email: to,
+          // Everyone else on the message — otherwise a multi-recipient thread reads as one-to-one.
+          ...(get('Cc').trim() ? { cc_emails: get('Cc').trim() } : {}),
           subject,
           body: cleanBody(body).slice(0, 4000),
           email_date: emailDate,
