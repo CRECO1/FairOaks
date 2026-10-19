@@ -74,11 +74,11 @@ export async function GET(req: NextRequest) {
   const terms = (bd?.terms ?? []).filter(t => t && (t.label || '').trim() && (t.value || '').trim());
   let body = `<p>${first ? `Hi ${esc(first)},` : 'Hello,'}</p>`;
   if (terms.length) {
-    body += `<p>Attached is the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''}. The key terms:</p><ul>`
+    body += `<p>Attached is the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''}${/[.!?]$/.test(property) ? '' : '.'} The key terms:</p><ul>`
       + terms.map(t => `<li><strong>${esc((t.label || '').replace(/:\s*$/, ''))}:</strong> ${esc((t.value || '').replace(/\s*\n+\s*/g, '; '))}</li>`).join('')
       + '</ul><p>Let me know if you have any questions or would like to discuss.</p>';
   } else {
-    body += `<p>Please find the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''} attached. Let me know if you have any questions.</p>`;
+    body += `<p>Please find the ${esc(docTitle)}${property ? ` for ${esc(property)}` : ''} attached.${/[.!?]$/.test(property) ? '' : ''} Let me know if you have any questions.</p>`;
   }
   body += me.signature ? `<br/><div class="gmail_signature">${me.signature}</div>` : (me.name ? `<p>Thank you,<br/>${esc(me.name)}</p>` : '');
 
