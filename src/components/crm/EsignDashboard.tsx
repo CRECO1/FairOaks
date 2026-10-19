@@ -17,8 +17,8 @@ interface Stats {
 
 interface ActEvent { id: string; event: string; actor: string | null; ip: string | null; user_agent: string | null; meta: Record<string, unknown> | null; created_at: string; signer_name: string | null }
 
-interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null }
-interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
+interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null; reminded_at?: string | null; reminder_count?: number | null }
+interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; completed_at?: string | null; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
 export interface ImportedDoc { id: string; title?: string; url?: string | null; deal_id?: string | null; listing_id?: string | null; updated_at?: string; form_id?: string | null; source_path?: string | null; envelope?: { id: string; status: string } | null }
@@ -558,8 +558,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
             // grouped by month, instead of a full card per request.
             if (tab === 'signed') {
               const when = (e: Envelope) => {
-                const t = (e.crm_envelope_signers || []).map(x => x.signed_at).filter(Boolean).sort().pop() || e.created_at || '';
-                return t;
+                return e.completed_at || (e.crm_envelope_signers || []).map(x => x.signed_at).filter(Boolean).sort().pop() || e.created_at || '';
               };
               const sorted = [...rows].sort((x, y) => when(y).localeCompare(when(x)));
               const months: Array<{ label: string; items: Envelope[] }> = [];
@@ -672,6 +671,15 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                           {when}{declined && s.decline_reason ? ` — “${s.decline_reason}”` : ''}
                           {dv && <span style={{ marginLeft: 8, fontWeight: 700, color: bad ? '#b91c1c' : dv === 'opened' || dv === 'clicked' ? '#15803d' : '#92400e' }}>· email {dv === 'delivered' ? 'delivered, unopened' : dv}</span>}
                         </div>
+                        {isCur && !s.in_person && env.status !== 'voided' && !env.archived_at && (() => {
+                          // Mirrors the reminder cron (3 days to the first chase, 4 between, 3 max).
+                          const n = s.reminder_count ?? 0;
+                          if (n >= 3) return <div style={{ fontSize: 12, color: '#92400e', marginTop: 4 }}>3 reminders sent — time for a phone call.</div>;
+                          const base = n > 0 ? s.reminded_at : s.sent_at;
+                          if (!base) return null;
+                          const left = Math.ceil((new Date(base).getTime() + (n > 0 ? 4 : 3) * 86400000 - Date.now()) / 86400000);
+                          return <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>{n > 0 ? `${n} reminder${n === 1 ? '' : 's'} sent · ` : ''}Next automatic reminder {left <= 0 ? 'goes out today' : `in ${left} day${left === 1 ? '' : 's'}`}.</div>;
+                        })()}
                         {!signed && !declined && env.status !== 'voided' && !env.archived_at && (
                           <div style={{ display: 'flex', gap: 14, marginTop: 5 }}>
                             {!s.in_person && <button onClick={() => copyLink(env, s)} style={{ ...link, fontSize: 12 }}>Copy link</button>}
