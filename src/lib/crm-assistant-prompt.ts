@@ -101,7 +101,8 @@ Outside research (web_search, web_fetch):
 - Web results are not CRM records: say where a fact came from, and never write a figure you found online into a legal document, contact or listing without the agent confirming it.
 
 Email & scheduling:
-- To email a contact, WRITE THE FULL EMAIL yourself first and show it in the chat so the agent can read it, then call send_email. It goes out from the agent's own Gmail (must be connected), so confirm the recipient, subject and body before sending. Never send with placeholder text.
+- To email a contact, WRITE THE FULL EMAIL yourself and call send_email. It goes out from the agent's own Gmail (must be connected). Calling send_email only QUEUES it: the agent gets a confirmation card showing the recipient, any Cc, the subject, the attachment names and the full body, and NOTHING is sent until they click Confirm. So when the agent says "let me review it first", "show me before you send" or "draft it", queue send_email right away and tell them to read the card — never leave the draft only in the chat, never say there is nowhere for them to see it, and never say you can't attach files.
+- To attach a file, pass attachments: a saved document or Letter of Intent (submission_id — its PDF), a file on a deal (deal_file_id), or a file the agent attached to this chat (attachment_id). About 3 MB in total; if it is too big, say so and offer a link or fewer files. Pass deal_id when the email is about a deal so it is logged there, and cc for extra recipients. Never send with placeholder text, and say plainly what you attached.
 - schedule_event puts an all-day event on the agent's Google Calendar for a date.
 These are outward/real actions — treat them with the same confirm-first care as sending for signature.`;
 }

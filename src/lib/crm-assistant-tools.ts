@@ -94,6 +94,53 @@ async function loadDealContacts(db: SupabaseClient, ctx: AgentCtx, ids: string[]
   return rows;
 }
 
+
+// Files for send_email. Checked the same way the Copilot's other readers are (workspace + the agent's own deals), and kept small:
+// the email goes through /api/gmail/send, so the whole request must fit Vercel's 4.5 MB body limit (base64 adds a third).
+const EMAIL_ATT_MAX = 3 * 1024 * 1024;
+const MAIL_MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', csv: 'text/csv', txt: 'text/plain' };
+const asciiName = (n: string) => n.replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7e]/g, '').replace(/["\\\r\n]/g, '').replace(/\s+/g, ' ').trim().slice(0, 100) || 'attachment';
+
+async function loadEmailAttachments(db: SupabaseClient, ctx: AgentCtx, refs: unknown): Promise<{ files: { name: string; mimeType: string; data: string; size: number }[] } | { error: string }> {
+  const list = Array.isArray(refs) ? refs.slice(0, 5) as Record<string, any>[] : [];
+  const files: { name: string; mimeType: string; data: string; size: number }[] = [];
+  let total = 0;
+  for (const r of list) {
+    const given = ['submission_id', 'deal_file_id', 'attachment_id'].filter(k => r?.[k]);
+    if (given.length !== 1) return { error: 'Each attachment needs exactly one of submission_id, deal_file_id or attachment_id.' };
+    let buf: Buffer, name: string;
+    if (r.submission_id) {
+      const { data: sub } = await db.from('crm_form_submissions').select('id, title, filled_path, source_path, deal_id, business_unit').eq('id', r.submission_id).maybeSingle();
+      if (!sub || (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id as string))) return { error: 'Document not found' };
+      if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return { error: 'That document is in a different workspace' };
+      const path = (sub.filled_path || sub.source_path) as string | null;
+      if (!path) return { error: `“${sub.title}” has no saved PDF yet — generate or save it first.` };
+      const { data, error } = await db.storage.from('transaction-forms').download(path);
+      if (error || !data) return { error: `Could not read the PDF for “${sub.title}”.` };
+      buf = Buffer.from(await data.arrayBuffer()); name = `${sub.title || 'Document'}.pdf`;
+    } else if (r.deal_file_id) {
+      const { data: f } = await db.from('crm_deal_docs').select('id, deal_id, name, storage_path').eq('id', r.deal_file_id).maybeSingle();
+      if (!f) return { error: 'That deal file was not found.' };
+      const deal = await loadDealForWrite(db, ctx, f.deal_id);
+      if (typeof deal === 'string') return { error: 'That deal file isn’t one you can use.' };
+      const { data, error } = await db.storage.from('deal-docs').download(f.storage_path);
+      if (error || !data) return { error: `Could not read “${f.name}”.` };
+      buf = Buffer.from(await data.arrayBuffer()); name = f.name;
+    } else {
+      const att = await findAttachmentById(db, ctx.userId, String(r.attachment_id));
+      if (!att) return { error: 'I can’t find that attachment any more (they’re kept for a few days) — ask the agent to attach it again.' };
+      const { data, error } = await db.storage.from(ATT_BUCKET).download(att.path);
+      if (error || !data) return { error: 'Could not read the attachment.' };
+      buf = Buffer.from(await data.arrayBuffer()); name = att.name;
+    }
+    total += buf.length;
+    if (total > EMAIL_ATT_MAX) return { error: `Those files total about ${(total / 1048576).toFixed(1)} MB — email attachments here are limited to about 3 MB. Attach fewer or smaller files, or send a link instead.` };
+    const ext = (name.split('.').pop() ?? '').toLowerCase();
+    files.push({ name: asciiName(name), mimeType: MAIL_MIME[ext] ?? 'application/octet-stream', data: buf.toString('base64'), size: buf.length });
+  }
+  return { files };
+}
+
 /** Load a deal for a write: in workspace, and for an agent one they own or are assigned to. */
 async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: string): Promise<Record<string, any> | string> {
   const { data: d } = await db.from('crm_deals').select('*').eq('id', dealId).maybeSingle();
@@ -387,8 +434,11 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, signers: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' }, role: { type: 'string' } }, required: ['name', 'email'] } }, message: { type: 'string' } }, required: ['submission_id', 'signers'] } },
 
   // ── Comms & scheduling (Layer 3) ──────────────────────────────────────────
-  { name: 'send_email', description: "Send an email to a contact from the agent's own Gmail. Write the full email yourself (draft it in the chat first so the agent can see it). WRITE + OUTWARD — this emails a real person. Confirm the recipient, subject and body with the agent before sending.",
-    input_schema: { type: 'object', properties: { contact_id: { type: 'string', description: 'The contact to email (their email is looked up)' }, subject: { type: 'string' }, body: { type: 'string', description: 'The complete email body — write it in full, no placeholders. Plain text or simple HTML.' } }, required: ['contact_id', 'subject', 'body'] } },
+  { name: 'send_email', description: "Send an email to a contact from the agent's own Gmail, optionally with documents attached (a saved document or LOI as a PDF, a deal file, or a file the agent attached to the chat). Write the full email yourself. WRITE + OUTWARD — this emails a real person, but calling this tool only QUEUES it: the agent sees a confirmation card with the recipient, subject, full body and attachment names, and NOTHING is sent until they click Confirm. So when the agent wants to review it first, queue it — don't hold it back.",
+    input_schema: { type: 'object', properties: { contact_id: { type: 'string', description: 'The contact to email (their email is looked up)' }, subject: { type: 'string' }, body: { type: 'string', description: 'The complete email body — write it in full, no placeholders. Plain text or simple HTML.' },
+      deal_id: { type: 'string', description: 'Optional: the deal this email is about, so it is logged on that deal too.' },
+      cc: { type: 'array', items: { type: 'string' }, description: 'Optional extra recipients (email addresses) to copy.' },
+      attachments: { type: 'array', description: 'Optional files to attach (about 3 MB total). Each item has exactly ONE of: submission_id (a saved CRM document or Letter of Intent — its PDF is attached), deal_file_id (a file on a deal\'s Docs tab), attachment_id (a file the agent attached to this chat).', items: { type: 'object', properties: { submission_id: { type: 'string' }, deal_file_id: { type: 'string' }, attachment_id: { type: 'string' } } } } }, required: ['contact_id', 'subject', 'body'] } },
   { name: 'schedule_event', description: "Add an event to the agent's Google Calendar on a given date (all-day). WRITE. Optionally tie it to a contact.",
     input_schema: { type: 'object', properties: { title: { type: 'string' }, date: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' }, contact_id: { type: 'string' } }, required: ['title', 'date'] } },
 
@@ -1041,10 +1091,23 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
         const { data: agent } = await db.from('crm_profiles').select('first_name, last_name').eq('id', ctx.userId).single();
         const agentName = `${agent?.first_name ?? ''} ${agent?.last_name ?? ''}`.trim();
-        const r = await crmFetch(ctx, '/api/gmail/send', 'POST', { userId: ctx.userId, clientId: input.contact_id, to: c.email, subject: input.subject, body: input.body, agentName });
+        let attachments: { name: string; mimeType: string; data: string }[] = [], names: string[] = [];
+        if (Array.isArray(input.attachments) && input.attachments.length) {
+          const loaded = await loadEmailAttachments(db, ctx, input.attachments);
+          if ('error' in loaded) return j({ error: loaded.error });
+          attachments = loaded.files.map(({ name, mimeType, data }) => ({ name, mimeType, data })); names = loaded.files.map(f => f.name);
+        }
+        let dealId: string | undefined;
+        if (input.deal_id) {
+          const deal = await loadDealForWrite(db, ctx, String(input.deal_id));
+          if (typeof deal === 'string') return deal;
+          dealId = String(input.deal_id);
+        }
+        const cc = Array.isArray(input.cc) ? input.cc.map(String).filter(Boolean).slice(0, 10) : undefined;
+        const r = await crmFetch(ctx, '/api/gmail/send', 'POST', { userId: ctx.userId, clientId: input.contact_id, ...(dealId ? { dealId } : {}), to: c.email, ...(cc?.length ? { cc } : {}), subject: input.subject, body: input.body, agentName, ...(attachments.length ? { attachments } : {}) });
         if (!r.ok) return j({ error: r.data?.error || 'Could not send the email — the agent may need to connect Gmail in Settings.' });
-        await logCopilot(db, ctx, `Emailed ${c.email} — “${input.subject}”`, input.contact_id);
-        return j({ ok: true, sent: true, to: c.email });
+        await logCopilot(db, ctx, `Emailed ${c.email} — “${input.subject}”${names.length ? ` (attached: ${names.join(', ')})` : ''}`, input.contact_id);
+        return j({ ok: true, sent: true, to: c.email, attached: names });
       }
       case 'schedule_event': {
         let clientName: string | undefined;
@@ -1239,7 +1302,13 @@ export async function describeWriteRich(name: string, input: Record<string, any>
       if (c && (!ctx.businessUnit || c.business_unit === ctx.businessUnit)) {
         const who = [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || 'contact';
         const body = String(input.body ?? '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>\nSubject: ${input.subject}\n\n${body.slice(0, 1200)}${body.length > 1200 ? '…' : ''}`;
+        const ccLine = Array.isArray(input.cc) && input.cc.length ? `\nCc: ${input.cc.join(', ')}` : '';
+        let attLine = '';
+        if (Array.isArray(input.attachments) && input.attachments.length) {
+          const loaded = await loadEmailAttachments(db, ctx, input.attachments);
+          attLine = 'error' in loaded ? `\n⚠️ Attachments: ${loaded.error}` : `\n📎 Attached: ${loaded.files.map(f => `${f.name} (${Math.max(1, Math.round(f.size / 1024))} KB)`).join(', ')}`;
+        }
+        return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>${ccLine}\nSubject: ${input.subject}${attLine}\n\n${body.slice(0, 1200)}${body.length > 1200 ? '…' : ''}`;
       }
     } catch { /* fall through to the generic text */ }
   }
