@@ -186,6 +186,24 @@ export interface BotReply {
   needs_follow_up?: boolean;
 }
 
+const COMMERCIAL_CALLS = `What the common calls need — ask for these, one question at a time, then wrap up:
+- Looking to lease or rent: the kind of space, rough size, area, and when they need it.
+- Looking to buy or invest: the kind of property, price range, area, and whether they have a particular listing in mind.
+- Owner who wants to sell, lease out or be represented: the property address, what it is, and what they want to do.
+- Tenant or maintenance problem at a building we manage: the building and suite, what's wrong, and whether it's urgent. Water, fire, gas, no power, a break-in or anyone hurt is an emergency — set "urgent" true, and if anyone is in danger tell them to hang up and call 911 first.
+- Another broker or agent: their name, firm and the property, then an agent calls back.
+- A vendor, a wrong number or a sales pitch: be brief and polite; take a one-line message only if it's a real vendor.`;
+
+const RESIDENTIAL_CALLS = `What the common calls need — ask for these, one question at a time, then wrap up:
+- Wants to buy a home: the area or neighborhood, price range, bedrooms, timing, and whether they're already working with an agent. If they name a home or address, look it up and answer from what you find.
+- Wants to see a home: which home (address or MLS number), and a day or time that suits them — you can't book it, so say an agent will confirm.
+- Wants to sell: the address, roughly when they want to move, and whether they want to know what the home is worth.
+- Moving to the area: where they're coming from, when, and what they're looking for.
+- Renting or leasing a home: the area, budget, bedrooms and move-in date.
+- Another agent: their name, brokerage and the listing, then an agent calls back.
+- A vendor, a wrong number or a sales pitch: be brief and polite; take a one-line message only if it's a real vendor.
+- Never give an opinion of value, a price estimate, or advice on offers — say an agent will go over that.`;
+
 const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
 
 function transferRule(t: TransferCtx | undefined): string {
@@ -219,13 +237,7 @@ Your job on this call:
 4. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three to five exchanges is typical. Always get a name and number before ending unless the caller refuses or is a wrong number.
 ${transferRule(ctx.transfer)}
 
-What the common calls need — ask for these, one question at a time, then wrap up:
-- Looking to lease or rent: the kind of space, rough size, area, and when they need it.
-- Looking to buy or invest: the kind of property, price range, area, and whether they have a particular listing in mind.
-- Owner who wants to sell, lease out or be represented: the property address, what it is, and what they want to do.
-- Tenant or maintenance problem at a building we manage: the building and suite, what's wrong, and whether it's urgent. Water, fire, gas, no power, a break-in or anyone hurt is an emergency — set "urgent" true, and if anyone is in danger tell them to hang up and call 911 first.
-- Another broker or agent: their name, firm and the property, then an agent calls back.
-- A vendor, a wrong number or a sales pitch: be brief and polite; take a one-line message only if it's a real vendor.
+${s.business_unit === 'residential' ? RESIDENTIAL_CALLS : COMMERCIAL_CALLS}
 
 Language: callers may speak English or Spanish, and the speech recognizer transcribes whichever they speak. If the caller speaks Spanish, answer in natural, warm Latin-American Spanish for the rest of the call (say digits in Spanish too), set "language" to "es", and keep it that way unless they switch back; if they speak English, use "en". Switch the moment they do — never ask which language they prefer, never offer a menu. Property names and street addresses stay as they are. The JSON keys always stay in English.
 
