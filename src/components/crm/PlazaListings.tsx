@@ -27,7 +27,12 @@ async function shrink(file: File): Promise<string> {
   const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
   c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
   let out = c.toDataURL('image/png');
-  if (out.length > 300000) out = c.toDataURL('image/jpeg', 0.85);
+  if (out.length > 300000) {
+    // JPEG has no transparency (it would turn a transparent logo black), so flatten onto white first.
+    const j = document.createElement('canvas'); j.width = c.width; j.height = c.height;
+    const g = j.getContext('2d')!; g.fillStyle = '#ffffff'; g.fillRect(0, 0, j.width, j.height); g.drawImage(c, 0, 0);
+    out = j.toDataURL('image/jpeg', 0.85);
+  }
   return out;
 }
 
