@@ -298,7 +298,7 @@ export const NAV_DESTINATIONS: Record<string, NavTarget> = {
 };
 
 /** Tools handled in the browser, not by runTool. */
-export const CLIENT_TOOLS = new Set(['open_page']);
+export const CLIENT_TOOLS = new Set(['open_page', 'open_record']);
 
 /**
  * Resolve a requested destination for this agent. Returns the directive to send to
@@ -311,6 +311,30 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
     return { error: `${target.label} is broker-level — it isn't available on this account.` };
   }
   return { target };
+}
+
+export const DEAL_TABS = ['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const;
+
+/**
+ * open_record: put ONE deal (on a tab) or contact card on the agent's screen. Like open_page it changes only what they see,
+ * but it names a record, so the record is checked first — right workspace, and for an agent one they can see.
+ */
+export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): Promise<{ action: { kind: 'deal' | 'contact'; id: string; tab?: string; label: string } } | { error: string }> {
+  const db = admin();
+  const id = String(input.id ?? '');
+  if (input.kind === 'deal') {
+    const d = await loadDealForWrite(db, ctx, id);
+    if (typeof d === 'string') return { error: (JSON.parse(d) as { error: string }).error };
+    const tab = (DEAL_TABS as readonly string[]).includes(String(input.tab)) ? String(input.tab) : 'overview';
+    return { action: { kind: 'deal', id, tab, label: `${d.client ?? 'Deal'}${d.property ? ` — ${d.property}` : ''}${tab === 'overview' ? '' : ` (${tab === 'esign' ? 'E-Sign' : tab.charAt(0).toUpperCase() + tab.slice(1)} tab)`}` } };
+  }
+  if (input.kind === 'contact') {
+    const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name, business_unit').eq('id', id).maybeSingle();
+    if (!c) return { error: 'Contact not found' };
+    if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return { error: 'That contact is in a different workspace' };
+    return { action: { kind: 'contact', id, label: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact' } };
+  }
+  return { error: 'kind must be "deal" or "contact"' };
 }
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
@@ -465,6 +489,8 @@ export const TOOLS: Anthropic.Tool[] = [
     }, required: ['submission_id'] } },
   { name: 'open_page', description: `Switch the agent's CRM screen to a section — use it when they ask you to open, show, go to or pull up part of the app. It changes what is on their screen immediately; it does not read or change any data, so just call it. Destinations: ${Object.keys(NAV_DESTINATIONS).join(', ')}.`,
     input_schema: { type: 'object', properties: { destination: { type: 'string', enum: Object.keys(NAV_DESTINATIONS), description: 'Which section to open' } }, required: ['destination'] } },
+  { name: 'open_record', description: "Put one specific deal (optionally on a tab: overview, client, emails, docs, esign, intel, commission) or one contact's card on the agent's screen — use it when they ask where something is, or to open, show or pull up a deal, its documents or a contact. A document, LOI or exhibit lives on its deal's Docs tab, so open that deal with tab 'docs'. It changes only what is on screen (no data), so just call it — don't ask first and don't describe where to click.",
+    input_schema: { type: 'object', properties: { kind: { type: 'string', enum: ['deal', 'contact'] }, id: { type: 'string', description: 'The deal id or contact id' }, tab: { type: 'string', enum: [...DEAL_TABS], description: 'Deals only: which tab to land on' } }, required: ['kind', 'id'] } },
   { name: 'draft_campaign', description: "Build a marketing campaign and save it as a DRAFT — name, subject and full email body. It is saved unsent and unscheduled; the agent reviews and sends it themselves from the Marketing tab. You cannot send campaigns. Write the real body, no placeholder text. WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, email_subject: { type: 'string' }, email_body: { type: 'string', description: 'The complete email body — plain text or simple HTML. No placeholders.' } }, required: ['name', 'email_subject', 'email_body'] } },
 ];

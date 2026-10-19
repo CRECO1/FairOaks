@@ -13,7 +13,7 @@ type Msg = { role: 'user' | 'assistant'; content: string | Block[] };
  *  it back is what authorises that exact call, so it is never inspected here. */
 type Pending = { id: string; name: string; summary: string };
 /** A UI directive the server asks the browser to apply — currently just navigation. */
-type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' };
+type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'open-record'; kind: 'deal' | 'contact'; id: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' };
 
 const GOLD = '#c9922c';
 
@@ -91,13 +91,15 @@ const TOOL_LABEL: Record<string, string> = {
   read_document: 'read a document', fill_document: 'filled in a document', edit_loi: 'edited a letter of intent', draft_campaign: 'drafted a campaign',
 };
 
-export default function AssistantPanel({ token, userId, onClose, onNavigate, onRefresh }: {
+export default function AssistantPanel({ token, userId, onClose, onNavigate, onOpenRecord, onRefresh }: {
   token?: string;
   /** The signed-in agent's id — keys the saved chat so two agents on one browser never share it. */
   userId?: string;
   onClose: () => void;
   /** Applies a navigate directive: switches the CRM page (and sub-tab, where the destination has one). */
   onNavigate?: (page: string, tab?: string) => void;
+  /** Put one deal (on a tab) or contact card on screen. */
+  onOpenRecord?: (kind: 'deal' | 'contact', id: string, tab?: string) => void;
   /** A confirmed write changed deals or contacts: reload them so the screen matches. */
   onRefresh?: (scope: 'deals' | 'contacts') => void;
 }) {
@@ -293,6 +295,7 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
         // reply is in state so the agent sees what was said as the screen changes.
         for (const a of (j.clientActions ?? []) as ClientAction[]) {
           if (a.type === 'navigate') onNavigate?.(a.page, a.tab);
+          else if (a.type === 'open-record') onOpenRecord?.(a.kind, a.id, a.tab);
           // The Copilot just edited a document: any editor showing it reloads, live.
           else if (a.type === 'doc-updated') announceDocUpdated(a.submissionId);
           else if (a.type === 'refresh') onRefresh?.(a.scope);

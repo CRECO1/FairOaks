@@ -14062,6 +14062,21 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           userId={profile?.id}
           onClose={() => setAssistantOpen(false)}
           onRefresh={scope => { if (!profile) return; if (scope === 'deals') loadDeals(profile); else loadClients(profile); }}
+          onOpenRecord={(kind, id, tab) => {
+            setMobileMenuOpen(false);
+            if (kind === 'deal') {
+              const d = deals.find(x => x.id === id);
+              setPage('deals'); setFilter('');
+              if (!d) { showToast('That deal isn’t loaded yet — open it from All Deals'); return; }
+              openDeal(d);   // loads forms, envelopes and commission, and resets to Overview…
+              const tabs = ['overview', 'client', 'emails', 'docs', 'esign', 'intel', 'commission'] as const;
+              setDealTab(tabs.find(t => t === tab) ?? 'overview');   // …so land on the requested tab after it
+            } else {
+              const c = clients.find(x => x.id === id);
+              setPage('contacts'); setFilter('');
+              if (c) setActiveClient(c); else showToast('That contact isn’t loaded yet — search for them in Contacts');
+            }
+          }}
           onNavigate={(p, tab) => {
             // The server sends destinations from a closed set, but this is client
             // state being set from a network response — validate against the real

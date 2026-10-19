@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized } from '@/lib/crm-auth';
 import { createClient } from '@supabase/supabase-js';
-import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
+import { TOOLS, WRITE_TOOLS, CLIENT_TOOLS, resolveRecord, DOC_EDIT_TOOLS, DEAL_WRITE_TOOLS, CONTACT_WRITE_TOOLS, runTool, describeWrite, describeWriteRich, resolveNav, type AgentCtx, type NavTarget } from '@/lib/crm-assistant-tools';
 import { writeAuditLog } from '@/lib/audit';
 import { systemPrompt } from '@/lib/crm-assistant-prompt';
 import { rateLimit } from '@/lib/ratelimit';
@@ -70,7 +70,7 @@ interface ReqBody {
 }
 
 /** A UI directive for the browser: navigate, or reload a document the Copilot just edited. */
-type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' };
+type ClientAction = { type: 'navigate'; page: string; tab?: string; label: string } | { type: 'open-record'; kind: 'deal' | 'contact'; id: string; tab?: string; label: string } | { type: 'doc-updated'; submissionId: string } | { type: 'refresh'; scope: 'deals' | 'contacts' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: NextRequest) {
@@ -194,6 +194,17 @@ export async function POST(req: NextRequest) {
           // client, and tell the model it's done so it can answer in the same turn.
           // Deliberately NOT a WRITE: making someone confirm a tab switch would be
           // absurd, and there is no data change to confirm.
+          if (block.name === 'open_record') {
+            const rr = await resolveRecord(input, toolCtx);
+            if ('error' in rr) content = JSON.stringify({ error: rr.error });
+            else {
+              clientActions.push({ type: 'open-record', ...rr.action });
+              content = JSON.stringify({ ok: true, opened: rr.action.label, note: 'It is open on their screen now. Say so in one short line — do not tell them where to click.' });
+            }
+            await logToolCall(toolCtx, req, block.name, input, 'executed', content);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content });
+            continue;
+          }
           const r = resolveNav(String(input.destination ?? ''), toolCtx);
           if ('error' in r) {
             content = JSON.stringify({ error: r.error });
