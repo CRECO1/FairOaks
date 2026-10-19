@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { logEvent, reminderEmail, sendEsignEmail, signUrl } from '@/lib/esign';
 
 /**
@@ -87,7 +88,8 @@ export async function GET(req: NextRequest) {
       senderName: (env.created_by && senderById.get(env.created_by)) || 'your agent',
       daysWaiting: Math.max(1, Math.round(waited)),
     });
-    const res = await sendEsignEmail(env.business_unit, current.email, subject, html);
+    // A reminder reads as the sender's own nudge, so it carries their Gmail signature too.
+    const res = await sendEsignEmail(env.business_unit, current.email, subject, withSignature(html, await resolveSignature(db, { agentId: env.created_by })));
     if (!res.ok) { failed.push({ to: current.email, error: res.error ?? 'send failed' }); continue; }
 
     // Only count a reminder that actually went out, so a Resend outage doesn't

@@ -62,7 +62,7 @@ export async function sendEsignEmail(
 function shell(brand: string, bodyHtml: string): string {
   return `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
     <div style="border-bottom:3px solid #c9922c;padding:14px 0 10px"><span style="font-size:20px;font-weight:800;letter-spacing:.5px;color:#c9922c">${esc(brand)}</span></div>
-    <div style="padding:20px 2px;font-size:15px;line-height:1.55">${bodyHtml}</div>
+    <div style="padding:20px 2px;font-size:15px;line-height:1.55">${bodyHtml}<!--agent-signature--></div>
     <div style="border-top:1px solid #eee;margin-top:18px;padding-top:12px;font-size:11px;color:#9ca3af">
       This document is being signed electronically. If you weren’t expecting it, you can ignore this email and no action will be taken.
     </div>

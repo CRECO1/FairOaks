@@ -5,6 +5,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const MARKER = 'gmail_signature';
+// Templates with a footer (e-sign shell) drop this where the signature belongs, above the footer.
+export const SIGNATURE_SLOT = '<!--agent-signature-->';
 
 type SigProfile = { id: string; email: string | null; email_signature: string | null };
 
@@ -50,6 +52,7 @@ export async function resolveSignature(
 export function withSignature(html: string, signature: string | null | undefined): string {
   if (!signature || !signature.trim() || html.includes(MARKER)) return html;
   const block = `<br><br><div class="${MARKER}" style="margin-top:24px">${signature}</div>`;
+  if (html.includes(SIGNATURE_SLOT)) return html.replace(SIGNATURE_SLOT, block);
   const i = html.toLowerCase().lastIndexOf('</body>');
   return i === -1 ? html + block : html.slice(0, i) + block + html.slice(i);
 }
