@@ -8,6 +8,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
 import { generateLoi, editLoi, type LoiEdit } from '@/lib/loi-generate';
+import { exhibitLetter, type LoiExhibit } from '@/lib/loi-spec';
 import { liveEnvelope, logDocEdit, restampOverlay, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
@@ -212,7 +213,7 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
-  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment']);
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi']);
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
 // copilot just created shows up in the pipeline without a page refresh.
@@ -221,7 +222,7 @@ export const CONTACT_WRITE_TOOLS = new Set(['create_contact', 'update_contact', 
 
 // Tools whose success changes a document the agent may have open on screen — the app is told
 // to reload it so the edit shows up live instead of being overwritten by a stale save.
-export const DOC_EDIT_TOOLS = new Set(['fill_document', 'edit_loi']);
+export const DOC_EDIT_TOOLS = new Set(['fill_document', 'edit_loi', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi']);
 
 // Contact types the CRM actually uses — kept closed so the copilot can't invent one.
 const CONTACT_TYPES = ['Tenant', 'Buyer', 'Seller', 'Landlord/Investor', 'Broker', 'Agent'];
@@ -259,6 +260,12 @@ export const TOOLS: Anthropic.Tool[] = [
       also_contact_ids: { type: 'array', items: { type: 'string' }, description: 'Other contacts to tag onto the deal (co-buyer, landlord, attorney, lender…).' },
       force: { type: 'boolean', description: 'Create even though a similar open deal exists — ONLY when the agent explicitly says they want a second deal.' } },
       required: ['contact_id', 'type'] } },
+  { name: 'attach_exhibit_to_loi', description: "Staple a PDF or image INTO a Letter of Intent as a labelled exhibit (EXHIBIT A, B, … — a cover sheet followed by the file's pages) so the LOI, its signature page and the exhibit are ONE combined PDF, rebuilt on the spot. Use this when the agent says 'add this to the LOI', 'attach the floor plan as an exhibit', 'put the site plan on the letter'. The file is either something they attached to this chat (attachment_id, the 10-character id in the file's header) or a file already on the deal (deal_file_id from list_deal_files). Works on a draft letter only — not one already out for signature. Do NOT use save_attachment for this (that only files a separate copy on the deal). WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string', description: 'The LOI (use the one on screen, or find it with read_document).' }, attachment_id: { type: 'string' }, deal_file_id: { type: 'string' }, title: { type: 'string', description: 'Exhibit title as it should read, e.g. "Suite 210 Floor Plan" (the EXHIBIT letter is added automatically).' } }, required: ['submission_id'] } },
+  { name: 'remove_exhibit_from_loi', description: "Take an exhibit back off a Letter of Intent (by its id, its 'Exhibit B' label, or its title) and rebuild the PDF. Replacing an exhibit = remove, then attach_exhibit_to_loi. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, exhibit: { type: 'string', description: "id, 'Exhibit A', or the title" } }, required: ['submission_id', 'exhibit'] } },
+  { name: 'list_deal_files', description: "List the uploaded files on a deal's Docs tab (id, name, type, size) — to find a file to attach to a letter as an exhibit. Read-only.",
+    input_schema: { type: 'object', properties: { deal_id: { type: 'string' } }, required: ['deal_id'] } },
   { name: 'save_attachment', description: "File a document the agent attached to this chat onto a DEAL's Docs tab or a PROPERTY's documents (use the attachment id shown as 'id …' next to the file in the conversation). Deals accept PDF, Word and JPG/PNG/WebP; properties accept those plus Excel, CSV and text. Skips it if the identical file is already there. WRITE — confirm with the agent first; pass exactly one of deal_id / listing_id.",
     input_schema: { type: 'object', properties: { attachment_id: { type: 'string', description: 'The 10-character id from the attachment header, e.g. 3fa9c1d20b' }, deal_id: { type: 'string' }, listing_id: { type: 'string' }, name: { type: 'string', description: 'Optional new file name (keep the extension).' } }, required: ['attachment_id'] } },
   { name: 'add_contacts_to_deal', description: "Pull one or more existing contacts onto a deal: they are tagged on it (the deal then shows on their record). Optionally make one of them the deal's primary client — the previous primary stays tagged, nothing is lost. WRITE — confirm with the agent first.",
@@ -619,6 +626,71 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Created ${input.type} deal${property ? ` for ${property}` : ''}${tagged.length ? ` and tagged ${tagged.join(', ')}` : ''}`, primary.id);
         return j({ ok: true, created, tagged_contacts: tagged, note: 'The deal is now in the Deal Flow pipeline at this stage.' });
       }
+      case 'list_deal_files': {
+        const deal = await loadDealForWrite(db, ctx, input.deal_id);   // same workspace + ownership rule as every deal read here
+        if (typeof deal === 'string') return deal;
+        const { data } = await db.from('crm_deal_docs').select('id, name, file_type, file_size, created_at').eq('deal_id', input.deal_id).order('created_at', { ascending: false }).limit(50);
+        return j({ files: (data ?? []).map(f => ({ id: f.id, name: f.name, type: f.file_type, size_kb: f.file_size ? Math.round(Number(f.file_size) / 1024) : null, uploaded: String(f.created_at).slice(0, 10) })) });
+      }
+      case 'remove_exhibit_from_loi': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', input.submission_id, 'Document'); if (bad) return bad;
+        const r = await editLoi(db, ctx.userId, ctx.businessUnit, String(input.submission_id), { removeExhibits: [String(input.exhibit)] }, ctx.origin ?? 'https://www.fairoaksrealtygroup.com');
+        if (!r.ok) return j({ error: r.error });
+        await logCopilot(db, ctx, `Removed an exhibit from the Letter of Intent “${r.submission.title ?? ''}”`);
+        return j({ ok: true, edited: r.changes, submission_id: r.submission.id, note: 'The letter\u2019s PDF was rebuilt without it. Nothing was sent for signature.' });
+      }
+      case 'attach_exhibit_to_loi': {
+        const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', input.submission_id, 'Document'); if (bad) return bad;
+        if (!!input.attachment_id === !!input.deal_file_id) return j({ error: 'Pass exactly one of attachment_id (a file attached to this chat) or deal_file_id (a file on the deal).' });
+        let src: Buffer, fileName: string;
+        if (input.attachment_id) {
+          const att = await findAttachmentById(db, ctx.userId, String(input.attachment_id));
+          if (!att) return j({ error: 'I can’t find that attachment any more (they’re kept for a few days) — ask the agent to attach it again.' });
+          const { data, error } = await db.storage.from(ATT_BUCKET).download(att.path);
+          if (error || !data) return j({ error: 'Could not read the attachment.' });
+          src = Buffer.from(await data.arrayBuffer()); fileName = att.name;
+        } else {
+          const { data: f } = await db.from('crm_deal_docs').select('id, deal_id, name, storage_path').eq('id', input.deal_file_id).maybeSingle();
+          if (!f) return j({ error: 'That deal file was not found.' });
+          const deal = await loadDealForWrite(db, ctx, f.deal_id);
+          if (typeof deal === 'string') return deal;
+          const { data, error } = await db.storage.from('deal-docs').download(f.storage_path);
+          if (error || !data) return j({ error: 'Could not read that file.' });
+          src = Buffer.from(await data.arrayBuffer()); fileName = f.name;
+        }
+        const ext = (fileName.split('.').pop() ?? '').toLowerCase();
+        let bytes: Buffer = src, kind: 'pdf' | 'image', storeExt = ext;
+        if (ext === 'pdf') {
+          kind = 'pdf';
+          try {
+            const { PDFDocument } = await import('pdf-lib');
+            const n = (await PDFDocument.load(src)).getPageCount();
+            if (n > 40) return j({ error: `That PDF has ${n} pages — exhibits are limited to 40. Ask for a shorter file or trim it first.` });
+          } catch { return j({ error: 'I couldn’t open that PDF (it may be password-protected or damaged).' }); }
+        } else if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+          kind = 'image';
+          try {
+            const sharp = (await import('sharp')).default;
+            let img = sharp(src, { failOn: 'none' }).rotate();
+            const meta = await img.metadata();
+            if ((meta.width ?? 0) > 3000 || (meta.height ?? 0) > 3000) img = img.resize({ width: 3000, height: 3000, fit: 'inside', withoutEnlargement: true });
+            // pdf-lib embeds JPEG and PNG only: keep those, convert WebP/GIF to PNG.
+            if (ext === 'jpg' || ext === 'jpeg') { bytes = await img.jpeg({ quality: 90 }).toBuffer(); storeExt = 'jpg'; } else { bytes = await img.png().toBuffer(); storeExt = 'png'; }
+          } catch { return j({ error: 'I couldn’t read that image.' }); }
+        } else return j({ error: `Only PDFs and images (JPG/PNG/WebP/GIF) can be attached as exhibits — not .${ext}.` });
+        if (bytes.length > 15 * 1024 * 1024) return j({ error: 'That file is over 15 MB — too large to build into the letter.' });
+
+        const exId = Math.random().toString(16).slice(2, 10);
+        const path = `loi-exhibits/${input.submission_id}/${exId}__${fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80).replace(/\.[a-z]+$/i, '')}.${storeExt}`;
+        const { error: upErr } = await db.storage.from(ATT_BUCKET).upload(path, bytes, { contentType: kind === 'pdf' ? 'application/pdf' : `image/${storeExt === 'jpg' ? 'jpeg' : 'png'}`, upsert: false });
+        if (upErr) return j({ error: upErr.message });
+        const title = (String(input.title ?? '').trim() || fileName.replace(/\.[a-z0-9]+$/i, '').replace(/[_]+/g, ' ')).replace(/^exhibit\s+[a-z0-9]+\s*[-–—:]\s*/i, '').trim().slice(0, 100) || 'Attachment';
+        const exhibit: LoiExhibit = { id: exId, title, name: fileName, path, kind };
+        const r = await editLoi(db, ctx.userId, ctx.businessUnit, String(input.submission_id), { addExhibit: exhibit }, ctx.origin ?? 'https://www.fairoaksrealtygroup.com');
+        if (!r.ok) { await db.storage.from(ATT_BUCKET).remove([path]); return j({ error: r.error }); }
+        await logCopilot(db, ctx, `Attached “${title}” to the Letter of Intent “${r.submission.title ?? ''}” as an exhibit`);
+        return j({ ok: true, edited: r.changes, submission_id: r.submission.id, note: 'The exhibit is now part of the letter\u2019s PDF (cover sheet + its pages, after the signature page) and the agent\u2019s screen refreshes. Nothing was sent for signature.' });
+      }
       case 'save_attachment': {
         if (!!input.deal_id === !!input.listing_id) return j({ error: 'Pass exactly one of deal_id or listing_id.' });
         const att = await findAttachmentById(db, ctx.userId, String(input.attachment_id ?? ''));
@@ -953,6 +1025,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
               out_for_signature: !!env,
               letter: Object.fromEntries(['loiDate', 'addresseeName', 'addresseeAddr1', 'addresseeAddr2', 'reLine', 'additionalTerms', 'intro', 'subtitle', 'agentName', 'agentEmail', 'agentPhone'].map(k => [k, bd[k] ?? ''])),
               terms: bd.terms.map(t => ({ label: t.label, value: t.value })),
+              exhibits: ((bd as { exhibits?: LoiExhibit[] }).exhibits ?? []).map((e, i) => ({ id: e.id, label: `EXHIBIT ${exhibitLetter(i)}`, title: e.title, file: e.name })),
               signers: Array.isArray(bd.sellers) ? bd.sellers : [],
               note: 'Edit this with edit_loi (term labels above are the exact ones to use).',
             });
@@ -1074,6 +1147,17 @@ export async function describeWriteRich(name: string, input: Record<string, any>
     } catch { /* fall through to the generic text */ }
   }
   // Deal writes carry opaque ids: show the agent WHO and WHAT they're approving, and warn about a duplicate up front.
+  if (name === 'attach_exhibit_to_loi') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const { data: sub } = await db.from('crm_form_submissions').select('title, builder_data').eq('id', input.submission_id).maybeSingle();
+      const n = ((sub?.builder_data as { exhibits?: unknown[] } | null)?.exhibits ?? []).length;
+      let file = 'the file';
+      if (input.attachment_id) file = (await findAttachmentById(db, ctx.userId, String(input.attachment_id)))?.name ?? file;
+      else if (input.deal_file_id) { const { data: f } = await db.from('crm_deal_docs').select('name').eq('id', input.deal_file_id).maybeSingle(); file = f?.name ?? file; }
+      return `📎 Staple “${file}” onto the end of “${sub?.title ?? 'the Letter of Intent'}” as EXHIBIT ${exhibitLetter(n)}${input.title ? ` — ${input.title}` : ''}\nThe letter, its signature page and the exhibit become one PDF, rebuilt now. Nothing is sent for signature.`;
+    } catch { /* fall through */ }
+  }
   if (name === 'save_attachment') {
     try {
       const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -1119,6 +1203,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'complete_task': return `Mark task complete`;
     case 'add_note': return `Add a note to the contact: “${input.note}”`;
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
+    case 'attach_exhibit_to_loi': return `📎 Attach “${input.title || 'the file'}” to the Letter of Intent as an exhibit and rebuild the PDF — nothing is sent for signature`;
+    case 'remove_exhibit_from_loi': return `Remove exhibit “${input.exhibit}” from the Letter of Intent and rebuild the PDF`;
     case 'save_attachment': return `Save the attached file${input.name ? ` as “${input.name}”` : ''} to the ${input.deal_id ? 'deal' : 'property'}`;
     case 'create_deal': return `Create a ${input.type} deal${input.property ? ` for ${input.property}` : ''}${input.value ? ` at $${Number(input.value).toLocaleString()}` : ''} (stage ${input.stage ?? 'Prospect'})${(input.also_contact_ids ?? []).length ? ` and tag ${(input.also_contact_ids as string[]).length} other contact${(input.also_contact_ids as string[]).length === 1 ? '' : 's'}` : ''}`;
     case 'add_contacts_to_deal': return `Add ${(input.contact_ids ?? []).length || 1} contact${(input.contact_ids ?? []).length === 1 ? '' : 's'} to the deal${input.make_primary_contact_id ? ' (and make one the primary client)' : ''}`;

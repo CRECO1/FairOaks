@@ -14,7 +14,7 @@
 // everything else.
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { parseRich, drawRichText, countRichLines, type RichFonts } from '@/lib/rich-text';
-import { LOI_PURCHASE_SPEC, SELLER_ROLES, type LoiSpec, type LoiPurchaseData, type LoiTermRow, type LoiSigField, type LoiSeller } from '@/lib/loi-spec';
+import { LOI_PURCHASE_SPEC, SELLER_ROLES, exhibitLetter, type LoiSpec, type LoiPurchaseData, type LoiTermRow, type LoiSigField, type LoiSeller } from '@/lib/loi-spec';
 
 // Existing importers keep working: everything that moved is re-exported from here.
 export * from '@/lib/loi-spec';
@@ -55,6 +55,8 @@ export async function renderLoi(
   spec: LoiSpec = LOI_PURCHASE_SPEC,
   /** Image for spec.exhibit (JPEG or PNG). Omitted → no exhibit page. */
   exhibitBytes?: Uint8Array,
+  /** Bytes of each attached exhibit (data.exhibits[].id → file). An exhibit with no bytes is skipped. */
+  exhibitFiles?: Map<string, Uint8Array>,
 ): Promise<{ pdfBytes: Uint8Array; sigFields: LoiSigField[] }> {
   const doc = await PDFDocument.create();
   const times = await doc.embedFont(StandardFonts.TimesRoman);
@@ -217,6 +219,35 @@ export async function renderLoi(
     const w = img.width * k, h = img.height * k;
     page.drawImage(img, { x: (PW - w) / 2, y: y - h, width: w, height: h });
     y -= h;
+  }
+
+  // ── Attached exhibits ────────────────────────────────────────────────────────
+  // Each gets a plain cover sheet ("EXHIBIT B" + its title) and then the file's own pages, so the LOI, its
+  // acceptance block and every exhibit leave as ONE PDF. They come after the signature pages, so the signature
+  // coordinates recorded above are unaffected. Lettering continues after the spec's built-in exhibit.
+  const letterBase = spec.exhibit && exhibitBytes && exhibitBytes.length ? 1 : 0;
+  for (const [i, ex] of (data.exhibits ?? []).entries()) {
+    const bytes = exhibitFiles?.get(ex.id);
+    if (!bytes?.length) continue;
+    const cover = doc.addPage([PW, PH]);
+    const midY = PH / 2 + 30;
+    center(cover, `EXHIBIT ${exhibitLetter(i + letterBase)}`, midY, 34, bold);
+    cover.drawLine({ start: { x: PW / 2 - 70, y: midY - 16 }, end: { x: PW / 2 + 70, y: midY - 16 }, thickness: 1.6, color: BLACK });
+    let ty = midY - 44;
+    for (const l of wrapText(ex.title, times, 16, RIGHT - M - 40).slice(0, 4)) { center(cover, l, ty, 16, times); ty -= 21; }
+    center(cover, `Attached to the ${spec.title}${data.reLine ? ` - ${data.reLine}` : ''}`, ty - 14, 9.5, italic, GRAY);
+    if (ex.kind === 'pdf') {
+      const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      for (const p of await doc.copyPages(src, src.getPageIndices())) doc.addPage(p);
+    } else {
+      const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+      const img = isPng ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      const pg = doc.addPage([PW, PH]);
+      const maxW = PW - 72, maxH = PH - 72;
+      const k = Math.min(maxW / img.width, maxH / img.height, 1.6);
+      const w = img.width * k, h = img.height * k;
+      pg.drawImage(img, { x: (PW - w) / 2, y: (PH - h) / 2, width: w, height: h });
+    }
   }
 
   const pdfBytes = await doc.save();

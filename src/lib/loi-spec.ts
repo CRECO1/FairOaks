@@ -4,6 +4,10 @@
 
 export interface LoiTermRow { label: string; value: string; id?: string }
 export interface LoiSeller { entity: string; signatory: string }
+/** A PDF or image attached INTO a letter as a labelled exhibit (Exhibit A, B, …): a cover sheet, then the file's pages. */
+export interface LoiExhibit { id: string; title: string; name: string; /** storage path in the listing-files bucket */ path: string; kind: 'pdf' | 'image' }
+export const exhibitLetter = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String(i + 1));
+
 export interface LoiPurchaseData {
   loiDate: string;
   addresseeName: string;
@@ -23,6 +27,8 @@ export interface LoiPurchaseData {
   /** Which spec variant this doc was built with, so it re-opens (and re-renders) in
    *  the same layout regardless of which form row it is filed under. */
   variant?: LeaseAsset;
+  /** Files stapled onto the end of the letter. Their pages are added after the acceptance block (and after any spec exhibit). */
+  exhibits?: LoiExhibit[];
 }
 // Matches crm_form_submissions.values entries + esign.ts PlacedField.
 export interface LoiSigField { page: number; fx: number; fy: number; fw: number; type: string; signerRole: string }

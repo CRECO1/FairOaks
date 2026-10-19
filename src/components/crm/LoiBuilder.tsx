@@ -11,7 +11,7 @@ import {
   renderLoi, LOI_PURCHASE_SPEC,
   type LoiPurchaseData, type LoiTermRow, type LoiSeller, type LoiSpec,
 } from '@/lib/loi-doc';
-import { leaseSpec, TENANTREP_INTRO } from '@/lib/loi-spec';
+import { leaseSpec, exhibitLetter, TENANTREP_INTRO } from '@/lib/loi-spec';
 import RichText, { RtFormatButtons } from '@/components/crm/RichText';
 import { setOpenDoc, DOC_UPDATED_EVENT } from '@/lib/open-doc';
 
@@ -238,6 +238,22 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
     return exhibitRef.current;
   }
 
+  // Exhibits attached to this letter (by the Copilot or earlier): fetched through short-lived signed links so the
+  // combined PDF can be rebuilt here exactly as the server builds it. An exhibit that can't be fetched fails the
+  // save loudly — saving a letter that silently dropped its exhibit would be worse.
+  async function getExhibitFiles(): Promise<Map<string, Uint8Array>> {
+    const files = new Map<string, Uint8Array>();
+    for (const ex of data.exhibits ?? []) {
+      if (!savedId) throw new Error('exhibit before save');
+      const r = await fetch(`/api/crm/loi-exhibits?submission_id=${savedId}&id=${ex.id}`, { headers: authHeaders });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.url) throw new Error(`Couldn't open exhibit “${ex.title}”`);
+      const buf = await fetch(j.url).then(x => { if (!x.ok) throw new Error(`Couldn't load exhibit “${ex.title}”`); return x.arrayBuffer(); });
+      files.set(ex.id, new Uint8Array(buf));
+    }
+    return files;
+  }
+
   async function getLogo(): Promise<Uint8Array> {
     if (!logoRef.current) { const buf = await fetch('/creco-letterhead-logo.png').then(r => r.arrayBuffer()); logoRef.current = new Uint8Array(buf); }
     return logoRef.current;
@@ -247,7 +263,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
     if (!data.terms.some(t => t.value.trim() || t.label.trim())) { onToast('Add at least one term'); return; }
     setBusy(true);
     try {
-      const { pdfBytes, sigFields } = await renderLoi(data, await getLogo(), spec, await getExhibit());
+      const { pdfBytes, sigFields } = await renderLoi(data, await getLogo(), spec, await getExhibit(), await getExhibitFiles());
       const res = await fetch('/api/crm/form-submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
@@ -271,7 +287,7 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
         fetch(`/api/crm/form-submissions/${id}`, { headers: authHeaders }).then(r => r.json())
           .then(h => { if (Array.isArray(h?.edits)) setEdits(h.edits); }).catch(() => {});
       }
-    } catch (e) { console.error(e); onToast('Save failed'); }
+    } catch (e) { console.error(e); onToast(e instanceof Error && /exhibit/i.test(e.message) ? e.message : 'Save failed'); }
     finally { setBusy(false); }
   }
 
@@ -404,6 +420,21 @@ export default function LoiBuilder({ formId, spec: specProp = LOI_PURCHASE_SPEC,
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>{spec.exhibit.title}</div>
                 <img src={spec.exhibit.imagePath} alt={spec.exhibit.title} style={{ maxWidth: '100%', display: 'block', margin: '0 auto' }} />
                 <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 10.5, color: '#9ca3af', marginTop: 6 }}>Attached as its own page in the PDF.</div>
+              </div>
+            )}
+
+            {(data.exhibits ?? []).length > 0 && (
+              <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px dashed #d1d5db', fontFamily: "'DM Sans',sans-serif" }}>
+                <div style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 700, marginBottom: 8 }}>Attached exhibits</div>
+                {(data.exhibits ?? []).map((ex, i) => (
+                  <div key={ex.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: 6, fontSize: 13 }}>
+                    <span aria-hidden>{ex.kind === 'pdf' ? '📄' : '🖼️'}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><b>Exhibit {exhibitLetter(i + (spec.exhibit ? 1 : 0))}</b> — {ex.title}</span>
+                    <button onClick={() => setData(d => ({ ...d, exhibits: (d.exhibits ?? []).filter(e => e.id !== ex.id) }))} title="Take this exhibit off the letter" aria-label={`Remove exhibit ${ex.title}`}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, minWidth: 28, minHeight: 28 }}>✕</button>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>Each becomes a cover sheet plus its pages at the end of the PDF. Tell the Copilot “attach this PDF as an exhibit” to add one.</div>
               </div>
             )}
 

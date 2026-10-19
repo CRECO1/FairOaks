@@ -14,7 +14,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired, type DraftSlot } from '@/lib/loi-autofill';
 import { renderLoi, specForForm } from '@/lib/loi-doc';
-import { leaseSpec, type LoiPurchaseData } from '@/lib/loi-spec';
+import { leaseSpec, exhibitLetter, type LoiExhibit, type LoiPurchaseData } from '@/lib/loi-spec';
 import { liveEnvelope, logDocEdit, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
 
 export interface GenerateInput {
@@ -122,6 +122,25 @@ export interface LoiEdit {
   fields?: Partial<Pick<LoiPurchaseData, 'loiDate' | 'addresseeName' | 'addresseeAddr1' | 'addresseeAddr2' | 'reLine' | 'additionalTerms' | 'intro' | 'subtitle' | 'agentName' | 'agentEmail' | 'agentPhone'>>;
   /** Acceptance blocks by position (0 = first). */
   sellers?: { entity?: string; signatory?: string }[];
+  /** Staple a PDF/image onto the end of the letter as the next exhibit (the file is already in storage). */
+  addExhibit?: LoiExhibit;
+  /** Exhibits to take off, by id, "Exhibit B" label, or title. */
+  removeExhibits?: string[];
+}
+
+const EXHIBIT_BUCKET = 'listing-files';
+/** The bytes of every attached exhibit, for renderLoi. A file that can't be read is left out (and logged), never fatal. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function loadExhibitFiles(db: SupabaseClient<any, any, any>, exhibits: LoiExhibit[] | undefined): Promise<Map<string, Uint8Array>> {
+  const out = new Map<string, Uint8Array>();
+  for (const ex of exhibits ?? []) {
+    try {
+      const { data, error } = await db.storage.from(EXHIBIT_BUCKET).download(ex.path);
+      if (error || !data) { console.warn('[loi] exhibit missing', ex.path, error?.message); continue; }
+      out.set(ex.id, new Uint8Array(await data.arrayBuffer()));
+    } catch (e) { console.warn('[loi] exhibit read failed', ex.path, e); }
+  }
+  return out;
 }
 
 const LETTER_FIELDS: (keyof NonNullable<LoiEdit['fields']>)[] = ['loiDate', 'addresseeName', 'addresseeAddr1', 'addresseeAddr2', 'reLine', 'additionalTerms', 'intro', 'subtitle', 'agentName', 'agentEmail', 'agentPhone'];
@@ -142,7 +161,7 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
   if (!bd || !Array.isArray(bd.terms)) return { ok: false, error: 'That document is not a Letter of Intent built in the builder. For a form with fillable blanks, use fill_document instead.' };
   if (await liveEnvelope(db, submissionId)) return { ok: false, error: OUT_FOR_SIGNATURE };
 
-  const next: LoiPurchaseData = { ...bd, terms: bd.terms.map(t => ({ ...t })), sellers: (bd.sellers ?? []).map(x => ({ ...x })) };
+  const next: LoiPurchaseData = { ...bd, terms: bd.terms.map(t => ({ ...t })), sellers: (bd.sellers ?? []).map(x => ({ ...x })), exhibits: (bd.exhibits ?? []).map(x => ({ ...x })) };
   const changes: string[] = [];
   const unmatched: string[] = [];
   const findTerm = (label: string) => {
@@ -189,6 +208,21 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
     if (s.signatory !== undefined && s.signatory !== next.sellers[i].signatory) { changes.push(`Signer ${i + 1} signatory → “${clip(s.signatory)}”`); next.sellers[i].signatory = s.signatory; }
   });
 
+  // Exhibits: take off first (so "replace Exhibit A" is remove + add), then staple on.
+  const removedPaths: string[] = [];
+  for (const q of edit.removeExhibits ?? []) {
+    const k = normLabel(String(q));
+    const i = (next.exhibits ?? []).findIndex((e, n) => e.id === q || normLabel(e.title) === k || normLabel(`exhibit ${exhibitLetter(n)}`) === k || normLabel(e.name) === k);
+    if (i === -1) { unmatched.push(String(q)); continue; }
+    const [gone] = next.exhibits!.splice(i, 1);
+    removedPaths.push(gone.path);
+    changes.push(`Removed exhibit “${gone.title}”`);
+  }
+  if (edit.addExhibit) {
+    next.exhibits = [...(next.exhibits ?? []), edit.addExhibit];
+    changes.push(`Attached EXHIBIT ${exhibitLetter(next.exhibits.length - 1)} — ${edit.addExhibit.title}`);
+  }
+
   if (!changes.length) {
     return { ok: false, error: unmatched.length ? `No term on this letter matches: ${unmatched.join(', ')}. Read the document for the exact term labels.` : 'Nothing to change — the letter already says that.' };
   }
@@ -203,7 +237,7 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
     const exhibit = spec.exhibit
       ? await fetch(`${baseUrl}${spec.exhibit.imagePath}`).then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? new Uint8Array(b) : undefined).catch(() => undefined)
       : undefined;
-    const out = await renderLoi(next, await letterhead(baseUrl), spec, exhibit);
+    const out = await renderLoi(next, await letterhead(baseUrl), spec, exhibit, await loadExhibitFiles(db, next.exhibits));
     pdfBytes = out.pdfBytes; sigFields = out.sigFields;
   } catch (e) {
     console.error('[loi-edit] render', e);
@@ -216,6 +250,7 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
     .update({ builder_data: next, values: sigFields, filled_path: path, updated_at: new Date().toISOString() })
     .eq('id', submissionId).select('id, title').single();
   if (error) { console.error('[loi-edit] save', error); return { ok: false, error: 'Could not file the edited letter.' }; }
+  if (removedPaths.length) void db.storage.from(EXHIBIT_BUCKET).remove(removedPaths);   // the removed exhibits' files, best-effort
   await logDocEdit(db, { submissionId, editorId: userId, unit: sub.business_unit as string | null, summary: `Copilot: ${changes.slice(0, 4).join('; ')}${changes.length > 4 ? ` (+${changes.length - 4} more)` : ''}`, changes: { kind: 'copilot_edit_loi', changes } });
   return { ok: true, submission: { id: saved.id as string, title: (saved.title as string) ?? null }, changes, unmatched };
 }
