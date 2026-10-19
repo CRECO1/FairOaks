@@ -4,6 +4,7 @@
 // and are gated behind an explicit confirmation in the API route.
 import { ATT_BUCKET, findAttachmentById } from '@/lib/copilot-attachments';
 import { findIdenticalFile } from '@/lib/dup-files';
+import { editDocx, editPdf } from '@/lib/doc-text-edit';
 import type Anthropic from '@anthropic-ai/sdk';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired } from '@/lib/loi-autofill';
@@ -99,6 +100,51 @@ async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: strin
   if (ctx.businessUnit && d.business_unit !== ctx.businessUnit) return JSON.stringify({ error: 'That deal is in a different workspace' });
   if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return JSON.stringify({ error: "That deal isn't assigned to you" });
   return d;
+}
+
+/**
+ * File a file's bytes onto a deal's Docs tab or a property's documents (the shared tail of save_attachment and edit_file).
+ * Deals accept PDF/Word/JPG/PNG/WebP; properties also accept Excel/CSV/text. An identical file already there is refused.
+ * Returns the tool's JSON result string.
+ */
+async function fileBytesOnto(db: SupabaseClient, ctx: AgentCtx, buf: Buffer, fileName: string, target: { deal_id?: string; listing_id?: string }): Promise<string> {
+  const j = (v: unknown) => JSON.stringify(v);
+  const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
+  const ext = (fileName.split('.').pop() ?? '').toLowerCase();
+  const MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain' };
+  const contentType = MIME[ext];
+  if (!contentType) return j({ error: `.${ext} files can’t be filed here.` });
+
+  if (target.deal_id) {
+    const deal = await loadDealForWrite(db, ctx, target.deal_id);
+    if (typeof deal === 'string') return deal;
+    if (!['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp'].includes(ext)) return j({ error: 'Deals accept PDF, Word and JPG/PNG/WebP files. Save this one to a property instead, or convert it.' });
+    const storagePath = `${target.deal_id}/${Date.now()}_${safe}`;
+    const { error: upErr } = await db.storage.from('deal-docs').upload(storagePath, buf, { contentType, upsert: false });
+    if (upErr) return j({ error: upErr.message });
+    // Same file already on the deal (any name): don't attach it twice.
+    const { data: same } = await db.from('crm_deal_docs').select('*').eq('deal_id', target.deal_id).eq('file_size', buf.length).limit(6);
+    const dup = same?.length ? await findIdenticalFile(db, 'deal-docs', storagePath, same) : null;
+    if (dup) { await db.storage.from('deal-docs').remove([storagePath]); return j({ error: `Not saved — this exact file is already on the deal as “${dup.name}”.`, duplicate: true }); }
+    const { error } = await db.from('crm_deal_docs').insert({ deal_id: target.deal_id, name: fileName, storage_path: storagePath, file_size: buf.length, file_type: contentType, uploaded_by: ctx.userId });
+    if (error) { await db.storage.from('deal-docs').remove([storagePath]); return j({ error: error.message }); }
+    await logCopilot(db, ctx, `Filed “${fileName}” on a deal`, deal.client_id);
+    return j({ ok: true, saved: fileName, to: `the deal “${deal.client}${deal.property ? ` — ${deal.property}` : ''}” (Docs tab)` });
+  }
+  const { data: l } = await db.from('crm_listings').select('id, name, business_unit, is_restricted, listing_agent_id, assigned_agent_ids').eq('id', target.listing_id).maybeSingle();
+  if (!l || !canSeeListing(l, ctx)) return j({ error: 'Property not found' });
+  if (ctx.businessUnit && l.business_unit !== ctx.businessUnit) return j({ error: 'That property is in a different workspace' });
+  const dest = `${l.id}/${Date.now()}_${safe}`;
+  const { error: cpErr } = await db.storage.from(ATT_BUCKET).upload(dest, buf, { contentType, upsert: false });
+  if (cpErr) return j({ error: cpErr.message });
+  const { data: same } = await db.from('crm_listing_files').select('*').eq('listing_id', l.id).eq('file_size', buf.length).limit(6);
+  const dup = same?.length ? await findIdenticalFile(db, ATT_BUCKET, dest, same) : null;
+  if (dup) { await db.storage.from(ATT_BUCKET).remove([dest]); return j({ error: `Not saved — this exact file is already on the property as “${dup.name}”.`, duplicate: true }); }
+  const category = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) ? 'photo' : 'document';
+  const { error } = await db.from('crm_listing_files').insert({ listing_id: l.id, name: fileName, storage_path: dest, file_size: buf.length, file_type: contentType, category, uploaded_by: ctx.userId });
+  if (error) { await db.storage.from(ATT_BUCKET).remove([dest]); return j({ error: error.message }); }
+  await logCopilot(db, ctx, `Filed “${fileName}” on a property`);
+  return j({ ok: true, saved: fileName, to: `the property “${l.name}”${category === 'photo' ? ' (Photos)' : ' (Documents)'}` });
 }
 
 // Guard a by-id WRITE: the service-role client bypasses RLS, so every direct mutation
@@ -213,7 +259,7 @@ export function resolveNav(dest: string, ctx: AgentCtx): { target: NavTarget } |
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
-  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi']);
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'edit_file']);
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
 // copilot just created shows up in the pipeline without a page refresh.
@@ -260,6 +306,26 @@ export const TOOLS: Anthropic.Tool[] = [
       also_contact_ids: { type: 'array', items: { type: 'string' }, description: 'Other contacts to tag onto the deal (co-buyer, landlord, attorney, lender…).' },
       force: { type: 'boolean', description: 'Create even though a similar open deal exists — ONLY when the agent explicitly says they want a second deal.' } },
       required: ['contact_id', 'type'] } },
+  { name: 'edit_file', description: `Add, replace or remove TEXT in an uploaded Word (.docx) or PDF file — a file the agent attached to this chat (attachment_id) or one on a deal (deal_file_id from list_deal_files). The ORIGINAL IS NEVER CHANGED: the edited version is filed as a new file ("<name> (edited)") on the deal's Docs tab (or a property's documents), where the agent can click 👁 View. Do all the changes the agent asked for in ONE call (edits is an ordered list). Word edits are real: replace (every occurrence, even across formatting), delete_text, delete_paragraph (by a phrase it contains), insert_paragraph (after a paragraph containing a phrase, or at start/end). PDF edits: add_text (write text to the right of / below / above an anchor phrase, e.g. on the blank after 'Tenant Name:', or at x,y points from the top-left) — it refuses rather than print over existing words — and remove_text (find the words; page and all to disambiguate). IMPORTANT for PDFs: remove_text by default only COVERS the words with a white box — they stay in the file's text layer and can still be selected/copied. For anything confidential, a legal strike, or a file that will be sent out, pass permanent:true (the changed pages are rebuilt as images, so the words are truly gone) and say so. Always tell the agent exactly what changed, what couldn't be found, and which of the two removal modes you used. Our own LOIs use edit_loi and forms use fill_document, not this. WRITE — confirm with the agent first.`,
+    input_schema: { type: 'object', properties: {
+      attachment_id: { type: 'string' }, deal_file_id: { type: 'string' },
+      edits: { type: 'array', maxItems: 20, items: { type: 'object', properties: {
+        op: { type: 'string', enum: ['replace', 'delete_text', 'delete_paragraph', 'insert_paragraph', 'add_text', 'remove_text'] },
+        find: { type: 'string', description: 'replace / delete_text / remove_text: the exact words to find' },
+        replace: { type: 'string', description: 'replace: the new wording' },
+        containing: { type: 'string', description: 'delete_paragraph: words the paragraph contains (enough to be unique)' },
+        text: { type: 'string', description: 'insert_paragraph / add_text: the text to add (insert_paragraph: use \n for several paragraphs)' },
+        after: { type: 'string', description: 'insert_paragraph: words in the paragraph to insert after' },
+        position: { type: 'string', enum: ['start', 'end'], description: 'insert_paragraph without "after"' },
+        anchor: { type: 'string', description: 'add_text: words on the page to place the text next to' },
+        placement: { type: 'string', enum: ['right', 'below', 'above'] },
+        page: { type: 'number', description: 'PDF page, 1-based' }, x: { type: 'number' }, y: { type: 'number' }, size: { type: 'number' },
+        all: { type: 'boolean', description: 'apply to every match instead of requiring exactly one' },
+        permanent: { type: 'boolean', description: 'remove_text on a PDF: truly remove (rebuild the page as an image) instead of just covering' },
+        allow_overlap: { type: 'boolean' } }, required: ['op'] } },
+      deal_id: { type: 'string', description: 'Where to file the edited copy (defaults to the deal the source file is on).' }, listing_id: { type: 'string', description: 'Or a property.' },
+      name: { type: 'string', description: 'Optional name for the edited file (keep the extension).' } },
+      required: ['edits'] } },
   { name: 'attach_exhibit_to_loi', description: "Staple a PDF or image INTO a Letter of Intent as a labelled exhibit (EXHIBIT A, B, … — a cover sheet followed by the file's pages) so the LOI, its signature page and the exhibit are ONE combined PDF, rebuilt on the spot. Use this when the agent says 'add this to the LOI', 'attach the floor plan as an exhibit', 'put the site plan on the letter'. The file is either something they attached to this chat (attachment_id, the 10-character id in the file's header) or a file already on the deal (deal_file_id from list_deal_files). Works on a draft letter only — not one already out for signature. Do NOT use save_attachment for this (that only files a separate copy on the deal). WRITE — confirm with the agent first.",
     input_schema: { type: 'object', properties: { submission_id: { type: 'string', description: 'The LOI (use the one on screen, or find it with read_document).' }, attachment_id: { type: 'string' }, deal_file_id: { type: 'string' }, title: { type: 'string', description: 'Exhibit title as it should read, e.g. "Suite 210 Floor Plan" (the EXHIBIT letter is added automatically).' } }, required: ['submission_id'] } },
   { name: 'remove_exhibit_from_loi', description: "Take an exhibit back off a Letter of Intent (by its id, its 'Exhibit B' label, or its title) and rebuild the PDF. Replacing an exhibit = remove, then attach_exhibit_to_loi. WRITE — confirm with the agent first.",
@@ -639,6 +705,48 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Removed an exhibit from the Letter of Intent “${r.submission.title ?? ''}”`);
         return j({ ok: true, edited: r.changes, submission_id: r.submission.id, note: 'The letter\u2019s PDF was rebuilt without it. Nothing was sent for signature.' });
       }
+      case 'edit_file': {
+        if (!!input.attachment_id === !!input.deal_file_id) return j({ error: 'Pass exactly one of attachment_id (a file attached to this chat) or deal_file_id (a file on a deal).' });
+        const edits = (Array.isArray(input.edits) ? input.edits : []).filter((e: unknown) => e && typeof e === 'object').slice(0, 20) as Record<string, unknown>[];
+        if (!edits.length) return j({ error: 'No edits given.' });
+        let src: Buffer, srcName: string, srcDealId: string | null = null;
+        if (input.attachment_id) {
+          const att = await findAttachmentById(db, ctx.userId, String(input.attachment_id));
+          if (!att) return j({ error: 'I can’t find that attachment any more (they’re kept for a few days) — ask the agent to attach it again.' });
+          const { data, error } = await db.storage.from(ATT_BUCKET).download(att.path);
+          if (error || !data) return j({ error: 'Could not read the attachment.' });
+          src = Buffer.from(await data.arrayBuffer()); srcName = att.name;
+        } else {
+          const { data: f } = await db.from('crm_deal_docs').select('id, deal_id, name, storage_path').eq('id', input.deal_file_id).maybeSingle();
+          if (!f) return j({ error: 'That deal file was not found.' });
+          const deal = await loadDealForWrite(db, ctx, f.deal_id);
+          if (typeof deal === 'string') return deal;
+          const { data, error } = await db.storage.from('deal-docs').download(f.storage_path);
+          if (error || !data) return j({ error: 'Could not read that file.' });
+          src = Buffer.from(await data.arrayBuffer()); srcName = f.name; srcDealId = f.deal_id;
+        }
+        const ext = (srcName.split('.').pop() ?? '').toLowerCase();
+        if (ext !== 'docx' && ext !== 'pdf') return j({ error: `I can edit Word (.docx) and PDF files — not .${ext}. (An older .doc needs to be re-saved as .docx first.)` });
+        if (!!input.deal_id && !!input.listing_id) return j({ error: 'Pass only one of deal_id or listing_id.' });
+        const target = input.deal_id || input.listing_id ? { deal_id: input.deal_id, listing_id: input.listing_id } : srcDealId ? { deal_id: srcDealId } : null;
+        if (!target) return j({ error: 'Which deal or property should I file the edited copy on? Ask the agent, then pass deal_id or listing_id.' });
+        let result;
+        try { result = ext === 'docx' ? await editDocx(src, edits) : await editPdf(src, edits); }
+        catch (e) { console.warn('[edit_file]', (e as Error).message); return j({ error: `I couldn’t open that ${ext.toUpperCase()} to edit it${ext === 'pdf' ? ' (it may be password-protected or damaged)' : ''}.` }); }
+        if (!result.report.length) return j({ error: `Nothing was changed. ${result.warnings.join(' ')}`.trim(), warnings: result.warnings });
+        const base = srcName.replace(/\.[a-z0-9]+$/i, '').replace(/\s*\(edited\)$/i, '');
+        let outName = String(input.name || `${base} (edited).${ext}`).replace(/[\r\n/\\]+/g, ' ').trim().slice(0, 200);
+        // never file two files with the same name on one deal/property: "(edited)", then "(edited 2)", "(edited 3)"…
+        const { data: taken } = target.deal_id
+          ? await db.from('crm_deal_docs').select('name').eq('deal_id', target.deal_id).limit(200)
+          : await db.from('crm_listing_files').select('name').eq('listing_id', target.listing_id).limit(200);
+        const names = new Set((taken ?? []).map(x => String(x.name).toLowerCase()));
+        for (let n = 2; names.has(outName.toLowerCase()) && n < 50; n++) outName = outName.replace(/(\s*\(edited(?: \d+)?\))?(\.[a-z0-9]+)$/i, ` (edited ${n})$2`);
+        const filed = JSON.parse(await fileBytesOnto(db, ctx, Buffer.from(result.bytes), outName, target));
+        if (filed.error) return j(filed);
+        await logCopilot(db, ctx, `Edited “${srcName}” (${result.report.length} change${result.report.length === 1 ? '' : 's'}) and filed the copy as “${outName}”`);
+        return j({ ok: true, saved: outName, to: filed.to, changes: result.report, ...(result.warnings.length ? { warnings: result.warnings } : {}), note: 'The original file is untouched. Tell the agent exactly what changed and any warning (especially whether a PDF removal was only covered or permanent), and that they can click 👁 View on the new file.' });
+      }
       case 'attach_exhibit_to_loi': {
         const bad = await outOfWorkspace(db, ctx, 'crm_form_submissions', input.submission_id, 'Document'); if (bad) return bad;
         if (!!input.attachment_id === !!input.deal_file_id) return j({ error: 'Pass exactly one of attachment_id (a file attached to this chat) or deal_file_id (a file on the deal).' });
@@ -699,42 +807,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (dlErr || !blob) return j({ error: 'Could not read the attachment.' });
         const buf = Buffer.from(await blob.arrayBuffer());
         const fileName = String(input.name || att.name).replace(/[\r\n/\\]+/g, ' ').trim().slice(0, 200) || att.name;
-        const safe = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120);
-        const ext = (fileName.split('.').pop() ?? '').toLowerCase();
-        const MIME: Record<string, string> = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', csv: 'text/csv', txt: 'text/plain' };
-        const contentType = MIME[ext];
-        if (!contentType) return j({ error: `.${ext} files can’t be filed here.` });
-
-        if (input.deal_id) {
-          const deal = await loadDealForWrite(db, ctx, input.deal_id);
-          if (typeof deal === 'string') return deal;
-          if (!['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp'].includes(ext)) return j({ error: 'Deals accept PDF, Word and JPG/PNG/WebP files. Save this one to a property instead, or convert it.' });
-          const storagePath = `${input.deal_id}/${Date.now()}_${safe}`;
-          const { error: upErr } = await db.storage.from('deal-docs').upload(storagePath, buf, { contentType, upsert: false });
-          if (upErr) return j({ error: upErr.message });
-          // Same file already on the deal (any name): don't attach it twice.
-          const { data: same } = await db.from('crm_deal_docs').select('*').eq('deal_id', input.deal_id).eq('file_size', buf.length).limit(6);
-          const dup = same?.length ? await findIdenticalFile(db, 'deal-docs', storagePath, same) : null;
-          if (dup) { await db.storage.from('deal-docs').remove([storagePath]); return j({ error: `Not saved — this exact file is already on the deal as “${dup.name}”.`, duplicate: true }); }
-          const { error } = await db.from('crm_deal_docs').insert({ deal_id: input.deal_id, name: fileName, storage_path: storagePath, file_size: buf.length, file_type: contentType, uploaded_by: ctx.userId });
-          if (error) { await db.storage.from('deal-docs').remove([storagePath]); return j({ error: error.message }); }
-          await logCopilot(db, ctx, `Filed “${fileName}” on a deal`, deal.client_id);
-          return j({ ok: true, saved: fileName, to: `the deal “${deal.client}${deal.property ? ` — ${deal.property}` : ''}” (Docs tab)` });
-        }
-        const { data: l } = await db.from('crm_listings').select('id, name, business_unit, is_restricted, listing_agent_id, assigned_agent_ids').eq('id', input.listing_id).maybeSingle();
-        if (!l || !canSeeListing(l, ctx)) return j({ error: 'Property not found' });
-        if (ctx.businessUnit && l.business_unit !== ctx.businessUnit) return j({ error: 'That property is in a different workspace' });
-        const dest = `${l.id}/${Date.now()}_${safe}`;
-        const { error: cpErr } = await db.storage.from(ATT_BUCKET).copy(att.path, dest);
-        if (cpErr) return j({ error: cpErr.message });
-        const { data: same } = await db.from('crm_listing_files').select('*').eq('listing_id', l.id).eq('file_size', buf.length).limit(6);
-        const dup = same?.length ? await findIdenticalFile(db, ATT_BUCKET, dest, same) : null;
-        if (dup) { await db.storage.from(ATT_BUCKET).remove([dest]); return j({ error: `Not saved — this exact file is already on the property as “${dup.name}”.`, duplicate: true }); }
-        const category = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) ? 'photo' : 'document';
-        const { error } = await db.from('crm_listing_files').insert({ listing_id: l.id, name: fileName, storage_path: dest, file_size: buf.length, file_type: contentType, category, uploaded_by: ctx.userId });
-        if (error) { await db.storage.from(ATT_BUCKET).remove([dest]); return j({ error: error.message }); }
-        await logCopilot(db, ctx, `Filed “${fileName}” on a property`);
-        return j({ ok: true, saved: fileName, to: `the property “${l.name}”${category === 'photo' ? ' (Photos)' : ' (Documents)'}` });
+        return fileBytesOnto(db, ctx, buf, fileName, { deal_id: input.deal_id, listing_id: input.listing_id });
       }
       case 'add_contacts_to_deal':
       case 'remove_contacts_from_deal': {
@@ -1147,6 +1220,30 @@ export async function describeWriteRich(name: string, input: Record<string, any>
     } catch { /* fall through to the generic text */ }
   }
   // Deal writes carry opaque ids: show the agent WHO and WHAT they're approving, and warn about a duplicate up front.
+  if (name === 'edit_file') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      let file = 'the file', dealId: string | null = null;
+      if (input.attachment_id) file = (await findAttachmentById(db, ctx.userId, String(input.attachment_id)))?.name ?? file;
+      else if (input.deal_file_id) { const { data: f } = await db.from('crm_deal_docs').select('name, deal_id').eq('id', input.deal_file_id).maybeSingle(); file = f?.name ?? file; dealId = f?.deal_id ?? null; }
+      const lines = ((input.edits ?? []) as Record<string, any>[]).slice(0, 10).map(e => {
+        switch (e.op) {
+          case 'replace': return `replace “${e.find}” → “${e.replace}”`;
+          case 'delete_text': return `delete “${e.find}”`;
+          case 'delete_paragraph': return `delete the paragraph containing “${e.containing}”`;
+          case 'insert_paragraph': return `add a paragraph${e.after ? ` after “${String(e.after).slice(0, 40)}”` : e.position === 'start' ? ' at the start' : ' at the end'}: “${String(e.text ?? '').slice(0, 80)}”`;
+          case 'add_text': return `write “${String(e.text ?? '').slice(0, 60)}”${e.anchor ? ` ${e.placement || 'right'} of “${String(e.anchor).slice(0, 40)}”` : ` at page ${e.page || 1} (${e.x}, ${e.y})`}`;
+          case 'remove_text': return `remove “${e.find}”${e.page ? ` on page ${e.page}` : ''}${e.permanent ? ' — PERMANENT (page rebuilt as an image)' : ' — hidden with a white box only (words stay in the file)'}`;
+          default: return String(e.op);
+        }
+      });
+      let where = 'the same deal';
+      const did = input.deal_id || dealId;
+      if (did) { const { data: d } = await db.from('crm_deals').select('client, property').eq('id', did).maybeSingle(); if (d) where = `the deal ${d.client}${d.property ? ` — ${d.property}` : ''}`; }
+      else if (input.listing_id) { const { data: l } = await db.from('crm_listings').select('name').eq('id', input.listing_id).maybeSingle(); if (l) where = `the property ${l.name}`; }
+      return `✏️ Edit “${file}”:\n${lines.map(l => `  • ${l}`).join('\n')}\nThe edited copy is filed on ${where} as a NEW file — the original stays as it is.`;
+    } catch { /* fall through */ }
+  }
   if (name === 'attach_exhibit_to_loi') {
     try {
       const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
@@ -1203,6 +1300,7 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'complete_task': return `Mark task complete`;
     case 'add_note': return `Add a note to the contact: “${input.note}”`;
     case 'update_deal_stage': return `Move the deal to “${input.stage}”`;
+    case 'edit_file': return `✏️ Edit the file (${(input.edits ?? []).length} change${(input.edits ?? []).length === 1 ? '' : 's'}) and file the edited copy — the original is not changed`;
     case 'attach_exhibit_to_loi': return `📎 Attach “${input.title || 'the file'}” to the Letter of Intent as an exhibit and rebuild the PDF — nothing is sent for signature`;
     case 'remove_exhibit_from_loi': return `Remove exhibit “${input.exhibit}” from the Letter of Intent and rebuild the PDF`;
     case 'save_attachment': return `Save the attached file${input.name ? ` as “${input.name}”` : ''} to the ${input.deal_id ? 'deal' : 'property'}`;

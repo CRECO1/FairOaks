@@ -29,7 +29,10 @@ export async function findAttachmentById(db: SupabaseClient, userId: string, id:
   if (!/^[0-9a-f]{10}$/.test(id)) return null;
   const { data } = await db.storage.from(ATT_BUCKET).list(`copilot/${userId}`, { search: id, limit: 5 });
   const hit = (data ?? []).find(o => o.name.startsWith(`${id}__`));
-  return hit ? { path: `copilot/${userId}/${hit.name}`, name: hit.name.slice(id.length + 2) } : null;
+  if (!hit) return null;
+  // The stored name had its spaces turned into underscores (storage-safe); show it the way the agent named it.
+  const stored = hit.name.slice(id.length + 2);
+  return { path: `copilot/${userId}/${hit.name}`, name: stored.includes(' ') ? stored : stored.replace(/_+/g, ' ') };
 }
 
 /** Best-effort housekeeping: drop this user's attachments older than three days (the chat keeps 24 h). */

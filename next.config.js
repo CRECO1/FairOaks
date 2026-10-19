@@ -116,7 +116,13 @@ const nextConfig = {
   experimental: {
     reactCompiler: false,
   },
-  serverExternalPackages: ['sharp', 'graphql'],
+  // @napi-rs/canvas is a native module (used to rebuild PDF pages as images for permanent redaction in the Copilot's
+  // edit_file): load it from node_modules at runtime instead of bundling it, and ship it plus pdf.js's standard
+  // font files with that route (nothing in the code imports them statically, so tracing can't see them).
+  serverExternalPackages: ['sharp', 'graphql', '@napi-rs/canvas'],
+  outputFileTracingIncludes: {
+    '/api/crm/assistant': ['./node_modules/pdfjs-dist/standard_fonts/**/*', './node_modules/@napi-rs/canvas*/**/*'],
+  },
 
   // Add security headers to all routes
   async headers() {
