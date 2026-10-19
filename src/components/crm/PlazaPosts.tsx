@@ -3,6 +3,7 @@
 // Published posts appear on the public site within ~5 minutes; drafts stay private.
 import React, { useCallback, useEffect, useState } from 'react';
 import PlazaVendors from '@/components/crm/PlazaVendors';
+import PlazaListings from '@/components/crm/PlazaListings';
 
 interface Post {
   id: string; slug: string; kind: 'news' | 'event' | 'notice' | 'promo'; title: string; summary: string; body: string;
@@ -34,7 +35,7 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState<'posts' | 'vendors'>('posts');
+  const [tab, setTab] = useState<'posts' | 'vendors' | 'directory'>('directory');
 
   const load = useCallback(async () => {
     const r = await fetch('/api/crm/plaza-posts', { headers: auth(authToken) });
@@ -79,13 +80,15 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
 
   const set = (k: keyof typeof blank, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
 
-  const tabBtn = (id: 'posts' | 'vendors', text: string): React.CSSProperties => ({ ...btn, ...(tab === id ? { background: '#111827', color: '#fff', border: '1px solid #111827' } : {}) });
+  const tabBtn = (id: 'posts' | 'vendors' | 'directory', text: string): React.CSSProperties => ({ ...btn, ...(tab === id ? { background: '#111827', color: '#fff', border: '1px solid #111827' } : {}) });
   const tabs = (
     <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <button style={tabBtn('directory', 'Directory')} onClick={() => setTab('directory')}>Directory</button>
       <button style={tabBtn('posts', 'News & events')} onClick={() => setTab('posts')}>News &amp; events</button>
       <button style={tabBtn('vendors', 'Local businesses')} onClick={() => setTab('vendors')}>Local businesses</button>
     </div>
   );
+  if (tab === 'directory') return (<div><h2 style={{ margin: '0 0 12px', fontSize: 22 }}>Plaza Site</h2>{tabs}<PlazaListings authToken={authToken} showToast={showToast} isMobile={isMobile} /></div>);
   if (tab === 'vendors') return (<div><h2 style={{ margin: '0 0 12px', fontSize: 22 }}>Plaza Site</h2>{tabs}<PlazaVendors authToken={authToken} showToast={showToast} isMobile={isMobile} /></div>);
 
   return (
