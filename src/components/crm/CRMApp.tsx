@@ -313,6 +313,18 @@ function EmailRecipients({ to, cc }: { to?: string | null; cc?: string | null })
     </div>
   );
 }
+// Reply-all: everyone on the last message except us and the primary contact (who is already
+// the To). Returns comma-joined strings for the "Also to" and "Cc" boxes.
+function replyAllRecipients(last: DealEmail, thread: DealEmail[], primary: string | undefined, selfEmails: Array<string | undefined | null>) {
+  const skip = new Set<string>([(primary ?? '').toLowerCase(), ...selfEmails.map(e => (e ?? '').toLowerCase()),
+    ...thread.filter(e => e.direction === 'sent').flatMap(e => parseAddressList(e.from_email).map(r => r.email.toLowerCase()))].filter(Boolean));
+  const seen = new Set<string>();
+  const pick = (raw?: string | null) => parseAddressList(raw).filter(r => {
+    const k = r.email.toLowerCase(); if (skip.has(k) || seen.has(k)) return false; seen.add(k); return true;
+  }).map(r => r.email).join(', ');
+  const also = pick([last.direction === 'received' ? last.from_email : '', last.to_email].filter(Boolean).join(', '));
+  return { also, cc: pick(last.cc_emails) };
+}
 function emailInitials(addr: string): string {
   const n = emailDisplayName(addr).split(' ');
   return n.length >= 2 ? (n[0][0] + n[n.length - 1][0]).toUpperCase() : n[0].slice(0, 2).toUpperCase();
@@ -10828,6 +10840,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         const lastEmail = [...threadEmails].sort((a, b) => a.email_date.localeCompare(b.email_date)).slice(-1)[0];
                                         setReplyToEmail(lastEmail);
                                         setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                        { const ra = replyAllRecipients(lastEmail, threadEmails, activeDeal?.client_email, [session?.user?.email, profile?.email]); setComposeMoreTo(ra.also); setComposeCc(ra.cc); }
                                         clearComposeBody();
                                         setShowCompose(true);
                                       }}
@@ -12835,6 +12848,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                         <span style={{ color: '#9ca3af' }}>Subject:</span>
                                         <span style={{ fontWeight: 600, color: '#374151' }}>{composeSubject}</span>
                                       </div>
+                                      <div style={{ padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                        <div style={{ flex: '1 1 200px' }}>
+                                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>To {c.email} +</label>
+                                          <input className="crm-input" style={{ marginTop: 4 }} value={composeMoreTo} onChange={e => setComposeMoreTo(e.target.value)} placeholder="more people, comma-separated" />
+                                        </div>
+                                        <div style={{ flex: '1 1 200px' }}>
+                                          <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cc</label>
+                                          <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
+                                        </div>
+                                      </div>
                                       <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         {/* Toolbar */}
                                         <div style={{ border: '1px solid #d1d5db', borderRadius: 6, overflow: 'hidden', background: '#fff' }}>
@@ -12899,6 +12922,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                           const replyTo = lastEmail.direction === 'received' ? lastEmail : (threadEmails.find(e => e.direction === 'received') ?? lastEmail);
                                           setReplyToContactEmail(replyTo);
                                           setComposeSubject(lastEmail.subject?.startsWith('Re:') ? lastEmail.subject : `Re: ${lastEmail.subject}`);
+                                          { const ra = replyAllRecipients(lastEmail, threadEmails, c.email, [session?.user?.email, profile?.email]); setComposeMoreTo(ra.also); setComposeCc(ra.cc); }
                                           clearContactComposeBody();
                                           setComposeAttachments([]);
                                           setShowContactCompose(false);
