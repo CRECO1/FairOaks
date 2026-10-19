@@ -90,6 +90,12 @@ interface Attachment {
   data: string; // base64
 }
 
+// RFC 2047: a header with non-ASCII characters (an en dash in "Letter of Intent – 6609 Blanco Rd.",
+// an accented name) must be encoded, or Gmail reads the raw UTF-8 bytes as Latin-1 and shows "Ã¢Â€Â“".
+function encodeHeader(v: string): string {
+  return /^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${Buffer.from(v, 'utf8').toString('base64')}?=`;
+}
+
 function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attachment[]): string {
   if (!attachments.length) {
     return [...headers, '', htmlBody].join('\r\n');
@@ -196,13 +202,13 @@ export async function POST(req: NextRequest) {
     const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${trackingId}" width="1" height="1" style="display:none" />`;
     const bodyWithPixel = `${body}${pixel}`;
 
-    const fromLine = agentName ? `${agentName} <${gmailEmail}>` : gmailEmail;
+    const fromLine = agentName ? `${encodeHeader(agentName)} <${gmailEmail}>` : gmailEmail;
 
     // Send to client ONLY — no Cc header so the pixel only fires when the client opens it
     const clientHeaderLines = [
       `From: ${fromLine}`,
       `To: ${to}`,
-      `Subject: ${finalSubject}`,
+      `Subject: ${encodeHeader(finalSubject)}`,
       'MIME-Version: 1.0',
       'Content-Type: text/html; charset=utf-8',
     ];
@@ -248,7 +254,7 @@ export async function POST(req: NextRequest) {
         const ccHeaders = [
           `From: ${fromLine}`,
           `To: ${ccEmail}`,
-          `Subject: [Copy] ${subject}`,
+          `Subject: ${encodeHeader(`[Copy] ${subject}`)}`,
           'MIME-Version: 1.0',
           'Content-Type: text/html; charset=utf-8',
         ];
