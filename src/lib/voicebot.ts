@@ -113,6 +113,29 @@ export async function matchContact(db: SupabaseClient, number: string | null, un
   return null;
 }
 
+let ownCache: { at: number; set: Set<string> } | null = null;
+/**
+ * Our own lines (the Twilio bot number and every Talkroute number, both brands). A call can reach the bot with
+ * one of THESE as its caller ID: Talkroute forwards the Fair Oaks line that way, so `From` is the office line and
+ * the real caller is only on the Talkroute record. Such a number is never the caller's — not to call back, not to
+ * match a contact, and not to decide whether a call is "from the team".
+ */
+export async function ownLineNumbers(db: SupabaseClient): Promise<Set<string>> {
+  if (ownCache && Date.now() - ownCache.at < 5 * 60_000) return ownCache.set;
+  const set = new Set<string>();
+  const { data } = await db.from('crm_voicebot_settings').select('twilio_number, talkroute_numbers');
+  for (const s of data ?? []) { set.add(last10(s.twilio_number as string | null)); for (const n of ((s.talkroute_numbers as string[] | null) ?? [])) set.add(last10(n)); }
+  set.delete('');
+  ownCache = { at: Date.now(), set };
+  return set;
+}
+/** The caller's own number, or null when the caller ID is really one of our lines. */
+export async function callerNumberOrNull(db: SupabaseClient, number: string | null | undefined): Promise<string | null> {
+  const key = last10(number);
+  if (key.length < 10) return null;
+  return (await ownLineNumbers(db)).has(key) ? null : (number ?? null);
+}
+
 /**
  * Should this call use the multi-language recogniser (English + Spanish, no menu)?
  * VOICEBOT_MULTILINGUAL = on | off | test (default test). In test mode only the team's own phones
@@ -125,6 +148,8 @@ export async function multilingualEnabled(db: SupabaseClient, fromNumber: string
   if (mode === 'off') return false;
   const key = last10(fromNumber);
   if (key.length < 10) return false;
+  // a call whose caller ID is one of our own lines is a forwarded CUSTOMER, not the team
+  if ((await ownLineNumbers(db)).has(key)) return false;
   if ((process.env.VOICEBOT_MULTI_TEST_NUMBERS || '').split(',').some(n => last10(n) === key)) return true;
   const { internalNumbers } = await import('@/lib/call-history');
   return (await internalNumbers(db, unit)).has(key);
@@ -205,7 +230,7 @@ Rules:
 - If the caller is a vendor or sales call, take a brief message and end.
 - If the caller claims to be a government agency (IRS, sheriff, a warrant), threatens legal action, or asks for payment, card or bank details, it is a scam: say once that you can't help with that and end the call (action "end"). Do not take a message from them.
 - If the caller says goodbye, has no further needs, or has left all the details, end the call with a brief goodbye.
-- If you couldn't hear them (empty or garbled input), say so briefly and ask again; after two failed attempts, ask them to leave their name and number and end.
+- If you couldn't hear them (empty or garbled input), say so briefly and ask again. After two failed attempts, say kindly that you can't hear them and invite them to call back anytime, then end. Don't promise a callback (you have no details) and never ask them to "leave a message" — there is no voicemail on this line.
 ${ctx.contact ? ctx.contact.first
   ? `\nThe caller ID matches an existing contact in our CRM: ${ctx.contact.name}${ctx.contact.business_name ? ` (${ctx.contact.business_name})` : ''}${ctx.contact.type ? `, ${ctx.contact.type}` : ''}. The greeting already asked if this is ${ctx.contact.first}; if they say no or give another name, go with what they tell you.`
   : `\nThe caller ID matches ${ctx.contact.business_name || ctx.contact.name} in our CRM, but we have no person's name on file. Don't guess a name — ask who is calling.` : ''}

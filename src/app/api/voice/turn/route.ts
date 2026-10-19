@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   const work = (async (): Promise<BotReply> => {
     const reply: BotReply = callerTurns >= MAX_TURNS
       ? { say: line('maxTurns', lang), action: 'end', language: lang }
-      : await nextReply(settings, history, { callerNumber: call.from_number, contact, lang });
+      : await nextReply(settings, history, { callerNumber: callMeta.caller_id_unknown === true ? null : call.from_number, contact, lang });
     // The model says which language it answered in; keep the call there until it changes.
     if (reply.language) lang = reply.language;
     await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: reply.say, meta: { action: reply.action, after_turn: callerTurn?.id ?? null, lang } });

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { twiml, twilioConfigured, twilioParams, verifyTwilioSignature } from '@/lib/twilio';
-import { flattenTranscript, loadSettings, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
+import { callerNumberOrNull, flattenTranscript, loadSettings, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
 import { ensureContactForCall } from '@/lib/phone-lead-contact';
 import { junkKind, tidyCallLog } from '@/lib/call-routing';
 
@@ -42,7 +42,8 @@ export async function POST(req: Request) {
     if (c) contact = { id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact' };
   }
 
-  const s = await summarizeCall(turns, { callerNumber: call.from_number, contact });
+  const realFrom = await callerNumberOrNull(db, call.from_number);   // null when the caller ID was one of our own lines
+  const s = await summarizeCall(turns, { callerNumber: realFrom, contact });
   const meta = (call.ai_meta as Record<string, unknown>) || {};
   const patch: Record<string, unknown> = {
     result: status === 'completed' ? 'bot_answered' : status,
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
   if (patch.needs_follow_up) {
     const settings = await loadSettings(db, call.business_unit);
     await notifyCallSummary(settings, {
-      id: call.id, from_number: call.from_number, caller_name: (patch.caller_name as string) || call.caller_name, contact,
+      id: call.id, from_number: realFrom, caller_name: (patch.caller_name as string) || call.caller_name, contact,
       started_at: call.started_at, duration_sec: duration, summary: patch.summary as string, intent: patch.intent as string | null,
       callback_number: patch.callback_number as string | null, property: (s?.property ?? (meta.property as string | undefined)) ?? null, urgency: s?.urgency ?? 'normal', transcript,
       email: (s?.caller_email ?? (meta.caller_email as string | undefined)) ?? null, lead_type: s?.lead_type ?? null, hot: s?.hot ?? false, language: (s?.language === 'es' || meta.spoke_spanish) ? 'es' : 'en', callback_at: s?.callback_at ?? null,

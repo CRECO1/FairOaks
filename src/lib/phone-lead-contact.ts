@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
-import { cleanEmail, matchContact, type LeadType } from '@/lib/voicebot';
+import { callerNumberOrNull, cleanEmail, matchContact, type LeadType } from '@/lib/voicebot';
 import { backupFor, junkKind, ownerFor, type Profile } from '@/lib/call-routing';
 import { toE164 } from '@/lib/phone';
 
@@ -58,7 +58,8 @@ export async function ensureContactForCall(db: SupabaseClient, callId: string): 
     const name = String(call.caller_name ?? '').trim();
 
     const unit = call.business_unit as string;
-    const number = toE164((call.callback_number as string | null) || (call.from_number as string | null));
+    // Never file a contact under one of OUR lines (a forwarded call can carry it as the caller ID).
+    const number = toE164(await callerNumberOrNull(db, (call.callback_number as string | null) || (call.from_number as string | null)));
     if (!number) return null;
 
     const meta = (call.ai_meta as Record<string, unknown> | null) ?? {};

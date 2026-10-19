@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
 import { gather, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin, startRecordingWhenLive } from '@/lib/twilio';
-import { defaultGreeting, loadSettings, matchContact, unitForNumber, multilingualEnabled, voiceGenerationFor } from '@/lib/voicebot';
+import { defaultGreeting, loadSettings, matchContact, unitForNumber, multilingualEnabled, voiceGenerationFor, callerNumberOrNull } from '@/lib/voicebot';
 import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
 
@@ -28,7 +28,9 @@ export async function POST(req: Request) {
   const via = toE164(p.ForwardedFrom) || toE164(p.CalledVia) || null;
   const unit = await unitForNumber(db, via || to);
   const settings = await loadSettings(db, unit);
-  const contact = await matchContact(db, from, unit);
+  // The real caller, or null when Talkroute handed us one of OUR lines as the caller ID (the Fair Oaks line does).
+  const caller = await callerNumberOrNull(db, from);
+  const contact = caller ? await matchContact(db, caller, unit) : null;
 
   if (!settings.enabled) {
     // Switched off in the CRM: take a plain voicemail-style message instead of hanging up on people.
@@ -37,14 +39,14 @@ export async function POST(req: Request) {
 
   const greeting = defaultGreeting(settings, contact);
   // English + Spanish recognition for this call (see multilingualEnabled); remembered so every later turn matches.
-  const multi = await multilingualEnabled(db, from, unit).catch(() => false);
-  const voice = await voiceGenerationFor(db, from, unit).catch(() => 'classic' as const);
+  const multi = await multilingualEnabled(db, caller, unit).catch(() => false);
+  const voice = await voiceGenerationFor(db, caller, unit).catch(() => 'classic' as const);
   const { data: call } = await db.from('crm_call_log').insert({
     business_unit: unit, source: 'voicebot', kind: 'bot', external_id: callSid, direction: 'inbound', result: 'in_progress',
     from_number: from, to_number: to, caller_name: p.CallerName || contact?.name || null, contact_id: contact?.id ?? null,
     started_at: new Date().toISOString(), needs_follow_up: true,
     raw: { From: p.From, To: p.To, ForwardedFrom: p.ForwardedFrom || null, CallerName: p.CallerName, FromCity: p.FromCity, FromState: p.FromState },
-    ai_meta: { stt: multi ? 'multi' : 'legacy', lang: 'en', voice },
+    ai_meta: { stt: multi ? 'multi' : 'legacy', lang: 'en', voice, ...(caller ? {} : { caller_id_unknown: true }) },
   }).select('id').single();
   if (call?.id) await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: greeting });
 

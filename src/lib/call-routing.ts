@@ -11,7 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { last10 } from '@/lib/phone';
 import { isBusinessOpen } from '@/lib/talkroute';
-import { matchContact } from '@/lib/voicebot';
+import { matchContact, ownLineNumbers } from '@/lib/voicebot';
 import { internalNumbers, otherParty } from '@/lib/call-history';
 
 export interface Profile { id: string; email: string | null; first_name: string | null; last_name: string | null; role: string | null }
@@ -191,6 +191,21 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
       await write(r.id, { outcome: 'other', wrapped_at: now, notes: [r.notes, 'Internal call (between our own lines/phones) — no note needed.'].filter(Boolean).join('\n'), updated_at: now });
       r.outcome = 'other'; out.internal_wrapped++;
     }
+  }
+
+  // 1c. Recover the real caller on forwarded bot calls. Talkroute forwards the Fair Oaks line to the bot with OUR line as
+  // the caller ID, so the bot row has no usable number — but the Talkroute leg of the same call (same line, within
+  // seconds) has the caller's. Copy it over so the call links to a contact and can be called back.
+  const own = await ownLineNumbers(db);
+  for (const r of rows) {
+    if (r.source !== 'voicebot' || r.direction !== 'inbound' || !own.has(last10(r.from_number))) continue;
+    const t0 = Date.parse(r.started_at);
+    const leg = all
+      .filter(x => x.source === 'talkroute' && x.direction === 'inbound' && last10(x.to_number) === last10(r.from_number) && !own.has(last10(x.from_number)) && last10(x.from_number).length >= 10 && Math.abs(Date.parse(x.started_at) - t0) <= 60_000)
+      .sort((a, b) => Math.abs(Date.parse(a.started_at) - t0) - Math.abs(Date.parse(b.started_at) - t0))[0];
+    if (!leg) continue;
+    await write(r.id, { from_number: leg.from_number, ai_meta: { ...(r.ai_meta ?? {}), caller_id_recovered: true }, updated_at: now });
+    r.from_number = leg.from_number; out.linked++;
   }
 
   // 2. Contacts
