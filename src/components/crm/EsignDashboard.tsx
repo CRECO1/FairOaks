@@ -3,6 +3,7 @@
 // preparing (drop a PDF in, place the signature/date fields, send), and everything
 // already out for signature — who each is waiting on and for how long.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useRememberedState, useRememberedSelection } from '@/lib/view-memory';
 
 interface Stats {
   sent: number; tracked: number;
@@ -82,7 +83,8 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [dealDocs, setDealDocs] = useState<DealDoc[] | null>(null); // null = still loading
   const [dealQ, setDealQ] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);         // envelope shown in the detail drawer
-  const [tab, setTab] = useState<'out' | 'drafts' | 'signed' | 'closed'>('out');
+  // A refresh lands back on the same tab and reopens the same request.
+  const [tab, setTab] = useRememberedState<'out' | 'drafts' | 'signed' | 'closed'>('esign:tab', 'out', ['out', 'drafts', 'signed', 'closed'] as const);
   const [q, setQ] = useState('');
   const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
   const [stats, setStats] = useState<Stats | null>(null);
@@ -280,6 +282,29 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     ...(showAll ? [{ key: 'closed', label: 'Cancelled & archived', rows: closedEnvs }] : []),
   ].filter(g => g.rows.length > 0);
 
+  useRememberedSelection('esign:open', openId, !loading, id => { if (envs.some(e => e.id === id)) setOpenId(id); });
+  useEffect(() => {
+    if (!openId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [openId]);
+
+  // Reminds every stalled signer in one go, one at a time so the sends stay ordered.
+  async function nudgeAll(list: Array<{ id: string }>) {
+    if (!window.confirm(`Send a reminder to the current signer on ${list.length} requests?`)) return;
+    setBusy('all');
+    let ok = 0;
+    for (const e of list) {
+      try {
+        const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: e.id, action: 'nudge' }) });
+        if (r.ok) ok++;
+      } catch { /* counted as not sent */ }
+    }
+    showToast?.(`Reminders sent: ${ok} of ${list.length}`);
+    setBusy(null); load();
+  }
+
   const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
   const median = stats?.median_hours_to_sign ?? null;
   const turn = median == null ? null : median < 1 ? `${Math.round(median * 60)}m` : median < 48 ? `${Math.round(median)}h` : `${Math.round(median / 24)}d`;
@@ -381,7 +406,12 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       {/* ── Needs attention ── */}
       {attention.length > 0 && (
         <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#b45309', marginBottom: 7 }}>Needs attention · {attention.length}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 7 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#b45309' }}>Needs attention · {attention.length}</span>
+            {attention.filter(a => a.action === 'nudge').length > 1 && (
+              <button disabled={busy === 'all'} onClick={() => nudgeAll(attention.filter(a => a.action === 'nudge').map(a => a.env))} style={{ ...mini, padding: '4px 10px', minHeight: 0, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === 'all' ? 'Sending…' : 'Nudge all'}</button>
+            )}
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {attention.map(a => (
               <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? '#fef6f6' : '#fffaf0', border: `1px solid ${a.tone === 'bad' ? '#f8d7d7' : '#f6e3b8'}`, borderRadius: 10, padding: '9px 13px' }}>
@@ -501,6 +531,51 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
               : tab === 'out' ? <Empty title="Nothing is waiting on a signature" body="Start a request with Upload PDF or From a deal." />
               : tab === 'signed' ? <Empty title="No signed documents yet" body="Completed requests collect here." />
               : <Empty title="Nothing cancelled or archived" body="" />;
+            // Signed documents are history, not work: one compact line each, newest first,
+            // grouped by month, instead of a full card per request.
+            if (tab === 'signed') {
+              const when = (e: Envelope) => {
+                const t = (e.crm_envelope_signers || []).map(x => x.signed_at).filter(Boolean).sort().pop() || e.created_at || '';
+                return t;
+              };
+              const sorted = [...rows].sort((x, y) => when(y).localeCompare(when(x)));
+              const months: Array<{ label: string; items: Envelope[] }> = [];
+              for (const e of sorted) {
+                const t = when(e);
+                const label = t ? new Date(t).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Earlier';
+                const last = months[months.length - 1];
+                if (last && last.label === label) last.items.push(e); else months.push({ label, items: [e] });
+              }
+              return months.map(m => (
+                <div key={m.label} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', margin: '6px 2px' }}>{m.label} · {m.items.length}</div>
+                  <div style={{ background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, overflow: 'hidden' }}>
+                    {m.items.map((env, i) => {
+                      const names = (env.crm_envelope_signers || []).map(x => x.name).filter(Boolean).join(', ');
+                      const dealName = env.crm_deals?.property || env.crm_deals?.client;
+                      const t = when(env);
+                      const view = env.executed_clean_url || env.executed_url;
+                      return (
+                        <div key={env.id} onClick={() => setOpenId(env.id)} role="button" tabIndex={0}
+                          onKeyDown={e => { if (e.key === 'Enter') setOpenId(env.id); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', cursor: 'pointer', borderTop: i ? '1px solid #f4f5f7' : 'none' }}>
+                          <span style={{ color: '#16a34a', fontWeight: 800, flexShrink: 0 }}>✓</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div title={env.title || 'Document'} style={{ fontSize: 13.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
+                            <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{[dealName, names].filter(Boolean).join(' · ')}</div>
+                          </div>
+                          <span style={{ fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap', flexShrink: 0 }}>{t ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
+                          {view && onPreview && (
+                            <button onClick={e => { e.stopPropagation(); onPreview({ url: view, name: `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf` }); }}
+                              style={{ ...mini, padding: '5px 10px', minHeight: 0, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4', flexShrink: 0 }}>View</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ));
+            }
             return rows.map(env => {
               const sg = env.crm_envelope_signers || [];
               const st = statusLine(env);
