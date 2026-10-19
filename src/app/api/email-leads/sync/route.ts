@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { Resend } from 'resend';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
@@ -142,7 +143,7 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
     try {
       if (step.type === 'email') {
         emailSubject = applyMergeFields(step.subject || `Welcome from ${plan.name}`, ctx, business_unit);
-        const body   = withOpenPixel(applyMergeFields(step.body || '', ctx, business_unit), trackingId); // open-tracking pixel
+        const body   = withSignature(withOpenPixel(applyMergeFields(step.body || '', ctx, business_unit), trackingId), await resolveSignature(supabase, { fromEmail: plan.from_email, agentId })); // open-tracking pixel + agent's Gmail signature
         const sendRes = await resendClient(business_unit).emails.send({
           from:    resolveActionPlanFrom(business_unit, plan.from_name, plan.from_email, fromAddress(business_unit)),
           to:      client.email,

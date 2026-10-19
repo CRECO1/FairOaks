@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
+import { createClient } from '@supabase/supabase-js';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -199,8 +201,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // The compose box appends the signature itself; Copilot and other API callers don't.
+    // withSignature() is a no-op when it's already there. Stored/guarded text stays `body`.
+    const sigDb = createClient(SUPABASE_URL, serviceRoleKey);
+    const outBody = withSignature(body, await resolveSignature(sigDb, { agentId: userId }));
+
     const pixel = `<img src="https://www.fairoaksrealtygroup.com/api/track/open?id=${trackingId}" width="1" height="1" style="display:none" />`;
-    const bodyWithPixel = `${body}${pixel}`;
+    const bodyWithPixel = `${outBody}${pixel}`;
 
     const fromLine = agentName ? `${encodeHeader(agentName)} <${gmailEmail}>` : gmailEmail;
 
@@ -248,7 +255,7 @@ export async function POST(req: NextRequest) {
         <div style="background:#f3f4f6;border-left:4px solid #c9922c;padding:10px 16px;margin-bottom:20px;font-family:sans-serif;font-size:13px;color:#374151;">
           <strong>FYI:</strong> You were copied on this email sent to <strong>${to}</strong>.
         </div>
-        ${body}
+        ${outBody}
       `;
       for (const ccEmail of ccEmails) {
         const ccHeaders = [

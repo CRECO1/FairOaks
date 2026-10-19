@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 
 export async function POST(req: NextRequest) {
   const caller = await getCrmUser();
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
   }
 
   const subject = fill(step.subject || `[TEST] Action Plan: ${plan.name} — Step 1`);
-  const body = fill(step.body || '');
+  const body = withSignature(fill(step.body || ''), await resolveSignature(supabase, { fromEmail: plan.from_email, agentId: agent_id }));
 
   const result = await resend.emails.send({
     from: fromAddr,

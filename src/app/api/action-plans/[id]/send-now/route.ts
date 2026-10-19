@@ -3,6 +3,7 @@ import { tagCampaignLinks, campaignSlug } from '@/lib/campaign-utm';
 import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { Resend } from 'resend';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 
@@ -165,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx, plan.business_unit);
       trackingId = newTrackingId();
       sentSubject = subject;
-      const body = withOpenPixel(tagCampaignLinks(applyMergeFields(step.body || '', ctx, plan.business_unit), `plan-${campaignSlug(plan.name, plan.id)}`, client_id), trackingId);   // utm + signed contact token, then open tracking
+      const body = withSignature(withOpenPixel(tagCampaignLinks(applyMergeFields(step.body || '', ctx, plan.business_unit), `plan-${campaignSlug(plan.name, plan.id)}`, client_id), trackingId), await resolveSignature(supabase, { agentId: agentLookupId }));   // utm + signed contact token, then open tracking
       const result = await resendClient(plan.business_unit).emails.send({
         // Sends as the plan's named sender (e.g. Brian Blanco) when one is set, else the brand address.
         from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),

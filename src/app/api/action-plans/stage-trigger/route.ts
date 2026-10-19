@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { Resend } from 'resend';
 import { getCrmUser } from '@/lib/crm-auth';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
       if (step.type === 'email') {
         const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx, bu);
         const trackingId = newTrackingId();
-        const body = withOpenPixel(applyMergeFields(step.body || '', ctx, bu), trackingId); // open-tracking pixel
+        const body = withSignature(withOpenPixel(applyMergeFields(step.body || '', ctx, bu), trackingId), await resolveSignature(supabase, { fromEmail: plan.from_email, agentId })); // open-tracking pixel + agent's Gmail signature
         const sendRes = await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } }));
         const providerId = sendRes?.data?.id ?? null;
         // provider_id is what lets the Resend webhook tie a bounce/complaint back to this send.
