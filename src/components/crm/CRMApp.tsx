@@ -3249,15 +3249,22 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // MentionTextarea reports the mentioned ids on EVERY keystroke while the text contains an @mention,
+  // so without a guard one note typed with a tag sent the teammate one notification per character
+  // (205 in a day). Notify each person once per entity: in-session memo + a 24h look-back in the DB.
+  const mentionedOnce = useRef<Set<string>>(new Set());
   async function createMentionNotifications(ids: string[], message: string, entityType?: string, entityId?: string) {
     if (!ids.length || !profile) return;
-    // Never stack the same unread mention: skip anyone who already has this exact one waiting.
-    const since = new Date(Date.now() - 10 * 60_000).toISOString();
-    const { data: dupes } = await supabase.from('crm_notifications').select('recipient_id')
-      .in('recipient_id', ids).eq('message', message).is('read_at', null).gte('created_at', since);
-    const have = new Set((dupes ?? []).map(d => d.recipient_id as string));
-    const rows = ids
-      .filter(id => id !== profile.id && !have.has(id)) // don't notify yourself, or twice
+    const fresh = ids.filter(id => id !== profile.id && !mentionedOnce.current.has(`${id}|${entityType ?? ''}|${entityId ?? message}`));
+    if (!fresh.length) return;
+    fresh.forEach(id => mentionedOnce.current.add(`${id}|${entityType ?? ''}|${entityId ?? message}`));
+    const since = new Date(Date.now() - 86_400_000).toISOString();
+    let dq = supabase.from('crm_notifications').select('recipient_id').eq('sender_id', profile.id).eq('type', 'mention').in('recipient_id', fresh).gte('created_at', since);
+    dq = entityId ? dq.eq('entity_id', entityId) : dq.eq('message', message);
+    const { data: already } = await dq;
+    const alreadySet = new Set((already ?? []).map(r => r.recipient_id as string));
+    const rows = fresh
+      .filter(id => !alreadySet.has(id))
       .map(id => ({
         recipient_id: id,
         sender_id: profile.id,
