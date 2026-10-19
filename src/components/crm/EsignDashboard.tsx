@@ -223,6 +223,29 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     return () => { live = false; };
   }, [openId, acts, authToken]);
 
+  // For when the invite landed in junk or bounced: hand the signer's private link over
+  // by another route (text, WhatsApp), or correct the address — which re-sends it.
+  async function copyLink(env: Envelope, s: Signer) {
+    try {
+      const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: env.id, action: 'get_link', signer_id: s.id }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.url) { showToast?.(j.error || 'Could not get the link'); return; }
+      await navigator.clipboard.writeText(j.url);
+      showToast?.(`Signing link for ${s.name} copied`);
+    } catch { showToast?.('Could not copy the link'); }
+  }
+  async function fixEmail(env: Envelope, s: Signer) {
+    const next = window.prompt(`New email for ${s.name}:`, s.email)?.trim().toLowerCase();
+    if (!next || next === s.email) return;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next)) { showToast?.('That doesn’t look like an email address'); return; }
+    setBusy(env.id);
+    try {
+      const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: env.id, action: 'update_signer', signer_id: s.id, email: next }) });
+      const j = await r.json().catch(() => ({}));
+      showToast?.(r.ok ? (j.resent ? `Updated and re-sent to ${next}` : 'Email updated') : (j.error || 'Could not update it'));
+    } finally { setBusy(null); load(); }
+  }
+
   async function nudge(env: Envelope) {
     setBusy(env.id);
     try {
@@ -649,6 +672,12 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                           {when}{declined && s.decline_reason ? ` — “${s.decline_reason}”` : ''}
                           {dv && <span style={{ marginLeft: 8, fontWeight: 700, color: bad ? '#b91c1c' : dv === 'opened' || dv === 'clicked' ? '#15803d' : '#92400e' }}>· email {dv === 'delivered' ? 'delivered, unopened' : dv}</span>}
                         </div>
+                        {!signed && !declined && env.status !== 'voided' && !env.archived_at && (
+                          <div style={{ display: 'flex', gap: 14, marginTop: 5 }}>
+                            {!s.in_person && <button onClick={() => copyLink(env, s)} style={{ ...link, fontSize: 12 }}>Copy link</button>}
+                            <button disabled={busy === env.id} onClick={() => fixEmail(env, s)} style={{ ...link, fontSize: 12 }}>Change email</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
