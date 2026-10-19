@@ -10970,6 +10970,23 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   style={{ padding: '5px 12px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>✏️ Edit</button>
                               );
                             })()}
+                            {(() => {
+                              // Uploaded files used to have only "Open" (a download / new tab), so nothing could be previewed on the
+                              // deal card. View uses the same in-app viewer as CRM Forms and property files: PDF, images, Word, Excel/CSV.
+                              const ext = (doc.name.split('.').pop() || '').toLowerCase();
+                              if (!['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'docx', 'xlsx', 'xls', 'csv'].includes(ext)) return null;
+                              return (
+                                <button onClick={async () => {
+                                  const url = await freshDocUrl(doc.id);
+                                  if (!url) { showToast('Could not open the preview.'); return; }
+                                  setPreviewFile({ url, name: doc.name, type: doc.file_type });
+                                }}
+                                  title="Preview this file without leaving the deal"
+                                  style={{ padding: '5px 12px', background: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: "'DM Sans',sans-serif" }}>
+                                  👁 View
+                                </button>
+                              );
+                            })()}
                             {(
                               <button onClick={async () => {
                                 // Opened synchronously: window.open() after an await is blocked as a popup.
