@@ -914,6 +914,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Compose state
   const [showCompose, setShowCompose] = useState(false);
   const [composeSubject, setComposeSubject] = useState('');
+  // Extra people on one group email (comma-separated). The client stays the first To.
+  const [composeMoreTo, setComposeMoreTo] = useState('');
+  const [composeCc, setComposeCc] = useState('');
   const [composeSending, setComposeSending] = useState(false);
   const [replyToEmail, setReplyToEmail] = useState<DealEmail | null>(null);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
@@ -3715,7 +3718,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: client.email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, clientId: client.id, to: [client.email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, subject: composeSubject, body: fullBody, agentName, ccAgentIds: [], attachments, ...threadingParams }),
       });
       const json = await res.json();
       if (!res.ok) { showToast('Send failed: ' + (json.error ?? res.status)); }
@@ -3725,7 +3728,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
         setReplyToContactEmail(null);
         setReplyingToThreadKey(null);
         clearContactComposeBody();
-        setComposeSubject('');
+        setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
         setComposeAttachments([]);
         loadContactEmails(client.id);
         logActivity(client.id, 'email', `Sent email: ${composeSubject}`);
@@ -3766,7 +3769,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const res = await fetch('/api/gmail/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: deal.client_email, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
+        body: JSON.stringify({ userId: session!.user.id, dealId: deal.id, to: [deal.client_email, composeMoreTo].filter(Boolean).join(', '), cc: composeCc, subject: composeSubject, body: fullBody, agentName, ccAgentIds: deal.assigned_agent_ids ?? [], attachments, ...threadingParams }),
       });
       let j: any = {};
       try { j = await res.json(); } catch {}
@@ -3775,7 +3778,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       } else {
         showToast('✉️ Email sent via Gmail');
         setShowCompose(false);
-        setComposeSubject('');
+        setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
         clearComposeBody();
         setReplyToEmail(null);
         setComposeAttachments([]);
@@ -10506,7 +10509,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showCompose) {
                           clearComposeBody();
-                          setComposeSubject('');
+                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
                         }
                         setShowCompose(v => !v);
                       }}
@@ -10540,6 +10543,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>To</label>
                           <div style={{ marginTop: 4, padding: '6px 10px', background: '#f3f4f6', borderRadius: 5, fontSize: 13, color: '#6b7280' }}>{activeDeal.client_email}</div>
                         </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 200px' }}>
+                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Also to</label>
+                            <input className="crm-input" style={{ marginTop: 4 }} value={composeMoreTo} onChange={e => setComposeMoreTo(e.target.value)} placeholder="more people, comma-separated" />
+                          </div>
+                          <div style={{ flex: '1 1 200px' }}>
+                            <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cc</label>
+                            <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
+                          </div>
+                        </div>
+                        {(composeMoreTo.trim() || composeCc.trim()) && <div style={{ fontSize: 12, color: '#92400e', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 9px' }}>One shared email — opens can&apos;t be tied to a single person, and everyone can reply-all.</div>}
                         {activeDeal.assigned_agent_ids?.filter(id => id !== session!.user.id).length > 0 && (
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>CC (tagged agents)</label>
@@ -10784,7 +10798,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                             <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
                                           </div>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                            {e.direction === 'sent' && e.opened_at && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontWeight: 600 }}>👁 Opened</span>}
+                                            {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontWeight: 600 }}>{group ? '👁 Opened by someone on this email' : '👁 Opened'}</span>; })()}
                                             {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: '#f3f4f6', color: '#9ca3af' }}>Not opened</span>}
                                             <span style={{ fontSize: 12, color: '#9ca3af' }}>{e.email_date}</span>
                                           </div>
@@ -12533,7 +12547,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <button className="crm-btn crm-btn-gold crm-btn-sm" onClick={() => {
                         if (!showContactCompose) {
                           clearContactComposeBody();
-                          setComposeSubject('');
+                          setComposeSubject(''); setComposeMoreTo(''); setComposeCc('');
                           setReplyToContactEmail(null);
                           setComposeAttachments([]);
                           setReplyingToThreadKey(null);
@@ -12569,6 +12583,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>To</label>
                             <div style={{ marginTop: 4, padding: '6px 10px', background: '#f3f4f6', borderRadius: 5, fontSize: 13, color: '#6b7280' }}>{c.email}</div>
                           </div>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ flex: '1 1 200px' }}>
+                              <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Also to</label>
+                              <input className="crm-input" style={{ marginTop: 4 }} value={composeMoreTo} onChange={e => setComposeMoreTo(e.target.value)} placeholder="more people, comma-separated" />
+                            </div>
+                            <div style={{ flex: '1 1 200px' }}>
+                              <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Cc</label>
+                              <input className="crm-input" style={{ marginTop: 4 }} value={composeCc} onChange={e => setComposeCc(e.target.value)} placeholder="cc, comma-separated" />
+                            </div>
+                          </div>
+                          {(composeMoreTo.trim() || composeCc.trim()) && <div style={{ fontSize: 12, color: '#92400e', background: '#fef9f0', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 9px' }}>One shared email — opens can&apos;t be tied to a single person, and everyone can reply-all.</div>}
                           <div>
                             <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Subject</label>
                             <input className="crm-input" style={{ marginTop: 4 }} value={composeSubject} onChange={e => setComposeSubject(e.target.value)} placeholder="Email subject…" />
@@ -12770,7 +12795,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                               <span style={{ fontSize: 12, color: '#9ca3af', marginLeft: 5 }}>&lt;{e.from_email.match(/<(.+)>/)?.[1] ?? e.from_email}&gt;</span>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                              {e.direction === 'sent' && e.opened_at && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontWeight: 600 }}>👁 Opened</span>}
+                                              {e.direction === 'sent' && e.opened_at && (() => { const group = parseAddressList(e.to_email).length + parseAddressList(e.cc_emails).length > 1; return <span title={group ? 'Several people are on this email, so an open can’t be tied to one of them.' : undefined} style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: '#d1fae5', color: '#065f46', fontWeight: 600 }}>{group ? '👁 Opened by someone on this email' : '👁 Opened'}</span>; })()}
                                               {e.direction === 'sent' && !e.opened_at && e.tracking_id && <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 10, background: '#f3f4f6', color: '#9ca3af' }}>Not opened</span>}
                                               <span style={{ fontSize: 12, color: '#9ca3af' }}>{e.email_date}</span>
                                             </div>

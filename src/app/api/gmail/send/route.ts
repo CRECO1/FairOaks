@@ -145,7 +145,19 @@ export async function POST(req: NextRequest) {
     const caller = await getCrmUser(req);
     if (!caller) return unauthorized();
 
-    const { userId, dealId, clientId, to, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
+    const { userId, dealId, clientId, to: toRaw, cc: ccRaw, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
+    // One group email: any number of To and Cc people on the same message, so everyone
+    // sees the thread and can reply-all. Per-person open tracking isn't possible then —
+    // the single pixel can't say which recipient loaded it.
+    const EMAIL_RE = /^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$/;
+    const addrList = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : String(v ?? '').split(/[,;]/))
+      .map(x => x.replace(/[\r\n]/g, ' ').trim()).filter(Boolean);
+    const toList = addrList(toRaw);
+    const ccList = addrList(ccRaw).filter(a => !toList.some(t => t.toLowerCase() === a.toLowerCase()));
+    const badAddr = [...toList, ...ccList].find(a => !EMAIL_RE.test(a));
+    if (badAddr) return NextResponse.json({ error: `"${badAddr}" isn't a valid email address` }, { status: 400 });
+    if (toList.length + ccList.length > 20) return NextResponse.json({ error: 'Too many recipients (20 max)' }, { status: 400 });
+    const to = toList.join(', ');
     if (!userId || (!dealId && !clientId) || !to || !subject || !body) {
       return NextResponse.json({ error: 'userId, (dealId or clientId), to, subject, body are required' }, { status: 400 });
     }
@@ -215,6 +227,7 @@ export async function POST(req: NextRequest) {
     const clientHeaderLines = [
       `From: ${fromLine}`,
       `To: ${to}`,
+      ...(ccList.length ? [`Cc: ${ccList.join(', ')}`] : []),
       `Subject: ${encodeHeader(finalSubject)}`,
       'MIME-Version: 1.0',
       'Content-Type: text/html; charset=utf-8',
@@ -300,7 +313,7 @@ export async function POST(req: NextRequest) {
         gmail_message_id: sendData.id,
         tracking_id: trackingId,
         gmail_thread_id: threadId ?? sendData.threadId ?? null,
-        ...(ccEmails.length ? { cc_emails: ccEmails.join(', ') } : {}),
+        ...(ccList.length || ccEmails.length ? { cc_emails: Array.from(new Set([...ccList, ...ccEmails])).join(', ') } : {}),
       }),
     });
 
