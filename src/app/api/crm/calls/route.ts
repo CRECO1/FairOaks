@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mirrorCallNote } from '@/lib/call-note-mirror';
 import { settleOpenCallTasks } from '@/lib/call-task-settle';
-import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { toE164 } from '@/lib/phone';
 import { buildHistory, internalNumbers, otherParty, type HistoryCall } from '@/lib/call-history';
@@ -100,6 +100,7 @@ export async function GET(req: NextRequest) {
   // undated last); every other view stays newest-first.
   if (filter === 'follow_up') query = query.order('follow_up_due', { ascending: true, nullsFirst: false });
   query = query.order('started_at', { ascending: false });
+  query = excludeHiddenDeals(query, await hiddenDealIds(ctx)); // calls logged on private deals stay private
   const { data, error } = await query;
   if (error) return dbError('api/crm/calls GET', error);
 

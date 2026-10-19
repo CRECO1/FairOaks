@@ -25,6 +25,8 @@ export async function GET(req: NextRequest) {
   const supabase = adminClient();
   let q = supabase.from('crm_deals').select(DEAL_COLS).order('last_touch', { ascending: false }).limit(limit);
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
+  // Restricted deals: owner, assigned agents and super_admin only.
+  if (ctx.role !== 'super_admin') q = q.or(`is_restricted.eq.false,agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
   if (listingId) {
     if (!(await assertCanAccessListing(listingId, ctx))) return notFound('Listing not found');
     q = q.eq('listing_id', listingId);

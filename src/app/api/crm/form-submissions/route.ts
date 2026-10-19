@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 
@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
     .select('id, form_id, deal_id, listing_id, client_id, title, filled_path, status, created_at, updated_at, crm_forms(name, form_code)')
     .order('updated_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
+  q = excludeHiddenDeals(q, await hiddenDealIds(ctx)); // private deals' docs stay private
   // A document lives in ONE row that both surfaces read, so an edit made from a deal
   // and an edit made from the property are the same edit — they mirror by construction
   // rather than by copying. What differs is the view:

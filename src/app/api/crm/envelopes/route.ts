@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, resendConfig, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
     .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person, last_email_id, email_status, email_opened_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
+  q = excludeHiddenDeals(q, await hiddenDealIds(ctx)); // private deals' envelopes stay private
   if (dealId) q = q.eq('deal_id', dealId);
   if (listingId) q = q.eq('listing_id', listingId);
   if (submissionId) q = q.eq('submission_id', submissionId);
@@ -245,7 +246,7 @@ export async function PATCH(req: NextRequest) {
   const action = b.action as string;
   if (!b.envelope_id) return NextResponse.json({ error: 'envelope_id required' }, { status: 400 });
   const supabase = adminClient();
-  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status, title, message').eq('id', b.envelope_id).maybeSingle();
+  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status, title, message, created_by').eq('id', b.envelope_id).maybeSingle();
   if (!env) return notFound('Signature request not found');
   if (!isAdminRole(ctx.role) && env.business_unit !== ctx.businessUnit) return notFound('Signature request not found');
 
@@ -287,7 +288,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: `This request is ${env.status} and can no longer be changed.` }, { status: 400 });
   }
 
-  const { data: prof } = await supabase.from('crm_profiles').select('first_name, last_name').eq('id', ctx.userId).maybeSingle();
+  // A reminder or resend signs off as the person who SENT the request, not whoever
+  // happens to click Nudge — an admin chasing Brian's lease must not sign it as themselves.
+  const { data: prof } = await supabase.from('crm_profiles').select('first_name, last_name').eq('id', env.created_by ?? ctx.userId).maybeSingle();
   const senderName = prof ? `${prof.first_name ?? ''} ${prof.last_name ?? ''}`.trim() || 'Your broker' : 'Your broker';
   const loadSigners = async (): Promise<SignerRow[]> => {
     const { data } = await supabase.from('crm_envelope_signers').select('*').eq('envelope_id', env.id).order('signing_order');

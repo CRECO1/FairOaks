@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Logged meetings on a deal, each with tagged attendee CONTACTS (crm_clients). Purely
@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
     if (!(await assertOwnsResource('crm_clients', clientId, ctx))) return notFound('Contact not found');
     let q = supabase.from('crm_deal_meetings').select('*, crm_deals(id, property, client)').contains('attendee_ids', [clientId]).order('meeting_date', { ascending: false });
     if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
+    q = excludeHiddenDeals(q, await hiddenDealIds(ctx));
     const { data, error } = await q;
     if (error) { console.error('[deal-meetings] GET client', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
     const meetings = await withAttendees((data ?? []) as MeetingRow[], ctx);

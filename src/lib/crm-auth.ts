@@ -186,12 +186,36 @@ export async function assertOwnsResource(
   opts: { ownerColumns?: string[]; requireOwner?: boolean } = {},
 ): Promise<Record<string, unknown> | null> {
   const { ownerColumns = [], requireOwner = false } = opts;
-  const select = ['id', 'business_unit', ...ownerColumns].join(', ');
+  const extra = table === 'crm_deals' ? ['is_restricted', 'agent_id', 'assigned_agent_ids'] : [];
+  const select = Array.from(new Set(['id', 'business_unit', ...ownerColumns, ...extra])).join(', ');
   const { data } = await adminClient().from(table).select(select).eq('id', id).maybeSingle();
   const row = data as Record<string, unknown> | null;
   if (!row) return null;
+  // Restricted deals: visible only to the owner, assigned agents and super_admin (mirrors crm_deal_visible()).
+  if (table === 'crm_deals' && row.is_restricted && ctx.role !== 'super_admin'
+    && row.agent_id !== ctx.userId && !((row.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return null;
   if (isAdminRole(ctx.role)) return row;
   if (row.business_unit !== ctx.businessUnit) return null;
   if (requireOwner && !ownerColumns.some(col => row[col] === ctx.userId)) return null;
   return row;
+}
+
+
+/**
+ * Restricted ("private") deals the caller may NOT see: flagged is_restricted and the caller is
+ * neither the owning agent nor in assigned_agent_ids. super_admin sees everything. Server routes use
+ * the service key (bypassing RLS), so each deal-linked list must apply this itself.
+ */
+export async function hiddenDealIds(ctx: CrmContext): Promise<string[]> {
+  if (ctx.role === 'super_admin') return [];
+  const { data } = await adminClient().from('crm_deals').select('id, agent_id, assigned_agent_ids').eq('is_restricted', true);
+  return (data ?? [])
+    .filter(d => d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId))
+    .map(d => d.id as string);
+}
+
+/** Adds "deal_id is null OR deal_id not in hidden" to a PostgREST query (no-op when nothing is hidden). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function excludeHiddenDeals<Q extends { or: (f: string) => any }>(q: Q, hidden: string[], col = 'deal_id'): Q {
+  return hidden.length ? q.or(`${col}.is.null,${col}.not.in.(${hidden.join(',')})`) : q;
 }

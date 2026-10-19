@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, hiddenDealIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -35,7 +35,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const plan = (e.plan as any);
     events.push({ id: e.id, type: 'action_plan', label: `Enrolled in action plan`, detail: plan?.name, date: e.created_at });
   }
-  for (const d of (deals.data ?? [])) {
+  const hidden = await hiddenDealIds(ctx);
+  for (const d of (deals.data ?? []).filter(d => !hidden.includes(d.id as string))) {
     events.push({ id: d.id, type: 'deal', label: `Deal — ${d.stage}`, detail: d.property, date: d.created_at });
   }
   for (const i of (imports.data ?? [])) {

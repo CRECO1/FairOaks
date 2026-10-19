@@ -183,6 +183,14 @@ function trigramSim(a: string, b: string): number {
 
 // Columns the copilot may read off a listing. Deliberately excludes nothing sensitive
 // on its own, but rent-roll/suite tables are NOT reachable from any copilot tool.
+/** Private deals this user may not see (is_restricted and not owner/assigned; super_admin sees all). */
+async function hiddenDeals(db: SupabaseClient, ctx: { userId: string; role?: string | null }): Promise<string[]> {
+  if (ctx.role === 'super_admin') return [];
+  const { data } = await db.from('crm_deals').select('id, agent_id, assigned_agent_ids').eq('is_restricted', true);
+  return (data ?? []).filter(d => d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)).map(d => d.id as string);
+}
+const notHidden = <Q extends { or: (f: string) => Q }>(q: Q, hidden: string[]): Q => hidden.length ? q.or(`deal_id.is.null,deal_id.not.in.(${hidden.join(',')})`) : q;
+
 const LISTING_COLS = 'id, name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, zoning, business_unit, listing_agent_id, assigned_agent_ids, is_restricted, created_at';
 
 // Mirrors assertCanAccessListing() in lib/listing-files-access: admins see the
@@ -537,13 +545,15 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (!c) return j({ error: 'Contact not found' });
         if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
         if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That contact isn't assigned to you" });
+        const hid = await hiddenDeals(db, ctx);
         const { data: deals } = await db.from('crm_deals').select('id, property, value, stage, type').eq('client_id', input.contact_id).limit(10);
-        return j({ ...c, deals: deals ?? [] });
+        return j({ ...c, deals: (deals ?? []).filter(d => !hid.includes(d.id as string)) });
       }
       case 'list_tasks': {
         const status = input.status ?? 'open';
         let q = db.from('crm_tasks').select('id, title, due_date, status, priority, type, description, notes, client_id, deal_id, assigned_to, agent_id, completed_at').order('due_date', { ascending: true, nullsFirst: false }).limit(input.due ? 200 : 60);
         q = scoped(q, ctx);
+        q = notHidden(q, await hiddenDeals(db, ctx));
         // "Open" is completed_at IS NULL, matching how the Tasks page itself
         // decides. Filtering on status='open' silently hid in_progress tasks, and
         // status='completed' matched nothing at all because the column holds
@@ -588,7 +598,9 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         // Agents see only deals they own/are assigned to; admins see the workspace.
         if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
         else if (input.scope === 'mine') q = q.eq('agent_id', ctx.userId);
-        const { data, error } = await q;
+        const hid = await hiddenDeals(db, ctx);
+        const { data: allDeals, error } = await q;
+        const data = (allDeals ?? []).filter(d => !hid.includes(d.id as string));
         if (error) return j({ error: error.message });
         // The deals/listings split is the single thing this copilot gets wrong
         // most often: asked "which deal is at 1.9M" it lists deals, finds nothing
@@ -602,7 +614,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       }
       case 'get_deal': {
         const { data: d } = await db.from('crm_deals').select('*').eq('id', input.deal_id).single();
-        if (!d) return j({ error: 'Deal not found' });
+        if (!d || (await hiddenDeals(db, ctx)).includes(d.id as string)) return j({ error: 'Deal not found' });
         if (ctx.businessUnit && d.business_unit !== ctx.businessUnit) return j({ error: 'Deal is in a different workspace' });
         if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That deal isn't assigned to you" });
         // Ids alone are opaque: name the tagged contacts so "who's on this deal?" is answerable.
@@ -646,7 +658,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       case 'update_deal_stage': {
         if (!DEAL_STAGES.includes(input.stage)) return j({ error: `stage must be one of: ${DEAL_STAGES.join(', ')}` });
         const { data: deal } = await db.from('crm_deals').select('client_id, business_unit').eq('id', input.deal_id).maybeSingle();
-        if (!deal) return j({ error: 'Deal not found' });
+        if (!deal || (await hiddenDeals(db, ctx)).includes(input.deal_id)) return j({ error: 'Deal not found' });
         if (ctx.businessUnit && deal.business_unit !== ctx.businessUnit) return j({ error: 'That deal is in a different workspace' });
         const { error } = await db.from('crm_deals').update({ stage: input.stage, last_touch: new Date().toISOString().slice(0, 10) }).eq('id', input.deal_id);
         if (error) return j({ error: error.message });
@@ -1096,7 +1108,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
       case 'read_document': {
         if (input.submission_id) {
           const { data: sub } = await db.from('crm_form_submissions').select('id, title, status, values, deal_id, listing_id, client_id, business_unit, created_by').eq('id', input.submission_id).maybeSingle();
-          if (!sub) return j({ error: 'Document not found' });
+          if (!sub || (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id as string))) return j({ error: 'Document not found' });
           if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
           const { data: bdRow } = await db.from('crm_form_submissions').select('builder_data').eq('id', input.submission_id).maybeSingle();
           const bd = bdRow?.builder_data as { terms?: { label: string; value: string }[]; [k: string]: unknown } | null;
@@ -1123,6 +1135,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (input.query) {
           for (const w of String(input.query).split(/\s+/).map(x => x.replace(/[%,()]/g, '')).filter(Boolean).slice(0, 5)) q = q.ilike('title', `%${w}%`);
         }
+        q = notHidden(q, await hiddenDeals(db, ctx));
         const { data, error } = await q;
         return error ? j({ error: error.message }) : j(data ?? []);
       }

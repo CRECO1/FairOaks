@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, notFound, hiddenDealIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Load one submission for re-editing: its saved values + a signed URL to the
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .select('*, crm_forms(name, form_code, storage_path, page_count)')
     .eq('id', id).single();
   if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if ((data as { deal_id?: string | null }).deal_id && (await hiddenDealIds(ctx)).includes((data as { deal_id: string }).deal_id)) return notFound();
 
   const form = (data as { crm_forms?: { storage_path?: string } }).crm_forms;
   let blankUrl: string | null = null, filledUrl: string | null = null;
