@@ -81,10 +81,11 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const [dealPick, setDealPick] = useState<string | null>(null); // which deal is expanded in it
   const [dealDocs, setDealDocs] = useState<DealDoc[] | null>(null); // null = still loading
   const [dealQ, setDealQ] = useState('');
-  const [actFor, setActFor] = useState<string | null>(null);        // envelope whose activity is open
+  const [openId, setOpenId] = useState<string | null>(null);         // envelope shown in the detail drawer
+  const [tab, setTab] = useState<'out' | 'drafts' | 'signed' | 'closed'>('out');
+  const [q, setQ] = useState('');
   const [acts, setActs] = useState<Record<string, ActEvent[]>>({}); // cached per envelope
   const [stats, setStats] = useState<Stats | null>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);     // envelope whose ⋯ menu is open
   const fileRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = useCallback(async () => {
@@ -208,18 +209,17 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     } finally { setBusy(null); load(); }
   }
 
-  // Document activity. Fetched on demand — most rows are never expanded, and the
-  // trail only grows, so a cached copy stays correct for the life of the page.
-  async function toggleActivity(env: Envelope) {
-    if (actFor === env.id) { setActFor(null); return; }
-    setActFor(env.id);
-    if (acts[env.id]) return;
-    try {
-      const r = await fetch(`/api/crm/envelopes?activity=${env.id}`, { headers: auth(authToken) });
-      const j = await r.json();
-      if (r.ok) setActs(prev => ({ ...prev, [env.id]: j.events ?? [] }));
-    } catch { /* leave it unexpanded rather than erroring the page */ }
-  }
+  // Document activity. Fetched when a request's drawer opens — most are never opened,
+  // and the trail only grows, so a cached copy stays correct for the life of the page.
+  useEffect(() => {
+    if (!openId || acts[openId]) return;
+    let live = true;
+    fetch(`/api/crm/envelopes?activity=${openId}`, { headers: auth(authToken) })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (live && j) setActs(prev => ({ ...prev, [openId]: j.events ?? [] })); })
+      .catch(() => { /* leave the drawer without a trail rather than erroring the page */ });
+    return () => { live = false; };
+  }, [openId, acts, authToken]);
 
   async function nudge(env: Envelope) {
     setBusy(env.id);
@@ -283,59 +283,139 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
   const agents = Array.from(new Set(envs.map(e => e.sent_by).filter(Boolean) as string[])).sort();
   const median = stats?.median_hours_to_sign ?? null;
   const turn = median == null ? null : median < 1 ? `${Math.round(median * 60)}m` : median < 48 ? `${Math.round(median)}h` : `${Math.round(median / 24)}d`;
-  // One quiet line instead of a wall of cards. Email-open is only meaningful once
-  // delivery tracking has reported back, so it is dropped until it has.
   const metrics: string[] = stats && stats.sent > 0 ? [
     `${stats.sent} sent`,
     ...(stats.tracked ? [`${stats.email_opened_pct}% email opened`] : []),
     `${stats.viewed_pct}% doc opened`,
     `${stats.signed_pct}% signed`,
     ...(turn ? [`${turn} typical turnaround`] : []),
-    ...(stats.bounced ? [`${stats.bounced} bounced`] : []),
-    ...(stats.declined ? [`${stats.declined} declined`] : []),
   ] : [];
-
   const primaryBtn: React.CSSProperties = { ...mini, background: '#c9922c', color: '#fff', border: 'none' };
 
+  // ── Derived views ─────────────────────────────────────────────────────────
+  const needle = q.trim().toLowerCase();
+  const matches = (e: Envelope) => !needle || [e.title, e.crm_deals?.property, e.crm_deals?.client, e.sent_by, ...(e.crm_envelope_signers || []).flatMap(s => [s.name, s.email])]
+    .some(v => (v ?? '').toLowerCase().includes(needle));
+  const outRows = activeEnvs.filter(matches);
+  const signedRows = completedEnvs.filter(matches);
+  const closedRows = closedEnvs.filter(matches);
+  const draftRows = queue.filter(({ doc }) => !needle || (doc.title ?? '').toLowerCase().includes(needle));
+  const tabs: Array<{ key: typeof tab; label: string; n: number }> = [
+    { key: 'out', label: 'Out for signature', n: activeEnvs.length },
+    { key: 'drafts', label: 'Drafts', n: queue.length },
+    { key: 'signed', label: 'Signed', n: completedEnvs.length },
+    { key: 'closed', label: 'Cancelled & archived', n: closedEnvs.length },
+  ];
+
+  // What needs a human today — surfaced above the list so a stalled signature never
+  // sits unnoticed in the middle of it. Declined / bounced / gone quiet for 3+ days.
+  type Attn = { env: Envelope; tone: 'bad' | 'warn'; text: string; action: 'nudge' | null };
+  const attention: Attn[] = shown.filter(e => !e.archived_at && e.status !== 'voided' && e.status !== 'completed').flatMap((e): Attn[] => {
+    const sg = (e.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
+    const declined = sg.find(s => s.status === 'declined' || s.declined_at);
+    if (declined) return [{ env: e, tone: 'bad', text: `${declined.name} declined${declined.decline_reason ? ` — “${declined.decline_reason}”` : ''}`, action: null }];
+    const cur = sg.find(s => s.status !== 'signed' && !s.signed_at);
+    if (!cur) return [];
+    if (cur.delivery && ['bounced', 'complained', 'failed'].includes(cur.delivery)) return [{ env: e, tone: 'bad', text: `Email to ${cur.name} didn’t arrive — check the address`, action: null }];
+    const days = cur.sent_at ? Math.floor((Date.now() - new Date(cur.sent_at).getTime()) / 86400000) : 0;
+    if (!cur.in_person && days >= 3) return [{ env: e, tone: 'warn', text: `${cur.name} ${cur.viewed_at ? 'opened it but hasn’t signed' : 'hasn’t opened it'} · ${days} days`, action: 'nudge' }];
+    return [];
+  }).slice(0, 4);
+
+  const openEnv = envs.find(e => e.id === openId) ?? null;
+
+  const signerChips = (env: Envelope) => {
+    const sg = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
+    const cur = sg.find(s => s.status !== 'signed' && !s.signed_at && s.status !== 'declined' && !s.declined_at);
+    return (
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {sg.map((s, i) => {
+          const signed = s.status === 'signed' || !!s.signed_at;
+          const declined = s.status === 'declined' || !!s.declined_at;
+          const isCur = cur?.id === s.id;
+          return (
+            <span key={s.id} title={`${s.name} — ${signed ? 'signed' : declined ? 'declined' : isCur ? 'waiting' : 'later'}`}
+              style={{ width: 26, height: 26, borderRadius: '50%', marginLeft: i ? -6 : 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 800, border: '2px solid #fff', boxSizing: 'border-box',
+                background: signed ? '#16a34a' : declined ? '#dc2626' : isCur ? '#fdf0d5' : '#f1f2f4', color: signed || declined ? '#fff' : isCur ? '#92400e' : '#9ca3af',
+                outline: isCur ? '1.5px solid #c9922c' : 'none' }}>
+              {signed ? '✓' : (s.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const statusLine = (env: Envelope): { text: string; color: string } => {
+    const sg = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
+    if (env.status === 'completed') return { text: 'Fully signed', color: '#15803d' };
+    if (env.status === 'voided') return { text: 'Cancelled', color: '#b91c1c' };
+    const dec = sg.find(s => s.status === 'declined' || s.declined_at);
+    if (dec) return { text: `Declined by ${dec.name}`, color: '#b91c1c' };
+    const cur = sg.find(s => s.status !== 'signed' && !s.signed_at);
+    if (!cur) return { text: env.status, color: '#6b7280' };
+    return { text: `${cur.in_person ? 'In person: ' : 'Waiting on '}${cur.name}${cur.sent_at && !cur.in_person ? ` · ${ago(cur.sent_at)}` : ''}`, color: '#1d4ed8' };
+  };
+
+  const rowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 14, rowGap: 8, flexWrap: 'wrap', background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '12px 16px', cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: "'DM Sans',sans-serif" };
+
   return (
-    <div className="es-touch" style={{ maxWidth: 860, margin: '0 auto', fontFamily: "'DM Sans',sans-serif", ...(dragging ? { outline: '2px dashed #c9922c', outlineOffset: 6, borderRadius: 12 } : {}) }}
+    <div className="es-touch" style={{ maxWidth: 940, margin: '0 auto', fontFamily: "'DM Sans',sans-serif", ...(dragging ? { outline: '2px dashed #c9922c', outlineOffset: 6, borderRadius: 12 } : {}) }}
       onDragOver={e => { e.preventDefault(); setDragging(true); }}
       onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
       onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }}>
       <input ref={fileRef} type="file" accept="application/pdf,.pdf" style={{ display: 'none' }}
         onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importFile(f); }} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10, marginBottom: 6 }}>
-        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
-          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111' }}>Signature requests</h2>
-          <div style={{ fontSize: 13, color: '#9ca3af', marginTop: 1 }}>
-            {loading ? ' ' : `${activeEnvs.length} out for signature${completedEnvs.length ? ` · ${completedEnvs.length} signed` : ''}`}
-          </div>
+      {/* ── Header: title, one-line pulse, the two ways to start ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', rowGap: 10, marginBottom: 16 }}>
+        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+          <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 28, fontWeight: 700, margin: 0, color: '#111' }}>Signatures</h2>
+          <div title={stats && stats.tracked < stats.sent ? `Email opens are tracked for ${stats.tracked} of ${stats.sent} invites — only mail sent since delivery tracking was switched on reports back.` : undefined}
+            style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2 }}>{metrics.length ? metrics.join('  ·  ') : ' '}</div>
         </div>
         <button onClick={() => { setPickDeal(true); setDealPick(null); setDealDocs(null); }} disabled={uploading} style={mini}>From a deal</button>
         <button onClick={() => fileRef.current?.click()} disabled={uploading} style={primaryBtn}>{uploading ? 'Importing…' : '+ Upload PDF'}</button>
       </div>
 
-      {metrics.length > 0 && (
-        <div title={stats && stats.tracked < stats.sent ? `Email opens are tracked for ${stats.tracked} of ${stats.sent} invites — only mail sent since delivery tracking was switched on reports back.` : undefined}
-          style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 12 }}>
-          {metrics.join('  ·  ')}
+      {/* ── Needs attention ── */}
+      {attention.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#b45309', marginBottom: 7 }}>Needs attention · {attention.length}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {attention.map(a => (
+              <div key={a.env.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: a.tone === 'bad' ? '#fef6f6' : '#fffaf0', border: `1px solid ${a.tone === 'bad' ? '#f8d7d7' : '#f6e3b8'}`, borderRadius: 10, padding: '9px 13px' }}>
+                <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.env.title || 'Document'}</div>
+                  <div style={{ fontSize: 12.5, color: a.tone === 'bad' ? '#b91c1c' : '#92400e' }}>{a.text}</div>
+                </div>
+                {a.action === 'nudge' && <button disabled={busy === a.env.id} onClick={() => nudge(a.env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === a.env.id ? '…' : 'Nudge'}</button>}
+                <button onClick={() => setOpenId(a.env.id)} style={mini}>Details</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f2f4' }}>
-        <span style={{ fontSize: 12.5, color: '#9ca3af', flex: '1 1 auto' }}>Drop a PDF anywhere to start a request.</span>
+      {/* ── Tabs + search ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', rowGap: 8, borderBottom: '1px solid #eef0f2', marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', flex: '1 1 auto' }} role="tablist">
+          {tabs.map(t => (
+            <button key={t.key} role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)}
+              style={{ background: 'none', border: 'none', borderBottom: `2px solid ${tab === t.key ? '#c9922c' : 'transparent'}`, padding: '9px 12px', fontSize: 13.5, fontWeight: tab === t.key ? 800 : 600, color: tab === t.key ? '#111' : '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", marginBottom: -1, whiteSpace: 'nowrap' }}>
+              {t.label}{t.n > 0 && <span style={{ marginLeft: 6, fontSize: 11.5, fontWeight: 700, color: tab === t.key ? '#a06a12' : '#9ca3af' }}>{t.n}</span>}
+            </button>
+          ))}
+        </div>
         {agents.length > 1 && (
           <select value={byAgent} onChange={e => setByAgent(e.target.value)} title="Show only one agent's documents"
-            style={{ fontSize: 12.5, padding: '5px 8px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
+            style={{ fontSize: 12.5, padding: '6px 8px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>
             <option value="">All agents</option>
             {agents.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         )}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#6b7280', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} /> Show cancelled &amp; archived
-        </label>
-        <button onClick={load} title="Refresh" style={{ ...mini, color: '#9ca3af', border: 'none', background: 'none', padding: '6px 4px' }}>Refresh</button>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search" aria-label="Search signature requests"
+          style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #e5e7eb', borderRadius: 7, width: 150, fontFamily: "'DM Sans',sans-serif", marginBottom: 6 }} />
       </div>
 
       {/* ── Pick a document out of a deal's folder ── */}
@@ -395,211 +475,188 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
       )}
 
 
-      {/* ── Imported, not yet sent ── */}
-      {queue.length > 0 && (
-        <div style={{ marginBottom: 26 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 8 }}>Ready to prepare &amp; send</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {queue.map(({ doc: d, dupes }) => (
-              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 190px', minWidth: 0 }}>
+      {/* ── List for the active tab ── */}
+      {loading ? <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {tab === 'drafts' && (draftRows.length === 0
+            ? <Empty title="No drafts" body="Upload a PDF or pull one from a deal to start a request." />
+            : draftRows.map(({ doc: d, dupes }) => (
+              <div key={d.id} style={{ ...rowStyle, cursor: 'default' }}>
+                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title || 'Document'}</div>
                   <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
-                    Imported{d.updated_at ? ` · ${ago(d.updated_at)}` : ''} · not sent yet
-                    {dupes > 0 && ` · newest of ${dupes + 1} copies`}
+                    Imported{d.updated_at ? ` · ${ago(d.updated_at)}` : ''}{dupes > 0 && ` · newest of ${dupes + 1} copies`}
                   </div>
                 </div>
                 <button onClick={() => removeDoc(d)} title="Remove this document" style={{ ...mini, color: '#b91c1c', borderColor: '#f3e4e4' }}>Remove</button>
-                {onCompose && <button onClick={() => onCompose({ doc: d })} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>Prepare &amp; send</button>}
+                {d.url && onPreview && <button onClick={() => onPreview({ url: d.url!, name: `${d.title || 'Document'}.pdf` })} style={mini}>Preview</button>}
+                {onCompose && <button onClick={() => onCompose({ doc: d })} style={primaryBtn}>Prepare &amp; send</button>}
               </div>
-            ))}
-          </div>
+            )))}
+
+          {tab !== 'drafts' && (() => {
+            const rows = tab === 'out' ? outRows : tab === 'signed' ? signedRows : closedRows;
+            if (rows.length === 0) return needle
+              ? <Empty title="No matches" body="Nothing here matches your search." />
+              : tab === 'out' ? <Empty title="Nothing is waiting on a signature" body="Start a request with Upload PDF or From a deal." />
+              : tab === 'signed' ? <Empty title="No signed documents yet" body="Completed requests collect here." />
+              : <Empty title="Nothing cancelled or archived" body="" />;
+            return rows.map(env => {
+              const sg = env.crm_envelope_signers || [];
+              const st = statusLine(env);
+              const dealName = env.crm_deals?.property || env.crm_deals?.client;
+              return (
+                <button key={env.id} onClick={() => setOpenId(env.id)} style={rowStyle}>
+                  <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+                    <div title={env.title || 'Document'} style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
+                    <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>{[dealName, env.sent_by, env.created_at ? `sent ${ago(env.created_at)}` : null].filter(Boolean).join(' · ')}</div>
+                  </div>
+                  {signerChips(env)}
+                  <div style={{ flex: '0 1 230px', minWidth: 130, textAlign: 'right' }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: st.color }}>{st.text}</div>
+                    <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{sg.filter(s => s.status === 'signed' || s.signed_at).length} of {sg.length} signed</div>
+                  </div>
+                  <span aria-hidden style={{ color: '#c4c8cf', fontSize: 18 }}>›</span>
+                </button>
+              );
+            });
+          })()}
         </div>
       )}
 
-      {loading ? <div style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</div>
-        : groups.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>Nothing is waiting to be signed.</div>
-            <div style={{ fontSize: 13 }}>Upload a PDF above, or send one from a deal&apos;s E-Sign tab.</div>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {groups.map(group => (
-              <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: group.key === 'done' ? '#15803d' : '#9ca3af' }}>{group.label}{group.rows.length > 1 ? ` · ${group.rows.length}` : ''}</div>
-                {group.rows.map(env => {
-              const signers = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
-              const done = signers.filter(s => s.status === 'signed' || s.signed_at).length;
-              const declinedBy = signers.find(s => s.status === 'declined' || s.declined_at);
-              const current = declinedBy ? undefined : signers.find(s => s.status !== 'signed' && !s.signed_at);
-              const dealName = env.crm_deals?.property || env.crm_deals?.client || 'Deal';
-              return (
-                <div key={env.id} style={{ display: 'flex', alignItems: 'center', gap: 12, rowGap: 10, background: '#fff', border: '1px solid #eef0f2', borderRadius: 12, padding: '13px 16px', flexWrap: 'wrap' }}>
-                  {/* Needs a basis wide enough to be worth a line of its own; below that
-                      the actions wrap underneath instead of off the side of the screen. */}
-                  <div style={{ flex: '1 1 190px', minWidth: 0 }}>
-                    <div title={env.title || 'Document'} style={{ fontSize: 14.5, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{env.title || 'Document'}</div>
-                    <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 1 }}>
-                      {env.sent_by && <><span style={{ fontWeight: 700, color: '#6b7280' }}>{env.sent_by}</span> · </>}
-                      {dealName} · {done}/{signers.length} signed
-                      {env.status !== 'sent' && env.status !== 'in_progress' && (
-                        <span style={{ marginLeft: 6, fontWeight: 700, color: env.status === 'completed' ? '#15803d' : '#b91c1c' }}>
-                          · {env.status === 'completed' ? 'Completed' : env.status === 'voided' ? 'Cancelled' : env.status === 'declined' ? 'Declined' : env.status}
-                        </span>
-                      )}
-                      {env.archived_at && <span style={{ marginLeft: 6, fontWeight: 700, color: '#6b7280' }}>· Archived</span>}
-                    </div>
-                    {declinedBy ? (
-                      <div style={{ fontSize: 12.5, color: '#b91c1c', marginTop: 3, fontWeight: 600 }}>
-                        Declined by {declinedBy.name}
-                        {declinedBy.decline_reason && <span style={{ color: '#6b7280', fontWeight: 400 }}> — “{declinedBy.decline_reason}”</span>}
-                      </div>
-                    ) : current && (
-                      <div style={{ fontSize: 12.5, color: '#1d4ed8', marginTop: 3, fontWeight: 600 }}>
-                        {current.in_person ? 'To sign in person: ' : 'Waiting on '}{current.name} <span style={{ color: '#9ca3af', fontWeight: 400 }}>· {current.email}{current.in_person ? '' : current.viewed_at ? ' · opened the doc' : current.sent_at ? ` · sent ${ago(current.sent_at)}` : ''}</span>
-                        {!current.in_person && current.delivery && (() => {
-                          const d = current.delivery;
-                          const bad = d === 'bounced' || d === 'complained' || d === 'failed';
-                          const seen = d === 'opened' || d === 'clicked';
-                          // Every label says EMAIL, because the row also carries a
-                          // document-open state and a bare "opened" reads as the
-                          // wrong one of the two.
-                          const LABEL: Record<string, string> = {
-                            opened: '✉︎ email opened', clicked: '✉︎ link clicked',
-                            bounced: '✉︎ email bounced', complained: '✉︎ marked as spam',
-                            failed: '✉︎ email failed', delayed: '✉︎ delivery delayed',
-                            delivered: '✉︎ email delivered, unopened',
-                          };
-                          const label = LABEL[d] ?? `✉︎ ${d}`;
-                          const hint = bad
-                            ? 'The email did not reach them — check the address before resending.'
-                            : seen
-                              ? (current.viewed_at
-                                  ? 'They opened the email and have opened the document.'
-                                  : 'They opened the email but have NOT opened the document yet — the invite landed, the link did not get clicked. Nudging rarely helps here; call them, or send the 🔗 link another way.')
-                              : 'It reached their mailbox but has not been opened — often a junk folder. Sending it again usually lands in the same place; try the 🔗 link another way.';
-                          return (
-                            <span title={hint} style={{ marginLeft: 8, fontSize: 11.5, fontWeight: 700, padding: '1px 8px', borderRadius: 20, whiteSpace: 'nowrap', cursor: 'help',
-                              ...(bad ? { background: '#fef2f2', color: '#b91c1c' } : seen ? { background: '#dcfce7', color: '#15803d' } : { background: '#fef3e2', color: '#92400e' }) }}>
-                              {label}
-                            </span>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', position: 'relative' }}>
-                  {/* One primary action per row; everything else lives under ⋯. */}
-                  {env.status === 'completed' && (env.executed_clean_url || env.executed_url) ? (() => {
-                    const view = env.executed_clean_url || env.executed_url!;
-                    const file = `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`;
-                    return <button onClick={() => onPreview?.({ url: view, name: file })} title="View the signed document"
-                      style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>View signed</button>;
-                  })()
-                  : current && !current.in_person ? <button disabled={busy === env.id} onClick={() => nudge(env)} title="Email the current signer a reminder" style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : 'Nudge'}</button>
-                  : env.deal_id && onOpenDeal ? <button onClick={() => onOpenDeal(env.deal_id!)} style={primaryBtn}>Open deal</button> : null}
-                  <button onClick={() => setMenuFor(menuFor === env.id ? null : env.id)} aria-label="More actions" aria-expanded={menuFor === env.id}
-                    style={{ ...mini, padding: '8px 11px', fontSize: 16, lineHeight: 1 }}>⋯</button>
-                  {menuFor === env.id && (() => {
-                    const close = () => setMenuFor(null);
-                    const item: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '9px 14px', fontSize: 13, fontWeight: 600, color: '#374151', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textDecoration: 'none', boxSizing: 'border-box' };
-                    const dl = (u: string) => `${u}${u.includes('?') ? '&' : '?'}download=${encodeURIComponent(`${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`)}`;
-                    return (
-                      <>
-                        <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                        <div role="menu" style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 41, minWidth: 190, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 28px rgba(0,0,0,.14)', padding: '5px 0' }}>
-                          {env.deal_id && onOpenDeal && <button role="menuitem" style={item} onClick={() => { close(); onOpenDeal(env.deal_id!); }}>Open deal</button>}
-                          <button role="menuitem" style={item} onClick={() => { close(); toggleActivity(env); }}>{actFor === env.id ? 'Hide activity' : 'View activity'}</button>
-                          {env.status === 'completed' && (env.executed_clean_url || env.executed_url) && (
-                            <a role="menuitem" style={item} href={dl(env.executed_clean_url || env.executed_url!)} onClick={close}>Download signed</a>
-                          )}
-                          {env.status === 'completed' && env.executed_url && env.executed_clean_url && (
-                            <a role="menuitem" style={item} href={dl(env.executed_url)} onClick={close}>Download with certificate</a>
-                          )}
-                          {current && <button role="menuitem" style={item} disabled={busy === env.id} onClick={() => { close(); signInPerson(env); }}>Sign in person</button>}
-                          <div style={{ borderTop: '1px solid #f1f2f4', margin: '5px 0' }} />
-                          {env.archived_at
-                            ? <button role="menuitem" style={item} disabled={busy === env.id} onClick={() => { close(); restoreEnv(env); }}>Restore</button>
-                            : <button role="menuitem" style={item} disabled={busy === env.id} onClick={() => { close(); archiveEnv(env); }}>Archive</button>}
-                          {env.status !== 'voided' && !env.archived_at && env.status !== 'completed' && <button role="menuitem" style={{ ...item, color: '#b91c1c' }} disabled={busy === env.id} onClick={() => { close(); voidEnv(env); }}>Cancel request</button>}
-                          {isSuperAdmin && <button role="menuitem" style={{ ...item, color: '#b91c1c' }} disabled={busy === env.id} onClick={() => { close(); purgeEnv(env); }}>Delete permanently</button>}
-                        </div>
-                      </>
-                    );
-                  })()}
-                  </div>
-                  {actFor === env.id && (
-                    // Its own full-width line inside the (wrapping) envelope card, rather than
-                    // whatever width was left beside the action buttons.
-                    <div style={{ flexBasis: '100%', width: '100%', minWidth: 0, marginTop: 12, paddingTop: 12, borderTop: '1px solid #eef0f3' }}>
-                      {!acts[env.id] ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Loading activity…</div>
-                        : acts[env.id].length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>No activity recorded yet.</div>
-                        : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                          {acts[env.id].map(ev => {
-                            const look: Record<string, { icon: string; label: string; color: string }> = {
-                              created:   { icon: '📄', label: 'Request created', color: '#6b7280' },
-                              sent:      { icon: '📤', label: 'Email sent', color: '#6b7280' },
-                              email_delivered: { icon: '📬', label: 'Email delivered', color: '#6b7280' },
-                              email_opened:    { icon: '📖', label: 'Email opened', color: '#1e40af' },
-                              email_clicked:   { icon: '🔗', label: 'Clicked the link', color: '#1e40af' },
-                              email_bounced:   { icon: '⚠️', label: 'Email bounced', color: '#b91c1c' },
-                              email_complained:{ icon: '⚠️', label: 'Marked as spam', color: '#b91c1c' },
-                              email_delayed:   { icon: '⏱', label: 'Delivery delayed', color: '#92400e' },
-                              email_failed:    { icon: '⚠️', label: 'Email failed to send', color: '#b91c1c' },
-                              in_person_started: { icon: '🖊', label: 'Signed in person', color: '#5b3d91' },
-                              signer_added:   { icon: '➕', label: 'Signer added', color: '#6b7280' },
-                              signer_updated: { icon: '✏️', label: 'Signer updated', color: '#6b7280' },
-                              archived:  { icon: '🗄', label: 'Archived', color: '#6b7280' },
-                              opened:    { icon: '👀', label: 'Opened the document', color: '#1e40af' },
-                              signed:    { icon: '✍️', label: 'Signed', color: '#15803d' },
-                              declined:  { icon: '🚫', label: 'Declined to sign', color: '#b91c1c' },
-                              completed: { icon: '✅', label: 'Fully executed', color: '#15803d' },
-                              voided:    { icon: '⊘', label: 'Voided', color: '#b91c1c' },
-                            };
-                            const l = look[ev.event] ?? { icon: '•', label: ev.event, color: '#6b7280' };
-                            const who = ev.signer_name || (ev.actor && ev.actor !== 'system' && ev.actor.includes('@') ? ev.actor : null);
-                            const d = new Date(ev.created_at);
-                            // The browser is the proof it was a real person on a real
-                            // device, so keep it — but the raw UA string is unreadable.
-                            const ua = ev.user_agent || '';
-                            const dev = /iPhone|Android|iPad|Mobile/i.test(ua) ? 'mobile' : ua ? 'desktop' : '';
-                            return (
-                              // Two lines, not columns: what happened and when, then who / device / IP.
-                              // As one squeezed row on a phone, the device and IP left the name about
-                              // one character wide and it broke letter by letter ("Pat / ric / k").
-                              // Names wrap between words only.
-                              <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12.5, lineHeight: 1.45 }}>
-                                <span style={{ width: 16, flexShrink: 0 }}>{l.icon}</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                                    <span style={{ flex: 1, minWidth: 0, color: l.color, fontWeight: 600 }}>{l.label}</span>
-                                    <span style={{ flexShrink: 0, color: '#9ca3af', whiteSpace: 'nowrap' }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-                                  </div>
-                                  {(who || dev || ev.ip) && (
-                                    <div style={{ color: '#9ca3af', overflowWrap: 'break-word' }}>
-                                      {who && <span style={{ color: '#374151' }}>{who}</span>}
-                                      {dev && <span>{who ? ' · ' : ''}{dev}</span>}
-                                      {ev.ip && <span>{who || dev ? ' · ' : ''}<span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'nowrap' }}>{ev.ip}</span></span>}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+      {/* ── Detail drawer: signers, actions and the audit trail for one request ── */}
+      {openEnv && (() => {
+        const env = openEnv;
+        const sg = (env.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
+        const declinedBy = sg.find(s => s.status === 'declined' || s.declined_at);
+        const current = declinedBy ? undefined : sg.find(s => s.status !== 'signed' && !s.signed_at);
+        const st = statusLine(env);
+        const file = `${(env.title || 'document').replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}-signed.pdf`;
+        const dl = (u: string) => `${u}${u.includes('?') ? '&' : '?'}download=${encodeURIComponent(file)}`;
+        const signedUrl = env.executed_clean_url || env.executed_url;
+        const link: React.CSSProperties = { background: 'none', border: 'none', padding: 0, fontSize: 12.5, fontWeight: 600, color: '#6b7280', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textDecoration: 'underline' };
+        const evs = acts[env.id];
+        return (
+          <div onClick={e => { if (e.target === e.currentTarget) setOpenId(null); }} style={{ position: 'fixed', inset: 0, zIndex: 650, background: 'rgba(17,24,39,.35)', display: 'flex', justifyContent: 'flex-end' }}>
+            <aside role="dialog" aria-label="Signature request details" style={{ width: 'min(460px, 100vw)', height: '100%', background: '#fff', boxShadow: '-12px 0 40px rgba(0,0,0,.14)', overflowY: 'auto', padding: '20px 22px 32px', fontFamily: "'DM Sans',sans-serif", boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, margin: 0, color: '#111', overflowWrap: 'anywhere' }}>{env.title || 'Document'}</h3>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: st.color, marginTop: 3 }}>{st.text}</div>
+                  <div style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2 }}>{[env.crm_deals?.property || env.crm_deals?.client, env.sent_by, env.archived_at ? 'Archived' : null].filter(Boolean).join(' · ')}</div>
                 </div>
-              );
+                <button onClick={() => setOpenId(null)} aria-label="Close" style={{ background: 'none', border: 'none', fontSize: 22, lineHeight: 1, color: '#6b7280', cursor: 'pointer' }}>✕</button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 4px' }}>
+                {env.status === 'completed' && signedUrl && <button onClick={() => onPreview?.({ url: signedUrl, name: file })} style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>View signed</button>}
+                {current && !current.in_person && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : 'Send reminder'}</button>}
+                {current && <button disabled={busy === env.id} onClick={() => signInPerson(env)} style={mini}>Sign in person</button>}
+                {env.deal_id && onOpenDeal && <button onClick={() => { setOpenId(null); onOpenDeal(env.deal_id!); }} style={mini}>Open deal</button>}
+              </div>
+
+              <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', margin: '22px 0 8px' }}>Signers</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {sg.map(s => {
+                  const signed = s.status === 'signed' || !!s.signed_at;
+                  const declined = s.status === 'declined' || !!s.declined_at;
+                  const isCur = current?.id === s.id;
+                  const when = signed ? `Signed ${ago(s.signed_at)}` : declined ? `Declined ${ago(s.declined_at)}` : s.viewed_at ? `Opened ${ago(s.viewed_at)}` : s.sent_at ? `Sent ${ago(s.sent_at)}` : 'Not sent yet';
+                  const dv = !signed && !s.in_person ? s.delivery : null;
+                  const bad = dv === 'bounced' || dv === 'complained' || dv === 'failed';
+                  return (
+                    <div key={s.id} style={{ display: 'flex', gap: 11, alignItems: 'flex-start', padding: '9px 11px', borderRadius: 10, border: `1px solid ${isCur ? '#f0e2c4' : '#eef0f2'}`, background: isCur ? '#fffaf0' : '#fff' }}>
+                      <span style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, background: signed ? '#16a34a' : declined ? '#dc2626' : '#f1f2f4', color: signed || declined ? '#fff' : '#6b7280' }}>{signed ? '✓' : declined ? '!' : s.signing_order}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111' }}>{s.name} <span style={{ fontWeight: 500, color: '#9ca3af', textTransform: 'capitalize' }}>· {s.signer_role}</span></div>
+                        <div style={{ fontSize: 12, color: '#9ca3af', overflowWrap: 'anywhere' }}>{s.email}{s.in_person ? ' · in person' : ''}</div>
+                        <div style={{ fontSize: 12, color: declined ? '#b91c1c' : '#6b7280', marginTop: 2 }}>
+                          {when}{declined && s.decline_reason ? ` — “${s.decline_reason}”` : ''}
+                          {dv && <span style={{ marginLeft: 8, fontWeight: 700, color: bad ? '#b91c1c' : dv === 'opened' || dv === 'clicked' ? '#15803d' : '#92400e' }}>· email {dv === 'delivered' ? 'delivered, unopened' : dv}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
                 })}
               </div>
-            ))}
+
+              <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: '#9ca3af', margin: '22px 0 8px' }}>Activity</div>
+              {!evs ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>Loading…</div>
+                : evs.length === 0 ? <div style={{ fontSize: 12.5, color: '#9ca3af' }}>No activity recorded yet.</div>
+                : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {evs.map(ev => {
+                      const l = ACT_LOOK[ev.event] ?? { icon: '•', label: ev.event, color: '#6b7280' };
+                      const who = ev.signer_name || (ev.actor && ev.actor !== 'system' && ev.actor.includes('@') ? ev.actor : null);
+                      const d = new Date(ev.created_at);
+                      const ua = ev.user_agent || '';
+                      const dev = /iPhone|Android|iPad|Mobile/i.test(ua) ? 'mobile' : ua ? 'desktop' : '';
+                      return (
+                        <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, fontSize: 12.5, lineHeight: 1.45 }}>
+                          <span style={{ width: 16, flexShrink: 0 }}>{l.icon}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                              <span style={{ flex: 1, minWidth: 0, color: l.color, fontWeight: 600 }}>{l.label}</span>
+                              <span style={{ flexShrink: 0, color: '#9ca3af', whiteSpace: 'nowrap' }}>{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                            </div>
+                            {(who || dev || ev.ip) && (
+                              <div style={{ color: '#9ca3af', overflowWrap: 'break-word' }}>
+                                {who && <span style={{ color: '#374151' }}>{who}</span>}
+                                {dev && <span>{who ? ' · ' : ''}{dev}</span>}
+                                {ev.ip && <span>{who || dev ? ' · ' : ''}<span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, whiteSpace: 'nowrap' }}>{ev.ip}</span></span>}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 26, paddingTop: 14, borderTop: '1px solid #f1f2f4' }}>
+                {env.status === 'completed' && signedUrl && <a href={dl(signedUrl)} style={{ ...link, display: 'inline' }}>Download signed</a>}
+                {env.status === 'completed' && env.executed_url && env.executed_clean_url && <a href={dl(env.executed_url)} style={link}>Download with certificate</a>}
+                {env.archived_at
+                  ? <button disabled={busy === env.id} onClick={async () => { await restoreEnv(env); setOpenId(null); }} style={link}>Restore</button>
+                  : <button disabled={busy === env.id} onClick={async () => { await archiveEnv(env); setOpenId(null); }} style={link}>Archive</button>}
+                {env.status !== 'voided' && !env.archived_at && env.status !== 'completed' && <button disabled={busy === env.id} onClick={() => voidEnv(env)} style={{ ...link, color: '#b91c1c' }}>Cancel request</button>}
+                {isSuperAdmin && <button disabled={busy === env.id} onClick={async () => { await purgeEnv(env); setOpenId(null); }} style={{ ...link, color: '#b91c1c' }}>Delete permanently</button>}
+              </div>
+            </aside>
           </div>
-        )}
+        );
+      })()}
     </div>
   );
 }
+
+function Empty({ title, body }: { title: string; body: string }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '44px 0', color: '#9ca3af' }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>{title}</div>
+      {body && <div style={{ fontSize: 13, marginTop: 3 }}>{body}</div>}
+    </div>
+  );
+}
+
+// How each audit-trail event reads in the drawer.
+const ACT_LOOK: Record<string, { icon: string; label: string; color: string }> = {
+  created:   { icon: '📄', label: 'Request created', color: '#6b7280' },
+  sent:      { icon: '📤', label: 'Email sent', color: '#6b7280' },
+  email_delivered: { icon: '📬', label: 'Email delivered', color: '#6b7280' },
+  email_opened:    { icon: '📖', label: 'Email opened', color: '#1e40af' },
+  email_clicked:   { icon: '🔗', label: 'Clicked the link', color: '#1e40af' },
+  email_bounced:   { icon: '⚠️', label: 'Email bounced', color: '#b91c1c' },
+  email_complained:{ icon: '⚠️', label: 'Marked as spam', color: '#b91c1c' },
+  email_delayed:   { icon: '⏱', label: 'Delivery delayed', color: '#92400e' },
+  email_failed:    { icon: '⚠️', label: 'Email failed to send', color: '#b91c1c' },
+  in_person_started: { icon: '🖊', label: 'Signed in person', color: '#5b3d91' },
+  signer_added:   { icon: '➕', label: 'Signer added', color: '#6b7280' },
+  signer_updated: { icon: '✏️', label: 'Signer updated', color: '#6b7280' },
+  archived:  { icon: '🗄', label: 'Archived', color: '#6b7280' },
+  opened:    { icon: '👀', label: 'Opened the document', color: '#1e40af' },
+  signed:    { icon: '✍️', label: 'Signed', color: '#15803d' },
+  declined:  { icon: '🚫', label: 'Declined to sign', color: '#b91c1c' },
+  completed: { icon: '✅', label: 'Fully executed', color: '#15803d' },
+  voided:    { icon: '⊘', label: 'Voided', color: '#b91c1c' },
+};
