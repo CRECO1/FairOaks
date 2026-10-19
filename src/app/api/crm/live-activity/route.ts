@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Live activity is limited to the account owner.' }, { status: 403 });
   }
 
-  const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com'];
+  const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com', 'fairoaksranchplaza.com'];
   const raw = req.nextUrl.searchParams.get('site');
   const site = raw && SITES.includes(raw) ? raw : null;
 

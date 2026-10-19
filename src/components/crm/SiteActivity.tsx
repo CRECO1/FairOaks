@@ -26,7 +26,7 @@ interface Payload {
 
 const chip: React.CSSProperties = { display: 'inline-block', fontSize: 11.5, color: '#374151', background: '#f3f4f6', borderRadius: 999, padding: '2px 9px', marginRight: 6, marginBottom: 5, whiteSpace: 'nowrap' };
 const hot: React.CSSProperties = { ...{ background: '#fef3c7', color: '#92400e', fontWeight: 700 } };
-const siteShort = (h: string) => h.replace('www.', '').replace('.com', '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn');
+const siteShort = (h: string) => h.replace('www.', '').replace('.com', '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn').replace('fairoaksranchplaza', 'Ranch Plaza');
 
 function fmtSec(s: number): string { if (s < 60) return `${s}s`; const m = Math.floor(s / 60); return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`; }
 function when(iso: string) { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); }

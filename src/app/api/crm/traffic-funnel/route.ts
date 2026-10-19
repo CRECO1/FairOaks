@@ -20,8 +20,8 @@ import { summarizeVisitors, isReal, isEngaged, type PageviewRow, type EventRow, 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com'];
-const OWN_HOSTS = /(^|\.)(crecotx|fairoaksrealtygroup|elkhornpoint)\.com$/i;
+const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com', 'fairoaksranchplaza.com'];
+const OWN_HOSTS = /(^|\.)(crecotx|fairoaksrealtygroup|elkhornpoint|fairoaksranchplaza|fairoaksplaza)\.com$/i;
 const OPEN_STAGES = new Set(['Prospect', 'Active', 'In Contract']);
 const ROW_CAP = 60000;
 

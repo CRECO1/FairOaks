@@ -279,7 +279,7 @@ function ago(iso: string): string {
   const m = Math.round(s / 60);
   return m < 60 ? `${m}m` : `${Math.round(m / 60)}h`;
 }
-const siteShort = (host: string) => host.replace(/\.com$/, '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn');
+const siteShort = (host: string) => host.replace(/\.com$/, '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn').replace('fairoaksranchplaza', 'Ranch Plaza');
 
 export default function LeadAttribution({ authToken, isMobile }: { authToken: string | null; isMobile: boolean }) {
   const token = authToken;
@@ -404,7 +404,7 @@ export default function LeadAttribution({ authToken, isMobile }: { authToken: st
       {/* Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginRight: 2 }}>Site</span>
-        {([[null, 'All sites'], ['crecotx.com', 'crecotx.com'], ['fairoaksrealtygroup.com', 'Fair Oaks'], ['elkhornpoint.com', 'Elkhorn Point']] as [string | null, string][]).map(([v, l]) => (
+        {([[null, 'All sites'], ['crecotx.com', 'crecotx.com'], ['fairoaksrealtygroup.com', 'Fair Oaks'], ['elkhornpoint.com', 'Elkhorn Point'], ['fairoaksranchplaza.com', 'Fair Oaks Ranch Plaza']] as [string | null, string][]).map(([v, l]) => (
           <button key={l} onClick={() => setSite(v)} aria-pressed={site === v} style={pill(site === v)}>{l}</button>
         ))}
       </div>

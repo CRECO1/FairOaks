@@ -16,7 +16,7 @@ import { summarizeVisitors, isReal } from '@/lib/visitor-quality';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com'];
+const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com', 'fairoaksranchplaza.com'];
 const top = (m: Map<string, number>, n = 8) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, value]) => ({ label, value }));
 const bump = (m: Map<string, number>, k: string | null | undefined, by = 1) => { if (k) m.set(k, (m.get(k) ?? 0) + by); };
 const HIGH_INTENT = new Set(['phone_tap', 'email_tap', 'text_tap', 'download', 'cta_click', 'lead_form_started', 'email_click_identified']);

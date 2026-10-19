@@ -28,7 +28,7 @@ interface Payload {
 const card: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 };
 const title: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginBottom: 12 };
 const th: React.CSSProperties = { background: 'transparent', color: MUTE, fontWeight: 600, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', border: 'none', position: 'static', textAlign: 'right' };
-const siteShort = (h: string) => h.replace('www.', '').replace('fairoaksrealtygroup.com', 'Fair Oaks').replace('crecotx.com', 'CRECO').replace('elkhornpoint.com', 'Elkhorn Point');
+const siteShort = (h: string) => h.replace('www.', '').replace('fairoaksrealtygroup.com', 'Fair Oaks').replace('crecotx.com', 'CRECO').replace('elkhornpoint.com', 'Elkhorn Point').replace('fairoaksranchplaza.com', 'Ranch Plaza');
 
 const TIERS: { key: keyof Payload['quality']; label: string; color: string; hint: string }[] = [
   { key: 'acted', label: 'Took action', color: '#15803d', hint: 'Tapped to call/email/text, hit a button, downloaded, started a form, or came in on an email link.' },

@@ -29,7 +29,7 @@ interface Payload {
 
 const card: React.CSSProperties = { background: '#fff', borderRadius: 10, border: '1px solid #e0e0e0', padding: '16px 20px', marginBottom: 14 };
 const title: React.CSSProperties = { fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: MUTE, fontWeight: 600, marginBottom: 12 };
-const siteShort = (h: string) => h.replace('www.', '').replace('.com', '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn');
+const siteShort = (h: string) => h.replace('www.', '').replace('.com', '').replace('fairoaksrealtygroup', 'Fair Oaks').replace('crecotx', 'CRECO').replace('elkhornpoint', 'Elkhorn').replace('fairoaksranchplaza', 'Ranch Plaza');
 const INTENT_LABEL: Record<string, string> = { phone_tap: '📞 Call taps', email_tap: '✉️ Email taps', text_tap: '💬 Text taps', cta_click: '👆 Button clicks', download: '⬇️ Downloads', lead_form_started: '📝 Form starts' };
 const FEED_TEXT: Record<string, string> = { phone_tap: 'tapped to call', email_tap: 'tapped to email', text_tap: 'tapped to text', download: 'downloaded', cta_click: 'clicked', lead_form_started: 'started a form', email_click_identified: 'clicked through from an email' };
 

@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
   // Site filter. Restricted to a known list rather than passed through: the
   // value reaches a SQL function, and an allow-list means an unexpected string
   // can never silently return an empty dashboard that looks like "no leads".
-  const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com'];
+  const SITES = ['crecotx.com', 'fairoaksrealtygroup.com', 'elkhornpoint.com', 'fairoaksranchplaza.com'];
   const raw = req.nextUrl.searchParams.get('site');
   const site = raw && SITES.includes(raw) ? raw : null;   // null = all sites
 

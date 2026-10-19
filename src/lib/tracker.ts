@@ -1,6 +1,6 @@
 /**
  * First-party visitor tracker (v2) — SELF-CONTAINED, zero imports, identical on all three public sites
- * (fairoaksrealtygroup.com, crecotx.com, elkhornpoint.com). Copy this file verbatim; only the
+ * (fairoaksrealtygroup.com, crecotx.com, elkhornpoint.com, fairoaksranchplaza.com). Copy this file verbatim; only the
  * endpoint passed to initTracker() differs (relative on FairOaks, absolute from the other two).
  *
  * What it adds on top of the old per-tab pageview beacon:
@@ -271,7 +271,7 @@ function onClick(e: MouseEvent) {
     if (a && FILE_EXT.test(href)) return trackBehavior('download', href.slice(0, 160), undefined, { text });
     if (a && /^https?:\/\//i.test(href)) {
       const u = new URL(href);
-      if (u.hostname.replace(/^www\./, '') !== siteHost() && !/\.?(crecotx|fairoaksrealtygroup|elkhornpoint)\.com$/i.test(u.hostname)) {
+      if (u.hostname.replace(/^www\./, '') !== siteHost() && !/\.?(crecotx|fairoaksrealtygroup|elkhornpoint|fairoaksranchplaza|fairoaksplaza)\.com$/i.test(u.hostname)) {
         return trackBehavior('outbound_click', u.hostname + u.pathname, undefined, { text });
       }
     }
