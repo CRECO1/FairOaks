@@ -22,6 +22,10 @@ const GOLD = '#c9922c';
 // agent from phone to desktop. localStorage is only a fast first paint and an offline
 // fallback. Retention rules (24h, prune at question boundaries) are shared with the server
 // in lib/copilot-chat.
+// A typed answer to the confirmation card (only used while a card is showing, and only when it is the WHOLE message).
+const YES_TYPED = /^\s*(yes|yep|yeah|yup|y|ok|okay|sure|confirm(ed)?|(yes,?\s*)?(please\s*)?(go ahead|do it|confirm(ed)?|proceed|run it|send it|ship it|deploy|merge|approved?)|looks good|sounds good|perfect)\W*$/i;
+const NO_TYPED = /^\s*(no|nope|nah|cancel|stop|don'?t|do not|never ?mind|nevermind)\W*$/i;
+
 type Saved = { v: 1; messages: Msg[]; stamps: number[]; pending?: Pending[]; pendingAt?: number; at?: number };
 const storeKey = (userId?: string) => `crm-copilot-chat:v1:${userId || 'anon'}`;
 function loadSaved(userId?: string): Saved | null {
@@ -247,6 +251,13 @@ export default function AssistantPanel({ token, userId, onClose, onNavigate, onR
    * again, so what runs is what was shown on the confirmation card.
    */
   async function send(text: string, confirmTickets: string[] = []) {
+    // The confirmation card is showing and the agent TYPED their answer instead of clicking: "yes", "confirmed", "go ahead"
+    // is the click, "no"/"cancel" is the Cancel button. (Typing used to wipe the card, so a typed "yes" confirmed nothing —
+    // and the model then claimed the action had run.)
+    if (!confirmTickets.length && !readyRefs.length && pending.length && !loading) {
+      if (YES_TYPED.test(text)) return send('', pending.map(p => p.id));
+      if (NO_TYPED.test(text)) { setInput(''); setPending([]); return send('Actually, don’t do that.'); }
+    }
     const confirming = confirmTickets.length > 0;
     const files = confirming ? [] : readyRefs;
     if ((!text.trim() && !files.length && !confirming) || loading || (!confirming && uploading)) return;

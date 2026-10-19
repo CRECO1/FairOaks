@@ -274,6 +274,7 @@ export async function editPdf(input: Uint8Array | Buffer, edits: EditSpec[]): Pr
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const report: string[] = [], warnings: string[] = [];
   const coveredPages = new Set<number>(); let wantPermanent = false;
+  const dropPages = new Set<number>();   // deleted last, so every other edit's page number means the ORIGINAL page
   const measure = (s: string) => { try { return font.widthOfTextAtSize(sane(s), 10); } catch { return s.length * 5; } };
   const pageNo = (v: unknown) => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= pages.length ? n : 0; };
 
@@ -331,15 +332,30 @@ export async function editPdf(input: Uint8Array | Buffer, edits: EditSpec[]): Pr
       }
       lines.forEach((l, k) => pdf.getPage(n - 1).drawText(l, { x, y: y - k * lh, size, font, color: rgb(0, 0, 0) }));
       report.push(`Added “${clip(text, 70)}” on page ${n}${anchor ? ` ${str(e.placement) || 'right'} of “${clip(anchor, 40)}”` : ` at (${Math.round(x)}, ${Math.round(pages[n - 1].height - y)})`}`);
-    } else warnings.push(`Unknown edit “${op}” for a PDF (use add_text or remove_text).`);
+    } else if (op === 'delete_pages') {
+      const asked = Array.isArray(e.pages) ? e.pages : [e.page];
+      const valid = [...new Set(asked.map(pageNo).filter(Boolean))];
+      const skipped = asked.filter(v => !pageNo(v));
+      if (skipped.length) warnings.push(`delete_pages: page${skipped.length === 1 ? '' : 's'} ${skipped.join(', ')} ${skipped.length === 1 ? 'is' : 'are'} not in this ${pages.length}-page PDF.`);
+      if (!valid.length) { warnings.push('delete_pages: no valid pages given.'); continue; }
+      valid.forEach(n => dropPages.add(n));
+      report.push(`Deleted page${valid.length === 1 ? '' : 's'} ${valid.sort((a, b) => a - b).join(', ')}`);
+    } else warnings.push(`Unknown edit “${op}” for a PDF (use add_text, remove_text or delete_pages).`);
   }
   if (!report.length) return { bytes: new Uint8Array(0), report, warnings };
+  if (dropPages.size >= pages.length) { warnings.push('That would delete every page — nothing changed.'); return { bytes: new Uint8Array(0), report: [], warnings }; }
   let out: Uint8Array = await pdf.save();
   if (wantPermanent && coveredPages.size) {
     try { out = await flattenPages(out, [...coveredPages].sort((a, b) => a - b)); report.push(`Made the changed page${coveredPages.size === 1 ? '' : 's'} (${[...coveredPages].sort((a, b) => a - b).join(', ')}) permanent: rebuilt as images, so the removed words are gone from the file`); }
     catch (err) { console.warn('[doc-text-edit] flatten failed', err); warnings.push('Could not make the removal permanent (the page renderer is unavailable) — the words are only covered, and could still be selected or copied from the PDF.'); }
   } else if (coveredPages.size) {
     warnings.push('The removed words are covered with a white box but still exist in the PDF’s text layer (they can be selected or copied). For anything confidential, ask for a permanent removal.');
+  }
+  // Page deletion runs last: the page numbers in every other edit above refer to the original document.
+  if (dropPages.size) {
+    const trimmed = await PDFDocument.load(out);
+    [...dropPages].sort((a, b) => b - a).forEach(n => trimmed.removePage(n - 1));
+    out = await trimmed.save();
   }
   return { bytes: out, report, warnings };
 }
