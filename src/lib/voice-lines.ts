@@ -27,6 +27,16 @@ const LINES = {
     en: "I wasn't able to reach anyone. An agent will call you back as soon as possible. Goodbye.",
     es: 'No pude comunicarme con nadie. Un agente le devolverá la llamada lo antes posible. Adiós.',
   },
+  // The ring went unanswered / failed: Ava takes the message herself.
+  transferMissed: {
+    en: "I'm sorry, I wasn't able to reach them just now. I'll make sure they get your message. Can I get your name and the best number to reach you?",
+    es: 'Lo siento, no pude comunicarme con ellos en este momento. Me aseguraré de que reciban su mensaje. ¿Me da su nombre y el mejor número para llamarle?',
+  },
+  // Transfer asked for but not possible right now (after hours / switched off).
+  noTransfer: {
+    en: "I'm not able to connect you right now, but I'll make sure they get your message. Can I get your name and the best number to reach you?",
+    es: 'No puedo comunicarle en este momento, pero me aseguraré de que reciban su mensaje. ¿Me da su nombre y el mejor número para llamarle?',
+  },
 } as const;
 
 const HOLD = {

@@ -1,7 +1,8 @@
 import { NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
-import { holdThenRedirect, renderReply, say, startRecordingWhenLive, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
-import { loadSettings, nextReply, spokenFirstName, type BotReply, type Turn } from '@/lib/voicebot';
+import { holdThenRedirect, renderReply, type DialTarget, say, startRecordingWhenLive, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
+import { loadSettings, nextReply, officeOpen, spokenFirstName, type BotReply, type Turn } from '@/lib/voicebot';
+import { mayRingNow, pickTarget, transferOptions } from '@/lib/voice-transfer';
 import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
 import { asLang, holdLine, line, type Lang } from '@/lib/voice-lines';
@@ -52,14 +53,27 @@ export async function POST(req: Request) {
   const c = contactRow?.data;
   const contact = c ? { id: c.id as string, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || (c.business_name as string) || 'Contact', business_name: (c.business_name as string | null) ?? null, first: spokenFirstName(c.first_name as string | null) } : null;
 
+  // Who Ava may ring on this call (nobody once a ring has already been tried), and who she picks for this turn.
+  const tried = Boolean(callMeta.transfer);
+  const options = tried ? [] : await transferOptions(db, settings, callMeta.caller_id_unknown === true ? null : call.from_number, call.business_unit);
+  let dial: DialTarget | null = null;
+
   // Work out the reply, store it with what to do next, and keep the call row current.
   const work = (async (): Promise<BotReply> => {
-    const reply: BotReply = callerTurns >= MAX_TURNS
+    let reply: BotReply = callerTurns >= MAX_TURNS
       ? { say: line('maxTurns', lang), action: 'end', language: lang }
-      : await nextReply(settings, history, { callerNumber: callMeta.caller_id_unknown === true ? null : call.from_number, contact, lang });
+      : await nextReply(settings, history, { callerNumber: callMeta.caller_id_unknown === true ? null : call.from_number, contact, lang,
+          transfer: { names: options.map(o => o.key), open: officeOpen(), tried } });
+    // A transfer only happens to someone we can ring right now; otherwise Ava takes the message instead of promising a connection she can't make.
+    let target = null as ReturnType<typeof pickTarget>;
+    if (reply.action === 'transfer') {
+      target = mayRingNow(reply.urgent === true) ? pickTarget(options, reply.transfer_to) : null;
+      if (target) dial = { name: target.name, number: target.number, callerId: settings.twilio_number };
+      else reply = { ...reply, say: line('noTransfer', reply.language ?? lang), action: 'continue' };
+    }
     // The model says which language it answered in; keep the call there until it changes.
     if (reply.language) lang = reply.language;
-    await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: reply.say, meta: { action: reply.action, after_turn: callerTurn?.id ?? null, lang } });
+    await db.from('crm_call_turns').insert({ call_id: call.id, role: 'bot', text: reply.say, meta: { action: reply.action, after_turn: callerTurn?.id ?? null, lang, ...(target ? { transfer: { name: target.name, key: target.key, number: target.number } } : {}) } });
     const meta = { ...((call.ai_meta as Record<string, unknown>) || {}) };
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (reply.caller_name) { meta.caller_name = reply.caller_name; if (!call.caller_name || call.caller_name === contact?.name) patch.caller_name = reply.caller_name; }
@@ -69,6 +83,7 @@ export async function POST(req: Request) {
     if (reply.caller_email) meta.caller_email = reply.caller_email;
     if (reply.needs_follow_up === false) meta.bot_said_no_follow_up = true;
     meta.lang = lang;
+    if (target) meta.transfer = { to: target.name, key: target.key, number: target.number, urgent: reply.urgent === true, at: new Date().toISOString() };
     if (lang === 'es') meta.spoke_spanish = true;
     patch.ai_meta = meta;
     await db.from('crm_call_log').update(patch).eq('id', call.id);
@@ -78,7 +93,7 @@ export async function POST(req: Request) {
   // Twilio gives a webhook 15 seconds. Answer directly when the reply is quick;
   // otherwise say so, let the work finish in the background, and have Twilio poll.
   const quick = await Promise.race<BotReply | null>([work, new Promise<null>(res => setTimeout(() => res(null), QUICK_BUDGET_MS))]);
-  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints, { lang, multi, voice }));
+  if (quick) return twiml(renderReply(quick, settings, call.from_number, hints, { lang, multi, voice, dial }));
   after(work.catch(e => console.error('[voice/turn] background', e)));
   const waitUrl = `${voiceOrigin()}/api/voice/wait?after=${encodeURIComponent(callerTurn?.id ?? '')}`;
   return twiml(holdThenRedirect(holdLine(callerTurns, lang), waitUrl, 2, lang, voice));

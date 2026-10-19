@@ -178,12 +178,34 @@ export interface BotReply {
   intent?: string | null;
   property?: string | null;
   caller_email?: string | null;
+  /** For action 'transfer': who to ring (zack | brian | ed), and whether it's a genuine emergency (the only reason to ring a cell after hours). */
+  transfer_to?: string | null;
+  urgent?: boolean;
   /** The language this reply is spoken in. Absent = unchanged (the route keeps whatever the call was already in). */
   language?: Lang | null;
   needs_follow_up?: boolean;
 }
 
-function systemPrompt(s: VoicebotSettings, ctx: { callerNumber: string | null; contact: MatchedContact | null; now: string }): string {
+const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
+
+function transferRule(t: TransferCtx | undefined): string {
+  if (!t || !t.names.length || t.tried) {
+    return `5. There is no live transfer available right now${t?.tried ? ' (you already tried to connect this caller and nobody picked up)' : ''}; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details. Never offer to connect them.`;
+  }
+  const who = t.names.map(cap).join(' or ');
+  return `5. LIVE TRANSFER (${who}): if the caller asks for one of them by name, or asks for "an agent" / "the broker" / "a real person" right now, you can ring that person's cell phone. Set action "transfer" and "transfer_to" to their lowercase first name (${t.names.join(' / ')}; for "an agent" or no preference use "${t.names[0]}"). In "say", tell them you're connecting them now and that if the call isn't picked up they can leave a message on that person's voicemail. If you don't have the caller's name yet and one quick question gets it, ask first — but never stall a caller who insists. Never say the person is free, in or available — you don't know.${t.open ? '' : ' It is OUTSIDE office hours: only transfer for a genuine emergency (flooding, fire, no power, break-in, someone hurt) and set "urgent": true; otherwise say the office is closed, and take a message (do not offer a transfer).'}`;
+}
+
+function peopleRule(t: TransferCtx | undefined): string {
+  const base = 'People: Zachary "Zack" Stovall is the broker and owner; Brian Blanco and Ed Blanco are agents.';
+  if (t && t.names.length && !t.tried) return `${base} NEVER say someone is out, in a meeting, unavailable or busy — you don't know. If the person they want can't be connected (see rule 5), say you will make sure they get the message, and ask what it's about and for the best number.`;
+  return `${base} If a caller asks for any of them, or for "an agent" or "the broker", you cannot connect them on this line: say so kindly and that you will make sure they get the message. NEVER say someone is out, in a meeting, unavailable or busy — you don't know. Ask what it's about and for the best number.`;
+}
+
+/** Live transfer, as the prompt needs it: who can be rung, whether the office is open, and whether a ring already failed on this call. */
+export interface TransferCtx { names: string[]; open: boolean; tried: boolean }
+
+function systemPrompt(s: VoicebotSettings, ctx: { callerNumber: string | null; contact: MatchedContact | null; now: string; transfer?: TransferCtx }): string {
   const d = DEFAULTS[s.business_unit] ?? DEFAULTS.commercial;
   const company = s.company_name || d.company;
   return `You are ${s.bot_name}, the phone receptionist for ${company}. You are answering a live phone call; your words are read aloud by text-to-speech.
@@ -195,11 +217,11 @@ Your job on this call:
 2. If they ask about one of our listings, answer from the ${s.business_unit === 'residential' ? 'OUR OWN LISTINGS sheet below — and for any other home, call the lookup_listings tool first, then answer from what it returns (any licensed agent can show any MLS listing, so offer a showing and take details)' : 'CURRENT LISTINGS fact sheet below'}: what it is, where it is, size, rate or price, key features, whether it is still active or pending. Read numbers naturally ("about sixteen thousand square feet", "ten dollars a foot"). If the caller is vague, ask which property or what they are looking for (type, area, size) and name the one or two that fit. Never guess a detail the sheet doesn't give. If a caller names a property that is not on the sheet, NEVER say it isn't ours or isn't one of our listings: say you don't have that one's details in front of you, that an agent will confirm, and take their name, number and the property name.
 3. When a question goes beyond the sheet — or they want to see the space, make an offer, or talk terms — say an agent will get them that answer, and collect what the agent needs to call back: their name, the best number (confirm the caller ID number ${ctx.callerNumber ? prettyPhone(ctx.callerNumber) : 'is unknown, so ask for one'} if they don't offer another), and which property or matter it concerns.
 4. Reassure them an agent will call back promptly, then end politely. Do not stretch the call: three to five exchanges is typical. Always get a name and number before ending unless the caller refuses or is a wrong number.
-${s.transfer_number ? `5. If the caller insists on speaking to a person right now, or describes an urgent building emergency (flooding, fire, no power, break-in), use action "transfer".` : `5. There is no live transfer available on this line; for an urgent building emergency, tell them an agent will be alerted immediately and collect the details.`}
+${transferRule(ctx.transfer)}
 
 Language: callers may speak English or Spanish, and the speech recognizer transcribes whichever they speak. If the caller speaks Spanish, answer in natural, warm Latin-American Spanish for the rest of the call (say digits in Spanish too), set "language" to "es", and keep it that way unless they switch back; if they speak English, use "en". Switch the moment they do — never ask which language they prefer, never offer a menu. Property names and street addresses stay as they are. The JSON keys always stay in English.
 
-People: Zachary "Zack" Stovall is the broker and owner; Brian Blanco is an agent. If a caller asks for either, or for "an agent" or "the broker", you cannot connect them on this line: say so kindly and that you will make sure they get the message. NEVER say someone is out, in a meeting, unavailable or busy — you don't know. Ask what it's about and for the best number.
+${peopleRule(ctx.transfer)}
 
 Rules:
 - Speak like a warm, competent front-desk person: short sentences, plain words, no lists, no markdown, no emojis. One question at a time.
@@ -238,7 +260,7 @@ ${s.instructions ? `\nExtra instructions from the brokerage:\n${s.instructions}`
 The current date and time is ${ctx.now} (Central Time).
 
 Respond with ONLY a JSON object, nothing else:
-{"say": "<what to say next, spoken text>", "language": "en" | "es", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "caller_email": "<email address they gave and confirmed, else null>", "needs_follow_up": true|false}
+{"say": "<what to say next, spoken text>", "language": "en" | "es", "action": "continue" | "end" | "transfer", "caller_name": "<name if learned, else null>", "callback_number": "<digits if learned, else null>", "intent": "<3-8 word label of what they want, else null>", "property": "<the listing title from the sheet they asked about, else null>", "caller_email": "<email address they gave and confirmed, else null>", "transfer_to": "<zack|brian|ed when action is transfer, else null>", "urgent": true|false, "needs_follow_up": true|false}
 "say" is required and must be non-empty even when action is "end" or "transfer" (it is spoken before hanging up or transferring). Your ENTIRE reply must be that JSON object, even for a one-line answer — never plain text, never text outside the braces.`;
 }
 
@@ -322,6 +344,8 @@ function parseReply(text: string): BotReply | null {
       intent: typeof j.intent === 'string' && j.intent.trim() ? j.intent.trim().slice(0, 80) : null,
       property: typeof j.property === 'string' && j.property.trim() ? j.property.trim().slice(0, 120) : null,
       caller_email: cleanEmail(j.caller_email),
+      transfer_to: typeof j.transfer_to === 'string' && j.transfer_to.trim() ? j.transfer_to.trim().toLowerCase() : null,
+      urgent: j.urgent === true,
       language: j.language === 'es' ? 'es' : j.language === 'en' ? 'en' : null,
       needs_follow_up: j.needs_follow_up !== false,
     };
@@ -350,7 +374,7 @@ const centralNow = () => new Date().toLocaleString('en-US', { timeZone: 'America
  * One turn of the conversation. `history` is everything said so far (bot + caller,
  * in order); the last entry is the caller's newest utterance.
  */
-export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null; lang?: Lang }): Promise<BotReply> {
+export async function nextReply(s: VoicebotSettings, history: Turn[], ctx: { callerNumber: string | null; contact: MatchedContact | null; lang?: Lang; transfer?: TransferCtx }): Promise<BotReply> {
   const lang: Lang = ctx.lang ?? 'en';
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const messages: Anthropic.MessageParam[] = [];

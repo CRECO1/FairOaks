@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
-import { holdThenRedirect, renderReply, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
+import { holdThenRedirect, renderReply, type DialTarget, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignature, voiceOrigin } from '@/lib/twilio';
 import { loadSettings } from '@/lib/voicebot';
 import { asLang, line } from '@/lib/voice-lines';
 import { speechHints } from '@/lib/listing-knowledge';
@@ -35,7 +35,9 @@ export async function POST(req: Request) {
     const lang = asLang((botTurn.meta as { lang?: string } | null)?.lang ?? (call.ai_meta as { lang?: string } | null)?.lang);
     const multi = (call.ai_meta as { stt?: string } | null)?.stt === 'multi';
     const voice = (call.ai_meta as { voice?: string } | null)?.voice === 'new' ? 'new' as const : 'classic' as const;
-    return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number, await speechHints(call.business_unit), { lang, multi, voice }));
+    const t = (botTurn.meta as { transfer?: { name?: string; number?: string } } | null)?.transfer;
+    const dial: DialTarget | null = action === 'transfer' && t?.number ? { name: t.name || 'agent', number: t.number, callerId: settings.twilio_number } : null;
+    return twiml(renderReply({ say: botTurn.text, action }, settings, call.from_number, await speechHints(call.business_unit), { lang, multi, voice, dial }));
   }
   const waited = callerTurn ? Date.now() - new Date(callerTurn.created_at).getTime() : MAX_WAIT_MS;
   if (waited > MAX_WAIT_MS) {

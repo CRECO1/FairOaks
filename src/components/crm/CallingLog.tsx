@@ -445,7 +445,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
             <div><span style={label}>Bot name</span><input style={input} value={draft.bot_name ?? ''} onChange={e => setDraft(d => ({ ...d, bot_name: e.target.value }))} placeholder="Ava" /></div>
             <div><span style={label}>Company name (as spoken)</span><input style={input} value={draft.company_name ?? ''} onChange={e => setDraft(d => ({ ...d, company_name: e.target.value }))} placeholder={businessUnit === 'residential' ? 'Fair Oaks Realty Group' : 'CRECO'} /></div>
             <div><span style={label}>Bot line (Twilio number)</span><input style={input} value={draft.twilio_number ?? ''} onChange={e => setDraft(d => ({ ...d, twilio_number: e.target.value }))} placeholder="+1 210 555 0100" /></div>
-            <div><span style={label}>Transfer to a person (optional)</span><input style={input} value={draft.transfer_number ?? ''} onChange={e => setDraft(d => ({ ...d, transfer_number: e.target.value }))} placeholder="Your cell, for emergencies" /></div>
+            <div><span style={label}>Ring a person (Zack&apos;s cell) — optional</span><input style={input} value={draft.transfer_number ?? ''} onChange={e => setDraft(d => ({ ...d, transfer_number: e.target.value }))} placeholder="Callers who ask for Zack ring this; if no answer they leave voicemail on it" /></div>
             <div>
               <span style={label}>Route missed calls &amp; voicemails to</span>
               <select style={input} value={draft.missed_call_assignee ?? ''} onChange={e => setDraft(d => ({ ...d, missed_call_assignee: e.target.value || null }))}>

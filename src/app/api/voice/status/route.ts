@@ -4,6 +4,7 @@ import { twiml, twilioConfigured, twilioParams, verifyTwilioSignature } from '@/
 import { callerNumberOrNull, flattenTranscript, loadSettings, notifyCallSummary, summarizeCall, type Turn } from '@/lib/voicebot';
 import { ensureContactForCall } from '@/lib/phone-lead-contact';
 import { junkKind, tidyCallLog } from '@/lib/call-routing';
+import { describeDial } from '@/lib/voice-transfer';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -63,6 +64,15 @@ export async function POST(req: Request) {
   if (s?.callback_at) { patch.follow_up_due = s.callback_at; (patch.ai_meta as Record<string, unknown>).callback_at = s.callback_at; }
   // Silent calls and robocalls are not call-backs: no queue entry, no email.
   if (junkKind({ intent: patch.intent as string | null, summary: patch.summary as string })) patch.needs_follow_up = false;
+  // Rang an agent's cell: say so on the call, and keep it on the call-back list unless they actually talked.
+  const tr = meta.transfer as { to?: string; status?: string; duration_sec?: number } | undefined;
+  if (tr?.to) {
+    const note = describeDial({ name: tr.to, status: tr.status ?? 'unknown', durationSec: tr.duration_sec ?? null });
+    patch.summary = `${note} ${patch.summary}`;
+    const talked = tr.status === 'completed' && (tr.duration_sec ?? 0) >= 45;
+    patch.needs_follow_up = talked ? false : patch.needs_follow_up !== false;
+    (patch.ai_meta as Record<string, unknown>).transfer = { ...tr, note };
+  }
   await db.from('crm_call_log').update(patch).eq('id', call.id);
   // Owner + due time for a real call-back; links the caller to a contact if one exists.
   try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }
