@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 interface Job {
   id: string; company: string; title: string; summary: string; location: string | null; employment_type: string | null;
   apply_url: string | null; apply_email: string | null; company_url: string | null; featured: boolean; published: boolean; posted_at: string;
+  apply_method?: string; notify_email?: string | null; app_new?: number; app_total?: number;
   source?: string; expires_at?: string | null; submitter_name?: string | null; submitter_email?: string | null; submitter_phone?: string | null;
 }
 interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?: boolean }
@@ -14,13 +15,14 @@ const input: React.CSSProperties = { width: '100%', boxSizing: 'border-box', pad
 const label: React.CSSProperties = { fontSize: 11, fontWeight: 800, letterSpacing: .5, textTransform: 'uppercase', color: '#9ca3af', marginBottom: 4, display: 'block' };
 const btn: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: '#374151', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '9px 14px', minHeight: 40, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" };
 const primary: React.CSSProperties = { ...btn, color: '#fff', background: '#C9922C', border: '1px solid #C9922C' };
-const blank = { company: '', title: '', summary: '', location: '', employment_type: '', apply_url: '', apply_email: '', company_url: '', featured: false, published: true };
+const blank = { company: '', title: '', summary: '', location: '', employment_type: '', apply_url: '', apply_email: '', company_url: '', apply_method: 'external', notify_email: '', featured: false, published: true };
 
 export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
   const [rows, setRows] = useState<Job[] | null>(null);
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false);
+  const [openApps, setOpenApps] = useState<string | null>(null);
   const set = (k: keyof typeof blank, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
 
   const load = useCallback(async () => {
@@ -32,7 +34,7 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
   useEffect(() => { if (authToken) load(); }, [authToken, load]);
 
   const startEdit = (j: Job) => {
-    setForm({ company: j.company, title: j.title, summary: j.summary, location: j.location ?? '', employment_type: j.employment_type ?? '', apply_url: j.apply_url ?? '', apply_email: j.apply_email ?? '', company_url: j.company_url ?? '', featured: j.featured, published: j.published });
+    setForm({ company: j.company, title: j.title, summary: j.summary, location: j.location ?? '', employment_type: j.employment_type ?? '', apply_url: j.apply_url ?? '', apply_email: j.apply_email ?? '', company_url: j.company_url ?? '', apply_method: j.apply_method ?? 'external', notify_email: j.notify_email ?? '', featured: j.featured, published: j.published });
     setEditing(j.id);
   };
   async function save() {
@@ -82,6 +84,14 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
             <div><span style={label}>…or apply email</span><input style={input} value={form.apply_email} onChange={e => set('apply_email', e.target.value)} /></div>
             <div><span style={label}>Company website</span><input style={input} value={form.company_url} onChange={e => set('company_url', e.target.value)} placeholder="https://…" /></div>
           </div>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
+            <div><span style={label}>How people apply</span>
+              <select style={input} value={form.apply_method} onChange={e => set('apply_method', e.target.value)}>
+                <option value="external">Link or email above (opens their site / email)</option>
+                <option value="site">Quick apply on our site (we email the employer)</option>
+              </select></div>
+            <div><span style={label}>Send applications to (private)</span><input style={input} value={form.notify_email} onChange={e => set('notify_email', e.target.value)} placeholder="Defaults to the apply email, then zack@crecotx.com" disabled={form.apply_method !== 'site'} /></div>
+          </div>
           <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 14, fontWeight: 600 }}>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={form.featured} onChange={e => set('featured', e.target.checked)} /> Featured (listed first)</label>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={form.published} onChange={e => set('published', e.target.checked)} /> Show on the public site</label>
@@ -113,13 +123,63 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(j.apply_method === 'site' || (j.app_total ?? 0) > 0) && <button style={{ ...btn, ...((j.app_new ?? 0) > 0 ? { background: '#fef3c7', borderColor: '#fcd34d', color: '#92400e' } : {}) }} onClick={() => setOpenApps(openApps === j.id ? null : j.id)}>Applicants ({j.app_total ?? 0}{(j.app_new ?? 0) > 0 ? ` · ${j.app_new} new` : ''})</button>}
               <button style={btn} onClick={() => startEdit(j)}>Edit</button>
               <button style={btn} onClick={() => patch(j, { published: !j.published }, j.published ? 'Hidden' : 'Published — live within 5 minutes')}>{j.published ? 'Hide' : j.source === 'community' ? 'Approve & publish' : 'Publish'}</button>
               <button style={{ ...btn, color: '#b91c1c' }} onClick={() => remove(j)}>Delete</button>
             </div>
+            {openApps === j.id && <div style={{ flex: '1 1 100%' }}><Applicants jobId={j.id} authToken={authToken} showToast={showToast} onChange={load} /></div>}
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+
+interface Applicant { id: string; name: string; email: string; phone: string | null; message: string | null; link: string | null; has_resume: boolean; resume_url: string | null; status: string; notes: string | null; created_at: string }
+const STATUS_LABEL: Record<string, string> = { new: 'New', contacted: 'Contacted', interview: 'Interview', hired: 'Hired', archived: 'Archived' };
+
+function Applicants({ jobId, authToken, showToast, onChange }: { jobId: string; authToken?: string; showToast?: (m: string) => void; onChange: () => void }) {
+  const [rows, setRows] = useState<Applicant[] | null>(null);
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/crm/plaza-applications?job_id=${jobId}`, { headers: auth(authToken) });
+    const j = await r.json().catch(() => ({}));
+    setRows(r.ok ? j.applications || [] : []);
+  }, [jobId, authToken]);
+  useEffect(() => { load(); }, [load]);
+  async function setStatus(a: Applicant, status: string) {
+    const r = await fetch(`/api/crm/plaza-applications?id=${a.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ status }) });
+    if (!r.ok) { showToast?.('Could not update'); return; }
+    load(); onChange();
+  }
+  async function del(a: Applicant) {
+    if (!window.confirm(`Delete ${a.name}'s application and resume? This cannot be undone.`)) return;
+    const r = await fetch(`/api/crm/plaza-applications?id=${a.id}`, { method: 'DELETE', headers: auth(authToken) });
+    if (!r.ok) { showToast?.('Could not delete'); return; }
+    showToast?.('Deleted'); load(); onChange();
+  }
+  if (rows === null) return <div style={{ color: '#9ca3af', fontSize: 13, paddingTop: 8 }}>Loading applicants…</div>;
+  if (rows.length === 0) return <div style={{ color: '#6b7280', fontSize: 13, paddingTop: 8 }}>No applications yet.</div>;
+  return (
+    <div style={{ display: 'grid', gap: 8, marginTop: 10, borderTop: '1px solid #f3f4f6', paddingTop: 10 }}>
+      {rows.map(a => (
+        <div key={a.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', background: a.status === 'new' ? '#fffbeb' : '#fff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div><b>{a.name}</b> <span style={{ color: '#6b7280', fontSize: 13 }}>· {new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={a.status} onChange={e => setStatus(a, e.target.value)} style={{ fontSize: 13, padding: '6px 8px', border: '1px solid #e5e7eb', borderRadius: 8 }}>{Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+              <button style={{ ...btn, color: '#b91c1c', minHeight: 32, padding: '4px 10px' }} onClick={() => del(a)}>Delete</button>
+            </div>
+          </div>
+          <div style={{ fontSize: 13.5, marginTop: 4 }}>
+            <a href={`mailto:${a.email}`}>{a.email}</a>{a.phone ? ` · ${a.phone}` : ''}
+            {a.link && <> · <a href={a.link} target="_blank" rel="noopener noreferrer">Link</a></>}
+            {a.has_resume && (a.resume_url ? <> · <a href={a.resume_url} target="_blank" rel="noopener noreferrer">Resume</a></> : ' · resume unavailable')}
+          </div>
+          {a.message && <div style={{ fontSize: 13.5, color: '#374151', marginTop: 4, whiteSpace: 'pre-line' }}>{a.message}</div>}
+        </div>
+      ))}
     </div>
   );
 }

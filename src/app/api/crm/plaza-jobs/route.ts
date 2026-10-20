@@ -5,7 +5,7 @@ import { adminClient } from '@/lib/supabase-admin';
 // "Hire Local" job board for fairoaksranchplaza.com (plaza_jobs). The public site reads published rows via RLS;
 // everything here is admin-only through the service role.
 
-const FIELDS = 'id, company, title, summary, location, employment_type, apply_url, apply_email, company_url, featured, published, sort_order, posted_at, source, expires_at, submitter_name, submitter_email, submitter_phone';
+const FIELDS = 'id, company, title, summary, location, employment_type, apply_url, apply_email, company_url, featured, published, sort_order, posted_at, source, expires_at, apply_method, notify_email, submitter_name, submitter_email, submitter_phone';
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const urlOk = (u: string) => !u || /^https?:\/\//i.test(u);
 
@@ -20,6 +20,8 @@ function clean(b: Record<string, unknown>, partial: boolean) {
   for (const k of ['apply_url', 'company_url'] as const) if (!partial || k in b) {
     const v = str(b[k], 300); if (!urlOk(v)) return { error: 'Links must start with http:// or https://' }; out[k] = v || null;
   }
+  if (!partial || 'apply_method' in b) out.apply_method = b.apply_method === 'site' ? 'site' : 'external';
+  if (!partial || 'notify_email' in b) out.notify_email = str(b.notify_email, 160) || null;
   for (const k of ['featured', 'published'] as const) if (!partial || k in b) out[k] = b[k] === true;
   return { out };
 }
@@ -28,7 +30,11 @@ export async function GET(req: NextRequest) {
   if (!(await getCrmAdmin(req))) return unauthorized();
   const { data, error } = await adminClient().from('plaza_jobs').select(FIELDS).order('sort_order').order('posted_at', { ascending: false }).limit(300);
   if (error) { console.error('[plaza-jobs] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
-  return NextResponse.json({ jobs: data ?? [] });
+  // Application counts per job (new / total) for the badges.
+  const { data: apps } = await adminClient().from('plaza_job_applications').select('job_id, status').limit(5000);
+  const counts = new Map<string, { n: number; t: number }>();
+  for (const a of apps ?? []) { const c = counts.get(a.job_id) ?? { n: 0, t: 0 }; c.t++; if (a.status === 'new') c.n++; counts.set(a.job_id, c); }
+  return NextResponse.json({ jobs: (data ?? []).map(j => ({ ...j, app_new: counts.get(j.id)?.n ?? 0, app_total: counts.get(j.id)?.t ?? 0 })) });
 }
 
 export async function POST(req: NextRequest) {
