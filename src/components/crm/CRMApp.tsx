@@ -1004,6 +1004,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [projectMenu, setProjectMenu] = useState<string | null>(null);
+  const [enrollPickerFor, setEnrollPickerFor] = useState<string | null>(null);   // campaign whose "add recipients" picker is open (it is hidden once a campaign already has recipients)
   const [campaignSort, setCampaignSort] = useState<'recent' | 'name' | 'status'>('recent');   // how campaigns are ordered inside each project   // which project's ⋯ menu is open
   const [showAddProject, setShowAddProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -8741,10 +8742,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <div style={{ background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#1e40af' }}>
                           ✓ This campaign has finished sending. Everyone it went to is listed below. To email more people, use Duplicate (here, or in the ⋯ menu on the campaigns list).
                         </div>
-                      ) : (
+                      ) : (enrollPickerFor === activeCampaign.id || (!campaignEnrollmentsLoading && campaignEnrollments.filter(e => e.active).length === 0)) ? (
                         <>
                       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 10 }}>Enroll Clients</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>Add recipients</div>
+                          {campaignEnrollments.some(e => e.active) && <button onClick={() => setEnrollPickerFor(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12.5, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif" }}>Hide ▴</button>}
+                        </div>
 
                         {/* Filter row */}
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -8835,6 +8839,29 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       </div>
 
                         </>
+                      ) : null}
+
+                      {/* Results at a glance, for any campaign that has sent */}
+                      {(activeCampaign.send_count ?? 0) > 0 && !activeCampaign.is_tenant_notice && (
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
+                          {[
+                            { label: 'Sent', value: String(activeCampaign.send_count ?? 0), sub: `${activeCampaign.enrollment_count ?? 0} enrolled` },
+                            { label: 'Engaged', value: String(activeCampaign.engaged_count ?? 0), sub: 'real clicks, views, calls' },
+                            { label: 'Real click rate', value: activeCampaign.click_rate != null ? `${activeCampaign.click_rate}%` : '—', sub: 'spam-filter checks excluded' },
+                          ].map(c => (
+                            <div key={c.label} style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
+                              <div style={{ fontSize: 12, color: '#9ca3af' }}>{c.label}</div>
+                              <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{c.value}</div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{c.sub}</div>
+                            </div>
+                          ))}
+                          <button onClick={() => setEngagedFor({ campaign: { id: activeCampaign.id, name: activeCampaign.name } })} title="See who engaged and who still needs a call"
+                            style={{ textAlign: 'left', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", background: (activeCampaign.to_call_count ?? 0) > 0 ? '#fef2f2' : '#fafafa', border: `1px solid ${(activeCampaign.to_call_count ?? 0) > 0 ? '#fecaca' : '#f0f0f0'}`, borderRadius: 10, padding: '12px 14px' }}>
+                            <div style={{ fontSize: 12, color: (activeCampaign.to_call_count ?? 0) > 0 ? '#b91c1c' : '#9ca3af' }}>🔥 To call</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: (activeCampaign.to_call_count ?? 0) > 0 ? '#991b1b' : '#111' }}>{activeCampaign.to_call_count ?? 0}</div>
+                            <div style={{ fontSize: 11, color: (activeCampaign.to_call_count ?? 0) > 0 ? '#b91c1c' : '#9ca3af', marginTop: 1 }}>{(activeCampaign.to_call_count ?? 0) > 0 ? 'Open the call list →' : 'Everyone engaged was contacted'}</div>
+                          </button>
+                        </div>
                       )}
 
                       {/* Enrolled list — show all for completed/one-time, active-only for recurring */}
@@ -8851,6 +8878,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <div style={{ fontSize: 12, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 600 }}>
                                 {isCompleted ? `All Recipients (${visibleEnrollments.length})` : `Enrolled (${activeEnrollments.length})`}
                               </div>
+                              {!isCompleted && enrollPickerFor !== activeCampaign.id && activeEnrollments.length > 0 && selectedUnenrollIds.length === 0 && (
+                                <button onClick={() => setEnrollPickerFor(activeCampaign.id)}
+                                  style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>＋ Add recipients</button>
+                              )}
                               {selectedUnenrollIds.length > 0 && (
                                 <button onClick={() => bulkUnenrollClients(activeCampaign.id)}
                                   style={{ fontSize: 13, fontWeight: 700, color: '#991b1b', background: '#fee2e2', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
