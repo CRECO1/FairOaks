@@ -189,7 +189,7 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
         {agentName && !signers.some(s => s.role === 'agent') && <button onClick={() => setSigners(s => [...s, { role: 'agent', name: agentName, email: agentEmail || '' }])} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>＋ Me (agent)</button>}
       </div>
 
-      <div style={{ marginTop: 12 }}><EsignSavedMessages message={message} onPick={setMessage} ownerKey={agentEmail || agentName || ''} /></div>
+      <div style={{ marginTop: 12 }}><EsignSavedMessages message={message} onPick={setMessage} ownerKey={agentEmail || agentName || ''} docTitle={doc.title || doc.crm_forms?.name} agentName={agentName} /></div>
       <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical' }} />
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>

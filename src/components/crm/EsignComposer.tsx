@@ -418,7 +418,7 @@ export default function EsignComposer({
             <label style={LBL}>Subject</label>
             <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={120} placeholder="Please sign: …" style={{ ...INP, marginBottom: 14 }} />
             <label style={LBL}>Message <span style={{ fontWeight: 400, color: '#9ca3af' }}>(optional)</span></label>
-            <EsignSavedMessages message={message} onPick={setMessage} ownerKey={agentEmail || agentName || ''} />
+            <EsignSavedMessages message={message} onPick={setMessage} ownerKey={agentEmail || agentName || ''} docTitle={doc?.title} agentName={agentName} />
             <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} placeholder="A note that goes in the email to every signer…" style={{ ...INP, resize: 'vertical' }} />
           </Section>
 
