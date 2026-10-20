@@ -1032,22 +1032,27 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   // returned elements reconcile in place and the field keeps focus.
   function renderForm({ form, onChange }: { form: typeof BLANK_FORM; onChange: (f: typeof BLANK_FORM) => void }) {
     const set = (k: keyof typeof BLANK_FORM, v: string) => onChange({ ...form, [k]: v });
+    // One heading per group, so a long form reads as a few short sections instead of one wall of fields.
+    const SEC = (title: string, hint?: string) => (
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 -2px', paddingBottom: 6, borderBottom: '1px solid #f0ece3' }}>
+        <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 700, color: '#111' }}>{title}</span>
+        {hint && <span style={{ fontSize: 11.5, color: '#9ca3af' }}>{hint}</span>}
+      </div>
+    );
+    const grid = (min = 200): React.CSSProperties => ({ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(${min}px,100%), 1fr))`, gap: 12 });
+    const yesNo = (k: keyof typeof BLANK_FORM) => (
+      <select style={INP} value={form[k]} onChange={e => set(k, e.target.value)}>
+        <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
+      </select>
+    );
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingBottom: 6 }}>
+        {SEC('Basics')}
         <div>
           {LBL('Property Name *')}
           <input style={INP} value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Fair Oaks Commerce Center" />
         </div>
-        <div>
-          {LBL('Address')}
-          <input style={INP} value={form.address} onChange={e => set('address', e.target.value)} placeholder="Street address" />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
-          <div>{LBL('City')}<input style={INP} value={form.city} onChange={e => set('city', e.target.value)} placeholder="San Antonio" /></div>
-          <div>{LBL('State')}<input style={INP} value={form.state} onChange={e => set('state', e.target.value)} placeholder="TX" /></div>
-          <div>{LBL('ZIP')}<input style={INP} value={form.zip} onChange={e => set('zip', e.target.value)} placeholder="78258" /></div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
+        <div style={grid()}>
           <div>{LBL('Type')}
             <select style={INP} value={form.type} onChange={e => set('type', e.target.value)}>
               {TYPES.map(t => <option key={t}>{t}</option>)}
@@ -1059,15 +1064,36 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
             </select>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
+
+        {SEC('Location')}
+        <div>
+          {LBL('Address')}
+          <input style={INP} value={form.address} onChange={e => set('address', e.target.value)} placeholder="Street address" />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)', gap: 10 }}>
+          <div>{LBL('City')}<input style={INP} value={form.city} onChange={e => set('city', e.target.value)} placeholder="San Antonio" /></div>
+          <div>{LBL('State')}<input style={INP} value={form.state} onChange={e => set('state', e.target.value)} placeholder="TX" /></div>
+          <div>{LBL('ZIP')}<input style={INP} value={form.zip} onChange={e => set('zip', e.target.value)} placeholder="78258" /></div>
+        </div>
+
+        {SEC('Size & pricing')}
+        <div style={grid()}>
           <div>{LBL('Asking Price / Rate ($)')}<input style={INP} type="number" value={form.asking_price} onChange={e => set('asking_price', e.target.value)} placeholder="e.g. 28.00 /SF/yr" /></div>
           <div>{LBL('Sq Ft')}<input style={INP} type="number" value={form.sq_ft} onChange={e => set('sq_ft', e.target.value)} placeholder="e.g. 4200" /></div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
           <div>{LBL('Lot Size')}<input style={INP} value={form.lot_size} onChange={e => set('lot_size', e.target.value)} placeholder="e.g. 0.85 acres" /></div>
           <div>{LBL('Year Built')}<input style={INP} value={form.year_built} onChange={e => set('year_built', e.target.value)} placeholder="e.g. 2005" /></div>
+          <div>{LBL('Zoning')}<input style={INP} value={form.zoning} onChange={e => set('zoning', e.target.value)} placeholder="e.g. I-1, C-2" /></div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
+
+        {SEC('Building features')}
+        <div style={grid(150)}>
+          <div>{LBL('Elevator')}{yesNo('elevator')}</div>
+          <div>{LBL('Grade-level doors')}{yesNo('grade_level_doors')}</div>
+          <div>{LBL('Dock-high doors')}{yesNo('dock_high_doors')}</div>
+        </div>
+
+        {SEC('Team')}
+        <div style={grid()}>
           <div>
             {LBL('Listing Agent')}
             <select style={INP} value={form.listing_agent_id} onChange={e => set('listing_agent_id', e.target.value)}>
@@ -1082,11 +1108,10 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               {profiles.map(p => <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>)}
             </select>
           </div>
-          <div>
-            {LBL('Map Pin (flyer)')}
-            <input style={INP} value={form.map_pin} onChange={e => set('map_pin', e.target.value)} placeholder="29.7255, -98.6526" />
-            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
-          </div>
+        </div>
+
+        {SEC('Marketing flyer', 'what the property flyer shows')}
+        <div style={grid()}>
           <div>
             {LBL('Flyer Heading')}
             <select style={INP} value={form.flyer_type} onChange={e => set('flyer_type', e.target.value)}>
@@ -1095,40 +1120,26 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
               <option value="sale">For Sale</option>
             </select>
           </div>
+          <div>
+            {LBL('Map Pin')}
+            <input style={INP} value={form.map_pin} onChange={e => set('map_pin', e.target.value)} placeholder="29.7255, -98.6526" />
+          </div>
         </div>
+        <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: -6 }}>Map pin: right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
         <div>
           {LBL('Flyer Description')}
-          <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px,100%), 1fr))', gap: 10 }}>
-          <div>{LBL('Zoning')}<input style={INP} value={form.zoning} onChange={e => set('zoning', e.target.value)} placeholder="e.g. I-1, C-2" /></div>
-          <div>
-            {LBL('Elevator')}
-            <select style={INP} value={form.elevator} onChange={e => set('elevator', e.target.value)}>
-              <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
-            </select>
-          </div>
-          <div>
-            {LBL('Grade-level doors')}
-            <select style={INP} value={form.grade_level_doors} onChange={e => set('grade_level_doors', e.target.value)}>
-              <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
-            </select>
-          </div>
-          <div>
-            {LBL('Dock-high doors')}
-            <select style={INP} value={form.dock_high_doors} onChange={e => set('dock_high_doors', e.target.value)}>
-              <option value="">—</option><option value="true">Yes</option><option value="false">No</option>
-            </select>
-          </div>
+          <textarea style={{ ...INP, minHeight: 90, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
         </div>
         <div>
           {LBL('Flyer Highlights (one per line)')}
-          <textarea style={{ ...INP, minHeight: 70, resize: 'vertical' }} value={form.highlights} onChange={e => set('highlights', e.target.value)} placeholder={'Move-in ready medical building\nHigh visibility\nAmple parking'} />
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Bulleted list on the property flyer — one highlight per line.</div>
+          <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.highlights} onChange={e => set('highlights', e.target.value)} placeholder={'Move-in ready medical building\nHigh visibility\nAmple parking'} />
+          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>Bulleted list on the property flyer — one highlight per line.</div>
         </div>
+
+        {SEC('Internal', 'never shown on the flyer')}
         <div>
           {LBL('Internal Notes')}
-          <textarea style={{ ...INP, minHeight: 60, resize: 'vertical' }} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Showing instructions, landlord contact, commission notes…" />
+          <textarea style={{ ...INP, minHeight: 80, resize: 'vertical' }} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Showing instructions, landlord contact, commission notes…" />
         </div>
       </div>
     );
@@ -1271,20 +1282,36 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       {active && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 400, display: 'flex' }} onClick={e => { if (e.target === e.currentTarget) closePanel(); }}>
           <div style={{ flex: 1 }} onClick={closePanel} />
-          <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' || activeTab === 'leasing' ? 1100 : 560, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
+          <div style={{ width: Math.min(activeTab === 'rentroll' || activeTab === 'prospects' || activeTab === 'leasing' ? 1100 : 620, window.innerWidth), background: '#fff', boxShadow: '-4px 0 40px rgba(0,0,0,.16)', display: 'flex', flexDirection: 'column', overflowY: 'auto', transition: 'width .18s ease' }}>
 
-            {/* Panel header */}
-            <div style={{ padding: '20px 24px 0', borderBottom: '1px solid #f0f0f0', paddingBottom: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+            {/* Panel header: the title keeps the full width; status chips + flyer actions sit on their own row beneath it
+                (they used to share the title's row and squeezed it to one word per line, eating half the panel's height). */}
+            <div style={{ padding: '16px 24px 0', borderBottom: '1px solid #eceae4', background: '#fff', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', lineHeight: 1.2 }}>{active.name}</div>
+                  <div title={active.name} style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 22, fontWeight: 700, color: '#111', lineHeight: 1.2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as React.CSSProperties}>{active.name}</div>
                   {(active.address || active.city) && (
-                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>
-                      {[active.address, active.city, active.state, active.zip].filter(Boolean).join(', ')}
+                    <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      📍 {[active.address, active.city, active.state, active.zip].filter(Boolean).join(', ')}
                     </div>
                   )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button onClick={closePanel} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1, padding: 4, flexShrink: 0 }}>✕</button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '10px 0 10px' }}>
+                {(() => {
+                  const sc = STATUS_CFG[active.status ?? 'active'] ?? STATUS_CFG.active;
+                  const tc = TYPE_COLORS[active.type ?? ''] ?? { bg: '#f1f5f9', color: '#475569' };
+                  return (
+                    <>
+                      <span style={{ ...sc, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 } as React.CSSProperties}>{sc.label}</span>
+                      {active.type && <span style={{ ...tc, padding: '3px 9px', borderRadius: 6, fontSize: 11.5, fontWeight: 700 } as React.CSSProperties}>{active.type}</span>}
+                      {active.sq_ft && <span style={{ fontSize: 12.5, color: '#6b7280' }}>{fmtSqFt(active.sq_ft)}</span>}
+                      {active.asking_price && <span style={{ fontSize: 13, fontWeight: 700, color: '#c9922c' }}>{fmt$(active.asking_price)}</span>}
+                    </>
+                  );
+                })()}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {(() => {
                     const built = active.flyer_generated_at ? new Date(active.flyer_generated_at) : null;
                     // Same test the server makes, so the header agrees with what an open
@@ -1311,32 +1338,34 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                               style={{ ...bs, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280' }}>⬇</button>
                             <button onClick={() => generateFlyer({ force: true })} disabled={flyerBusy} title="Rebuild the flyer from the current photos and details"
                               style={{ ...bs, border: stale ? 'none' : '1px solid #e5e7eb', background: stale ? '#c9922c' : '#fff', color: stale ? '#fff' : '#6b7280' }}>
-                              ↻ Create updated flyer
+                              ↻ Update flyer
                             </button>
                           </>
                         )}
                       </div>
                     );
                   })()}
-                  <button onClick={closePanel} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', fontSize: 20, lineHeight: 1 }}>✕</button>
                 </div>
               </div>
-              {/* Tabs */}
-              <div ref={tabDrag.ref} {...tabDrag.handlers} style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none', ...tabDrag.style }}>
-                {[{ k: 'info', label: '📋 Details' }, { k: 'performance', label: '📈 Performance' }, { k: 'documents', label: '📄 Documents' },
-                  ...(canSeeRentRoll ? [{ k: 'rentroll', label: '📊 Rent Roll' }] : []),
-                  // The owner's weekly leasing activity report, kept live (LeasingActivity).
-                  ...(canSeeRentRoll ? [{ k: 'leasing', label: '📋 Leasing Activity' }] : []),
-                  // Only where there is a rent roll, and only for someone allowed to see it.
-                  ...(canSeeRentRoll && hasRentRoll ? [{ k: 'recon', label: '🧾 Reconciliation' }] : []),
-                  // Who this property's campaigns emailed + open rates + who to ask for (EmailProspects).
-                  ...(canSeeRentRoll ? [{ k: 'prospects', label: '📬 Prospects' }] : []),
-                  { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
-                  <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'performance' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
-                    style={{ padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
-                    {t.label}
-                  </button>
-                ))}
+              {/* Tabs: one line, scrolls sideways, never wraps a label; the fade on the right says there's more */}
+              <div style={{ position: 'relative', margin: '0 -24px' }}>
+                <div ref={tabDrag.ref} {...tabDrag.handlers} style={{ display: 'flex', gap: 0, overflowX: 'auto', scrollbarWidth: 'none', padding: '0 24px', WebkitMaskImage: 'linear-gradient(to right, #000 calc(100% - 36px), transparent)', maskImage: 'linear-gradient(to right, #000 calc(100% - 36px), transparent)', ...tabDrag.style }}>
+                  {[{ k: 'info', label: '📋 Details' }, { k: 'performance', label: '📈 Performance' }, { k: 'documents', label: '📄 Documents' },
+                    ...(canSeeRentRoll ? [{ k: 'rentroll', label: '📊 Rent Roll' }] : []),
+                    // The owner's weekly leasing activity report, kept live (LeasingActivity).
+                    ...(canSeeRentRoll ? [{ k: 'leasing', label: '📋 Leasing' }] : []),
+                    // Only where there is a rent roll, and only for someone allowed to see it.
+                    ...(canSeeRentRoll && hasRentRoll ? [{ k: 'recon', label: '🧾 Reconciliation' }] : []),
+                    // Who this property's campaigns emailed + open rates + who to ask for (EmailProspects).
+                    ...(canSeeRentRoll ? [{ k: 'prospects', label: '📬 Prospects' }] : []),
+                    { k: 'deals', label: '💼 Deals' }, { k: 'photos', label: '🖼 Photos' }, { k: 'contacts', label: '👥 Contacts' }, { k: 'team', label: '🔗 Team' }].map(t => (
+                    <button key={t.k} onClick={() => setActiveTab(t.k as 'info' | 'performance' | 'documents' | 'rentroll' | 'leasing' | 'recon' | 'prospects' | 'deals' | 'photos' | 'contacts' | 'team')}
+                      style={{ padding: '9px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', flexShrink: 0, color: activeTab === t.k ? '#c9922c' : '#6b7280', borderBottom: `2px solid ${activeTab === t.k ? '#c9922c' : 'transparent'}`, transition: 'all .15s' }}>
+                      {t.label}
+                    </button>
+                  ))}
+                  <span style={{ flex: '0 0 36px' }} />
+                </div>
               </div>
             </div>
 
