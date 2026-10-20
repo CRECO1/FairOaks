@@ -8432,6 +8432,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             return rank(a) - rank(b) || projectRecency(b.id) - projectRecency(a.id);
                           }).map(project => {
                             const projectCampaigns = sortCampaigns(visibleCampaigns.filter(c => c.project_id === project.id));
+                            // With a filter or search on, a project with nothing that matches is just noise ("0 campaigns · Empty" on every row of the Active view) — hide it.
+                            if (projectCampaigns.length === 0 && (campaignFilter !== 'all' || q || campaignAgentFilter)) return null;
                             const isExpanded = expandedProjects.has(project.id);
                             return (
                               <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14 }}>
