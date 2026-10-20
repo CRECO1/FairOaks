@@ -8665,7 +8665,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={async () => { let full: Campaign; try { full = await ensureCampaignBody(activeCampaign); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }}>Edit</button>
-                        {activeCampaign.status !== 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
+                        {activeCampaign.status !== 'active' && activeCampaign.status !== 'completed' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
                       </div>
@@ -8688,7 +8688,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #f0f0f0', marginBottom: 20 }}>
                     {(['enrolled', 'history', 'preview', 'settings'] as const).map(t => (
                       <button key={t} onClick={() => setCampaignTab(t)} style={{ padding: '10px 18px', fontSize: 14, fontWeight: campaignTab === t ? 700 : 400, color: campaignTab === t ? '#c9922c' : '#6b7280', background: 'none', border: 'none', borderBottom: campaignTab === t ? '2px solid #c9922c' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", textTransform: 'capitalize' }}>
-                        {t === 'enrolled' ? `Enrolled (${campaignEnrollments.filter(e => e.active).length})` : t === 'preview' ? '👁 Preview' : t.charAt(0).toUpperCase() + t.slice(1)}
+                        {t === 'enrolled' ? (activeCampaign.status === 'completed' ? `Recipients (${campaignEnrollments.length})` : `Enrolled (${campaignEnrollments.filter(e => e.active).length})`) : t === 'preview' ? '👁 Preview' : t.charAt(0).toUpperCase() + t.slice(1)}
                       </button>
                     ))}
                   </div>
@@ -8696,7 +8696,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   {/* Enrolled tab */}
                   {campaignTab === 'enrolled' && (
                     <div>
-                      {/* Enroll new clients */}
+                      {/* Enroll new clients — not on a finished campaign (it has already sent; adding people to it does nothing) */}
+                      {activeCampaign.status === 'completed' ? (
+                        <div style={{ background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#1e40af' }}>
+                          ✓ This campaign has finished sending. Everyone it went to is listed below. To email more people, copy it from the ⋯ menu on the campaigns list.
+                        </div>
+                      ) : (
+                        <>
                       <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 10, padding: '16px 18px', marginBottom: 20 }}>
                         <div style={{ fontSize: 14, fontWeight: 600, color: '#111', marginBottom: 10 }}>Enroll Clients</div>
 
@@ -8788,12 +8794,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         )}
                       </div>
 
+                        </>
+                      )}
+
                       {/* Enrolled list — show all for completed/one-time, active-only for recurring */}
                       {(() => {
                         const isCompleted = activeCampaign.status === 'completed';
-                        const visibleEnrollments = campaignEnrollments.filter(e => e.active);
+                        const visibleEnrollments = isCompleted ? campaignEnrollments : campaignEnrollments.filter(e => e.active);   // a finished one-time campaign's enrollments are all inactive — show who it went to
                         const activeEnrollments = visibleEnrollments;
                         const allUnenrollChecked = activeEnrollments.length > 0 && selectedUnenrollIds.length === activeEnrollments.length;
+                        // What actually happened to each recipient (not everyone enrolled gets an email: unsubscribed, held-back risky addresses, failures).
+                        const sendStatus = new Map(campaignSends.filter(x => x.campaign_id === activeCampaign.id).map(x => [x.client_id, x.status] as const));
                         return (
                           <>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -8837,7 +8848,14 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                       <div style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
                                       <div style={{ fontSize: 12, color: '#9ca3af' }}>
                                         {isCompleted
-                                          ? <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Sent</span>
+                                          ? (() => {
+                                              if (sendStatus.size === 0) return <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Sent</span>;   // sends still loading
+                                              const st = sendStatus.get(en.client_id);
+                                              return st === 'sent' ? <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Sent</span>
+                                                : st === 'failed' ? <span style={{ color: '#dc2626', fontWeight: 600 }}>✕ Failed to send</span>
+                                                : st === 'skipped' ? <span style={{ color: '#b45309', fontWeight: 600 }}>— Skipped</span>
+                                                : <span style={{ color: '#9ca3af', fontWeight: 600 }}>Not sent (held back or unsubscribed)</span>;
+                                            })()
                                           : <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Enrolled{en.next_send_at ? ` · Sends ${new Date(en.next_send_at).toLocaleDateString()}` : ' · Sends on activation'}</span>
                                         }
                                         {en.client?.unsubscribed_at && <span style={{ marginLeft: 8, color: '#ef4444', fontWeight: 600 }}>· Unsubscribed</span>}
