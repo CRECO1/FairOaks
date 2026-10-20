@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import SignPreviewModal, { type PreviewField } from '@/components/crm/SignPreviewModal';
 import { defaultEsignMessage } from '@/lib/esign-message';
+import EsignSavedMessages from '@/components/crm/EsignSavedMessages';
 
 export interface PickContact { id: string; first_name?: string; last_name?: string; business_name?: string; email?: string; type?: string }
 export interface Doc { id: string; title?: string; form_id?: string; url?: string | null; updated_at?: string; imported?: boolean; crm_forms?: { name?: string; form_code?: string } | null }
@@ -188,7 +189,8 @@ export function SendView({ doc, dealId, clients, dealClient, agentName, agentEma
         {agentName && !signers.some(s => s.role === 'agent') && <button onClick={() => setSigners(s => [...s, { role: 'agent', name: agentName, email: agentEmail || '' }])} style={{ fontSize: 12.5, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>＋ Me (agent)</button>}
       </div>
 
-      <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical', marginTop: 12 }} />
+      <div style={{ marginTop: 12 }}><EsignSavedMessages message={message} onPick={setMessage} ownerKey={agentEmail || agentName || ''} /></div>
+      <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Optional message to the signers…" style={{ ...INP, minHeight: 54, resize: 'vertical' }} />
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
         <button
