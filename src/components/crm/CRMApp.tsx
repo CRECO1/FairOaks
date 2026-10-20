@@ -3305,6 +3305,17 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     if (mentionsLoaded) return;
     await refreshMentions();
   }
+  // Community submissions waiting for approval on the Plaza Site (events, news, jobs). Admin-only endpoint; a non-admin simply gets no badge.
+  const [plazaPending, setPlazaPending] = useState(0);
+  useEffect(() => {
+    const token = session?.access_token;
+    if (!profile?.id || !token) return;
+    const load = () => fetch('/api/crm/plaza-pending', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null)).then(j => { if (j && typeof j.total === 'number') setPlazaPending(j.total); }).catch(() => {});
+    load();
+    const t = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(t);
+  }, [profile?.id, session?.access_token]);
   // The bell used to read notifications only when it was clicked, so its badge could never light up
   // for a mention or an assignment. Load once the profile is known and re-check every minute.
   useEffect(() => {
@@ -4836,7 +4847,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
           {/* Owner-only. The server also 403s non-super_admin, so hiding this
               is convenience, not the access control. */}
           {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => setPage('lead-attribution')}>📊 &nbsp;Lead Attribution</button>}
-          {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => setPage('plaza-site')}>🌳 &nbsp;Plaza Site</button>}
+          {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => setPage('plaza-site')}>🌳 &nbsp;Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
         </div>
         {isAdmin && businessUnit === 'residential' && (
           <div style={{ padding: '10px 12px 4px' }}>
@@ -5007,7 +5018,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <button className={`crm-nav${page === 'calls' ? ' active' : ''}`} onClick={() => { setPage('calls'); if (!clients.length) loadClients(); setMobileMenuOpen(false); }}>📞 &nbsp;Calling Log</button>
                 <button className="crm-nav" onClick={() => { setCopilotActivityOpen(true); setMobileMenuOpen(false); }}>👁 &nbsp;{isSuperAdmin ? 'Agent Activity' : 'My Activity'}</button>
                 {isSuperAdmin && <button className={`crm-nav${page === 'lead-attribution' ? ' active' : ''}`} onClick={() => { setPage('lead-attribution'); setMobileMenuOpen(false); }}>📊 &nbsp;Lead Attribution</button>}
-                {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}>🌳 &nbsp;Plaza Site</button>}
+                {isAdmin && <button className={`crm-nav${page === 'plaza-site' ? ' active' : ''}`} onClick={() => { setPage('plaza-site'); setMobileMenuOpen(false); }}>🌳 &nbsp;Plaza Site{plazaPending > 0 && <span style={{ marginLeft: 8, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '1px 7px' }}>{plazaPending}</span>}</button>}
               </div>
 
               {isAdmin && businessUnit === 'residential' && (
