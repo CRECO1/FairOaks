@@ -1003,6 +1003,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Campaign projects (folders)
   const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [projectMenu, setProjectMenu] = useState<string | null>(null);   // which project's ⋯ menu is open
   const [showAddProject, setShowAddProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
@@ -8353,51 +8354,66 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             const isExpanded = expandedProjects.has(project.id);
                             return (
                               <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
-                                {/* Project header */}
-                                {/* On a phone this was one nowrap row carrying the name,
-                                    the count, the whole description, the sent status, three
-                                    2px-padded buttons and the chevron. The name column got
-                                    squeezed to ~130px and wrapped a word per line, turning
-                                    one project into a ~500px-tall ribbon with unhittable
-                                    controls. Narrow widths now stack it into rows. */}
-                                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: isMobile ? 8 : 10, padding: isMobile ? '14px 14px' : '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                {/* Project header — one tidy block: name + count, a one-line description (skipped when it just repeats the name),
+                                    status chips, last sent, and two actions (+ Campaign, ⋯). It used to carry the whole wrapped description and
+                                    three buttons (including a bare trash can) on every row. */}
+                                <div style={{ padding: isMobile ? '14px 14px' : '14px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
                                   onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has(project.id) ? n.delete(project.id) : n.add(project.id); return n; })}>
-
-                                  {/* Line 1 — dot, name (wraps), chevron pinned right */}
-                                  <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 10, flex: isMobile ? undefined : 1, minWidth: 0 }}>
-                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0, marginTop: isMobile ? 5 : 0 }} />
-                                    <div style={{ fontSize: 13, fontWeight: 700, color: '#111', flex: 1, minWidth: 0, ...(isMobile ? { lineHeight: 1.4 } : {}) }}>
-                                      {project.name}
-                                      <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8, whiteSpace: 'nowrap' }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
-                                      {/* Desktop keeps the description inline; on a phone it
-                                          gets its own line below so it can't crush the name. */}
-                                      {project.description && !isMobile && <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>· {project.description}</span>}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: 13, color: '#9ca3af', width: 14, flexShrink: 0 }}>{isExpanded ? '▾' : '▸'}</span>
+                                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: project.color, flexShrink: 0 }} />
+                                    <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: 15, fontWeight: 700, color: '#111', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{project.name}</span>
+                                        <span style={{ fontSize: 11.5, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>{projectCampaigns.length} campaign{projectCampaigns.length !== 1 ? 's' : ''}</span>
+                                      </div>
+                                      {project.description && project.description.trim().toLowerCase() !== project.name.trim().toLowerCase() && (
+                                        <div title={project.description} style={{ fontSize: 12.5, color: '#9ca3af', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{project.description}</div>
+                                      )}
                                     </div>
-                                    {isMobile && <span style={{ fontSize: 15, color: '#9ca3af', flexShrink: 0, padding: '0 2px' }}>{isExpanded ? '▾' : '▸'}</span>}
+                                    {(() => {
+                                      const by = (st: string) => projectCampaigns.filter(c => c.status === st).length;
+                                      const chips = [
+                                        { n: by('active'), label: 'active', color: '#16a34a' }, { n: by('draft'), label: 'draft', color: '#9ca3af' },
+                                        { n: by('paused'), label: 'paused', color: '#d97706' }, { n: by('completed'), label: 'done', color: '#2563eb' },
+                                      ].filter(c => c.n > 0);
+                                      const sent = projectCampaigns.map(c => c.last_sent_at).filter(Boolean) as string[];
+                                      const label = sent.length
+                                        ? `Last sent ${new Date([...sent].sort().slice(-1)[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                                        : projectCampaigns.length ? 'Not sent yet' : 'Empty';
+                                      return (
+                                        <>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                            {chips.map(c => (
+                                              <span key={c.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap' }}>
+                                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: c.color }} />{c.n} {c.label}
+                                              </span>
+                                            ))}
+                                          </div>
+                                          <span style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, whiteSpace: 'nowrap' }}>{label}</span>
+                                        </>
+                                      );
+                                    })()}
+                                    {isAdmin && (
+                                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }} onClick={e => e.stopPropagation()}>
+                                        <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ fontWeight: 700, color: '#a06a12', borderColor: '#f0e2c4', background: '#fffdf6', ...(isMobile ? { minHeight: 44, fontSize: 13 } : { fontSize: 12, padding: '4px 11px' }) }}
+                                          onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: project.id }); setCampaignView('builder'); }}>＋ Campaign</button>
+                                        <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="Project options" title="Edit or delete this project" style={isMobile ? { minHeight: 44, minWidth: 44, fontSize: 16 } : { fontSize: 15, padding: '2px 10px', lineHeight: 1.2 }}
+                                          onClick={() => setProjectMenu(projectMenu === project.id ? null : project.id)}>⋯</button>
+                                        {projectMenu === project.id && (
+                                          <>
+                                            <div onClick={() => setProjectMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+                                            <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 31, minWidth: 170, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+                                              <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: '#374151' }}
+                                                onClick={() => { setProjectMenu(null); setEditingProject(project); }}>✎ Edit project</button>
+                                              <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', borderTop: '1px solid #f3f4f6', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: '#dc2626' }}
+                                                onClick={() => { setProjectMenu(null); deleteCampaignProject(project.id); }}>🗑 Delete project</button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-
-                                  {isMobile && project.description && (
-                                    <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.5, paddingLeft: 20 }}>{project.description}</div>
-                                  )}
-
-                                  {(() => {
-                                    const sent = projectCampaigns.map(c => c.last_sent_at).filter(Boolean) as string[];
-                                    const label = sent.length
-                                      ? `Last sent ${new Date([...sent].sort().slice(-1)[0]).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                                      : projectCampaigns.length ? 'Not sent yet' : 'No campaigns';
-                                    return <span style={{ fontSize: 12, color: '#9ca3af', marginRight: isMobile ? 0 : 6, flexShrink: 0, ...(isMobile ? { paddingLeft: 20 } : {}) }}>{label}</span>;
-                                  })()}
-
-                                  {isAdmin && (
-                                    <div style={{ display: 'flex', gap: isMobile ? 8 : 4, ...(isMobile ? { paddingLeft: 20, paddingTop: 2 } : {}) }} onClick={e => e.stopPropagation()}>
-                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={isMobile ? { flex: 1, minHeight: 44, fontSize: 13 } : { fontSize: 11, padding: '2px 8px' }}
-                                        onClick={() => { setActiveCampaign(null); setNewCampaign({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: getDefaultEmailBody(), sms_body: '', sender_agent_id: '', project_id: project.id }); setCampaignView('builder'); }}>+ Campaign</button>
-                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" style={isMobile ? { flex: 1, minHeight: 44, fontSize: 13 } : { fontSize: 11, padding: '2px 8px' }} onClick={() => setEditingProject(project)}>Edit</button>
-                                      <button className="crm-btn crm-btn-ghost crm-btn-sm" aria-label="Delete project" style={isMobile ? { width: 52, minHeight: 44, fontSize: 15, color: '#ef4444', borderColor: '#fecaca', flexShrink: 0 } : { fontSize: 11, padding: '2px 8px', color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaignProject(project.id)}>🗑</button>
-                                    </div>
-                                  )}
-
-                                  {!isMobile && <span style={{ fontSize: 13, color: '#9ca3af', marginLeft: 4 }}>{isExpanded ? '▾' : '▸'}</span>}
                                 </div>
                                 {/* Campaigns inside project */}
                                 {isExpanded && (
@@ -8421,9 +8437,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
                                   onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has('__ungrouped__') ? n.delete('__ungrouped__') : n.add('__ungrouped__'); return n; })}>
                                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', flex: 1 }}>
-                                    Ungrouped
-                                    <span style={{ fontWeight: 400, marginLeft: 8 }}>{ungrouped.length} campaign{ungrouped.length !== 1 ? 's' : ''}</span>
+                                  <div style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                    <span style={{ fontSize: 15, fontWeight: 700, color: '#6b7280' }}>Ungrouped</span>
+                                    <span style={{ fontSize: 11.5, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{ungrouped.length} campaign{ungrouped.length !== 1 ? 's' : ''}</span>
+                                    <span style={{ fontSize: 12.5, color: '#b4b8bf' }}>not in a project — move them with the checkboxes</span>
                                   </div>
                                   <span style={{ fontSize: 13, color: '#9ca3af' }}>{isExpanded ? '▾' : '▸'}</span>
                                 </div>
