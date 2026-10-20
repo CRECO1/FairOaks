@@ -8383,11 +8383,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             const projectCampaigns = sortCampaigns(visibleCampaigns.filter(c => c.project_id === project.id));
                             const isExpanded = expandedProjects.has(project.id);
                             return (
-                              <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
+                              <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14 }}>
                                 {/* Project header — one tidy block: name + count, a one-line description (skipped when it just repeats the name),
                                     status chips, last sent, and two actions (+ Campaign, ⋯). It used to carry the whole wrapped description and
                                     three buttons (including a bare trash can) on every row. */}
-                                <div style={{ padding: isMobile ? '14px 14px' : '14px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                                <div style={{ padding: isMobile ? '14px 14px' : '14px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none', borderRadius: isExpanded ? '13px 13px 0 0' : 13 }}
                                   onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has(project.id) ? n.delete(project.id) : n.add(project.id); return n; })}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: 13, color: '#9ca3af', width: 14, flexShrink: 0 }}>{isExpanded ? '▾' : '▸'}</span>
@@ -8463,8 +8463,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             if (ungrouped.length === 0 && campaignProjects.length > 0) return null;
                             const isExpanded = expandedProjects.has('__ungrouped__');
                             return (
-                              <div style={{ border: '1px solid #e5e7eb', borderRadius: 14, overflow: 'hidden' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none' }}
+                              <div style={{ border: '1px solid #e5e7eb', borderRadius: 14 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', background: '#fafafa', cursor: 'pointer', userSelect: 'none', borderRadius: isExpanded ? '13px 13px 0 0' : 13 }}
                                   onClick={() => setExpandedProjects(prev => { const n = new Set(prev); n.has('__ungrouped__') ? n.delete('__ungrouped__') : n.add('__ungrouped__'); return n; })}>
                                   <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
                                   <div style={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 8 }}>
