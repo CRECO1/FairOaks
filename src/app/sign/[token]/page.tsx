@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
+import { friendlyTitle } from '@/lib/esign-title';
 import { renderPdfPages, revokePages, type RenderedPage } from '@/lib/pdf-render';
 import { labelFor, readTextRuns, isGenericLabel } from '@/lib/pdf-field-labels';
 import { Dancing_Script, Great_Vibes, Sacramento, Homemade_Apple, Caveat } from 'next/font/google';
@@ -33,10 +34,15 @@ const isInput = (t: string) => t === 'text' || t === 'check';
 // Imported documents carry their file name as the title ("Commercial_Lease_Amendment__filled_").
 // Shown as words: an unbroken underscore run can't wrap on a phone and reads like a file path.
 // Display only — the stored title (and the email subject) are left alone.
-const displayTitle = (t?: string | null) => {
-  const s = String(t || '').replace(/\.pdf$/i, '').replace(/_+/g, ' ').replace(/\s*\(?\bfilled\b\)?\s*$/i, '').replace(/\s+/g, ' ').trim();
-  return s || 'Document';
-};
+const displayTitle = friendlyTitle;
+
+// Progress survives a refresh: phones reload a tab after a call or a memory squeeze, and
+// losing a half-filled lease sends people back to the start. Per-tab (sessionStorage), so
+// nothing lingers on a shared computer; cleared once the signature is submitted.
+type Draft = { typed: string; initials: string; initialsEdited: boolean; styleKey: string; values: Record<string, string>; filled: string[]; adopted: boolean };
+const draftKey = (t: string) => `esign:draft:${t}`;
+const loadDraft = (t: string): Draft | null => { try { const r = sessionStorage.getItem(draftKey(t)); return r ? JSON.parse(r) as Draft : null; } catch { return null; } };
+const saveDraft = (t: string, d: Draft | null) => { try { if (d) sessionStorage.setItem(draftKey(t), JSON.stringify(d)); else sessionStorage.removeItem(draftKey(t)); } catch { /* storage blocked: refresh just won't restore */ } };
 
 const GOLD = '#c9922c';
 const INK = '#0d1b4b';
@@ -353,6 +359,7 @@ export default function SignPage() {
   // they see a single spot.
   const [adoptStep, setAdoptStep] = useState(true);
   const [adopting, setAdopting] = useState(false);
+  const [resume, setResume] = useState(false);   // a saved draft had adopted a signature — re-create it and skip step 1
   const fields = useMemo(() => (data?.fields ?? []).map(f => isInput(f.type)
     ? { ...f, label: isGenericLabel(f.label) ? labels[f.id] : f.label }
     : f), [data, labels]);
@@ -466,12 +473,42 @@ export default function SignPage() {
         // Pre-load any values already on the input fields (usually empty for the signer).
         const seed: Record<string, string> = {};
         for (const f of (j.fields ?? []) as SignField[]) if (isInput(f.type)) seed[f.id] = f.value || '';
-        setValues(seed);
         setTyped(j.signer?.name || '');
+        const saved = j.status === 'ready' ? loadDraft(token) : null;
+        if (saved) {
+          // Only answers for spots that still exist on this document.
+          for (const id of Object.keys(seed)) if (typeof saved.values?.[id] === 'string') seed[id] = saved.values[id];
+          if (saved.typed) setTyped(saved.typed);
+          if (saved.initials) { setInitials(saved.initials); setInitialsEdited(!!saved.initialsEdited); }
+          if (STYLES.some(s => s.key === saved.styleKey)) setStyleKey(saved.styleKey);
+          const ids = new Set(((j.fields ?? []) as SignField[]).map(f => f.id));
+          setFilled(Object.fromEntries((saved.filled ?? []).filter(id => ids.has(id)).map(id => [id, true])));
+          if (saved.adopted) setResume(true);
+        }
+        setValues(seed);
         setView(['ready', 'waiting', 'done', 'completed', 'voided', 'declined', 'expired'].includes(j.status) ? j.status : 'error');
       })
       .catch(() => setView('error'));
   }, [token]);
+
+  // Returning to a saved draft: rebuild the adopted marks from the restored name + style, then
+  // go straight to the document. (A hand-drawn signature can't be restored, so a draft that
+  // used one starts again at step 1 with everything else kept.)
+  useEffect(() => {
+    if (!resume || view !== 'ready' || !typed.trim()) return;
+    setResume(false);
+    (async () => {
+      const a = await renderAdopted();
+      if (a.signature) { setAdopted(a); setAdoptStep(false); }
+    })();
+  }, [resume, view, typed, renderAdopted]);
+
+  // Save progress as it changes (only while there is something left to submit).
+  useEffect(() => {
+    if (!token || view !== 'ready' || !data) return;
+    saveDraft(token, { typed, initials, initialsEdited, styleKey, values, filled: Object.keys(filled).filter(k => filled[k]), adopted: !!adopted && mode === 'pick' });
+  }, [token, view, data, typed, initials, initialsEdited, styleKey, values, filled, adopted, mode]);
+  useEffect(() => { if (token && (view === 'signed' || view === 'declined')) saveDraft(token, null); }, [token, view]);
 
   // Initials track the name until the signer types their own.
   useEffect(() => { if (!initialsEdited) setInitials(initialsOf(typed)); }, [typed, initialsEdited]);

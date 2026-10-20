@@ -16,6 +16,7 @@ import { isBrokerFilled } from '@/lib/esign-fields';
 import TransactionDocEditor, { type EditorRecipient, type EditorField } from '@/components/crm/TransactionDocEditor';
 import SignPreviewModal from '@/components/crm/SignPreviewModal';
 import type { PickContact } from '@/components/crm/EsignPanel';
+import { friendlyTitle } from '@/lib/esign-title';
 import { defaultEsignMessage } from '@/lib/esign-message';
 
 const GOLD = '#c9922c';
@@ -86,7 +87,7 @@ export default function EsignComposer({
 
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  useEffect(() => { if (doc && !subject) setSubject(`Please sign: ${doc.title || 'Document'}`); }, [doc, subject]);
+  useEffect(() => { if (doc && !subject) setSubject(`Please sign: ${friendlyTitle(doc.title)}`); }, [doc, subject]);
   // Pre-fill the note to signers once the document is in place. Seeded once (a ref)
   // so an agent who clears or edits it doesn't have it reappear.
   const msgSeeded = useRef(false);
