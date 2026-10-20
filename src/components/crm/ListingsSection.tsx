@@ -209,7 +209,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [files, setFiles]           = useState<ListingFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [uploading, setUploading]   = useState(false);
-  const [uploadCat, setUploadCat]   = useState('floor_plan');
+  const [uploadCat, setUploadCat]   = useState('document');   // 'document' is the common case — it used to default to Floor Plans
   const fileInputRef                = useRef<HTMLInputElement>(null);
 
   // New listing modal
@@ -274,7 +274,8 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [hasRentRoll, setHasRentRoll] = useState(false);
   const [draftingLease, setDraftingLease] = useState(false);
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
-  const [docMenu, setDocMenu] = useState<string | null>(null);   // which document row's ⋯ menu is open
+  const [docMenu, setDocMenu] = useState<string | null>(null);
+  const [dropOver, setDropOver] = useState(false);   // a file is being dragged over the upload area   // which document row's ⋯ menu is open
   const [renameDraft, setRenameDraft] = useState('');
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
@@ -1382,7 +1383,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                   {/* Transaction-doc forms bound to this property */}
                   <div style={{ marginBottom: 22 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction Docs</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}><span style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>Transaction docs</span><span style={{ fontSize: 11.5, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{listingForms.length}</span></div>
                       <div style={{ display: 'flex', gap: 7 }}>
                         {canSeeRentRoll && (
                           <button onClick={() => setDraftingLease(true)} title="Describe a lease in a sentence and review what it fills in"
@@ -1474,101 +1475,90 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                     )}
                   </div>
 
-                  <div style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>Uploaded Files</div>
-                  {/* Upload row */}
-                  {isAdmin && (
-                    <div style={{ background: '#f8fafc', border: '1px dashed #d1d5db', borderRadius: 10, padding: '14px 16px', marginBottom: 20 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Upload File</div>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <select value={uploadCat} onChange={e => setUploadCat(e.target.value)}
-                          style={{ ...INP, width: 'auto', flex: '1', minWidth: 140, fontSize: 16 }}>
-                          {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                        </select>
-                        <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
-                          style={{ padding: '10px 20px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.6 : 1, whiteSpace: 'nowrap', minHeight: 44, flex: 'none' }}>
-                          {uploading ? 'Uploading…' : '+ Upload'}
-                        </button>
-                        <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={uploadFile}
-                          accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.zip,.txt,.csv" />
+                  {/* ── Uploaded files — same card language as the documents above ── */}
+                  {(() => {
+                    const head = (title: string, count?: number) => (
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '26px 0 10px' }}>
+                        <span style={{ fontSize: 12, letterSpacing: .8, textTransform: 'uppercase', color: '#c9922c', fontWeight: 700 }}>{title}</span>
+                        {count !== undefined && <span style={{ fontSize: 11.5, color: '#9ca3af', background: '#f3f4f6', borderRadius: 10, padding: '1px 8px', fontWeight: 600 }}>{count}</span>}
                       </div>
-                      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>PDF, Word, Excel, PowerPoint, images, ZIP — up to 50 MB</div>
-                    </div>
-                  )}
-
-                  {/* Files by category */}
-                  {filesLoading ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af', fontSize: 14 }}>Loading files…</div>
-                  ) : files.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>
-                      <div style={{ fontSize: 32, marginBottom: 8 }}>📁</div>
-                      <div style={{ fontSize: 13 }}>No files uploaded yet</div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-                      {CATEGORIES.map(cat => {
-                        const catFiles = files.filter(f => f.category === cat.key);
-                        if (catFiles.length === 0) return null;
-                        return (
-                          <div key={cat.key}>
-                            <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>{cat.label} ({catFiles.length})</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              {catFiles.map(f => (
-                                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px' }}>
-                                  <span style={{ fontSize: 22, flexShrink: 0 }}>{fileIcon(f.file_type, f.category)}</span>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtBytes(f.file_size)} · {new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                                  </div>
-                                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                                    {onSignFile && active && f.url && f.file_type === 'application/pdf' && (
-                                      <button onClick={() => onSignFile(f.url!, f.name, active.id)}
-                                        title="Import this PDF into E-Sign and send it for signature"
-                                        style={{ padding: '5px 10px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>✍️ Sign</button>
-                                    )}
-                                    {f.url && (
-                                      <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })}
-                                        style={{ padding: '5px 10px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: '#374151', fontWeight: 600, cursor: 'pointer' }}>
-                                        👁 View
-                                      </button>
-                                    )}
-                                    {isAdmin && (
-                                      <button onClick={() => deleteFile(f.id, f.name)}
-                                        style={{ padding: '5px 8px', background: 'none', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>✕</button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                    );
+                    const row = (f: (typeof files)[number]) => (
+                      <div key={f.id} style={{ background: '#fff', border: '1px solid #e8e6df', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 22, flexShrink: 0 }}>{fileIcon(f.file_type, f.category)}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div title={f.name} style={{ fontSize: 13.5, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' } as React.CSSProperties}>{f.name}</div>
+                          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{fmtBytes(f.file_size)}{f.created_at ? ` · ${new Date(f.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                          {onSignFile && active && f.url && f.file_type === 'application/pdf' && (
+                            <button onClick={() => onSignFile(f.url!, f.name, active.id)} title="Import this PDF into E-Sign and send it for signature"
+                              style={{ padding: '6px 11px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 32 }}>✍️ Sign</button>
+                          )}
+                          {f.url && (
+                            <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })}
+                              style={{ padding: '6px 11px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, fontSize: 12.5, color: '#374151', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 32 }}>👁 View</button>
+                          )}
+                          {isAdmin && (
+                            <button onClick={() => deleteFile(f.id, f.name)} aria-label={`Remove ${f.name}`} title="Remove this file"
+                              style={{ padding: '6px 9px', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, fontSize: 12.5, color: '#dc2626', cursor: 'pointer', minHeight: 32 }}>✕</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                    const knownCats = new Set(CATEGORIES.map(c => c.key));
+                    const other = files.filter(f => !knownCats.has(f.category));
+                    const groups = [...CATEGORIES.map(c => ({ key: c.key, label: c.label, items: files.filter(f => f.category === c.key) })), { key: '_other', label: '📎 Other', items: other }].filter(g => g.items.length);
+                    return (
+                      <>
+                        {head('Uploaded files', filesLoading ? undefined : files.length)}
+                        {/* Upload: one slim row (drag a file onto it, or pick a category and choose a file) */}
+                        {isAdmin && (
+                          <div
+                            onDragOver={e => { e.preventDefault(); setDropOver(true); }}
+                            onDragLeave={() => setDropOver(false)}
+                            onDrop={e => {
+                              e.preventDefault(); setDropOver(false);
+                              const input = fileInputRef.current;
+                              if (!input || !e.dataTransfer.files.length || uploading) return;
+                              input.files = e.dataTransfer.files;                                   // hand the dropped file to the same handler the button uses
+                              input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: dropOver ? '#fff8e6' : '#fafaf7', border: `1.5px dashed ${dropOver ? '#c9922c' : '#d9d4c4'}`, borderRadius: 10, padding: '10px 12px', marginBottom: 14, transition: 'background .12s, border-color .12s' }}>
+                            <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
+                              style={{ padding: '8px 16px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13.5, fontWeight: 700, cursor: uploading ? 'not-allowed' : 'pointer', opacity: uploading ? 0.6 : 1, whiteSpace: 'nowrap', minHeight: 40 }}>
+                              {uploading ? 'Uploading…' : '＋ Upload a file'}
+                            </button>
+                            <span style={{ fontSize: 12.5, color: '#6b7280' }}>into</span>
+                            <select value={uploadCat} onChange={e => setUploadCat(e.target.value)} aria-label="File category"
+                              style={{ ...INP, width: 'auto', minHeight: 40, padding: '6px 10px', fontSize: 14, flex: '0 1 auto' }}>
+                              {CATEGORIES.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                            </select>
+                            <span style={{ fontSize: 11.5, color: '#9ca3af', flexBasis: '100%' }}>{dropOver ? 'Drop to upload' : 'or drag a file here · PDF, Word, Excel, PowerPoint, images, ZIP · up to 50 MB'}</span>
+                            <input ref={fileInputRef} type="file" style={{ display: 'none' }} onChange={uploadFile}
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.ppt,.pptx,.zip,.txt,.csv" />
                           </div>
-                        );
-                      })}
-                      {/* Uncategorised fallback */}
-                      {(() => {
-                        const knownCats = new Set(CATEGORIES.map(c => c.key));
-                        const other = files.filter(f => !knownCats.has(f.category));
-                        if (!other.length) return null;
-                        return (
-                          <div>
-                            <div style={{ fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 10 }}>📎 Other ({other.length})</div>
-                            {other.map(f => (
-                              <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 14px', marginBottom: 6 }}>
-                                <span style={{ fontSize: 20 }}>{fileIcon(f.file_type)}</span>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 600, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{fmtBytes(f.file_size)}</div>
-                                </div>
-                                {onSignFile && active && f.url && f.file_type === 'application/pdf' && (
-                                  <button onClick={() => onSignFile(f.url!, f.name, active.id)} title="Import this PDF into E-Sign and send it for signature" style={{ padding: '5px 10px', background: '#c9922c', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>✍️ Sign</button>
-                                )}
-                                {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: f.name, type: f.file_type })} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', fontWeight: 600, cursor: 'pointer' }}>👁 View</button>}
-                                {isAdmin && <button onClick={() => deleteFile(f.id, f.name)} style={{ padding: '5px 8px', background: 'none', border: '1px solid #fecaca', borderRadius: 6, fontSize: 12, color: '#dc2626', cursor: 'pointer' }}>✕</button>}
+                        )}
+                        {filesLoading ? (
+                          <div style={{ textAlign: 'center', padding: 30, color: '#9ca3af', fontSize: 14 }}>Loading files…</div>
+                        ) : files.length === 0 ? (
+                          <div style={{ textAlign: 'center', padding: '22px 0 8px', color: '#9ca3af' }}>
+                            <div style={{ fontSize: 28, marginBottom: 6 }}>📁</div>
+                            <div style={{ fontSize: 13 }}>No files uploaded yet</div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {groups.map(g => (
+                              <div key={g.key}>
+                                <div style={{ fontSize: 11.5, letterSpacing: 1, textTransform: 'uppercase', color: '#9ca3af', fontWeight: 700, marginBottom: 8 }}>{g.label} · {g.items.length}</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{g.items.map(row)}</div>
                               </div>
                             ))}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  )}
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
