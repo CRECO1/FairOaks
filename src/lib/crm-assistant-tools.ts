@@ -426,7 +426,7 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'completed', 'all'] }, scope: { type: 'string', enum: ['mine', 'all'] }, due: { type: 'string', enum: ['overdue', 'today', 'this_week', 'upcoming', 'call_list'], description: 'Only tasks in this bucket.' } } } },
   { name: 'list_deals', description: 'List deals, newest first. Optionally filter by stage. Returns client, property, value, and stage.',
     input_schema: { type: 'object', properties: { stage: { type: 'string', enum: DEAL_STAGES }, scope: { type: 'string', enum: ['mine', 'all'] } } } },
-  { name: 'get_deal', description: 'Get a deal\'s full details by id.',
+  { name: 'get_deal', description: "Get a deal's full details by id: stage, side we represent, the primary contact and every tagged contact (with type, email, phone and a role_hint for documents), the linked property record, and the documents already on the deal. Use it to cross-reference who is on the deal before preparing a document.",
     input_schema: { type: 'object', properties: { deal_id: { type: 'string' } }, required: ['deal_id'] } },
   { name: 'create_task', description: 'Create a task/reminder. WRITE — confirm the details with the agent first.',
     input_schema: { type: 'object', properties: { title: { type: 'string' }, due_date: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' }, contact_id: { type: 'string' }, deal_id: { type: 'string' }, priority: { type: 'string', enum: ['low', 'medium', 'high'] } }, required: ['title'] } },
@@ -525,6 +525,8 @@ export const TOOLS: Anthropic.Tool[] = [
       initials: { type: 'boolean', description: 'Place initials boxes on every page (default true)' }, signatures: { type: 'boolean', description: 'Place signature boxes (default true)' }, dates: { type: 'boolean', description: 'Place date boxes next to signatures (default true)' },
       extra_fields: { type: 'array', description: 'Only if the automatic placement missed something the agent pointed out: extra boxes placed by hand. page is 1-based; x is the left edge and y the underline, both as 0–1 fractions of the page (y measured from the TOP); width is a 0–1 fraction.', items: { type: 'object', properties: { type: { type: 'string', enum: ['initial', 'signature', 'date'] }, role: { type: 'string' }, page: { type: 'number' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' } }, required: ['type', 'role', 'page', 'x', 'y'] } } },
       required: ['submission_id', 'signers'] } },
+  { name: 'esign_status', description: "Where documents sent for e-signature stand: for each envelope, its status (sent / completed / voided), and for every signer whether they have been emailed, opened it, signed or declined (with dates), plus reminders sent. READ-ONLY. Pass submission_id, deal_id, or `query` (words from the document title or a signer's name/email); with nothing it lists the agent's most recent envelopes. Use it for \"did Raj sign?\", \"what's still out?\", \"who hasn't signed the Acme lease?\".",
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, deal_id: { type: 'string' }, query: { type: 'string' }, only_open: { type: 'boolean', description: 'Only envelopes still waiting on someone' } } } },
   { name: 'send_for_signature', description: 'Send an existing saved document (a lease/form submission with a saved PDF) out for e-signature to one or more signers. WRITE + OUTWARD — this emails real people. Confirm the document and every recipient with the agent first.',
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, signers: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' }, role: { type: 'string' } }, required: ['name', 'email'] } }, message: { type: 'string' } }, required: ['submission_id', 'signers'] } },
 
@@ -777,8 +779,16 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (ctx.role === 'agent' && d.agent_id !== ctx.userId && !((d.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That deal isn't assigned to you" });
         // Ids alone are opaque: name the tagged contacts so "who's on this deal?" is answerable.
         const tagIds = ((d.tagged_contact_ids as string[] | null) ?? []);
-        const { data: tagRows } = tagIds.length ? await db.from('crm_clients').select('id, first_name, last_name, business_name, type').in('id', tagIds) : { data: [] as any[] };
-        return j({ ...d, tagged_contacts: (tagRows ?? []).map(c => ({ id: c.id, name: contactLabel(c), type: c.type })) });
+        const ids = [...new Set([...(d.client_id ? [d.client_id as string] : []), ...tagIds])];
+        const { data: tagRows } = ids.length ? await db.from('crm_clients').select('id, first_name, last_name, business_name, type, email, phone, cell_phone').in('id', ids) : { data: [] as any[] };
+        // A contact's type hints at which side of a document they sign for (the agent still confirms it).
+        const ROLE_HINT: Record<string, string> = { Tenant: 'client', Buyer: 'buyer', Seller: 'seller', 'Landlord/Investor': 'landlord', Broker: 'agent', Agent: 'agent' };
+        const card = (c: any) => ({ id: c.id, name: contactLabel(c), type: c.type, role_hint: ROLE_HINT[c.type as string] ?? null, email: c.email || null, phone: c.cell_phone || c.phone || null });
+        const primary = (tagRows ?? []).find(c => c.id === d.client_id);
+        const { data: lst } = d.listing_id ? await db.from('crm_listings').select('id, name, address, city, status, type').eq('id', d.listing_id).maybeSingle() : { data: null };
+        const { data: docs } = await db.from('crm_form_submissions').select('id, title, status, updated_at').eq('deal_id', d.id).order('updated_at', { ascending: false }).limit(20);
+        return j({ ...d, primary_contact: primary ? card(primary) : null, tagged_contacts: (tagRows ?? []).filter(c => tagIds.includes(c.id as string)).map(card), property_record: lst ?? null,
+          documents: (docs ?? []).map(x => ({ id: x.id, title: x.title, status: x.status })) });
       }
       case 'create_task': {
         // Don't let a task link to a contact/deal in another workspace.
@@ -1235,6 +1245,34 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           signers: signers.map(s => ({ role: s.role, name: s.name, email: s.email })),
           missing_email_for: noEmail,
           next: `Prepared, NOT sent. It is on the E-Sign page (drafts) and in the document. Tell the agent to look it over; send only when they explicitly say to — then send_for_signature with these roles${noEmail.length ? ` (still need an email for: ${noEmail.join(', ')})` : ''}.` });
+      }
+      case 'esign_status': {
+        let q = db.from('crm_envelopes').select('id, submission_id, deal_id, title, status, created_at, completed_at, voided_at, void_reason, business_unit, created_by').is('archived_at', null).order('created_at', { ascending: false }).limit(40);
+        if (ctx.businessUnit) q = q.eq('business_unit', ctx.businessUnit);
+        if (input.submission_id) q = q.eq('submission_id', input.submission_id);
+        if (input.deal_id) q = q.eq('deal_id', input.deal_id);
+        const hidden = await hiddenDeals(db, ctx);
+        if (hidden.length) q = q.or(`deal_id.is.null,deal_id.not.in.(${hidden.join(',')})`);
+        // An agent sees their own requests and those on deals assigned to them — not a colleague's private ones.
+        if (ctx.role === 'agent') {
+          const { data: mine } = await db.from('crm_deals').select('id').or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
+          const mineIds = (mine ?? []).map(d => d.id as string);
+          q = q.or(`created_by.eq.${ctx.userId}${mineIds.length ? `,deal_id.in.(${mineIds.join(',')})` : ''}`);
+        }
+        const { data: envs, error } = await q;
+        if (error) return j({ error: error.message });
+        const ids = (envs ?? []).map(e => e.id as string);
+        const { data: sg } = ids.length ? await db.from('crm_envelope_signers').select('envelope_id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, reminded_at, reminder_count, email_status').in('envelope_id', ids).order('signing_order') : { data: [] as any[] };
+        const words = String(input.query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+        let rows = (envs ?? []).map(e => ({ ...e, signers: (sg ?? []).filter(x => x.envelope_id === e.id).map(({ envelope_id: _e, ...rest }) => rest) }));
+        if (words.length) rows = rows.filter(r => { const hay = `${r.title ?? ''} ${r.signers.map((x: any) => `${x.name ?? ''} ${x.email ?? ''}`).join(' ')}`.toLowerCase(); return words.every(w => hay.includes(w)); });
+        if (input.only_open) rows = rows.filter(r => r.status === 'sent' || r.status === 'in_progress');
+        if (!input.submission_id && !input.deal_id && !words.length) rows = rows.slice(0, 10);
+        return j(rows.slice(0, 15).map(r => ({
+          envelope_id: r.id, document: r.title, submission_id: r.submission_id, deal_id: r.deal_id, status: r.status, sent_on: r.created_at, completed_at: r.completed_at, voided_at: r.voided_at, void_reason: r.void_reason,
+          waiting_on: r.status === 'sent' || r.status === 'in_progress' ? r.signers.filter((x: any) => x.status !== 'signed').map((x: any) => x.name || x.email) : [],
+          signers: r.signers,
+        })));
       }
       case 'send_for_signature': {
         const signers = Array.isArray(input.signers) ? input.signers : [];
