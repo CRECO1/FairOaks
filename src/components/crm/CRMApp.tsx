@@ -4522,10 +4522,13 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
   // Campaigns list ordering — newest activity first: the most recent of
   // (last sent, last edited, created). Used to sort both the project sections and
-  // the campaigns inside them so the freshest work sits at the top.
+  // the campaigns inside them so the freshest work sits at the top. A FINISHED campaign
+  // (completed or paused) ignores "last edited": tidying an old one (closing it out, moving
+  // it to another project) must not hoist a months-old project above this week's work.
   const campaignRecency = (c: Campaign): number => {
     const ts = (s?: string | null) => { const n = s ? Date.parse(s) : 0; return Number.isFinite(n) ? n : 0; };
-    return Math.max(ts(c.last_sent_at), ts(c.updated_at), ts(c.created_at));
+    const finished = c.status === 'completed' || c.status === 'paused';
+    return Math.max(ts(c.last_sent_at), finished ? 0 : ts(c.updated_at), ts(c.created_at));
   };
   const projectRecency = (projectId: string): number => {
     const cs = campaigns.filter(c => c.project_id === projectId);
