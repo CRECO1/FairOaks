@@ -4,6 +4,7 @@ import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { chicagoToday } from '@/lib/chicago-time';
+import { attachmentParam, encodeHeader, formatAddress } from '@/lib/mime-header';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
@@ -93,12 +94,6 @@ interface Attachment {
   data: string; // base64
 }
 
-// RFC 2047: a header with non-ASCII characters (an en dash in "Letter of Intent – 6609 Blanco Rd.",
-// an accented name) must be encoded, or Gmail reads the raw UTF-8 bytes as Latin-1 and shows "Ã¢Â€Â“".
-function encodeHeader(v: string): string {
-  return /^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${Buffer.from(v, 'utf8').toString('base64')}?=`;
-}
-
 function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attachment[]): string {
   if (!attachments.length) {
     return [...headers, '', htmlBody].join('\r\n');
@@ -122,9 +117,9 @@ function buildMimeEmail(headers: string[], htmlBody: string, attachments: Attach
   for (const att of attachments) {
     parts.push(
       `--${boundary}`,
-      `Content-Type: ${att.mimeType}; name="${att.name}"`,
+      `Content-Type: ${att.mimeType}; ${attachmentParam('name', att.name)}`,
       'Content-Transfer-Encoding: base64',
-      `Content-Disposition: attachment; filename="${att.name}"`,
+      `Content-Disposition: attachment; ${attachmentParam('filename', att.name)}`,
       '',
       // chunk base64 into 76-char lines per RFC 2045
       att.data.match(/.{1,76}/g)?.join('\r\n') ?? att.data,
@@ -219,7 +214,7 @@ export async function POST(req: NextRequest) {
     const sigDb = createClient(SUPABASE_URL, serviceRoleKey);
     const outBody = withSignature(body, await resolveSignature(sigDb, { agentId: userId }));
 
-    const fromLine = agentName ? `${encodeHeader(agentName)} <${gmailEmail}>` : gmailEmail;
+    const fromLine = formatAddress(agentName, gmailEmail);
     const plainBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
     const emailDate = chicagoToday();
 
