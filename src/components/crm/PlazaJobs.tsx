@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 interface Job {
   id: string; company: string; title: string; summary: string; location: string | null; employment_type: string | null;
   apply_url: string | null; apply_email: string | null; company_url: string | null; featured: boolean; published: boolean; posted_at: string;
+  source?: string; expires_at?: string | null; submitter_name?: string | null; submitter_email?: string | null; submitter_phone?: string | null;
 }
 interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?: boolean }
 
@@ -94,17 +95,26 @@ export default function PlazaJobs({ authToken, showToast, isMobile }: Props) {
 
       {rows === null && <div style={{ color: '#9ca3af' }}>Loading…</div>}
       {rows && rows.length === 0 && !editing && <div style={{ padding: 24, border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>No openings yet.</div>}
+      {(() => {
+        const pend = (rows ?? []).filter(j => j.source === 'community' && !j.published).length;
+        return pend > 0 ? <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community job posting{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish (stays up 60 days).</div> : null;
+      })()}
       <div style={{ display: 'grid', gap: 10 }}>
-        {(rows ?? []).map(j => (
+        {(rows ?? []).slice().sort((a, b) => Number(b.source === 'community' && !b.published) - Number(a.source === 'community' && !a.published)).map(j => (
           <div key={j.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: j.published ? '#16a34a' : '#9ca3af' }}>{j.published ? 'Published' : 'Hidden'}{j.featured ? ' · Featured' : ''}</div>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: j.published ? '#16a34a' : j.source === 'community' ? '#d97706' : '#9ca3af' }}>{j.published ? 'Published' : j.source === 'community' ? 'Pending approval' : 'Hidden'}{j.source === 'community' ? ' · Community post' : ''}{j.featured ? ' · Featured' : ''}</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '2px 0' }}>{j.title}</div>
               <div style={{ fontSize: 13, color: '#6b7280' }}>{j.company}{j.location ? ` · ${j.location}` : ''}</div>
+              {j.source === 'community' && (
+                <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4 }}>
+                  Submitted by {j.submitter_name}{j.submitter_email ? <> · <a href={`mailto:${j.submitter_email}`}>{j.submitter_email}</a></> : null}{j.submitter_phone ? ` · ${j.submitter_phone}` : ''}
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button style={btn} onClick={() => startEdit(j)}>Edit</button>
-              <button style={btn} onClick={() => patch(j, { published: !j.published }, j.published ? 'Hidden' : 'Published — live within 5 minutes')}>{j.published ? 'Hide' : 'Publish'}</button>
+              <button style={btn} onClick={() => patch(j, { published: !j.published }, j.published ? 'Hidden' : 'Published — live within 5 minutes')}>{j.published ? 'Hide' : j.source === 'community' ? 'Approve & publish' : 'Publish'}</button>
               <button style={{ ...btn, color: '#b91c1c' }} onClick={() => remove(j)}>Delete</button>
             </div>
           </div>

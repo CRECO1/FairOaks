@@ -5,7 +5,7 @@ import { adminClient } from '@/lib/supabase-admin';
 // "Hire Local" job board for fairoaksranchplaza.com (plaza_jobs). The public site reads published rows via RLS;
 // everything here is admin-only through the service role.
 
-const FIELDS = 'id, company, title, summary, location, employment_type, apply_url, apply_email, company_url, featured, published, sort_order, posted_at';
+const FIELDS = 'id, company, title, summary, location, employment_type, apply_url, apply_email, company_url, featured, published, sort_order, posted_at, source, expires_at, submitter_name, submitter_email, submitter_phone';
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 const urlOk = (u: string) => !u || /^https?:\/\//i.test(u);
 
@@ -48,7 +48,12 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const { out, error } = clean(b, true);
   if (error || !out) return NextResponse.json({ error }, { status: 400 });
-  if (out.published === true) out.posted_at = new Date().toISOString();   // re-publishing refreshes the posted date
+  if (out.published === true) {
+    out.posted_at = new Date().toISOString();   // re-publishing refreshes the posted date
+    // Community postings stay up for 60 days from approval, then drop off the board by themselves.
+    const cur = await adminClient().from('plaza_jobs').select('source, expires_at').eq('id', id).single();
+    if (cur.data?.source === 'community') out.expires_at = new Date(Date.now() + 60 * 86400_000).toISOString();
+  }
   const { data, error: dbErr } = await adminClient().from('plaza_jobs').update(out).eq('id', id).select(FIELDS).single();
   if (dbErr) { console.error('[plaza-jobs] PATCH', dbErr); return NextResponse.json({ error: 'Could not update' }, { status: 500 }); }
   return NextResponse.json({ job: data });
