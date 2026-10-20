@@ -8311,7 +8311,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div>
                         {/* Pipeline metrics */}
                         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
+                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px', ...(isMobile ? { gridColumn: '1 / -1' } : {}) }}>
                             <div style={{ fontSize: 12, color: '#9ca3af' }}>Scheduled</div>
                             {(() => {
                               const nxt = nextArmed ?? nextDraft;
