@@ -9,6 +9,7 @@ import PlazaJobs from '@/components/crm/PlazaJobs';
 interface Post {
   id: string; slug: string; kind: 'news' | 'event' | 'notice' | 'promo'; title: string; summary: string; body: string;
   starts_at: string | null; location: string | null; published: boolean; published_at: string;
+  source?: string; organizer?: string | null; submitter_name?: string | null; submitter_email?: string | null; submitter_phone?: string | null;
 }
 interface Props { authToken?: string; showToast?: (m: string) => void; isMobile?: boolean }
 
@@ -136,22 +137,31 @@ export default function PlazaPosts({ authToken, showToast, isMobile }: Props) {
       {posts && posts.length === 0 && !editing && (
         <div style={{ padding: 24, border: '1px dashed #d1d5db', borderRadius: 12, color: '#6b7280' }}>No posts yet. Click “＋ New post” to add the first one.</div>
       )}
+      {(() => {
+        const pend = (posts ?? []).filter(p => p.source === 'community' && !p.published).length;
+        return pend > 0 ? <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{pend} community event{pend === 1 ? '' : 's'} waiting for your approval. Review below, edit if needed, then Approve &amp; publish.</div> : null;
+      })()}
       <div style={{ display: 'grid', gap: 10 }}>
-        {(posts ?? []).map(p => (
+        {(posts ?? []).slice().sort((a, b) => Number(b.source === 'community' && !b.published) - Number(a.source === 'community' && !a.published)).map(p => (
           <div key={p.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ minWidth: 0, flex: '1 1 260px' }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: p.published ? '#16a34a' : '#9ca3af' }}>
-                {p.published ? 'Published' : 'Draft'} · {KIND_LABEL[p.kind]}
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .6, textTransform: 'uppercase', color: p.published ? '#16a34a' : p.source === 'community' ? '#d97706' : '#9ca3af' }}>
+                {p.published ? 'Published' : p.source === 'community' ? 'Pending approval' : 'Draft'} · {p.source === 'community' ? 'Community event' : KIND_LABEL[p.kind]}
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', margin: '2px 0' }}>{p.title}</div>
               <div style={{ fontSize: 13, color: '#6b7280' }}>
                 {p.kind === 'event' && p.starts_at ? `${fmt(p.starts_at, true)}${p.location ? ` · ${p.location}` : ''}` : fmt(p.published_at)}
               </div>
+              {p.source === 'community' && (
+                <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 4 }}>
+                  {p.organizer ? `Hosted by ${p.organizer} · ` : ''}Submitted by {p.submitter_name}{p.submitter_email ? <> · <a href={`mailto:${p.submitter_email}`}>{p.submitter_email}</a></> : null}{p.submitter_phone ? ` · ${p.submitter_phone}` : ''}
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {p.published && <a style={{ ...btn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href={`${SITE}/news/${p.slug}`} target="_blank" rel="noopener noreferrer">View</a>}
               <button style={btn} onClick={() => startEdit(p)}>Edit</button>
-              <button style={btn} onClick={() => togglePublish(p)}>{p.published ? 'Unpublish' : 'Publish'}</button>
+              <button style={p.source === 'community' && !p.published ? { ...btn, background: '#16a34a', color: '#fff', borderColor: '#16a34a' } : btn} onClick={() => togglePublish(p)}>{p.published ? 'Unpublish' : p.source === 'community' ? 'Approve & publish' : 'Publish'}</button>
               <button style={{ ...btn, color: '#b91c1c' }} onClick={() => remove(p)}>Delete</button>
             </div>
           </div>

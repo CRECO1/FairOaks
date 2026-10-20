@@ -7,7 +7,7 @@ import { adminClient } from '@/lib/supabase-admin';
 // everything here is admin-only and goes through the service role.
 
 const KINDS = ['news', 'event', 'notice', 'promo'] as const;
-const FIELDS = 'id, slug, kind, title, summary, body, starts_at, location, published, published_at, created_at';
+const FIELDS = 'id, slug, kind, title, summary, body, starts_at, location, published, published_at, created_at, source, organizer, submitter_name, submitter_email, submitter_phone';
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 function slugify(title: string) {
