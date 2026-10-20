@@ -1016,7 +1016,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // it, so the many places that reset newCampaign don't all have to know about it.
   const [campaignListingId, setCampaignListingId] = useState('');
   const [propertyOptions, setPropertyOptions] = useState<{ id: string; name: string; address: string | null; status: string | null }[]>([]);
-  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string; project_id: string; hold_risky_addresses?: boolean }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
+  const [newCampaign, setNewCampaign] = useState<{ name: string; description: string; type: 'email' | 'sms'; frequency: string; send_date: string; send_time: string; send_day_of_month: string; status: string; email_subject: string; email_body: string; sms_body: string; sender_agent_id: string; project_id: string; hold_risky_addresses?: boolean; copy_from?: string; copy_from_name?: string; copy_count?: number; copy_personalised?: number; copy_recipients?: boolean }>({ name: '', description: '', type: 'email', frequency: 'monthly', send_date: '', send_time: '08:00', send_day_of_month: '', status: 'draft', email_subject: '', email_body: '', sms_body: '', sender_agent_id: '', project_id: '' });
   const [enrollClientSearch, setEnrollClientSearch] = useState('');
   const [selectedEnrollIds, setSelectedEnrollIds] = useState<string[]>([]);
   const [enrollTypeFilter, setEnrollTypeFilter] = useState('');
@@ -1172,7 +1172,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [bulkReassigning, setBulkReassigning] = useState(false);
 
   // Campaign completed filter
-  const [campaignFilter, setCampaignFilter] = useState<'all' | 'active' | 'draft' | 'paused' | 'completed'>('all');
+  // The page opens on the ACTIVE campaigns (what is going out right now); if nothing is active it falls back to All, so it never opens empty.
+  const [campaignFilter, setCampaignFilter] = useState<'all' | 'active' | 'draft' | 'paused' | 'completed'>('active');
+  const campaignFilterChosen = useRef(false);   // true once the user has picked a filter themselves — the fallback above must not override that
+  const pickCampaignFilter = (f: 'all' | 'active' | 'draft' | 'paused' | 'completed') => { campaignFilterChosen.current = true; setCampaignFilter(f); };
   const [campaignSearch, setCampaignSearch] = useState('');
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<string>>(new Set());
   const [openRowMenuId, setOpenRowMenuId] = useState<string | null>(null);
@@ -3850,7 +3853,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     try {
       const res = await fetch(`/api/campaigns?unit=${businessUnit}`, { headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {} });
       const j = await res.json();
-      if (res.ok) { setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); if (!opts?.quick) refreshEngagementCounts(); }
+      if (res.ok) {
+        setCampaigns(j.campaigns ?? []); setEngagementTotals(j.engagement_totals ?? null); if (!opts?.quick) refreshEngagementCounts();
+        if (!campaignFilterChosen.current && !((j.campaigns ?? []) as { status: string }[]).some(c => c.status === 'active')) setCampaignFilter('all');   // nothing active: open on All, not an empty page
+      }
       else { showToast(`Could not load campaigns: ${j.error ?? res.status}`); }
     } catch (err) {
       showToast('Network error loading campaigns');
@@ -3941,6 +3947,27 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     setCampaigns(prev => prev.map(c => c.id === campaignId ? { ...c, project_id: projectId } : c));
   }
 
+  // Duplicate: open the builder pre-filled from an existing campaign, as a NEW draft (no send date, nobody emailed). The builder
+  // offers to carry the recipient list over too. It goes through the builder rather than saving straight away because a one-time
+  // campaign needs a send date, and the copy should be reviewed (name, subject, date) before it exists.
+  async function startDuplicate(camp: Campaign) {
+    let full: Campaign;
+    try { full = await ensureCampaignBody(camp); } catch { return; }
+    let count = 0, personalised = 0;
+    try {
+      const r = await fetch(`/api/campaigns/${camp.id}/enrollments`, { headers: { Authorization: `Bearer ${session!.access_token}` } });
+      if (r.ok) {
+        const rows = ((await r.json()).enrollments ?? []) as { client: { unsubscribed_at?: string | null } | null; merge_fields: Record<string, unknown> | null }[];
+        const usable = rows.filter(e => e.client && !e.client.unsubscribed_at);
+        count = usable.length; personalised = usable.filter(e => Object.keys(e.merge_fields ?? {}).length > 0).length;
+      }
+    } catch { /* the copy still works without the recipient count */ }
+    setActiveCampaign(null);
+    setCampaignListingId((full as { listing_id?: string | null }).listing_id ?? '');
+    setNewCampaign({ name: `${full.name} (copy)`, description: full.description, type: full.type, frequency: full.frequency, send_date: '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: 'draft', email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses, copy_from: camp.id, copy_from_name: camp.name, copy_count: count, copy_personalised: personalised, copy_recipients: false });
+    setCampaignView('builder');
+  }
+
   async function saveCampaign() {
     // Always grab the freshest content — editor ref if mounted, otherwise state
     const latestEmailBody = (emailEditorMode === 'rich' && emailEditorRef.current?.innerHTML)
@@ -3960,7 +3987,18 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       const j = await res.json();
       if (!res.ok) { showToast('Error: ' + (j.error ?? 'Save failed')); }
       else {
-        showToast(activeCampaign ? 'Campaign updated' : 'Campaign created');
+        let copied = 0;
+        if (!activeCampaign && newCampaign.copy_from && newCampaign.copy_recipients && j.campaign?.id) {
+          try {
+            const r = await fetch(`/api/campaigns/${newCampaign.copy_from}/enrollments`, { headers: { Authorization: `Bearer ${session!.access_token}` } });
+            const ids = r.ok ? (((await r.json()).enrollments ?? []) as { client_id: string; client: { unsubscribed_at?: string | null } | null }[]).filter(e => e.client && !e.client.unsubscribed_at).map(e => e.client_id) : [];
+            if (ids.length) {
+              const er = await fetch(`/api/campaigns/${j.campaign.id}/enrollments`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session!.access_token}` }, body: JSON.stringify({ client_ids: ids, enrolled_by: session!.user.id }) });
+              if (er.ok) copied = ((await er.json()).enrolled as number) ?? ids.length;
+            }
+          } catch { /* the copy exists; recipients can be added from Manage */ }
+        }
+        showToast(activeCampaign ? 'Campaign updated' : copied ? `Campaign duplicated with ${copied} recipient${copied !== 1 ? 's' : ''} — still a draft` : newCampaign.copy_from ? 'Campaign duplicated as a draft' : 'Campaign created');
         if (goingLive && j.campaign?.id) setPreflightFor([{ id: j.campaign.id, name: j.campaign.name ?? newCampaign.name, type: j.campaign.type ?? newCampaign.type }]);
         setEmailEditorMode('rich');
         setCampaignView('list');
@@ -8224,7 +8262,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', zIndex: 41, minWidth: 190, overflow: 'hidden', fontSize: 13 }}>
                                 <button onClick={() => { openCampaignPreview(camp); setOpenRowMenuId(null); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>👁 Preview email</button>
                                 {isAdmin && <button onClick={async () => { setOpenRowMenuId(null); let full: Campaign; try { full = await ensureCampaignBody(camp); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>✎ Edit campaign</button>}
-                                {isAdmin && <button title="Opens the builder pre-filled with this campaign's email, as a NEW draft with nobody enrolled" onClick={async () => { setOpenRowMenuId(null); let full: Campaign; try { full = await ensureCampaignBody(camp); } catch { return; } setActiveCampaign(null); setNewCampaign({ name: `${full.name} (copy)`, description: full.description, type: full.type, frequency: full.frequency, send_date: '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: 'draft', email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>⧉ Copy as new draft</button>}
+                                {isAdmin && <button title="Opens the builder pre-filled with this campaign, as a NEW draft — nobody is emailed" onClick={() => { setOpenRowMenuId(null); startDuplicate(camp); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none', borderTop: '1px solid #f3f4f6', background: 'none', cursor: 'pointer', color: '#374151', fontFamily: "'DM Sans',sans-serif" }}>⧉ Duplicate</button>}
                                 {isAdmin && campaignProjects.length > 0 && (
                                   <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 14px' }}>
                                     <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 5 }}>Move to project</div>
@@ -8304,7 +8342,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '11px 14px', marginBottom: 16, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
                             <span style={{ fontSize: 16 }}>⚠️</span>
                             <div style={{ flex: 1, fontSize: 13, color: '#92400e', minWidth: isMobile ? '100%' : 0 }}>{scheduledDrafts.length} campaign{scheduledDrafts.length !== 1 ? 's have' : ' has'} a send date but {scheduledDrafts.length !== 1 ? 'are' : 'is'} still in draft — {scheduledDrafts.length !== 1 ? 'they' : 'it'} won&apos;t send until activated.</div>
-                            <button className="crm-btn crm-btn-sm" style={{ background: '#111', color: '#fff', border: 'none', whiteSpace: 'nowrap', ...(isMobile ? { width: '100%', minHeight: 40 } : {}) }} onClick={() => { setCampaignFilter('draft'); setCampaignSearch(''); setExpandedProjects(new Set([...campaignProjects.map(p => p.id), '__ungrouped__'])); }}>Review drafts</button>
+                            <button className="crm-btn crm-btn-sm" style={{ background: '#111', color: '#fff', border: 'none', whiteSpace: 'nowrap', ...(isMobile ? { width: '100%', minHeight: 40 } : {}) }} onClick={() => { pickCampaignFilter('draft'); setCampaignSearch(''); setExpandedProjects(new Set([...campaignProjects.map(p => p.id), '__ungrouped__'])); }}>Review drafts</button>
                           </div>
                         )}
 
@@ -8317,8 +8355,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                         {/* Filter pills + summary */}
                         <div style={{ display: 'flex', gap: isMobile ? 7 : 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-                          {(['all', 'active', 'draft', 'paused', 'completed'] as const).map(f => (
-                            <button key={f} onClick={() => setCampaignFilter(f)}
+                          {(['active', 'all', 'draft', 'paused', 'completed'] as const).map(f => (
+                            <button key={f} onClick={() => pickCampaignFilter(f)}
                               style={{ padding: isMobile ? '8px 14px' : '4px 14px', minHeight: isMobile ? 38 : undefined, borderRadius: 20, fontSize: 13, cursor: 'pointer', border: '1px solid', fontFamily: "'DM Sans',sans-serif", fontWeight: 600, background: campaignFilter === f ? '#111' : '#fff', color: campaignFilter === f ? '#fff' : '#6b7280', borderColor: campaignFilter === f ? '#111' : '#e5e7eb', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
                               {f === 'all' ? `All (${allFiltered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${allFiltered.filter(c => c.status === f).length})`}
                             </button>
@@ -8383,7 +8421,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ textAlign: 'center', padding: 44, background: '#f9fafb', borderRadius: 12, border: '1px dashed #e5e7eb' }}>
                             <div style={{ fontSize: 15, fontWeight: 600, color: '#374151', marginBottom: 4 }}>No campaigns match</div>
                             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 14 }}>Try a different search or filter.</div>
-                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setCampaignSearch(''); setCampaignFilter('all'); }}>Clear filters</button>
+                            <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={() => { setCampaignSearch(''); pickCampaignFilter('all'); }}>Clear filters</button>
                           </div>
                         ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -8668,6 +8706,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={async () => { let full: Campaign; try { full = await ensureCampaignBody(activeCampaign); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }}>Edit</button>
                         {activeCampaign.status !== 'active' && activeCampaign.status !== 'completed' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
+                        <button className="crm-btn crm-btn-ghost crm-btn-sm" title="Make a new draft from this campaign" onClick={() => startDuplicate(activeCampaign)}>⧉ Duplicate</button>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
                       </div>
                     )}
@@ -8700,7 +8739,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       {/* Enroll new clients — not on a finished campaign (it has already sent; adding people to it does nothing) */}
                       {activeCampaign.status === 'completed' ? (
                         <div style={{ background: '#eff6ff', border: '1px solid #dbeafe', borderRadius: 10, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#1e40af' }}>
-                          ✓ This campaign has finished sending. Everyone it went to is listed below. To email more people, use “Copy as new draft” in the ⋯ menu on the campaigns list.
+                          ✓ This campaign has finished sending. Everyone it went to is listed below. To email more people, use Duplicate (here, or in the ⋯ menu on the campaigns list).
                         </div>
                       ) : (
                         <>
@@ -9141,8 +9180,19 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 <div style={{ maxWidth: 680 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
                     <button onClick={() => { setCampaignView(activeCampaign ? 'detail' : 'list'); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#6b7280', padding: 0 }}>←</button>
-                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{activeCampaign ? 'Edit Campaign' : 'New Campaign'}</h2>
+                    <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 24, fontWeight: 700, color: '#111' }}>{activeCampaign ? 'Edit Campaign' : newCampaign.copy_from ? 'Duplicate Campaign' : 'New Campaign'}</h2>
                   </div>
+                  {!activeCampaign && newCampaign.copy_from && (
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: '#92400e' }}>
+                      <div>Copying <strong>{newCampaign.copy_from_name}</strong>. It saves as a <strong>draft</strong> — nothing is emailed until you activate it. Set a new send date below.</div>
+                      {(newCampaign.copy_count ?? 0) > 0 && (
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, cursor: 'pointer', color: '#78350f' }}>
+                          <input type="checkbox" checked={!!newCampaign.copy_recipients} onChange={e => setNewCampaign({ ...newCampaign, copy_recipients: e.target.checked })} style={{ marginTop: 2, accentColor: '#c9922c' }} />
+                          <span>Also copy its {newCampaign.copy_count} recipient{newCampaign.copy_count !== 1 ? 's' : ''} (people who unsubscribed are left out){(newCampaign.copy_personalised ?? 0) > 0 ? ` — ${newCampaign.copy_personalised} have personalised fields (e.g. their own report link) that are NOT copied` : ''}</span>
+                        </label>
+                      )}
+                    </div>
+                  )}
 
                   {/* Basics */}
                   <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 20, marginBottom: 16 }}>
