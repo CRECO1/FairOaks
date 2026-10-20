@@ -1003,7 +1003,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // Campaign projects (folders)
   const [campaignProjects, setCampaignProjects] = useState<{ id: string; name: string; description: string; color: string }[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
-  const [projectMenu, setProjectMenu] = useState<string | null>(null);   // which project's ⋯ menu is open
+  const [projectMenu, setProjectMenu] = useState<string | null>(null);
+  const [campaignSort, setCampaignSort] = useState<'recent' | 'name' | 'status'>('recent');   // how campaigns are ordered inside each project   // which project's ⋯ menu is open
   const [showAddProject, setShowAddProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
@@ -4529,6 +4530,16 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
     const ts = (s?: string | null) => { const n = s ? Date.parse(s) : 0; return Number.isFinite(n) ? n : 0; };
     const finished = c.status === 'completed' || c.status === 'paused';
     return Math.max(ts(c.last_sent_at), finished ? 0 : ts(c.updated_at), ts(c.created_at));
+  };
+  // Order inside a project: newest first (default), by name (sequences like A1/A2/A3 sit together), or by status
+  // (active, draft, paused, completed — what needs attention first).
+  const sortCampaigns = (list: Campaign[]): Campaign[] => {
+    const rank: Record<string, number> = { active: 0, draft: 1, paused: 2, completed: 3 };
+    const byName = (a: Campaign, b: Campaign) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    return [...list].sort((a, b) =>
+      campaignSort === 'name' ? byName(a, b)
+      : campaignSort === 'status' ? (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || campaignRecency(b) - campaignRecency(a)
+      : campaignRecency(b) - campaignRecency(a));
   };
   const projectRecency = (projectId: string): number => {
     const cs = campaigns.filter(c => c.project_id === projectId);
@@ -8133,11 +8144,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             so the metric columns wrap onto a second line instead of
                             squeezing the campaign name down to a few characters. */}
                         <div style={{ flex: isMobile ? '1 1 calc(100% - 50px)' : 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 7, marginBottom: 3, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: 7, marginBottom: 3, flexWrap: 'wrap' }}>
                             {/* These names differ only in their tail ("… Medical A2",
                                 "… A3"), so ellipsing on a phone hides the one part that
                                 tells them apart. Wrap instead. */}
-                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111', minWidth: 0, ...(isMobile ? { lineHeight: 1.35, overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }) }}>{camp.name}</span>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111', minWidth: 0, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{camp.name}</span>
                             <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: .5, padding: '2px 7px', borderRadius: 10, textTransform: 'uppercase', background: camp.status === 'active' ? '#dcfce7' : camp.status === 'completed' ? '#dbeafe' : camp.status === 'paused' ? '#fef3c7' : '#f3f4f6', color: camp.status === 'active' ? '#166534' : camp.status === 'completed' ? '#1e40af' : camp.status === 'paused' ? '#92400e' : '#6b7280' }}>{camp.status}</span>
                           </div>
                           <div style={{ fontSize: 12, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -8173,10 +8184,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   style={{ border: 'none', cursor: 'pointer', borderRadius: 14, padding: isMobile ? '6px 11px' : '3px 10px', fontSize: 12.5, fontWeight: 700, fontFamily: "'DM Sans',sans-serif", whiteSpace: 'nowrap', background: (camp.to_call_count ?? 0) > 0 ? '#fee2e2' : '#dcfce7', color: (camp.to_call_count ?? 0) > 0 ? '#991b1b' : '#166534' }}>
                                   {(camp.to_call_count ?? 0) > 0 ? `🔥 ${camp.to_call_count} to call` : `✓ ${camp.engaged_count} engaged`}
                                 </button>
-                              ) : (
-                                <div style={{ fontSize: 12, color: '#9ca3af' }}>No one engaged yet</div>
-                              )}
-                              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 3, whiteSpace: 'nowrap' }}>{sent} sent → {camp.engaged_count ?? 0} engaged</div>
+                              ) : null}
+                              <div style={{ fontSize: (camp.engaged_count ?? 0) > 0 ? 11 : 12, color: '#6b7280', marginTop: (camp.engaged_count ?? 0) > 0 ? 3 : 0, whiteSpace: 'nowrap' }}>{sent} sent → {camp.engaged_count ?? 0} engaged</div>
                               {camp.open_rate != null && <div title="Apple Mail opens every email it delivers, so opens overstate real reads" style={{ fontSize: 11, color: '#b0b0b0', whiteSpace: 'nowrap' }}>{camp.open_rate}% opened{camp.click_rate != null ? ` · ${camp.click_rate}% clicked` : ''}</div>}
                             </div>
                           ) : (
@@ -8184,7 +8193,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           )}
                         </div>
                         {/* Actions: Activate/Pause · Manage · overflow menu */}
-                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, alignItems: 'center', position: 'relative', ...(isMobile ? { width: '100%' } : {}) }}>
+                        <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, alignItems: 'center', position: 'relative', ...(isMobile ? { width: '100%' } : { minWidth: 322, justifyContent: 'flex-end' }) }}>
                           {isAdmin && camp.status === 'draft' && (
                             <button className="crm-btn crm-btn-sm" disabled={busyCampaignId === camp.id} title="Activate — schedules real sends to enrolled contacts" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: busyCampaignId === camp.id ? 'default' : 'pointer', whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, minHeight: 44, padding: '5px 8px' } : {}) }} onClick={() => setCampaignStatusFromList(camp.id, 'active', camp.name)}>{busyCampaignId === camp.id ? '…' : '▶ Activate'}</button>
                           )}
@@ -8302,6 +8311,15 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                               {f === 'all' ? `All (${allFiltered.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${allFiltered.filter(c => c.status === f).length})`}
                             </button>
                           ))}
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#9ca3af', fontFamily: "'DM Sans',sans-serif", marginLeft: isMobile ? 0 : 6 }}>
+                            Sort
+                            <select value={campaignSort} onChange={e => setCampaignSort(e.target.value as 'recent' | 'name' | 'status')} aria-label="Sort campaigns inside each project"
+                              style={{ fontSize: 12.5, fontFamily: "'DM Sans',sans-serif", color: '#374151', border: '1px solid #e5e7eb', borderRadius: 8, padding: isMobile ? '8px 8px' : '3px 6px', background: '#fff', minHeight: isMobile ? 38 : undefined }}>
+                              <option value="recent">Newest first</option>
+                              <option value="name">Name (A–Z)</option>
+                              <option value="status">Status</option>
+                            </select>
+                          </label>
                           {(() => {
                             // Real click rate across sent campaigns: human clickers / emails sent
                             // (spam-filter link checks excluded). Replaces "avg open rate", which
@@ -8362,7 +8380,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                             const rank = (pr: typeof a) => (pr.name.trim().toLowerCase() === 'retired' ? 2 : visibleCampaigns.some(c => c.project_id === pr.id) ? 0 : 1);
                             return rank(a) - rank(b) || projectRecency(b.id) - projectRecency(a.id);
                           }).map(project => {
-                            const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id).sort((a, b) => campaignRecency(b) - campaignRecency(a));
+                            const projectCampaigns = sortCampaigns(visibleCampaigns.filter(c => c.project_id === project.id));
                             const isExpanded = expandedProjects.has(project.id);
                             return (
                               <div key={project.id} style={{ border: `1px solid #e5e7eb`, borderRadius: 14, overflow: 'hidden' }}>
@@ -8441,7 +8459,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
 
                           {/* Ungrouped campaigns */}
                           {(() => {
-                            const ungrouped = visibleCampaigns.filter(c => !c.project_id).sort((a, b) => campaignRecency(b) - campaignRecency(a));
+                            const ungrouped = sortCampaigns(visibleCampaigns.filter(c => !c.project_id));
                             if (ungrouped.length === 0 && campaignProjects.length > 0) return null;
                             const isExpanded = expandedProjects.has('__ungrouped__');
                             return (
