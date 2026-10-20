@@ -141,6 +141,24 @@ async function loadEmailAttachments(db: SupabaseClient, ctx: AgentCtx, refs: unk
   return { files };
 }
 
+/** An existing contact in this workspace that a create_contact would duplicate: same email, or same full name + phone. */
+async function findDuplicateContact(db: SupabaseClient, ctx: AgentCtx, input: Record<string, any>): Promise<{ id: string; label: string; email: string | null; why: string } | null> {
+  const unit = ctx.businessUnit ?? 'commercial';
+  const email = String(input.email ?? '').trim().toLowerCase();
+  if (email) {
+    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email').eq('business_unit', unit).ilike('email', email).limit(1);
+    const c = data?.[0];
+    if (c) return { id: c.id, label: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || 'a contact', email: c.email, why: 'the same email address' };
+  }
+  const digits = String(input.phone ?? input.cell_phone ?? '').replace(/\D/g, '').slice(-10);
+  if (digits.length === 10 && (input.first_name || input.last_name)) {
+    const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone').eq('business_unit', unit).ilike('first_name', String(input.first_name ?? '').trim() || '%').ilike('last_name', String(input.last_name ?? '').trim() || '%').limit(10);
+    const c = (data ?? []).find(x => [x.phone, x.cell_phone].some(p => String(p ?? '').replace(/\D/g, '').slice(-10) === digits));
+    if (c) return { id: c.id, label: [c.first_name, c.last_name].filter(Boolean).join(' ') || c.business_name || 'a contact', email: c.email, why: 'the same name and phone number' };
+  }
+  return null;
+}
+
 /** Load a deal for a write: in workspace, and for an agent one they own or are assigned to. */
 async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: string): Promise<Record<string, any> | string> {
   const { data: d } = await db.from('crm_deals').select('*').eq('id', dealId).maybeSingle();
@@ -1159,8 +1177,10 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         for (const f of ['first_name', 'last_name', 'business_name', 'email', 'phone', 'cell_phone', 'brokerage', 'notes', 'lead_source']) {
           if (input[f]) row[f] = String(input[f]).trim();
         }
+        const dup = await findDuplicateContact(db, ctx, input);
+        if (dup) return j({ error: `Not added — ${dup.label} is already in the CRM with ${dup.why}. I didn’t create a duplicate.`, duplicate: true, existing_contact_id: dup.id, hint: 'Offer to open or update that contact (open_record / update_contact) instead.' });
         const { data, error } = await db.from('crm_clients').insert(row).select('id, first_name, last_name, business_name, email, type').single();
-        if (error) return j({ error: error.message });
+        if (error) return j({ error: /idx_crm_clients_email_bu|duplicate key/i.test(error.message) ? 'Not added — a contact with that email address is already in the CRM. I didn’t create a duplicate.' : error.message });
         await logCopilot(db, ctx, `Added contact “${data.business_name || `${data.first_name ?? ''} ${data.last_name ?? ''}`.trim()}”`, data.id);
         return j({ ok: true, created: data });
       }
@@ -1337,6 +1357,13 @@ export async function describeWriteRich(name: string, input: Record<string, any>
         }
         return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>${ccLine}\nSubject: ${input.subject}${attLine}\n\n${body.slice(0, 1200)}${body.length > 1200 ? '…' : ''}`;
       }
+    } catch { /* fall through to the generic text */ }
+  }
+  if (name === 'create_contact') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const dup = await findDuplicateContact(db, ctx, input);
+      if (dup) return `⚠️ ${dup.label} is ALREADY in the CRM with ${dup.why} — confirming will not add a duplicate. (Ask me to open or update that contact instead.)`;
     } catch { /* fall through to the generic text */ }
   }
   // Deal writes carry opaque ids: show the agent WHO and WHAT they're approving, and warn about a duplicate up front.
