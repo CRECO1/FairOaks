@@ -61,6 +61,7 @@ export default function JoinPage() {
 
     const data = new FormData(e.currentTarget);
     const payload = {
+      website: data.get('website'),
       name: data.get('name'),
       email: data.get('email'),
       phone: data.get('phone'),
@@ -167,6 +168,7 @@ export default function JoinPage() {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-5">
+                    <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="sr-only" />
                     {/* Name + Email */}
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                       <div>

@@ -81,6 +81,7 @@ export default function CareersPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          website: data.get('website'),
           name: data.get('name'),
           email: data.get('email'),
           phone: data.get('phone'),
@@ -342,6 +343,7 @@ export default function CareersPage() {
                   </div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-5">
+                    <input type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="sr-only" />
                     <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                       <div>
                         <label className="label-readable">Full Name *</label>
