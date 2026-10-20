@@ -15,6 +15,7 @@ import DocPreviewModal from '@/components/crm/DocPreviewModal';
 import CrmShield, { detectAutomation, reportSecurityEvent } from '@/components/crm/CrmShield';
 import { agentTitle } from '@/lib/agent-title';
 import { recallView, rememberView, useRememberedSelection, useRememberedState } from '@/lib/view-memory';
+import { chicagoFormat } from '@/lib/chicago-time';
 import DealDocUpload from '@/components/crm/DealDocUpload';
 import AssistantPanel from '@/components/crm/AssistantPanel';
 import CopilotActivity from '@/components/crm/CopilotActivity';
@@ -124,7 +125,7 @@ function historyOrder<T extends HistoryRow>(mode: HistorySort) {
   };
 }
 
-interface CampaignSend { last_open_at?: string | null; id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
+interface CampaignSend { last_open_at?: string | null; open_times?: string[]; id: string; campaign_id: string; client_id: string; type: 'email' | 'sms'; status: 'sent' | 'failed' | 'skipped'; sent_at: string; subject?: string; body_preview?: string; error_message?: string | null; tracking_id?: string | null; opened_at?: string | null; open_count?: number | null; }
 interface Commission { id: string; deal_id: string; agent_id?: string; business_unit: string; sale_price: number; deal_type?: string; commission_rate: number; gross_commission: number; agent_split: number; agent_net: number; brokerage_net: number; referral_fee: number; referral_to?: string; transaction_fee: number; status: 'pending' | 'paid' | 'disputed'; close_date?: string; paid_date?: string; notes?: string; created_at: string; deal?: { id: string; client: string; property: string; type: string }; agent?: { id: string; first_name: string; last_name: string }; }
 
 const LEAD_SOURCES = ['Zillow', 'Realtor.com', 'Crexi', 'Referral', 'Website', 'Social Media', 'Open House', 'Sign Call', 'Cold Call', 'Direct Mail', 'Other'];
@@ -979,6 +980,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   const [campaignEnrollmentsLoading, setCampaignEnrollmentsLoading] = useState(false);
   const [campaignSends, setCampaignSends] = useState<CampaignSend[]>([]);
   const [historySort, setHistorySort] = useState<HistorySort>('opens');
+  // History rows whose exact open times are expanded (send id → open).
+  const [opensShown, setOpensShown] = useState<Record<string, boolean>>({});
   const [planSends, setPlanSends] = useState<ActionPlanSendRow[]>([]);
   const [planSendsLoading, setPlanSendsLoading] = useState(false);
   const [planHistorySort, setPlanHistorySort] = useState<HistorySort>('opens');
@@ -4132,7 +4135,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .select('client_id, occurred_at').eq('campaign_id', campaignId).eq('event_type', 'open').order('id').range(a, b));
     const latest = new Map<string, string>();
     for (const o of opens) { const cur = latest.get(o.client_id); if (!cur || o.occurred_at > cur) latest.set(o.client_id, o.occurred_at); }
-    setCampaignSends((data ?? []).map(s => ({ ...s, last_open_at: latest.get(s.client_id) ?? null })));
+    // Every open with its exact time, filed under the send it followed: a person on a recurring campaign has one send per
+    // round, so an open belongs to the newest send of theirs that went out before it.
+    const sendsBy = new Map<string, CampaignSend[]>();
+    for (const s of data ?? []) { const l = sendsBy.get(s.client_id) ?? []; l.push(s); sendsBy.set(s.client_id, l); }
+    const times = new Map<string, string[]>();
+    const file = (clientId: string, at: string) => {
+      const list = (sendsBy.get(clientId) ?? []).filter(x => x.sent_at <= at).sort((x, y) => (x.sent_at < y.sent_at ? 1 : -1));
+      const target = list[0] ?? (sendsBy.get(clientId) ?? [])[0];
+      if (target) times.set(target.id, [...(times.get(target.id) ?? []), at]);
+    };
+    for (const o of opens) file(o.client_id, o.occurred_at);
+    // Our own pixel also stamps the FIRST open; add it when the provider's log has nothing within 5 minutes of it.
+    for (const s of data ?? []) {
+      if (!s.opened_at) continue;
+      const have = times.get(s.id) ?? [];
+      if (!have.some(t => Math.abs(new Date(t).getTime() - new Date(s.opened_at!).getTime()) < 5 * 60_000)) times.set(s.id, [...have, s.opened_at]);
+    }
+    setCampaignSends((data ?? []).map(s => ({ ...s, last_open_at: latest.get(s.client_id) ?? null, open_times: (times.get(s.id) ?? []).sort().reverse() })));
   }
 
   async function enrollClients(campaignId: string) {
@@ -9024,8 +9044,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                 const isOpened = !!s.opened_at;
                                 const isTracked = !!s.tracking_id;
                                 const isFailed = s.status === 'failed';
+                                const times = s.open_times ?? [];
+                                const shown = !!opensShown[s.id];
                                 return (
-                                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? '#f0fdf4' : isFailed ? '#fff5f5' : '#fff', borderRadius: 10, borderLeft: `3px solid ${isOpened ? '#22c55e' : isFailed ? '#ef4444' : '#e5e7eb'}` }}>
+                                  <div key={s.id}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: isOpened ? '#f0fdf4' : isFailed ? '#fff5f5' : '#fff', borderRadius: shown ? '10px 10px 0 0' : 10, borderLeft: `3px solid ${isOpened ? '#22c55e' : isFailed ? '#ef4444' : '#e5e7eb'}` }}>
                                     {/* Avatar */}
                                     <div style={{ width: 36, height: 36, borderRadius: '50%', background: isOpened ? '#dcfce7' : '#f3f4f6', color: isOpened ? '#16a34a' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
                                       {initial}
@@ -9041,10 +9064,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     {/* Open status */}
                                     {s.status === 'sent' && s.type === 'email' && (
                                       isOpened ? (
-                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                          <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>Opened{s.open_count && s.open_count > 1 ? ` ×${s.open_count}` : ''}</div>
+                                        <button type="button" onClick={() => setOpensShown(o => ({ ...o, [s.id]: !o[s.id] }))} aria-expanded={shown} title="Show every time this was opened"
+                                          style={{ textAlign: 'right', flexShrink: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}>
+                                          <div style={{ fontSize: 12, fontWeight: 600, color: '#15803d' }}>Opened{Math.max(s.open_count ?? 0, times.length) > 1 ? ` ×${Math.max(s.open_count ?? 0, times.length)}` : ''} {shown ? '▴' : '▾'}</div>
                                           {s.opened_at && <div style={{ fontSize: 11, color: '#86efac' }}>{new Date(s.last_open_at ?? s.opened_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</div>}
-                                        </div>
+                                        </button>
                                       ) : isTracked ? (
                                         <div style={{ fontSize: 12, color: '#d1d5db', flexShrink: 0 }}>Not opened</div>
                                       ) : null
@@ -9055,6 +9079,24 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                     <div style={{ fontSize: 12, color: '#9ca3af', flexShrink: 0, textAlign: 'right', minWidth: 48 }}>
                                       {new Date(s.sent_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                     </div>
+                                  </div>
+                                  {shown && (
+                                    <div style={{ background: '#f0fdf4', borderRadius: '0 0 10px 10px', borderLeft: '3px solid #22c55e', padding: '4px 12px 10px 63px' }}>
+                                      <div style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 6px' }}>{times.length > 1 ? `${times.length} opens` : 'Opened'} · Central time · newest first</div>
+                                      {times.length === 0 ? <div style={{ fontSize: 12, color: '#6b7280' }}>No individual times were logged for this one.</div> : (
+                                        <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 3 }}>
+                                          {times.map((t, i) => (
+                                            <li key={t + i} style={{ fontSize: 12.5, color: '#166534', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                              <span style={{ color: '#9ca3af', minWidth: 18 }}>{times.length - i}.</span>
+                                              <span style={{ fontWeight: 600 }}>{chicagoFormat(new Date(t), { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                              <span>{chicagoFormat(new Date(t), { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</span>
+                                              {i === times.length - 1 && <span style={{ color: '#9ca3af' }}>first open</span>}
+                                            </li>
+                                          ))}
+                                        </ol>
+                                      )}
+                                    </div>
+                                  )}
                                   </div>
                                 );
                               })}
