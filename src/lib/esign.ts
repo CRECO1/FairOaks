@@ -109,6 +109,17 @@ export function reminderEmail(unit: string, opts: { signerName: string; docTitle
   return { subject: `Reminder — please sign: ${friendlyTitle(opts.docTitle)}`, html: shell(brandName(unit), body) };
 }
 
+// Tells the sender a signature just landed and who has it now — so a request that is
+// moving doesn't have to be checked on. Sent per signature, except the last (that one gets
+// the completion email with the executed copy).
+export function signedProgressEmail(unit: string, opts: { senderName: string; signerName: string; docTitle: string; nextName?: string; signed: number; total: number }) {
+  const t = friendlyTitle(opts.docTitle);
+  const body = `<p>Hi ${esc(opts.senderName)},</p>
+    <p><strong>${esc(opts.signerName)}</strong> signed <strong>${esc(t)}</strong> (${opts.signed} of ${opts.total}).</p>
+    ${opts.nextName ? `<p>It has gone to <strong>${esc(opts.nextName)}</strong> next. You’ll get the fully executed copy once everyone has signed.</p>` : ''}`;
+  return { subject: `Signed by ${opts.signerName}: ${t}`, html: shell(brandName(unit), body) };
+}
+
 export function completedEmail(unit: string, opts: { recipientName: string; docTitle: string }) {
   const body = `<p>Hi ${esc(opts.recipientName)},</p>
     <p><strong>${esc(friendlyTitle(opts.docTitle))}</strong> has been signed by all parties. The fully executed copy is attached to this email for your records.</p>

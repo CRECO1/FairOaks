@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   }
 
   let q = supabase.from('crm_envelopes')
-    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person, last_email_id, email_status, email_opened_at, reminded_at, reminder_count)')
+    .select('id, submission_id, deal_id, listing_id, title, status, message, executed_path, executed_clean_path, created_at, completed_at, archived_at, created_by, business_unit, crm_deals(id, property, client), crm_envelope_signers(id, signer_role, name, email, signing_order, status, sent_at, viewed_at, signed_at, declined_at, decline_reason, in_person, last_email_id, email_status, email_opened_at, reminded_at, reminder_count, expires_at)')
     .order('created_at', { ascending: false });
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
   q = excludeHiddenDeals(q, await hiddenDealIds(ctx)); // private deals' envelopes stay private
@@ -320,6 +320,21 @@ export async function PATCH(req: NextRequest) {
     // signer having followed an emailed link.
     await logEvent(supabase, env.id, current.id, 'in_person_started', { actor: ctx.userId, meta: { signer: current.email } });
     return NextResponse.json({ url: signUrl(current.access_token), signer: { id: current.id, name: current.name, email: current.email } });
+  }
+
+  // ── Renew an expired signing link: fresh 30 days, same link, and the invite goes out again ──
+  if (action === 'renew') {
+    if (env.status === 'declined' || env.status === 'voided' || env.status === 'completed') {
+      return NextResponse.json({ error: 'This request is closed — send a new one instead.' }, { status: 400 });
+    }
+    const signers = await loadSigners();
+    const current = signers.find(s => s.status !== 'signed' && !s.signed_at);
+    if (!current) return NextResponse.json({ error: 'No one is waiting to sign.' }, { status: 400 });
+    const until = new Date(Date.now() + 30 * 86400_000).toISOString();
+    await supabase.from('crm_envelope_signers').update({ expires_at: until, ...(current.status === 'pending' ? { status: 'sent', sent_at: new Date().toISOString() } : {}) }).eq('id', current.id);
+    const r = await invite(current);
+    await logEvent(supabase, env.id, current.id, 'signer_updated', { actor: ctx.userId, meta: { renewed_until: until, to: current.email } });
+    return NextResponse.json({ ok: r.ok, to: current.email, expires_at: until });
   }
 
   if (action === 'nudge') {

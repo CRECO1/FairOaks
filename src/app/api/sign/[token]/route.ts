@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimitFailOpen } from '@/lib/ratelimit';
 import { isBrokerFilled } from '@/lib/esign-fields';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, declinedEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
+import { SIGN_BUCKET, logEvent, clientIp, signUrl, routingEmail, declinedEmail, signedProgressEmail, sendEsignEmail, finalizeEnvelope } from '@/lib/esign';
 
 // PUBLIC, token-gated — intentionally NOT in middleware.ts's matcher, so external
 // signers (no login) reach it. Uses the service-role client directly.
@@ -238,6 +238,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
       const { subject, html } = routingEmail(env.business_unit, { signerName: next.name, docTitle: env.title, url: signUrl(next.access_token) });
       const routed = await sendEsignEmail(env.business_unit, next.email, subject, html);
       if (routed.id) await db.from('crm_envelope_signers').update({ last_email_id: routed.id }).eq('id', next.id);
+    }
+    // Tell the sender it moved (best effort — never blocks the signer's confirmation).
+    if (env.created_by) {
+      try {
+        const { data: sender } = await db.from('crm_profiles').select('email, first_name, last_name').eq('id', env.created_by).maybeSingle();
+        if (sender?.email && sender.email.toLowerCase() !== signer.email.toLowerCase()) {
+          const { subject, html } = signedProgressEmail(env.business_unit, {
+            senderName: sender.first_name || 'there', signerName: signer.name, docTitle: env.title,
+            nextName: next.name, signed: all.filter(s => s.status === 'signed').length, total: all.length,
+          });
+          await sendEsignEmail(env.business_unit, sender.email, subject, html);
+        }
+      } catch (e) { console.error('[api/sign] progress email', e); }
     }
     return NextResponse.json({ status: 'signed', next: true, next_in_person: !!next.in_person });
   }

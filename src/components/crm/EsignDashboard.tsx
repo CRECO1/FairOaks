@@ -17,7 +17,7 @@ interface Stats {
 
 interface ActEvent { id: string; event: string; actor: string | null; ip: string | null; user_agent: string | null; meta: Record<string, unknown> | null; created_at: string; signer_name: string | null }
 
-interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null; reminded_at?: string | null; reminder_count?: number | null }
+interface Signer { id: string; name: string; email: string; signer_role: string; signing_order: number; status: string; sent_at?: string | null; viewed_at?: string | null; signed_at?: string | null; declined_at?: string | null; decline_reason?: string | null; in_person?: boolean; delivery?: string | null; reminded_at?: string | null; reminder_count?: number | null; expires_at?: string | null }
 interface Envelope { id: string; deal_id?: string | null; title?: string; status: string; created_at?: string; completed_at?: string | null; archived_at?: string | null; sent_by?: string | null; business_unit?: string | null; executed_url?: string | null; executed_clean_url?: string | null; crm_deals?: { id: string; property?: string; client?: string } | null; crm_envelope_signers?: Signer[] }
 
 // A document imported for signing: a submission with no library form behind it.
@@ -246,6 +246,17 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     } finally { setBusy(null); load(); }
   }
 
+  // A signing link lapses after 30 days. Renewing keeps the same link, extends it, and
+  // sends the invite again — the alternative was voiding and starting over.
+  async function renewEnv(env: Envelope) {
+    setBusy(env.id);
+    try {
+      const r = await fetch('/api/crm/envelopes', { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ envelope_id: env.id, action: 'renew' }) });
+      const j = await r.json().catch(() => ({}));
+      showToast?.(r.ok ? `Link renewed for 30 days and re-sent${j.to ? ` to ${j.to}` : ''}` : (j.error || 'Could not renew it'));
+    } finally { setBusy(null); load(); }
+  }
+
   async function nudge(env: Envelope) {
     setBusy(env.id);
     try {
@@ -357,13 +368,14 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
   // What needs a human today — surfaced above the list so a stalled signature never
   // sits unnoticed in the middle of it. Declined / bounced / gone quiet for 3+ days.
-  type Attn = { env: Envelope; tone: 'bad' | 'warn'; text: string; action: 'nudge' | null };
+  type Attn = { env: Envelope; tone: 'bad' | 'warn'; text: string; action: 'nudge' | 'renew' | null };
   const attention: Attn[] = shown.filter(e => !e.archived_at && e.status !== 'voided' && e.status !== 'completed').flatMap((e): Attn[] => {
     const sg = (e.crm_envelope_signers || []).slice().sort((a, b) => a.signing_order - b.signing_order);
     const declined = sg.find(s => s.status === 'declined' || s.declined_at);
     if (declined) return [{ env: e, tone: 'bad', text: `${declined.name} declined${declined.decline_reason ? ` — “${declined.decline_reason}”` : ''}`, action: null }];
     const cur = sg.find(s => s.status !== 'signed' && !s.signed_at);
     if (!cur) return [];
+    if (cur.expires_at && !cur.in_person && Date.parse(cur.expires_at) <= Date.now()) return [{ env: e, tone: 'bad', text: `${cur.name}’s signing link expired — they see “contact your broker”`, action: 'renew' }];
     if (cur.delivery && ['bounced', 'complained', 'failed'].includes(cur.delivery)) return [{ env: e, tone: 'bad', text: `Email to ${cur.name} didn’t arrive — check the address`, action: null }];
     const days = cur.sent_at ? Math.floor((Date.now() - new Date(cur.sent_at).getTime()) / 86400000) : 0;
     if (!cur.in_person && days >= 3) return [{ env: e, tone: 'warn', text: `${cur.name} ${cur.viewed_at ? 'opened it but hasn’t signed' : 'hasn’t opened it'} · ${days} days`, action: 'nudge' }];
@@ -402,6 +414,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
     if (dec) return { text: `Declined by ${dec.name}`, color: '#b91c1c' };
     const cur = sg.find(s => s.status !== 'signed' && !s.signed_at);
     if (!cur) return { text: env.status, color: '#6b7280' };
+    if (cur.expires_at && !cur.in_person && Date.parse(cur.expires_at) <= Date.now()) return { text: `Link expired · ${cur.name}`, color: '#b91c1c' };
     return { text: `${cur.in_person ? 'In person: ' : 'Waiting on '}${cur.name}${cur.sent_at && !cur.in_person ? ` · ${ago(cur.sent_at)}` : ''}`, color: '#1d4ed8' };
   };
 
@@ -442,6 +455,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.env.title || 'Document'}</div>
                   <div style={{ fontSize: 12.5, color: a.tone === 'bad' ? '#b91c1c' : '#92400e' }}>{a.text}</div>
                 </div>
+                {a.action === 'renew' && <button disabled={busy === a.env.id} onClick={() => renewEnv(a.env)} style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca' }}>{busy === a.env.id ? '…' : 'Renew link'}</button>}
                 {a.action === 'nudge' && <button disabled={busy === a.env.id} onClick={() => nudge(a.env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === a.env.id ? '…' : 'Nudge'}</button>}
                 <button onClick={() => setOpenId(a.env.id)} style={mini}>Details</button>
               </div>
@@ -647,7 +661,9 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '16px 0 4px' }}>
                 {env.status === 'completed' && signedUrl && <button onClick={() => onPreview?.({ url: signedUrl, name: file })} style={{ ...mini, color: '#15803d', borderColor: '#bbf7d0', background: '#f0fdf4' }}>View signed</button>}
-                {current && !current.in_person && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : 'Send reminder'}</button>}
+                {current && !current.in_person && current.expires_at && Date.parse(current.expires_at) <= Date.now()
+                  ? <button disabled={busy === env.id} onClick={() => renewEnv(env)} style={{ ...mini, color: '#b91c1c', borderColor: '#fecaca', fontWeight: 800 }}>{busy === env.id ? '…' : 'Renew link & resend'}</button>
+                  : current && !current.in_person && <button disabled={busy === env.id} onClick={() => nudge(env)} style={{ ...mini, color: '#a06a12', borderColor: '#f0e2c4' }}>{busy === env.id ? '…' : 'Send reminder'}</button>}
                 {current && <button disabled={busy === env.id} onClick={() => signInPerson(env)} style={mini}>Sign in person</button>}
                 {env.deal_id && onOpenDeal && <button onClick={() => { setOpenId(null); onOpenDeal(env.deal_id!); }} style={mini}>Open deal</button>}
               </div>
@@ -673,6 +689,7 @@ export default function EsignDashboard({ authToken, showToast, onOpenDeal, onCom
                         </div>
                         {isCur && !s.in_person && env.status !== 'voided' && !env.archived_at && (() => {
                           // Mirrors the reminder cron (3 days to the first chase, 4 between, 3 max).
+                          if (s.expires_at && Date.parse(s.expires_at) <= Date.now()) return <div style={{ fontSize: 12, color: '#b91c1c', marginTop: 4 }}>This link has expired, so no reminders are going out. Renew it to resume.</div>;
                           const n = s.reminder_count ?? 0;
                           if (n >= 3) return <div style={{ fontSize: 12, color: '#92400e', marginTop: 4 }}>3 reminders sent — time for a phone call.</div>;
                           const base = n > 0 ? s.reminded_at : s.sent_at;
