@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole, dbError } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, unauthorized, forbidden, notFound, isAdminRole, isSuperAdminRole, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { chicagoLocalToUTC } from '@/lib/chicago-time';
 
@@ -86,11 +86,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const isAdmin = isAdminRole(ctx.role);
   if (!isAdmin && existing.business_unit !== ctx.businessUnit) return notFound('Resource not found.');
 
-  // Activating a campaign starts real sends to real contacts — admins or the campaign's
-  // own owner only.
-  const isOwner = existing.created_by === ctx.userId;
-  if (body.status === 'active' && existing.status !== 'active' && !isAdmin && !isOwner) {
-    return forbidden('Forbidden — only the campaign owner or an admin can activate a campaign');
+  // Activating a campaign starts real sends to real contacts, and that is the broker's call alone (it used to be any admin or the
+  // campaign's owner). Anyone in the workspace can build and edit a draft; a LIVE campaign can only be changed by the broker —
+  // except that an admin may pause it.
+  const isSuper = isSuperAdminRole(ctx.role);
+  if (body.status === 'active' && existing.status !== 'active' && !isSuper) {
+    return forbidden('Only the broker can activate (send) a campaign. Save it as a draft — the broker activates it.');
+  }
+  if (existing.status === 'active' && !isSuper) {
+    const pauseOnly = isAdmin && Object.keys(body).length === 1 && body.status === 'paused';
+    if (!pauseOnly) return forbidden('This campaign is live — only the broker can change it. An admin can pause it.');
   }
 
   // Strip any fields not in the allowlist (prevents mass-assignment)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isSuperAdminRole, unauthorized, forbidden, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { chicagoLocalToUTC } from '@/lib/chicago-time';
 
@@ -63,6 +63,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Get campaign details including send_date and send_time for one-time campaigns
   const { data: campaign } = await supabase.from('crm_campaigns').select('frequency, status, send_date, send_time, org_id').eq('id', id).single();
   if (!campaign) return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+  // Adding people to a LIVE campaign schedules real sends to them — broker only. Drafts and paused campaigns take recipients freely.
+  if (campaign.status === 'active' && !isSuperAdminRole(ctx.role)) return forbidden('This campaign is live — only the broker can add recipients to it.');
 
   const next_send_at = campaign.status === 'active'
     ? computeNextSend(campaign.frequency, campaign.send_date, campaign.send_time)

@@ -8244,7 +8244,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         </div>
                         {/* Actions: Activate/Pause · Manage · overflow menu */}
                         <div style={{ display: 'flex', gap: isMobile ? 8 : 6, flexShrink: 0, alignItems: 'center', position: 'relative', ...(isMobile ? { width: '100%' } : { minWidth: 322, justifyContent: 'flex-end' }) }}>
-                          {isAdmin && camp.status === 'draft' && (
+                          {isSuperAdmin && camp.status === 'draft' && (
                             <button className="crm-btn crm-btn-sm" disabled={busyCampaignId === camp.id} title="Activate — schedules real sends to enrolled contacts" style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 13, cursor: busyCampaignId === camp.id ? 'default' : 'pointer', whiteSpace: 'nowrap', ...(isMobile ? { flex: 1, minHeight: 44, padding: '5px 8px' } : {}) }} onClick={() => setCampaignStatusFromList(camp.id, 'active', camp.name)}>{busyCampaignId === camp.id ? '…' : '▶ Activate'}</button>
                           )}
                           {isAdmin && camp.status === 'active' && (
@@ -8402,7 +8402,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#111', color: '#fff', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
                             <span style={{ fontSize: 13, fontWeight: 700 }}>{selectedCampaignIds.size} selected</span>
                             <div style={{ display: 'flex', gap: 8, marginLeft: isMobile ? 0 : 'auto', flexWrap: 'wrap', ...(isMobile ? { width: '100%' } : {}) }}>
-                              <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none' }} onClick={() => bulkSetCampaignStatus([...selectedCampaignIds], 'active')}>▶ Activate</button>
+                              {isSuperAdmin && <button className="crm-btn crm-btn-sm" style={{ background: '#16a34a', color: '#fff', border: 'none' }} onClick={() => bulkSetCampaignStatus([...selectedCampaignIds], 'active')}>▶ Activate</button>}
                               <button className="crm-btn crm-btn-sm" style={{ background: '#374151', color: '#fff', border: 'none' }} onClick={() => bulkSetCampaignStatus([...selectedCampaignIds], 'paused')}>⏸ Pause</button>
                               {campaignProjects.length > 0 && (
                                 <select defaultValue="" onChange={e => { const v = e.target.value; if (v) { bulkMoveToProject([...selectedCampaignIds], v === '__none__' ? null : v); e.currentTarget.value = ''; } }} style={{ fontSize: 13, fontFamily: "'DM Sans',sans-serif", border: 'none', borderRadius: 6, padding: '5px 8px', background: '#374151', color: '#fff', cursor: 'pointer' }}>
@@ -8707,7 +8707,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     {isAdmin && (
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" onClick={async () => { let full: Campaign; try { full = await ensureCampaignBody(activeCampaign); } catch { return; } setActiveCampaign(full); setNewCampaign({ name: full.name, description: full.description, type: full.type, frequency: full.frequency, send_date: full.send_date ?? '', send_time: full.send_time ?? '08:00', send_day_of_month: full.send_day_of_month != null ? String(full.send_day_of_month) : '', status: full.status, email_subject: full.email_subject ?? '', email_body: full.email_body ?? '', sms_body: full.sms_body ?? '', sender_agent_id: full.sender_agent_id ?? '', project_id: full.project_id ?? '', hold_risky_addresses: !!full.hold_risky_addresses }); setCampaignView('builder'); }}>Edit</button>
-                        {activeCampaign.status !== 'active' && activeCampaign.status !== 'completed' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
+                        {isSuperAdmin && activeCampaign.status !== 'active' && activeCampaign.status !== 'completed' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? '…' : '▶ Activate'}</button>}
                         {activeCampaign.status === 'active' && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#f59e0b', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', opacity: campaignActivating ? 0.7 : 1 }} onClick={async () => { setCampaignActivating(true); await fetch(`/api/campaigns/${activeCampaign.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'paused' }) }); showToast('Campaign paused'); await loadCampaigns(); setActiveCampaign({ ...activeCampaign, status: 'paused' }); setCampaignActivating(false); }}>{campaignActivating ? '…' : '⏸ Pause'}</button>}
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" title="Make a new draft from this campaign" onClick={() => startDuplicate(activeCampaign)}>⧉ Duplicate</button>
                         <button className="crm-btn crm-btn-ghost crm-btn-sm" style={{ color: '#ef4444', borderColor: '#fecaca' }} onClick={() => deleteCampaign(activeCampaign.id)}>🗑 Delete</button>
@@ -8720,10 +8720,10 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                       <div>
                         <div style={{ fontWeight: 700, color: '#92400e', fontSize: 14 }}>⚠️ This campaign is a Draft — emails will NOT send</div>
-                        <div style={{ fontSize: 13, color: '#92400e', marginTop: 2 }}>Click &quot;Activate&quot; to schedule sends for all enrolled contacts.</div>
+                        <div style={{ fontSize: 13, color: '#92400e', marginTop: 2 }}>{isSuperAdmin ? 'Click “Activate” to schedule sends for all enrolled contacts.' : 'Only the broker can activate a campaign. When this draft is ready, let them know and they will review and send it.'}</div>
                       </div>
-                      <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: campaignActivating ? 0.7 : 1 }}
-                        onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? 'Activating…' : '▶ Activate Now'}</button>
+                      {isSuperAdmin && <button className="crm-btn crm-btn-sm" disabled={campaignActivating} style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 16px', fontSize: 13, cursor: campaignActivating ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: campaignActivating ? 0.7 : 1 }}
+                        onClick={() => setPreflightFor([{ id: activeCampaign.id, name: activeCampaign.name, type: activeCampaign.type }])}>{campaignActivating ? 'Activating…' : '▶ Activate Now'}</button>}
                     </div>
                   )}
 
@@ -9366,7 +9366,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           <label style={{ fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', color: '#6b7280', fontWeight: 500 }}>Status</label>
                           <select className="crm-input" style={{ marginTop: 4 }} value={newCampaign.status} onChange={e => setNewCampaign({ ...newCampaign, status: e.target.value })}>
                             <option value="draft">Draft</option>
-                            <option value="active">Active</option>
+                            {(isSuperAdmin || newCampaign.status === 'active') && <option value="active">Active</option>}
                             <option value="paused">Paused</option>
                           </select>
                         </div>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, forbidden, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildCampaignList } from '@/lib/campaign-list';
 
@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Day of month must be between 1 and 31.' }, { status: 400 });
     }
   }
+
+  // Sending email campaigns is the broker's call alone: anyone can build and save one, only the broker can make it live.
+  if (status === 'active' && !isSuperAdminRole(ctx.role)) return forbidden('Only the broker can activate (send) a campaign. Save it as a draft — the broker activates it.');
 
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_campaigns').insert([{

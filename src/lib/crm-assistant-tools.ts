@@ -159,6 +159,51 @@ async function findDuplicateContact(db: SupabaseClient, ctx: AgentCtx, input: Re
   return null;
 }
 
+/**
+ * Who an audience description means: contacts in this workspace with an email, not unsubscribed, not on the dead-address list,
+ * matching ANY of the given types/tags. Agents only ever reach their own contacts (owned or assigned), exactly like search_contacts.
+ */
+async function resolveAudience(db: SupabaseClient, ctx: AgentCtx, a: { types?: unknown; tags?: unknown; contact_ids?: unknown }): Promise<{ ids: string[]; sample: string[]; total: number; capped: boolean; skippedNoEmail: number }> {
+  const CAP = 500;
+  const types = (Array.isArray(a.types) ? a.types : []).map(String).filter(t => CONTACT_TYPES.includes(t));
+  const tags = (Array.isArray(a.tags) ? a.tags : []).map(String).map(t => t.trim()).filter(Boolean).slice(0, 10);
+  const given = (Array.isArray(a.contact_ids) ? a.contact_ids : []).map(String).filter(x => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 1000);
+  const rows: { id: string; first_name: string | null; last_name: string | null; business_name: string | null; email: string | null; unsubscribed_at: string | null }[] = [];
+  const pull = async (build: (q: any) => any) => {
+    for (let from = 0; from < 5000; from += 1000) {
+      let q = db.from('crm_clients').select('id, first_name, last_name, business_name, email, unsubscribed_at');
+      q = scoped(q, ctx);
+      if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
+      const { data } = await build(q).range(from, from + 999);
+      rows.push(...((data ?? []) as typeof rows));
+      if (!data || data.length < 1000) break;
+    }
+  };
+  if (given.length) await pull(q => q.in('id', given));
+  if (types.length || tags.length) {
+    const ors = [...(types.length ? [`type.in.(${types.map(t => `"${t}"`).join(',')})`] : []), ...tags.map(t => `tags.cs.{"${t.replace(/["{},]/g, '')}"}`)];
+    await pull(q => q.or(ors.join(',')));
+  }
+  const { data: dead } = await db.from('crm_dead_emails').select('email');
+  const deadSet = new Set((dead ?? []).map(d => String(d.email).toLowerCase()));
+  const seen = new Set<string>(); const ok: typeof rows = []; let skippedNoEmail = 0;
+  for (const r of rows) {
+    if (seen.has(r.id)) continue; seen.add(r.id);
+    if (!r.email || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(r.email)) { skippedNoEmail++; continue; }
+    if (r.unsubscribed_at || deadSet.has(r.email.toLowerCase())) continue;
+    ok.push(r);
+  }
+  return { ids: ok.slice(0, CAP).map(r => r.id), sample: ok.slice(0, 8).map(contactLabel), total: ok.length, capped: ok.length > CAP, skippedNoEmail };
+}
+
+/** A campaign the agent may build on: in their workspace and NOT live (only the broker touches a live campaign). */
+async function loadCampaignForBuild(db: SupabaseClient, ctx: AgentCtx, id: string): Promise<Record<string, any> | string> {
+  const { data: c } = await db.from('crm_campaigns').select('*').eq('id', id).maybeSingle();
+  if (!c) return JSON.stringify({ error: 'Campaign not found' });
+  if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return JSON.stringify({ error: 'That campaign is in a different workspace' });
+  return c;
+}
+
 /** Load a deal for a write: in workspace, and for an agent one they own or are assigned to. */
 async function loadDealForWrite(db: SupabaseClient, ctx: AgentCtx, dealId: string): Promise<Record<string, any> | string> {
   const { data: d } = await db.from('crm_deals').select('*').eq('id', dealId).maybeSingle();
@@ -357,7 +402,7 @@ export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): 
 
 export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
-  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file']);
+  'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
 
 // Which screen data a confirmed write makes stale — the panel tells the CRM to reload it, so a deal the
 // copilot just created shows up in the pipeline without a page refresh.
@@ -509,8 +554,18 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { destination: { type: 'string', enum: Object.keys(NAV_DESTINATIONS), description: 'Which section to open' } }, required: ['destination'] } },
   { name: 'open_record', description: "Put one specific deal (optionally on a tab: overview, client, emails, docs, esign, intel, commission) or one contact's card on the agent's screen — use it when they ask where something is, or to open, show or pull up a deal, its documents or a contact. A document, LOI or exhibit lives on its deal's Docs tab, so open that deal with tab 'docs'. It changes only what is on screen (no data), so just call it — don't ask first and don't describe where to click.",
     input_schema: { type: 'object', properties: { kind: { type: 'string', enum: ['deal', 'contact'] }, id: { type: 'string', description: 'The deal id or contact id' }, tab: { type: 'string', enum: [...DEAL_TABS], description: 'Deals only: which tab to land on' } }, required: ['kind', 'id'] } },
-  { name: 'draft_campaign', description: "Build a marketing campaign and save it as a DRAFT — name, subject and full email body. It is saved unsent and unscheduled; the agent reviews and sends it themselves from the Marketing tab. You cannot send campaigns. Write the real body, no placeholder text. WRITE — confirm with the agent first.",
-    input_schema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, email_subject: { type: 'string' }, email_body: { type: 'string', description: 'The complete email body — plain text or simple HTML. No placeholders.' } }, required: ['name', 'email_subject', 'email_body'] } },
+  { name: 'draft_campaign', description: "Build an email campaign and save it as a DRAFT: name, subject, full body, and optionally which project it belongs to, which property it markets and a planned send date. It is ALWAYS saved as a draft — unsent, with nobody enrolled. NOBODY except the broker can activate (send) a campaign, so you can never send one; tell the agent the broker reviews and activates it. Write the real body, no placeholder text. Use list_campaign_projects for project ids and find_property for a property id. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { name: { type: 'string' }, description: { type: 'string' }, email_subject: { type: 'string' }, email_body: { type: 'string', description: 'The complete email body — plain text or simple HTML. No placeholders.' },
+      project_id: { type: 'string', description: 'Optional: file it in this campaign project.' }, listing_id: { type: 'string', description: 'Optional: the property this campaign markets.' },
+      send_date: { type: 'string', description: 'Optional planned send date, YYYY-MM-DD. It only records the plan — the draft still will not send.' }, send_time: { type: 'string', description: 'Optional HH:MM (24h, Central).' } }, required: ['name', 'email_subject', 'email_body'] } },
+  { name: 'list_campaign_projects', description: 'List the campaign projects (folders) with how many campaigns each holds — use it to file a new campaign in the right project.',
+    input_schema: { type: 'object', properties: {} } },
+  { name: 'count_audience', description: "Count and preview the contacts that match an audience description, WITHOUT enrolling anyone: by contact type (Tenant, Buyer, Seller, Landlord/Investor, Broker, Agent) and/or tags. Only contacts with an email who haven't unsubscribed are counted (agents see only their own contacts). Use it to show the agent who would receive a campaign before you enroll them.",
+    input_schema: { type: 'object', properties: { types: { type: 'array', items: { type: 'string' } }, tags: { type: 'array', items: { type: 'string' }, description: 'Contacts having ANY of these tags' } } } },
+  { name: 'enroll_campaign_contacts', description: "Add recipients to a DRAFT or PAUSED campaign, by explicit contact_ids and/or an audience description (types/tags — same as count_audience). Nothing is emailed: enrolling into a draft only builds its audience, and a draft never sends. You cannot enroll into a LIVE campaign (only the broker can). At most 500 at a time. WRITE — confirm with the agent first (show them the count from count_audience).",
+    input_schema: { type: 'object', properties: { campaign_id: { type: 'string' }, contact_ids: { type: 'array', items: { type: 'string' } }, types: { type: 'array', items: { type: 'string' } }, tags: { type: 'array', items: { type: 'string' } } }, required: ['campaign_id'] } },
+  { name: 'duplicate_campaign', description: "Copy an existing campaign as a new DRAFT (same email, project and property; no send date). Optionally copy its recipients too (people who unsubscribed are left out). Nothing is emailed. WRITE — confirm with the agent first.",
+    input_schema: { type: 'object', properties: { campaign_id: { type: 'string' }, name: { type: 'string', description: 'Optional name for the copy (default: "<name> (copy)")' }, copy_recipients: { type: 'boolean' } }, required: ['campaign_id'] } },
 ];
 
 const j = (o: unknown) => JSON.stringify(o);
@@ -1314,17 +1369,82 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
           note2: 'The letter and its PDF are rebuilt and the agent\u2019s screen refreshes. Nothing was sent for signature.' });
       }
       case 'draft_campaign': {
-        // status is hard-coded 'draft'. The send cron only picks up 'active', so
-        // nothing the copilot creates can go out until a person activates it.
+        // status is hard-coded 'draft'. The send cron only picks up 'active', and only the broker can make a campaign active
+        // (API + database both enforce that), so nothing the copilot creates can go out until the broker activates it.
+        let projectId: string | null = null, listingId: string | null = null, sendDate: string | null = null, sendTime: string | null = null;
+        if (input.project_id) {
+          const { data: pr } = await db.from('crm_campaign_projects').select('id').eq('id', input.project_id).maybeSingle();
+          if (!pr) return j({ error: 'That campaign project was not found — use list_campaign_projects.' });
+          projectId = pr.id;
+        }
+        if (input.listing_id) {
+          const { data: l } = await db.from('crm_listings').select('id').eq('id', input.listing_id).eq('business_unit', ctx.businessUnit ?? 'commercial').maybeSingle();
+          if (!l) return j({ error: 'That property was not found in this workspace.' });
+          listingId = l.id;
+        }
+        if (input.send_date) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(input.send_date)) || Number.isNaN(Date.parse(String(input.send_date)))) return j({ error: 'send_date must be YYYY-MM-DD.' });
+          sendDate = String(input.send_date);
+        }
+        if (input.send_time) {
+          if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(input.send_time))) return j({ error: 'send_time must be HH:MM (24-hour).' });
+          sendTime = String(input.send_time);
+        }
         const { data, error } = await db.from('crm_campaigns').insert({
           name: String(input.name).trim(), description: input.description ?? null,
           type: 'email', frequency: 'one-time', status: 'draft',
           email_subject: String(input.email_subject).trim(), email_body: String(input.email_body),
           business_unit: ctx.businessUnit ?? 'commercial', created_by: ctx.userId, sender_agent_id: ctx.userId,
-        }).select('id, name, status, email_subject').single();
+          project_id: projectId, listing_id: listingId, send_date: sendDate, send_time: sendTime,
+        }).select('id, name, status, email_subject, project_id').single();
         if (error) return j({ error: error.message });
         await logCopilot(db, ctx, `Drafted campaign “${data.name}” (unsent draft)`);
-        return j({ ok: true, campaign: data, note: 'Saved as an unsent draft with no audience. Review and send it from the Marketing tab.' });
+        return j({ ok: true, campaign: data, note: 'Saved as a DRAFT with nobody enrolled — it cannot send. The broker reviews and activates campaigns; offer to add recipients (count_audience, then enroll_campaign_contacts).' });
+      }
+      case 'list_campaign_projects': {
+        const { data: projects } = await db.from('crm_campaign_projects').select('id, name, description').order('name');
+        const { data: camps } = await scoped(db.from('crm_campaigns').select('project_id'), ctx);
+        const n = new Map<string, number>(); for (const c of camps ?? []) if (c.project_id) n.set(c.project_id as string, (n.get(c.project_id as string) ?? 0) + 1);
+        return j({ projects: (projects ?? []).map(p => ({ id: p.id, name: p.name, description: p.description, campaigns: n.get(p.id) ?? 0 })) });
+      }
+      case 'count_audience': {
+        const a = await resolveAudience(db, ctx, input);
+        return j({ matching_with_email: a.total, will_enroll: a.ids.length, capped_at_500: a.capped, no_email_skipped: a.skippedNoEmail, sample: a.sample });
+      }
+      case 'enroll_campaign_contacts': {
+        const c = await loadCampaignForBuild(db, ctx, String(input.campaign_id));
+        if (typeof c === 'string') return c;
+        if (c.status === 'active') return j({ error: 'That campaign is live — only the broker can add recipients to it.' });
+        if (c.status === 'completed') return j({ error: 'That campaign has finished sending. Duplicate it to email more people.' });
+        const a = await resolveAudience(db, ctx, input);
+        if (!a.ids.length) return j({ error: 'No eligible contacts matched (they need an email and must not have unsubscribed).' });
+        const rows = a.ids.map(client_id => ({ campaign_id: c.id, client_id, enrolled_by: ctx.userId, next_send_at: null, active: true, org_id: c.org_id ?? null }));
+        const { data, error } = await db.from('crm_campaign_enrollments').upsert(rows, { onConflict: 'campaign_id,client_id', ignoreDuplicates: false }).select('id');
+        if (error) return j({ error: error.message });
+        await logCopilot(db, ctx, `Enrolled ${data?.length ?? 0} contact(s) in the draft campaign “${c.name}” (nothing sent)`);
+        return j({ ok: true, enrolled: data?.length ?? 0, campaign: c.name, status: c.status, note: 'Recipients added. The campaign cannot send until the broker activates it.' });
+      }
+      case 'duplicate_campaign': {
+        const c = await loadCampaignForBuild(db, ctx, String(input.campaign_id));
+        if (typeof c === 'string') return c;
+        const { data: copy, error } = await db.from('crm_campaigns').insert({
+          name: String(input.name || `${c.name} (copy)`).trim(), description: c.description, type: c.type, frequency: c.frequency, status: 'draft',
+          email_subject: c.email_subject, email_body: c.email_body, sms_body: c.sms_body, send_date: null, send_time: c.send_time, send_day_of_month: c.send_day_of_month,
+          sender_agent_id: c.sender_agent_id ?? ctx.userId, project_id: c.project_id, listing_id: c.listing_id, hold_risky_addresses: !!c.hold_risky_addresses,
+          business_unit: c.business_unit, created_by: ctx.userId, org_id: c.org_id ?? null,
+        }).select('id, name, status, project_id').single();
+        if (error) return j({ error: error.message });
+        let copied = 0;
+        if (input.copy_recipients === true) {
+          const { data: src } = await db.from('crm_campaign_enrollments').select('client_id, client:crm_clients(unsubscribed_at, email)').eq('campaign_id', c.id);
+          const ids = (src ?? []).filter(e => { const cl = (Array.isArray(e.client) ? e.client[0] : e.client) as { unsubscribed_at?: string | null; email?: string | null } | null; return cl && cl.email && !cl.unsubscribed_at; }).map(e => e.client_id as string);
+          if (ids.length) {
+            const { data: enr } = await db.from('crm_campaign_enrollments').upsert(ids.map(client_id => ({ campaign_id: copy.id, client_id, enrolled_by: ctx.userId, next_send_at: null, active: true, org_id: c.org_id ?? null })), { onConflict: 'campaign_id,client_id' }).select('id');
+            copied = enr?.length ?? 0;
+          }
+        }
+        await logCopilot(db, ctx, `Duplicated campaign “${c.name}” as a draft${copied ? ` with ${copied} recipients` : ''}`);
+        return j({ ok: true, campaign: copy, recipients_copied: copied, note: 'A new DRAFT with no send date. It cannot send until the broker activates it.' });
       }
 
       default:
@@ -1358,6 +1478,24 @@ export async function describeWriteRich(name: string, input: Record<string, any>
         return `📧 Send from your Gmail to ${who} <${c.email ?? 'no email on file'}>${ccLine}\nSubject: ${input.subject}${attLine}\n\n${body.slice(0, 1200)}${body.length > 1200 ? '…' : ''}`;
       }
     } catch { /* fall through to the generic text */ }
+  }
+  if (name === 'enroll_campaign_contacts' || name === 'duplicate_campaign') {
+    try {
+      const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
+      const camp = await loadCampaignForBuild(db, ctx, String(input.campaign_id));
+      if (typeof camp !== 'string') {
+        if (name === 'enroll_campaign_contacts') {
+          if (camp.status === 'active') return `⚠️ “${camp.name}” is LIVE — only the broker can add recipients to it. Confirming will be refused.`;
+          const a = await resolveAudience(db, ctx, input);
+          const how = [(input.types as string[] | undefined)?.length ? `type: ${(input.types as string[]).join(', ')}` : '', (input.tags as string[] | undefined)?.length ? `tags: ${(input.tags as string[]).join(', ')}` : '', (input.contact_ids as string[] | undefined)?.length ? `${(input.contact_ids as string[]).length} named contact(s)` : ''].filter(Boolean).join(' · ');
+          return `👥 Add ${a.ids.length} recipient${a.ids.length !== 1 ? 's' : ''} to the ${camp.status} campaign “${camp.name}”${how ? ` (${how})` : ''}\n${a.sample.length ? `e.g. ${a.sample.join(', ')}${a.total > a.sample.length ? '…' : ''}\n` : ''}${a.capped ? 'Capped at 500 — the rest can be added in a second step.\n' : ''}${a.skippedNoEmail ? `${a.skippedNoEmail} matching contact${a.skippedNoEmail !== 1 ? 's have' : ' has'} no email and are skipped.\n` : ''}Nothing is emailed — it only builds the audience; the broker activates campaigns.`;
+        }
+        return `⧉ Copy “${camp.name}” as a NEW draft${input.copy_recipients ? ' with its recipients' : ' (no recipients)'}${input.name ? ` named “${input.name}”` : ''}. No send date; nothing is emailed — the broker activates campaigns.`;
+      }
+    } catch { /* fall through */ }
+  }
+  if (name === 'draft_campaign') {
+    return `✉️ Save “${input.name}” as an UNSENT draft campaign${input.send_date ? ` (planned for ${input.send_date})` : ''}\nSubject: ${input.email_subject}\nNothing is emailed and nobody is enrolled — the broker reviews and activates campaigns.`;
   }
   if (name === 'create_contact') {
     try {
@@ -1467,6 +1605,8 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'create_property': return `Add property “${input.name}”${input.address ? ` — ${input.address}` : ''}${input.asking_price ? ` at $${Number(input.asking_price).toLocaleString()}` : ''}`;
     case 'fill_document': return `Fill in ${Object.keys(input.fields ?? {}).length || 'the'} field${Object.keys(input.fields ?? {}).length === 1 ? '' : 's'} on this document${input.contact_id ? " from the contact's details" : ''}`;
     case 'draft_campaign': return `Save “${input.name}” as an UNSENT draft campaign — nothing is emailed`;
+    case 'enroll_campaign_contacts': return 'Add recipients to a draft campaign — nothing is emailed';
+    case 'duplicate_campaign': return `Copy this campaign as a new DRAFT${input.copy_recipients ? ' with its recipients' : ''} — nothing is emailed`;
     case 'edit_loi': {
       const lines: string[] = [];
       for (const [k, v] of Object.entries((input.set_terms ?? {}) as Record<string, string>)) lines.push(`${String(k).replace(/:$/, '')} → ${v}`);
