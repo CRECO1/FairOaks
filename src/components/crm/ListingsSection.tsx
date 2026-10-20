@@ -274,6 +274,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
   const [hasRentRoll, setHasRentRoll] = useState(false);
   const [draftingLease, setDraftingLease] = useState(false);
   const [renamingDoc, setRenamingDoc] = useState<string | null>(null);
+  const [docMenu, setDocMenu] = useState<string | null>(null);   // which document row's ⋯ menu is open
   const [renameDraft, setRenameDraft] = useState('');
   const [sendSigners, setSendSigners] = useState<{ role: string; name: string; email: string }[]>([]);
   const [sendPick, setSendPick] = useState<number | null>(null); // signer row showing contact suggestions
@@ -1398,60 +1399,77 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
                       <div style={{ fontSize: 13, color: '#9ca3af', padding: '4px 0 6px' }}>No forms yet. Fill a lease, LOI, or any commercial/TREC form and it saves to this property.</div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {listingForms.map(f => (
-                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#fffdf6', border: '1px solid #f0e2c4', borderRadius: 8, padding: '10px 14px' }}>
-                            <span style={{ fontSize: 20, flexShrink: 0 }}>📄</span>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                                {renamingDoc === f.id ? (
-                                  <input autoFocus value={renameDraft}
-                                    onChange={e => setRenameDraft(e.target.value)}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }
-                                      if (e.key === 'Escape') setRenamingDoc(null);
-                                    }}
-                                    onBlur={() => { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }}
-                                    style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, color: '#1a1a1a', border: '1px solid #c9922c', borderRadius: 6, padding: '3px 7px', fontFamily: "'DM Sans',sans-serif", background: '#fff' }} />
-                                ) : (
-                                  <span onDoubleClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
-                                    title="Double-click to rename"
-                                    style={{ fontSize: 14, fontWeight: 600, color: '#1a1a1a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}>{f.title || f.crm_forms?.name || 'Form'}</span>
-                                )}
-                                {renamingDoc !== f.id && (
-                                  <button onClick={() => { setRenameDraft(f.title || f.crm_forms?.name || ''); setRenamingDoc(f.id); }}
-                                    title="Rename this document"
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d6c08a', fontSize: 12, padding: '0 2px', flexShrink: 0, lineHeight: 1 }}>✎</button>
-                                )}
-                                {/* Mirrored in from a deal at this property — same row, edited either side */}
-                                {f.deal_id && (() => {
-                                  const d = deals.find(x => x.id === f.deal_id);
-                                  return <span title="Lives on this deal — edits here and on the deal are the same document" style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: .3, background: '#eef2ff', color: '#4338ca', borderRadius: 20, padding: '1px 8px', flexShrink: 0, whiteSpace: 'nowrap' }}>💼 {d?.client || 'deal'}</span>;
-                                })()}
+                        {listingForms.map(f => {
+                          // A document is two short lines, not one crowded row: the title gets the full width (it used to be crushed to a
+                          // few letters — or to nothing — by six buttons), the state is a badge, and the rarely-used actions live in ⋯.
+                          const env = envMap[f.id];
+                          const live = !!env && env.status !== 'voided';
+                          const signers = live ? (env!.crm_envelope_signers || []) : [];
+                          const doneN = signers.filter(x => x.status === 'signed' || x.signed_at).length;
+                          const signed = live && env!.status === 'completed';
+                          const title = f.title || f.crm_forms?.name || 'Form';
+                          const deal = f.deal_id ? deals.find(x => x.id === f.deal_id) : null;
+                          const btn: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, borderRadius: 7, padding: '6px 11px', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: "'DM Sans',sans-serif", minHeight: 32 };
+                          const ghost: React.CSSProperties = { ...btn, color: '#374151', background: '#fff', border: '1px solid #e5e7eb' };
+                          const menuItem: React.CSSProperties = { display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", color: '#374151' };
+                          return (
+                            <div key={f.id} style={{ background: signed ? '#f7fdf9' : '#fffdf6', border: `1px solid ${signed ? '#c9ead4' : '#f0e2c4'}`, borderRadius: 10, padding: '12px 14px', position: 'relative' }}>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                                <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1.2 }}>📄</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  {renamingDoc === f.id ? (
+                                    <input autoFocus value={renameDraft}
+                                      onChange={e => setRenameDraft(e.target.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }
+                                        if (e.key === 'Escape') setRenamingDoc(null);
+                                      }}
+                                      onBlur={() => { renameSubmission(f.id, renameDraft); setRenamingDoc(null); }}
+                                      style={{ width: '100%', boxSizing: 'border-box', fontSize: 14, fontWeight: 600, color: '#1a1a1a', border: '1px solid #c9922c', borderRadius: 6, padding: '4px 8px', fontFamily: "'DM Sans',sans-serif", background: '#fff' }} />
+                                  ) : (
+                                    <div onDoubleClick={() => { setRenameDraft(title); setRenamingDoc(f.id); }} title={`${title} — double-click to rename`}
+                                      style={{ fontSize: 14.5, fontWeight: 700, color: '#1a1a1a', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word', cursor: 'text' } as React.CSSProperties}>{title}</div>
+                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+                                    {signed
+                                      ? <span style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', borderRadius: 20, padding: '2px 9px' }}>✓ Signed</span>
+                                      : live
+                                        ? <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>📤 Out for signature · {doneN}/{signers.length}</span>
+                                        : <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', borderRadius: 20, padding: '2px 9px' }}>Draft</span>}
+                                    {/* Mirrored in from a deal at this property — same row, edited either side */}
+                                    {f.deal_id && <span title="Lives on this deal — edits here and on the deal are the same document" style={{ fontSize: 11, fontWeight: 700, background: '#eef2ff', color: '#4338ca', borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap' }}>💼 {deal?.client || 'deal'}</span>}
+                                    <span style={{ fontSize: 12, color: '#9ca3af' }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</span>
+                                  </div>
+                                </div>
                               </div>
-                              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 1 }}>{f.crm_forms?.form_code ? `${f.crm_forms.form_code} · ` : ''}{f.updated_at ? `updated ${new Date(f.updated_at).toLocaleDateString()}` : ''}</div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 10, paddingLeft: 30 }}>
+                                {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${title}.pdf`, type: 'application/pdf' })} style={ghost}>👁 View</button>}
+                                <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id}
+                                  style={{ ...ghost, color: '#a06a12', border: '1px solid #f0e2c4', fontWeight: 700, cursor: f.form_id ? 'pointer' : 'default', opacity: f.form_id ? 1 : 0.5 }}>Edit</button>
+                                {signed
+                                  ? (env!.executed_url && <button onClick={() => setPreviewFile({ url: env!.executed_url!, name: `${title} (signed).pdf`, type: 'application/pdf' })} title="View the executed copy" style={{ ...btn, color: '#15803d', background: '#dcfce7', border: 'none', fontWeight: 700 }}>View signed copy</button>)
+                                  : live
+                                    ? <button onClick={() => openSendModal(null, f)} title="Send the signature request again" style={{ ...btn, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', fontWeight: 700 }}>↻ Resend</button>
+                                    : <button onClick={() => openSendModal(null, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ ...btn, color: '#fff', background: f.url ? '#c9922c' : '#e5e7eb', border: 'none', fontWeight: 700, cursor: f.url ? 'pointer' : 'default' }}>📤 Send for signature</button>}
+                                <div style={{ marginLeft: 'auto', position: 'relative' }}>
+                                  <button onClick={() => setDocMenu(docMenu === f.id ? null : f.id)} aria-label="More actions" title="More: email, copy, cancel request, delete" style={{ ...ghost, padding: '6px 11px', fontSize: 16, lineHeight: 1 }}>⋯</button>
+                                  {docMenu === f.id && (
+                                    <>
+                                      <div onClick={() => setDocMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+                                      <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 21, minWidth: 200, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.14)', overflow: 'hidden' }}>
+                                        {f.url && <button style={menuItem} onClick={() => { setDocMenu(null); setEmailDocId(f.id); }}>✉ Email this PDF</button>}
+                                        <button style={menuItem} onClick={() => { setDocMenu(null); setRenameDraft(title); setRenamingDoc(f.id); }}>✎ Rename</button>
+                                        <button style={menuItem} onClick={() => { setDocMenu(null); copySubmission(f.id); }}>⧉ Make a copy</button>
+                                        {live && !signed && <button style={{ ...menuItem, color: '#b91c1c' }} onClick={() => { setDocMenu(null); voidEnvelope(env!.id); }}>⊘ Cancel signature request</button>}
+                                        <button style={{ ...menuItem, color: '#dc2626', borderTop: '1px solid #f3f4f6' }} onClick={() => { setDocMenu(null); deleteSubmission(f.id); }}>✕ Delete document</button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            {f.url && <button onClick={() => setPreviewFile({ url: f.url!, name: `${f.title || f.crm_forms?.name || 'Document'}.pdf`, type: 'application/pdf' })} style={{ fontSize: 12.5, fontWeight: 600, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>👁 View</button>}
-                            <button onClick={() => { setFormDealId(null); openFormEditor({ id: f.form_id || '', name: f.crm_forms?.name || f.title || 'Form' }, f.id, f.crm_forms?.form_code); }} disabled={!f.form_id} style={{ fontSize: 12.5, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 12px', cursor: f.form_id ? 'pointer' : 'default', flexShrink: 0 }}>Edit</button>
-                            {f.url && <button onClick={() => setEmailDocId(f.id)} title="Email this PDF as an attachment" style={{ fontSize: 12, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✉ Email</button>}
-                            {(() => {
-                              const env = envMap[f.id];
-                              if (env && env.status !== 'voided') {
-                                const sg = env.crm_envelope_signers || [];
-                                const done = sg.filter(x => x.status === 'signed' || x.signed_at).length;
-                                if (env.status === 'completed' && env.executed_url)
-                                  return <button onClick={() => setPreviewFile({ url: env.executed_url!, name: `${f.title || f.crm_forms?.name || 'Document'} (signed).pdf`, type: 'application/pdf' })} title="View the executed copy" style={{ fontSize: 11.5, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: 'none', borderRadius: 7, padding: '6px 10px', cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✓ Signed</button>;
-                                return (<>
-                                  <span title="Out for signature" style={{ fontSize: 11.5, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', borderRadius: 7, padding: '6px 10px', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Sent · {done}/{sg.length}</span>
-                                  <button onClick={() => openSendModal(null, f)} title="Resend for signature" style={{ fontSize: 13, fontWeight: 700, color: '#a06a12', background: '#fff', border: '1px solid #f0e2c4', borderRadius: 7, padding: '6px 8px', cursor: 'pointer', flexShrink: 0 }}>↻</button>
-                                  <button onClick={() => voidEnvelope(env.id)} title="Cancel the signature request" style={{ fontSize: 13, fontWeight: 700, color: '#b91c1c', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 8px', cursor: 'pointer', flexShrink: 0 }}>⊘</button>
-                                </>);
-                              }
-                              return <button onClick={() => openSendModal(null, f)} disabled={!f.url} title={f.url ? 'Send for signature' : 'Fill and save the form first'} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: f.url ? '#c9922c' : '#e5e7eb', border: 'none', borderRadius: 7, padding: '6px 11px', cursor: f.url ? 'pointer' : 'default', flexShrink: 0, whiteSpace: 'nowrap' }}>📤 Send</button>;
-                            })()}
-                            <button onClick={() => copySubmission(f.id)} title="Make a copy" style={{ fontSize: 13, fontWeight: 700, color: '#6b7280', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>⧉</button>
-                            <button onClick={() => deleteSubmission(f.id)} title="Delete document" style={{ fontSize: 13, fontWeight: 700, color: '#dc2626', background: '#fff', border: '1px solid #fecaca', borderRadius: 7, padding: '6px 9px', cursor: 'pointer', flexShrink: 0 }}>✕</button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
