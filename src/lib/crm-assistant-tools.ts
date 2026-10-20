@@ -12,6 +12,7 @@ import { generateLoi, editLoi, type LoiEdit } from '@/lib/loi-generate';
 import { exhibitLetter, type LoiExhibit } from '@/lib/loi-spec';
 import { liveEnvelope, logDocEdit, restampOverlay, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
 import { chicagoToday, chicagoDateUS } from '@/lib/chicago-time';
+import { detectSigningSpots, type PrepField } from '@/lib/esign-prep';
 
 // token + origin let tools reuse the CRM's own HTTP endpoints (lease-draft, envelopes,
 // form-submissions) as the agent, so the copilot goes through the exact same auth, RBAC
@@ -400,7 +401,7 @@ export async function resolveRecord(input: Record<string, any>, ctx: AgentCtx): 
   return { error: 'kind must be "deal" or "contact"' };
 }
 
-export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'send_for_signature', 'send_email', 'schedule_event',
+export const WRITE_TOOLS = new Set(['create_task', 'complete_task', 'add_note', 'update_deal_stage', 'generate_lease', 'start_form', 'prepare_esign', 'send_for_signature', 'send_email', 'schedule_event',
   'create_contact', 'update_contact', 'create_property', 'fill_document', 'draft_campaign', 'complete_loi', 'edit_loi',
   'create_deal', 'add_contacts_to_deal', 'remove_contacts_from_deal', 'update_deal', 'save_attachment', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit', 'edit_file', 'enroll_campaign_contacts', 'duplicate_campaign']);
 
@@ -411,7 +412,7 @@ export const CONTACT_WRITE_TOOLS = new Set(['create_contact', 'update_contact', 
 
 // Tools whose success changes a document the agent may have open on screen — the app is told
 // to reload it so the edit shows up live instead of being overwritten by a stale save.
-export const DOC_EDIT_TOOLS = new Set(['fill_document', 'edit_loi', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit']);
+export const DOC_EDIT_TOOLS = new Set(['fill_document', 'prepare_esign', 'edit_loi', 'attach_exhibit_to_loi', 'remove_exhibit_from_loi', 'update_loi_exhibit']);
 
 // Contact types the CRM actually uses — kept closed so the copilot can't invent one.
 const CONTACT_TYPES = ['Tenant', 'Buyer', 'Seller', 'Landlord/Investor', 'Broker', 'Agent'];
@@ -518,6 +519,12 @@ export const TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: { listing_id: { type: 'string' }, values: { type: 'object', description: 'The values object returned by draft_lease (tenant_name, suite, rent, dates, etc.)' } }, required: ['listing_id', 'values'] } },
   { name: 'start_form', description: 'Start a new blank form document from a template (form id from list_forms), optionally linked to a deal. WRITE — creates a document the agent then fills in the editor.',
     input_schema: { type: 'object', properties: { form_id: { type: 'string' }, deal_id: { type: 'string' } }, required: ['form_id'] } },
+  { name: 'prepare_esign', description: "Get a saved document READY for e-signature without sending it: finds the initials line in each page's footer and the signature + date blanks in the signature block, and places INITIAL / SIGNATURE / DATE fields for each signer role on the draft (it shows on the E-Sign page and in the document). Cross-reference first: the deal card and its contacts say who signs and in what role (landlord, seller, buyer, tenant→client, broker→agent). Pass each signer's role and, when you know them, their contact_id (or name/email) — the result lists who still has no email. Re-running replaces that role's earlier fields. WRITE — edits the draft only. It NEVER sends or emails anyone; sending is send_for_signature, only when the agent explicitly says to send.",
+    input_schema: { type: 'object', properties: { submission_id: { type: 'string', description: 'The saved document (from start_form / read_document / generate_lease)' },
+      signers: { type: 'array', description: 'Who signs, one entry per signer. role: landlord, client (tenant), seller, buyer, agent (broker), witness, other.', items: { type: 'object', properties: { role: { type: 'string' }, contact_id: { type: 'string' }, name: { type: 'string' }, email: { type: 'string' } }, required: ['role'] } },
+      initials: { type: 'boolean', description: 'Place initials boxes on every page (default true)' }, signatures: { type: 'boolean', description: 'Place signature boxes (default true)' }, dates: { type: 'boolean', description: 'Place date boxes next to signatures (default true)' },
+      extra_fields: { type: 'array', description: 'Only if the automatic placement missed something the agent pointed out: extra boxes placed by hand. page is 1-based; x is the left edge and y the underline, both as 0–1 fractions of the page (y measured from the TOP); width is a 0–1 fraction.', items: { type: 'object', properties: { type: { type: 'string', enum: ['initial', 'signature', 'date'] }, role: { type: 'string' }, page: { type: 'number' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' } }, required: ['type', 'role', 'page', 'x', 'y'] } } },
+      required: ['submission_id', 'signers'] } },
   { name: 'send_for_signature', description: 'Send an existing saved document (a lease/form submission with a saved PDF) out for e-signature to one or more signers. WRITE + OUTWARD — this emails real people. Confirm the document and every recipient with the agent first.',
     input_schema: { type: 'object', properties: { submission_id: { type: 'string' }, signers: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' }, role: { type: 'string' } }, required: ['name', 'email'] } }, message: { type: 'string' } }, required: ['submission_id', 'signers'] } },
 
@@ -1172,6 +1179,63 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         await logCopilot(db, ctx, `Started form document “${form?.name ?? 'Form'}”`);
         return j({ ok: true, submission: r.data.submission ?? r.data });
       }
+      case 'prepare_esign': {
+        const { data: sub } = await db.from('crm_form_submissions').select('id, title, values, business_unit, status, builder_data, filled_path, source_path, deal_id').eq('id', input.submission_id).maybeSingle();
+        if (!sub || (sub.deal_id && (await hiddenDeals(db, ctx)).includes(sub.deal_id as string))) return j({ error: 'Document not found' });
+        if (ctx.businessUnit && sub.business_unit !== ctx.businessUnit) return j({ error: 'Document is in a different workspace' });
+        if (sub.status === 'executed' || sub.status === 'completed') return j({ error: 'That document is already executed — it can no longer be edited.' });
+        if ((sub.builder_data as { terms?: unknown } | null)?.terms) return j({ error: 'That is a Letter of Intent — its signers are set in the letter itself (edit_loi), not placed on the page.' });
+        if (await liveEnvelope(db, String(input.submission_id))) return j({ error: OUT_FOR_SIGNATURE });
+        const ROLES = ['client', 'landlord', 'agent', 'seller', 'buyer', 'witness', 'other'];
+        const rawSigners = (Array.isArray(input.signers) ? input.signers : []) as Record<string, any>[];
+        if (!rawSigners.length) return j({ error: 'Tell me who signs: at least one signer with a role (landlord, client/tenant, seller, buyer, agent/broker).' });
+        const signers: { role: string; name: string | null; email: string | null; contact_id: string | null }[] = [];
+        for (const s of rawSigners) {
+          const role = String(s.role ?? '').trim().toLowerCase().replace(/^tenant$|^lessee$/, 'client').replace(/^broker$/, 'agent').replace(/^owner$|^lessor$/, 'landlord');
+          if (!ROLES.includes(role)) return j({ error: `Unknown signer role “${s.role}”. Use one of: ${ROLES.join(', ')}.` });
+          let name: string | null = s.name ? String(s.name) : null, email: string | null = s.email ? String(s.email) : null;
+          if (s.contact_id) {
+            const badC = await outOfWorkspace(db, ctx, 'crm_clients', s.contact_id, 'Contact'); if (badC) return badC;
+            const { data: c } = await db.from('crm_clients').select('first_name, last_name, business_name, email').eq('id', s.contact_id).maybeSingle();
+            if (c) { name = name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || (c.business_name as string | null); email = email || (c.email as string | null); }
+          }
+          signers.push({ role, name, email, contact_id: s.contact_id ?? null });
+        }
+        const roles = [...new Set(signers.map(s => s.role))];
+        const path = (sub.filled_path || sub.source_path) as string | null;
+        if (!path) return j({ error: `“${sub.title}” has no saved PDF yet — generate or save it first.` });
+        const { data: blob, error: dlErr } = await db.storage.from('transaction-forms').download(path);
+        if (dlErr || !blob) return j({ error: `Could not read the PDF for “${sub.title}”.` });
+        const want = { initials: input.initials !== false, signatures: input.signatures !== false, dates: input.dates !== false };
+        let det;
+        try { det = await detectSigningSpots(new Uint8Array(await blob.arrayBuffer()), roles, want); }
+        catch (e) { return j({ error: `Could not read the document layout (${e instanceof Error ? e.message : 'unknown'}). The agent can place the boxes by hand on the E-Sign page.` }); }
+        const fields: PrepField[] = [...det.fields];
+        for (const x of (Array.isArray(input.extra_fields) ? input.extra_fields : []) as Record<string, any>[]) {
+          const t = ['initial', 'signature', 'date'].includes(x.type) ? x.type as PrepField['type'] : null;
+          const role = String(x.role ?? '').toLowerCase();
+          if (!t || !ROLES.includes(role) || !(x.page >= 1 && x.page <= det.pages)) { det.warnings.push(`Skipped an extra field I could not place (${JSON.stringify(x).slice(0, 80)}).`); continue; }
+          fields.push({ id: `${t.slice(0, 3)}-x-${Math.random().toString(36).slice(2, 8)}`, type: t, page: Math.round(x.page), fx: Math.min(0.95, Math.max(0, Number(x.x))), fy: Math.min(0.99, Math.max(0.02, Number(x.y))),
+            fw: Math.min(0.5, Math.max(0.04, Number(x.width) || (t === 'initial' ? 0.048 : t === 'date' ? 0.1 : 0.28))), size: 11, value: '', signerRole: role });
+        }
+        if (!fields.length) return j({ error: 'I could not place any boxes on this document.', warnings: det.warnings });
+        // Re-running replaces that role's earlier initials/signature/date boxes; everything else on the page stays.
+        const prev = (Array.isArray(sub.values) ? sub.values : []) as Record<string, any>[];
+        const isSigning = (f: Record<string, any>) => ['initial', 'signature', 'date'].includes(f.type);
+        const kept = prev.filter(f => !(isSigning(f) && roles.includes(String(f.signerRole ?? ''))));
+        const replaced = prev.length - kept.length;
+        const { error } = await db.from('crm_form_submissions').update({ values: [...kept, ...fields], updated_at: new Date().toISOString() }).eq('id', input.submission_id);
+        if (error) return j({ error: error.message });
+        const tally = roles.map(r => ({ role: r, initials: fields.filter(f => f.signerRole === r && f.type === 'initial').length, signatures: fields.filter(f => f.signerRole === r && f.type === 'signature').length, dates: fields.filter(f => f.signerRole === r && f.type === 'date').length }));
+        await logDocEdit(db, { submissionId: String(input.submission_id), editorId: ctx.userId, unit: sub.business_unit as string | null,
+          summary: `Copilot prepared e-sign fields (${tally.map(t => `${t.role}: ${t.initials} initials, ${t.signatures} signature, ${t.dates} date`).join('; ')})`, changes: { kind: 'copilot_prepare_esign', tally } });
+        await logCopilot(db, ctx, `Prepared “${sub.title ?? 'a document'}” for e-signature (${roles.join(', ')}) — not sent`);
+        const noEmail = signers.filter(s => !s.email).map(s => s.name || s.role);
+        return j({ ok: true, sent: false, submission_id: sub.id, pages: det.pages, tally, replaced_earlier_fields: replaced, warnings: det.warnings,
+          signers: signers.map(s => ({ role: s.role, name: s.name, email: s.email })),
+          missing_email_for: noEmail,
+          next: `Prepared, NOT sent. It is on the E-Sign page (drafts) and in the document. Tell the agent to look it over; send only when they explicitly say to — then send_for_signature with these roles${noEmail.length ? ` (still need an email for: ${noEmail.join(', ')})` : ''}.` });
+      }
       case 'send_for_signature': {
         const signers = Array.isArray(input.signers) ? input.signers : [];
         const r = await crmFetch(ctx, '/api/crm/envelopes', 'POST', {
@@ -1291,7 +1355,15 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
               note: 'Edit this with edit_loi (term labels above are the exact ones to use).',
             });
           }
-          return j({ id: sub.id, title: sub.title, status: sub.status, deal_id: sub.deal_id, listing_id: sub.listing_id, fields: summarizeFields(sub.values) });
+          const signing: Record<string, { initials: number; signatures: number; dates: number }> = {};
+          for (const f of (Array.isArray(sub.values) ? sub.values : []) as OverlayField[] & { signerRole?: string }[]) {
+            const ft = (f as { type?: string }).type;
+            if (ft !== 'initial' && ft !== 'signature' && ft !== 'date') continue;
+            const r = String((f as { signerRole?: string }).signerRole ?? 'unassigned');
+            const t = (signing[r] ??= { initials: 0, signatures: 0, dates: 0 });
+            if (ft === 'initial') t.initials++; else if (ft === 'signature') t.signatures++; else t.dates++;
+          }
+          return j({ id: sub.id, title: sub.title, status: sub.status, deal_id: sub.deal_id, listing_id: sub.listing_id, fields: summarizeFields(sub.values), esign_boxes: Object.keys(signing).length ? signing : 'none placed yet (use prepare_esign)' });
         }
         let q = db.from('crm_form_submissions').select('id, title, status, deal_id, listing_id, updated_at').order('updated_at', { ascending: false }).limit(25);
         q = scoped(q, ctx);
@@ -1597,6 +1669,7 @@ export function describeWrite(name: string, input: Record<string, any>): string 
     case 'update_deal': return `Update the deal's ${Object.keys(input).filter(k => k !== 'deal_id').map(k => k.replace(/_/g, ' ')).join(', ') || 'details'}`;
     case 'generate_lease': return `Generate & file the lease${input.values?.tenant_name ? ` for ${input.values.tenant_name}${input.values.suite ? `, suite ${input.values.suite}` : ''}` : ''}`;
     case 'start_form': return `Start a new form document`;
+    case 'prepare_esign': return `Place initials / signature / date boxes for ${(input.signers || []).map((x: any) => x.role).join(', ') || 'the signers'} — draft only, nothing is sent`;
     case 'send_for_signature': return `📧 Send for e-signature to ${(input.signers || []).map((s: any) => [s.name, s.email && `<${s.email}>`].filter(Boolean).join(' ')).join(', ')} — this emails them the document`;
     case 'send_email': return `📧 Send the email “${input.subject}” from your Gmail — this emails the contact`;
     case 'schedule_event': return `📅 Add “${input.title}” to your calendar on ${input.date}`;

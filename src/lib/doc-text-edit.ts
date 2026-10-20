@@ -155,8 +155,8 @@ export async function editDocx(input: Uint8Array | Buffer, edits: EditSpec[]): P
 }
 
 // ───────────────────────────────── PDF ──────────────────────────────────
-interface Item { str: string; x: number; y: number; w: number; h: number }
-interface PageText { width: number; height: number; items: Item[] }
+export interface Item { str: string; x: number; y: number; w: number; h: number }
+export interface PageText { width: number; height: number; items: Item[] }
 interface Rect { x0: number; x1: number; y: number; h: number }
 
 /** pdf.js options shared by reading and rendering. Non-embedded standard fonts (Helvetica, Times…) need their data files to draw. */
@@ -165,7 +165,7 @@ function pdfjsOptions(bytes: Uint8Array) {
   return { data: new Uint8Array(bytes.slice(0)), password: '', ...(fs.existsSync(dir) ? { standardFontDataUrl: dir } : {}) };
 }
 
-async function readPdfText(bytes: Uint8Array): Promise<PageText[]> {
+export async function readPdfText(bytes: Uint8Array): Promise<PageText[]> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = pdfjs.getDocument(pdfjsOptions(bytes));
   const pdf = await task.promise;
