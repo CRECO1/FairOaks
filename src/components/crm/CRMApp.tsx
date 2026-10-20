@@ -8957,40 +8957,38 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                         const trackedCount = sentEmails.filter(s => s.tracking_id).length;
                         const failedCount = campaignSends.filter(s => s.status === 'failed').length;
                         const openRate = trackedCount > 0 ? Math.round((openedCount / trackedCount) * 100) : null;
-                        const barColor = openRate == null ? '#e5e7eb' : openRate >= 40 ? '#16a34a' : openRate >= 20 ? '#c9922c' : '#ef4444';
                         return (
                           <div>
                             {/* Stats cards */}
                             {trackedCount > 0 && (
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 10, marginBottom: 20 }}>
-                                {/* Open rate card */}
-                                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center', gridColumn: 'span 2' }}>
-                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Open Rate</div>
-                                  <div style={{ fontSize: 32, fontWeight: 700, color: barColor, fontFamily: "'Cormorant Garamond',serif", lineHeight: 1 }}>{openRate}%</div>
-                                  <div style={{ height: 4, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', margin: '10px 0 4px' }}>
-                                    <div style={{ height: '100%', width: `${openRate}%`, background: barColor, borderRadius: 4, transition: 'width .5s' }} />
+                                {/* Lead with what is real. "Opens" are inflated — Apple Mail marks every delivered email as opened — so a 43% open
+                                    rate next to a 4% click rate used to read as a great result. Clicks and engaged people come first; opens are
+                                    shown, muted, with the caveat. */}
+                                <div style={{ background: '#fffdf7', border: '1px solid #f0e2c4', borderRadius: 12, padding: '14px 12px', textAlign: 'center', gridColumn: 'span 2' }}>
+                                  <div style={{ fontSize: 11, color: '#9A6E18', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Real click rate</div>
+                                  <div style={{ fontSize: 32, fontWeight: 700, color: '#9A6E18', fontFamily: "'Cormorant Garamond',serif", lineHeight: 1 }}>{activeCampaign?.click_rate != null ? `${activeCampaign.click_rate}%` : '—'}</div>
+                                  <div style={{ height: 4, background: '#f3e9d0', borderRadius: 4, overflow: 'hidden', margin: '10px 0 4px' }}>
+                                    <div style={{ height: '100%', width: `${Math.min(100, (activeCampaign?.click_rate ?? 0) * 4)}%`, background: '#c9922c', borderRadius: 4, transition: 'width .5s' }} />
                                   </div>
-                                  <div style={{ fontSize: 11, color: '#d1d5db' }}>avg 20–25%</div>
+                                  <div style={{ fontSize: 11, color: '#c9a86a' }}>{activeCampaign?.click_count ?? 0} of {trackedCount} clicked · spam-filter checks excluded</div>
                                 </div>
-                                {/* Delivered */}
+                                {/* Sent */}
                                 <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
                                   <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Sent</div>
                                   <div style={{ fontSize: 26, fontWeight: 700, color: '#111' }}>{trackedCount}</div>
                                 </div>
-                                {/* Opened */}
+                                {/* Engaged people */}
                                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 11, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Opened</div>
-                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#15803d' }}>{openedCount}</div>
+                                  <div style={{ fontSize: 11, color: '#16a34a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Engaged</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#15803d' }}>{activeCampaign?.engaged_count ?? 0}</div>
+                                  <div style={{ fontSize: 11, color: '#6ee7b7' }}>clicks, views, calls</div>
                                 </div>
-                                {/* Clicked — from Resend's webhook (email_tracking_events), not our pixel.
-                                    Shown as a dash rather than 0% when no click data exists yet, so an
-                                    un-subscribed webhook doesn't read as "nobody clicked". */}
-                                <div style={{ background: '#fffdf7', border: '1px solid #f0e2c4', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
-                                  <div style={{ fontSize: 11, color: '#9A6E18', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Clicked</div>
-                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#9A6E18' }}>{activeCampaign?.click_count ?? 0}</div>
-                                  <div style={{ fontSize: 11, color: '#c9a86a' }}>
-                                    {activeCampaign?.click_rate != null ? `${activeCampaign.click_rate}% CTR` : 'no click data'}
-                                  </div>
+                                {/* Opens — muted on purpose */}
+                                <div title="Apple Mail opens every email it delivers, so opens overstate real reads" style={{ background: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
+                                  <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Opened*</div>
+                                  <div style={{ fontSize: 26, fontWeight: 700, color: '#6b7280' }}>{openedCount}</div>
+                                  <div style={{ fontSize: 11, color: '#b0b0b0' }}>{openRate}% · inflated</div>
                                 </div>
                                 {/* Unopened */}
                                 <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
