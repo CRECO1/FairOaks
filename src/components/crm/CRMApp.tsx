@@ -4131,8 +4131,12 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
       .order('sent_at', { ascending: false }).order('id').range(a, b));
     // The send row only keeps the FIRST open time; every open (with its time) lands in email_tracking_events via the Resend
     // webhook — use the newest per person for "latest open".
-    const opens = await fetchAll<{ client_id: string; occurred_at: string }>((a, b) => supabase.from('email_tracking_events')
-      .select('client_id, occurred_at').eq('campaign_id', campaignId).eq('event_type', 'open').order('id').range(a, b));
+    // (the browser can't read email_tracking_events — row-level security, no policy — so this goes through the server)
+    let opens: { client_id: string; occurred_at: string }[] = [];
+    try {
+      const r = await fetch(`/api/campaigns/${campaignId}/opens`, { headers: { Authorization: `Bearer ${session!.access_token}` } });
+      if (r.ok) opens = ((await r.json()).opens ?? []) as { client_id: string; occurred_at: string }[];
+    } catch { /* the list just shows the first open */ }
     const latest = new Map<string, string>();
     for (const o of opens) { const cur = latest.get(o.client_id); if (!cur || o.occurred_at > cur) latest.set(o.client_id, o.occurred_at); }
     // Every open with its exact time, filed under the send it followed: a person on a recurring campaign has one send per
@@ -9082,7 +9086,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                                   </div>
                                   {shown && (
                                     <div style={{ background: '#f0fdf4', borderRadius: '0 0 10px 10px', borderLeft: '3px solid #22c55e', padding: '4px 12px 10px 63px' }}>
-                                      <div style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 6px' }}>{times.length > 1 ? `${times.length} opens` : 'Opened'} · Central time · newest first</div>
+                                      <div style={{ fontSize: 11, color: '#6b7280', margin: '2px 0 6px' }}>{times.length > 1 ? `${times.length} opens` : 'Opened'} · Central time · newest first{(s.open_count ?? 0) > times.length ? ` · ${s.open_count} counted, ${times.length} have a logged time` : ''}</div>
                                       {times.length === 0 ? <div style={{ fontSize: 12, color: '#6b7280' }}>No individual times were logged for this one.</div> : (
                                         <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 3 }}>
                                           {times.map((t, i) => (
