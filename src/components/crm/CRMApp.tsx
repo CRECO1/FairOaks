@@ -8247,15 +8247,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     return (
                       <div>
                         {/* Pipeline metrics */}
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
                           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
-                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Active</div>
-                            <div style={{ fontSize: 22, fontWeight: 700, color: '#111' }}>{activeCount}</div>
-                          </div>
-                          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
-                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Sending next</div>
-                            <div style={{ fontSize: (nextArmed || nextDraft) ? 15 : 22, fontWeight: 700, color: '#111', marginTop: (nextArmed || nextDraft) ? 2 : 0 }}>{nextArmed ? fmtShort(nextArmed) : nextDraft ? fmtShort(nextDraft) : '—'}</div>
-                            {scheduledDrafts.length > 0 ? <div style={{ fontSize: 11, color: '#b45309', fontWeight: 600, marginTop: 1 }}>{scheduledDrafts.length} not activated</div> : armed.length > 0 ? <div style={{ fontSize: 11, color: '#16a34a', marginTop: 1 }}>{armed.length} armed</div> : null}
+                            <div style={{ fontSize: 12, color: '#9ca3af' }}>Scheduled</div>
+                            {(() => {
+                              const nxt = nextArmed ?? nextDraft;
+                              return (
+                                <>
+                                  <div style={{ fontSize: nxt ? 17 : 15, fontWeight: 700, color: nxt ? '#111' : '#6b7280', marginTop: 3 }}>{nxt ? `Next: ${fmtShort(nxt)}` : 'Nothing scheduled'}</div>
+                                  <div style={{ fontSize: 11, marginTop: 2, color: scheduledDrafts.length > 0 ? '#b45309' : '#9ca3af', fontWeight: scheduledDrafts.length > 0 ? 600 : 400 }}>
+                                    {scheduledDrafts.length > 0 ? `${scheduledDrafts.length} dated draft${scheduledDrafts.length !== 1 ? 's' : ''} not activated` : `${activeCount} active${armed.length ? ` · ${armed.length} armed` : ''}`}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 10, padding: '12px 14px' }}>
                             <div style={{ fontSize: 12, color: '#9ca3af' }}>Sent → engaged</div>
@@ -8349,7 +8354,11 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                           </div>
                         ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                          {[...campaignProjects].sort((a, b) => projectRecency(b.id) - projectRecency(a.id)).map(project => {
+                          {[...campaignProjects].sort((a, b) => {
+                            // Retired always sinks to the bottom, then empty projects; everything else newest-activity first.
+                            const rank = (pr: typeof a) => (pr.name.trim().toLowerCase() === 'retired' ? 2 : visibleCampaigns.some(c => c.project_id === pr.id) ? 0 : 1);
+                            return rank(a) - rank(b) || projectRecency(b.id) - projectRecency(a.id);
+                          }).map(project => {
                             const projectCampaigns = visibleCampaigns.filter(c => c.project_id === project.id).sort((a, b) => campaignRecency(b) - campaignRecency(a));
                             const isExpanded = expandedProjects.has(project.id);
                             return (
