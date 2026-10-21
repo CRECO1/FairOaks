@@ -2,7 +2,7 @@
  * GET /api/cron/prune-pageviews — daily. Keeps site_pageviews + site_events a rolling 90-day
  * window (was 7 days): the live feed only looks back 30 minutes, but the per-lead / per-contact
  * website history and the engagement reports need weeks of visitor-level data. Also trims crawler_hits to 365 days.
- * Secured with CRON_SECRET.
+ * Also deletes plaza job applications (and their resumes) older than 12 months. Secured with CRON_SECRET.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
@@ -34,5 +34,18 @@ export async function GET(req: NextRequest) {
     .lt('created_at', crawlerCutoff);
   if (crawlerError) console.error('[prune-pageviews] crawler_hits', crawlerError);
 
-  return NextResponse.json({ pruned: count ?? 0, eventsPruned: evCount ?? 0, cutoff, crawlerPruned: crawlerCount ?? 0 });
+  // Job applications from fairoaksranchplaza.com are kept 12 months (the privacy policy says so), then the application and its resume are deleted.
+  let applicationsPruned = 0;
+  try {
+    const appCutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: old } = await db.from('plaza_job_applications').select('id, resume_path').lt('created_at', appCutoff).limit(500);
+    const paths = (old ?? []).map(a => a.resume_path).filter((x): x is string => !!x);
+    if (paths.length) await db.storage.from('plaza-resumes').remove(paths);
+    if (old?.length) {
+      const { count: n } = await db.from('plaza_job_applications').delete({ count: 'exact' }).in('id', old.map(a => a.id));
+      applicationsPruned = n ?? 0;
+    }
+  } catch (e) { console.error('[prune-pageviews] plaza_job_applications', e); }
+
+  return NextResponse.json({ pruned: count ?? 0, eventsPruned: evCount ?? 0, cutoff, crawlerPruned: crawlerCount ?? 0, applicationsPruned });
 }
