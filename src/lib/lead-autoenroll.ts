@@ -22,10 +22,12 @@ export async function maybeAutoEnrollLead(supabase: SupabaseClient, opts: {
 
   const { data: client } = await supabase
     .from('crm_clients')
-    .select('id, email, unsubscribed_at')
+    .select('id, email, unsubscribed_at, lead_hold')
     .eq('id', opts.clientId)
     .maybeSingle();
   if (!client?.email || client.unsubscribed_at) return { enrolled: false, reason: 'no email or unsubscribed' };
+  // A lead on hold (supabase/lead-hold.sql) is the broker's alone until he assigns it: no welcome email goes out in anyone's name.
+  if (client.lead_hold) return { enrolled: false, reason: 'held' };
 
   // The generic welcome plan for this brand: a plan with a trigger_value is
   // scoped to one property, and is left to the import path that matches it.

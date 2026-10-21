@@ -65,11 +65,13 @@ async function autoEnrollNewContact(supabase: ReturnType<typeof db>, opts: {
   // Fetch client info for merge fields
   const { data: client } = await supabase
     .from('crm_clients')
-    .select('id, first_name, last_name, email, type, unsubscribe_token, unsubscribed_at')
+    .select('id, first_name, last_name, email, type, unsubscribe_token, unsubscribed_at, lead_hold')
     .eq('id', clientId)
     .single();
 
   if (!client || client.unsubscribed_at || !client.email) return;
+  // A lead on hold is the broker's alone until he assigns it (supabase/lead-hold.sql): no welcome series.
+  if (client.lead_hold) return;
 
   // Fetch agent info for merge fields
   const { data: agent } = await supabase

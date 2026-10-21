@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, plan_id, client_id, agent_id, current_step, next_step_at,
       plan:crm_action_plans!inner(id, name, status, business_unit, completion_campaign_id, from_name, from_email),
-      client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at)
+      client:crm_clients!inner(id, first_name, last_name, email, phone, cell_phone, type, agent_id, unsubscribe_token, unsubscribed_at, lead_hold)
     `)
     .eq('active', true)
     .eq('plan.status', 'active')
@@ -111,6 +111,8 @@ export async function GET(req: NextRequest) {
     const plan = enrollment.plan;
     const client = enrollment.client;
     if (!plan || !client) continue;
+    // On hold (supabase/lead-hold.sql): nothing goes out until the broker assigns or releases the lead. The step stays due.
+    if ((client as { lead_hold?: boolean | null }).lead_hold) continue;
     if (client.unsubscribed_at) {
       // Unsubscribed since enrolling — close the enrollment so it doesn't sit "active" forever.
       await supabase.from('crm_action_plan_enrollments')
