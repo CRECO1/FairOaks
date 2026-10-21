@@ -84,8 +84,8 @@ function samePropertyText(a: unknown, b: unknown): boolean {
 async function loadDealContacts(db: SupabaseClient, ctx: AgentCtx, ids: string[]): Promise<Array<Record<string, any>> | string> {
   const want = [...new Set(ids.filter(Boolean))];
   if (!want.length) return [];
-  const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, business_unit, agent_id, assigned_agent_ids').in('id', want);
-  const rows = data ?? [];
+  const { data } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, business_unit, agent_id, assigned_agent_ids, lead_hold').in('id', want);
+  const rows = (data ?? []).filter(r => !(r as { lead_hold?: boolean }).lead_hold || ctx.role === 'super_admin');
   for (const id of want) {
     const c = rows.find(r => r.id === id);
     if (!c) return JSON.stringify({ error: `Contact ${id} not found` });
@@ -173,7 +173,7 @@ async function resolveAudience(db: SupabaseClient, ctx: AgentCtx, a: { types?: u
   const pull = async (build: (q: any) => any) => {
     for (let from = 0; from < 5000; from += 1000) {
       let q = db.from('crm_clients').select('id, first_name, last_name, business_name, email, unsubscribed_at');
-      q = scoped(q, ctx);
+      q = hideHeld(scoped(q, ctx), ctx);
       if (ctx.role === 'agent') q = q.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
       const { data } = await build(q).range(from, from + 999);
       rows.push(...((data ?? []) as typeof rows));
@@ -262,10 +262,19 @@ async function fileBytesOnto(db: SupabaseClient, ctx: AgentCtx, buf: Buffer, fil
 // Guard a by-id WRITE: the service-role client bypasses RLS, so every direct mutation
 // must confirm the target row lives in the agent's workspace. Returns an error string to
 // return to the model, or null when the row is in-workspace (or the agent is unit-less).
+/** New leads are on HOLD (supabase/lead-hold.sql): only the broker (super_admin) may see them until he assigns or releases them. */
+const hideHeld = <Q extends { eq: (c: string, v: boolean) => Q }>(q: Q, ctx: { role?: string | null }): Q => ctx.role === 'super_admin' ? q : q.eq('lead_hold', false);
+async function heldClientIds(db: SupabaseClient, ctx: { role?: string | null }): Promise<string[]> {
+  if (ctx.role === 'super_admin') return [];
+  const { data } = await db.from('crm_clients').select('id').eq('lead_hold', true).limit(500);
+  return (data ?? []).map(r => r.id as string);
+}
+
 async function outOfWorkspace(db: SupabaseClient, ctx: AgentCtx, table: string, id: string, label: string): Promise<string | null> {
   if (!ctx.businessUnit || !id) return null;
-  const { data } = await db.from(table).select('business_unit').eq('id', id).maybeSingle();
-  if (!data) return JSON.stringify({ error: `${label} not found` });
+  const { data: row } = await db.from(table).select('*').eq('id', id).maybeSingle();
+  const data = row as { business_unit?: string; lead_hold?: boolean } | null;
+  if (!data || (table === 'crm_clients' && data.lead_hold && ctx.role !== 'super_admin')) return JSON.stringify({ error: `${label} not found` });
   if (data.business_unit !== ctx.businessUnit) return JSON.stringify({ error: `${label} is in a different workspace` });
   return null;
 }
@@ -654,7 +663,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         // split across first_name/last_name — e.g. %Chris Maxwell% matches neither column, so
         // the contact looks missing even though searching just "Maxwell" would find it.
         const tokens = String(input.query ?? '').trim().split(/\s+/).filter(Boolean).slice(0, 6);
-        let q = db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').limit(10);
+        let q = hideHeld(db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').limit(10), ctx);
         for (const tok of (tokens.length ? tokens : [''])) {
           const t = safeTerm(tok);
           q = q.or(`first_name.ilike.${t},last_name.ilike.${t},business_name.ilike.${t},email.ilike.${t}`);
@@ -673,7 +682,7 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         if (rows.length === 0 && raw.length >= 3) {
           const cand: Array<Record<string, any>> = [];
           for (let page = 0; page < 4; page++) { // PostgREST caps a page at 1000 rows
-            let cq = db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').order('created_at', { ascending: false }).range(page * 1000, page * 1000 + 999);
+            let cq = hideHeld(db.from('crm_clients').select('id, first_name, last_name, business_name, email, type').order('created_at', { ascending: false }).range(page * 1000, page * 1000 + 999), ctx);
             cq = scoped(cq, ctx);
             if (ctx.role === 'agent') cq = cq.or(`agent_id.eq.${ctx.userId},assigned_agent_ids.cs.{${ctx.userId}}`);
             const { data: pageData } = await cq;
@@ -701,8 +710,8 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         return j(rows.map(c => ({ id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name, business: c.business_name, email: c.email, type: c.type })));
       }
       case 'get_contact': {
-        const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, tags, notes, lead_source, business_unit, lease_expiration_date, agent_id, assigned_agent_ids').eq('id', input.contact_id).single();
-        if (!c) return j({ error: 'Contact not found' });
+        const { data: c } = await db.from('crm_clients').select('id, first_name, last_name, business_name, email, phone, cell_phone, type, tags, notes, lead_source, business_unit, lease_expiration_date, agent_id, assigned_agent_ids, lead_hold').eq('id', input.contact_id).single();
+        if (!c || (c.lead_hold && ctx.role !== 'super_admin')) return j({ error: 'Contact not found' });
         if (ctx.businessUnit && c.business_unit !== ctx.businessUnit) return j({ error: 'Contact is in a different workspace' });
         if (ctx.role === 'agent' && c.agent_id !== ctx.userId && !((c.assigned_agent_ids as string[] | null) ?? []).includes(ctx.userId)) return j({ error: "That contact isn't assigned to you" });
         const hid = await hiddenDeals(db, ctx);
@@ -714,6 +723,8 @@ export async function runTool(name: string, input: Record<string, any>, ctx: Age
         let q = db.from('crm_tasks').select('id, title, due_date, status, priority, type, description, notes, client_id, deal_id, assigned_to, agent_id, completed_at').order('due_date', { ascending: true, nullsFirst: false }).limit(input.due ? 200 : 60);
         q = scoped(q, ctx);
         q = notHidden(q, await hiddenDeals(db, ctx));
+        const heldIds = await heldClientIds(db, ctx);
+        if (heldIds.length) q = q.or(`client_id.is.null,client_id.not.in.(${heldIds.join(',')})`);
         // "Open" is completed_at IS NULL, matching how the Tasks page itself
         // decides. Filtering on status='open' silently hid in_progress tasks, and
         // status='completed' matched nothing at all because the column holds

@@ -18,6 +18,7 @@ import { runCallbackSla } from '@/lib/call-sla';
  *  2. Nudge: still uncontacted 30 minutes after it landed → email the owner.
  *  3. Escalate: still uncontacted at 2 hours → email the owner AND the backup
  *     (Zack and Brian back each other up), so a lead never sits unworked.
+ *     Exception: a lead on HOLD (supabase/lead-hold.sql) is the broker's alone — the backup is never copied.
  *
  * "Contacted" means anything a person did after the lead arrived: a logged
  * call/email/note/meeting, a completed call-back task, or a Talkroute call
@@ -56,6 +57,7 @@ type Lead = {
   created_at: string;
   agent_id: string | null;
   assigned_agent_ids: string[] | null;
+  lead_hold: boolean | null;
   lead_source: string | null;
   lead_site: string | null;
   channel: string | null;
@@ -94,7 +96,7 @@ export async function GET(req: NextRequest) {
 
   const { data: rows, error } = await db
     .from('crm_clients')
-    .select('id, first_name, last_name, email, phone, created_at, agent_id, assigned_agent_ids, lead_source, lead_site, channel, utm_campaign, notes')
+    .select('id, first_name, last_name, email, phone, created_at, agent_id, assigned_agent_ids, lead_hold, lead_source, lead_site, channel, utm_campaign, notes')
     .eq('business_unit', 'commercial')
     .gte('created_at', since)
     .lte('created_at', nudgeBefore)
@@ -166,13 +168,15 @@ export async function GET(req: NextRequest) {
     const backupId = (lead.assigned_agent_ids ?? []).find(id => id !== lead.agent_id)
       ?? (owner?.id !== superAdmin?.id ? superAdmin?.id : undefined);
     const backup = backupId ? profiles.get(backupId) : undefined;
-    const to = Array.from(new Set([inboxFor(owner) ?? inboxFor(superAdmin), ...(level === 2 ? [inboxFor(backup)] : [])]
+    // A held lead is the broker's alone until he assigns it: the backup is not told about it, at 2 hours or ever.
+    const copyBackup = level === 2 && !lead.lead_hold;
+    const to = Array.from(new Set([inboxFor(owner) ?? inboxFor(superAdmin), ...(copyBackup ? [inboxFor(backup)] : [])]
       .filter((e): e is string => !!e)));
     if (!to.length || !resend) { results.push({ id: lead.id, status: 'no-recipient' }); continue; }
 
     const ownerName = owner ? `${owner.first_name ?? ''}`.trim() || 'the owner' : 'the owner';
     const subject = level === 2
-      ? `⚠️ Lead uncontacted for ${ago(lead.created_at)}: ${name} — ${ownerName} + backup, please call`
+      ? `⚠️ Lead uncontacted for ${ago(lead.created_at)}: ${name} — ${ownerName}${copyBackup ? ' + backup' : ''}, please call`
       : `⏱ ${name} hasn't been contacted yet (${ago(lead.created_at)})`;
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1A1A1A">

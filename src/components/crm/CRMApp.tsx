@@ -69,7 +69,7 @@ const supabase = createBrowserClient();
 type Role = 'agent' | 'admin' | 'super_admin';
 interface Profile { id: string; email: string; first_name: string; last_name: string; phone?: string; license?: string; role: Role; last_sign_in_at?: string; business_unit?: string; email_signature?: string; daily_call_goal?: number | null; }
 
-interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
+interface Client { id: string; agent_id: string; assigned_agent_ids: string[]; tagged_contact_ids?: string[]; first_name: string; last_name: string; business_name: string; email: string; extra_emails: string[]; phone: string; cell_phone: string; address: string; city: string; state: string; zip: string; brokerage: string; license: string; budget: string; size_range: string; asset_types: string[]; type: 'Buyer' | 'Seller' | 'Tenant' | 'Landlord/Investor' | 'Agent' | 'Broker'; tags: string[]; lead_source: string; notes: string; created_at: string; last_touched_at?: string; unsubscribed_at?: string | null; unsubscribe_token?: string; lease_expiration_date?: string | null; lxp_follow_up_days?: number | null; review_requested_at?: string | null; birthday?: string | null; is_shared?: boolean; lead_hold?: boolean | null; page_views?: number | null; visit_count?: number | null; time_on_site_sec?: number | null; }
 interface CallListPerson {
   clientId: string; reason: string; heat: 'hot' | 'warm' | 'cold'; askFor: string; lastCalled: string | null; rank: number;
   view: 'opened' | 'emailed' | 'cold';
@@ -1039,6 +1039,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
   // touched in 30 days" (that was 2,586 of 3,312 — a number nobody can act on). Open deals gone
   // quiet for 2+ weeks, overdue tasks, and brand-new leads nobody has contacted.
   const [needsTouchOnly, setNeedsTouchOnly] = useState(false);
+  // New leads are held for the broker until he assigns or releases them (supabase/lead-hold.sql) — he can filter to them.
+  const [heldOnly, setHeldOnly] = useState(false);
   const needsTouchIds = useMemo(() => {
     const now = Date.now(), DAY = 24 * 60 * 60 * 1000;
     const touched = new Map<string, number | null>();
@@ -5891,6 +5893,9 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                       <div className="ctc-stat dark"><div className="k">Total</div><div className="v">{clients.length.toLocaleString()}</div><div className="d">across all types</div></div>
                       <div className="ctc-stat click" onClick={() => setContactSort('added')} title="Sort by newest added"><div className="k">New This Week</div><div className="v">{newThisWeek}</div><div className="d">added in last 7 days</div></div>
                       <div className={`ctc-stat click${needsTouchOnly ? ' dark' : ''}`} onClick={() => setNeedsTouchOnly(v => !v)} title="Open deals quiet for 2+ weeks, overdue tasks, and new leads nobody has contacted — click to show only these"><div className="k">Needs a Touch</div><div className="v">{needsTouchIds.size}</div><div className="d">{needsTouchOnly ? 'showing only these · click to clear' : 'quiet deals, overdue tasks, new leads'}</div></div>
+                      {isSuperAdmin && clients.some(c => c.lead_hold) && (
+                        <div className={`ctc-stat click${heldOnly ? ' dark' : ''}`} onClick={() => setHeldOnly(v => !v)} title="New leads only you can see. Assign one (or press Release on its card) and the team can see it."><div className="k">🔒 Held Leads</div><div className="v">{clients.filter(c => c.lead_hold).length}</div><div className="d">only you can see these</div></div>
+                      )}
                       <div className="ctc-stat"><div className="k">Active Deals</div><div className="v">{activeDealCount}</div><div className="d">in the pipeline</div></div>
                       <div className="ctc-stat"><div className="k">In Campaigns</div><div className="v">{inCampaigns}</div><div className="d">currently enrolled</div></div>
                     </div>
@@ -6000,8 +6005,8 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                     <input placeholder="Filter by tag…" value={contactTagFilter} onChange={e => setContactTagFilter(e.target.value)}
                       className={`cf-tag-input${contactTagFilter ? ' active' : ''}`} style={{ width: isMobile ? '100%' : 140 }} />
                     {/* Clear */}
-                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter || needsTouchOnly) && (
-                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); setNeedsTouchOnly(false); }}
+                    {(contactTypeFilter || contactSourceFilter || contactTagFilter || contactSpecFilter || contactOwnerFilter || needsTouchOnly || heldOnly) && (
+                      <button onClick={() => { setContactTypeFilter(''); setContactSourceFilter(''); setContactTagFilter(''); setContactSpecFilter(''); setContactOwnerFilter(''); setNeedsTouchOnly(false); setHeldOnly(false); }}
                         style={{ fontSize: 13, color: '#6b7280', background: 'none', border: '1px solid #e2e8f0', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
                         Clear
                       </button>
@@ -6039,6 +6044,7 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                   if (contactSpecFilter && !(c.asset_types ?? []).includes(contactSpecFilter)) return false;
                   if (contactOwnerFilter && c.agent_id !== contactOwnerFilter) return false;
                   if (needsTouchOnly && !needsTouchIds.has(c.id)) return false;
+                  if (heldOnly && !c.lead_hold) return false;
                   return true;
                 }).sort((a, b) => {
                   if (contactSort === 'recent') {
@@ -12123,6 +12129,20 @@ export default function CRMApp({ businessUnit }: { businessUnit: BusinessUnit })
                 </div>
                 <button className="crm-icon-btn" onClick={() => setActiveClient(null)} aria-label="Close" title="Close" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', fontSize: 22, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}>✕</button>
               </div>
+
+              {/* New lead on hold — only the broker sees it until it is assigned or released */}
+              {c.lead_hold && isSuperAdmin && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 28px', background: '#fffbeb', borderBottom: '1px solid #fde68a', fontSize: 13, color: '#92400e' }}>
+                  <span style={{ flex: 1, minWidth: 200 }}>🔒 <strong>New lead on hold</strong> — only you can see it. Assign it to someone (change the Owner) and it opens up to them, or release it to the team as it is.</span>
+                  <button className="crm-btn" style={{ fontSize: 12, padding: '5px 12px' }} onClick={async () => {
+                    const { error } = await supabase.from('crm_clients').update({ lead_hold: false }).eq('id', c.id);
+                    if (error) { showToast('Could not release: ' + error.message); return; }
+                    setClients(prev => prev.map(x => (x.id === c.id ? { ...x, lead_hold: false } : x)));
+                    setActiveClient({ ...c, lead_hold: false });
+                    showToast('Released — the team can see this lead now');
+                  }}>Release to team</button>
+                </div>
+              )}
 
               {/* Smart Status Banner */}
               {(() => {
