@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
     db.from('plaza_posts').select('id', { count: 'exact', head: true }).eq('source', 'community').eq('published', false),
     db.from('plaza_jobs').select('id', { count: 'exact', head: true }).eq('source', 'community').eq('published', false),
   ]);
+  const claims = await db.from('plaza_listing_invites').select('id', { count: 'exact', head: true }).eq('status', 'submitted');
   const apps = await db.from('plaza_job_applications').select('id', { count: 'exact', head: true }).eq('status', 'new');
-  return NextResponse.json({ posts: posts.count ?? 0, jobs: jobs.count ?? 0, applications: apps.count ?? 0, total: (posts.count ?? 0) + (jobs.count ?? 0) + (apps.count ?? 0) });
+  return NextResponse.json({ posts: posts.count ?? 0, jobs: jobs.count ?? 0, applications: apps.count ?? 0, listings: claims.count ?? 0, total: (posts.count ?? 0) + (jobs.count ?? 0) + (apps.count ?? 0) + (claims.count ?? 0) });
 }
