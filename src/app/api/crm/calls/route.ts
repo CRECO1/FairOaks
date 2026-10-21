@@ -274,6 +274,19 @@ export async function PATCH(req: NextRequest) {
     if (b.follow_up_due === null || b.follow_up_due === '') patch.follow_up_due = null;
     else { const dt = new Date(b.follow_up_due); patch.follow_up_due = Number.isNaN(dt.getTime()) ? null : dt.toISOString(); }
   }
+  // callback_chosen: an agent picked this time (vs. the auto default), so the reminder fires at
+  // it (lib/call-sla.ts). Clearing the due time hands the call back to the 30-min / 2-hr cadence.
+  let rearmAlerts = false;
+  if (b.callback_chosen === true && patch.follow_up_due) {
+    const dueMs = new Date(patch.follow_up_due as string).getTime();
+    if (dueMs < Date.now() - 60_000) return NextResponse.json({ error: 'Pick a time in the future' }, { status: 400 });
+    if (dueMs > Date.now() + 366 * 86_400_000) return NextResponse.json({ error: 'That is too far out' }, { status: 400 });
+    patch.callback_chosen_at = new Date().toISOString();
+    rearmAlerts = true;
+    // The chosen-time reminder goes to whoever picked the time, so they take the call-back (an explicit
+    // assignee in the same request wins). The level-4 escalation then goes to them + their backup.
+    if (b.follow_up_assignee === undefined) patch.follow_up_assignee = ctx.userId;
+  } else if (b.follow_up_due !== undefined && !patch.follow_up_due) patch.callback_chosen_at = null;
   if (b.follow_up_assignee !== undefined) {
     if (b.follow_up_assignee) {
       const { data: p } = await supabase.from('crm_profiles').select('id').eq('id', b.follow_up_assignee).maybeSingle();
@@ -286,6 +299,8 @@ export async function PATCH(req: NextRequest) {
   if ((patch.follow_up_due || patch.follow_up_assignee) && b.needs_follow_up !== false && b.handled !== true) patch.needs_follow_up = true;
   const { data, error } = await supabase.from('crm_call_log').update(patch).eq('id', id).select(COLS).single();
   if (error) return dbError('api/crm/calls PATCH', error);
+  // A new chosen time starts its own reminder cycle: forget any chosen-time reminders already sent.
+  if (rearmAlerts) await supabase.from('crm_call_sla_alerts').delete().eq('call_id', id).in('level', [3, 4]);
 
   // A wrap-up on a real conversation goes on the contact's timeline too.
   const contactId = data.contact_id || existing.contact_id;

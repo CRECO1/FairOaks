@@ -7,17 +7,24 @@
  * The clock only runs Mon–Sat 8–6 Central, so a 9 pm voicemail isn't "2 hours
  * late" at 11 pm. Each level is sent once per call (crm_call_sla_alerts). Calls
  * from before this shipped are left to the daily digest.
+ *
+ * A call-back an agent gave a time (callback_chosen_at set, time in follow_up_due) skips
+ * that cadence: one reminder to the owner at the chosen time (level 3), and the owner +
+ * backup if it's still open 2 business hours after it (level 4).
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { sendMonitored } from '@/lib/integration-alert';
 import { prettyPhone } from '@/lib/phone';
+import { chicagoFormat } from '@/lib/chicago-time';
 import { backupFor, businessMinutesSince, zackProfile, type Profile } from '@/lib/call-routing';
 
 export const CALL_SLA_START = '2026-10-06T18:00:00Z';
 const NUDGE_MIN = 30;
 const ESCALATE_MIN = 120;
 const LOOKBACK_HOURS = 96;
+/** A chosen time that passed longer ago than this is left to the daily digest. */
+const CHOSEN_LOOKBACK_DAYS = 14;
 
 /** Zack's CRM login is the Fair Oaks address; his alerts belong in his CRECO inbox. */
 const ALERT_INBOX: Record<string, string> = { 'info@fairoaksrealtygroup.com': 'zack@crecotx.com' };
@@ -26,13 +33,23 @@ const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt
 const span = (m: number) => (m < 120 ? `${m} min` : `${Math.round(m / 60)} hours`);
 
 export async function runCallbackSla(db: SupabaseClient): Promise<{ checked: number; sent: number; results: Array<{ id: string; status: string }> }> {
-  const since = new Date(Math.max(Date.parse(CALL_SLA_START), Date.now() - LOOKBACK_HOURS * 3600_000)).toISOString();
-  const { data: rows, error } = await db.from('crm_call_log')
-    .select('id, business_unit, source, kind, from_number, callback_number, caller_name, contact_id, started_at, summary, intent, ai_meta, follow_up_assignee')
-    .eq('needs_follow_up', true).is('handled_at', null).eq('answered_by_bot', false)
-    .gte('started_at', since);
+  const nowMs = Date.now();
+  const since = new Date(Math.max(Date.parse(CALL_SLA_START), nowMs - LOOKBACK_HOURS * 3600_000)).toISOString();
+  const [{ data: rows, error }, { data: chosenRows, error: chosenError }] = await Promise.all([
+    // No chosen time → the 30 / 120 business-minute cadence.
+    db.from('crm_call_log')
+      .select('id, business_unit, source, kind, from_number, callback_number, caller_name, contact_id, started_at, summary, intent, ai_meta, follow_up_assignee, follow_up_due')
+      .eq('needs_follow_up', true).is('handled_at', null).eq('answered_by_bot', false).is('callback_chosen_at', null)
+      .gte('started_at', since),
+    // An agent's chosen time that has arrived (not by started_at — it can be days after the call).
+    db.from('crm_call_log')
+      .select('id, business_unit, source, kind, from_number, callback_number, caller_name, contact_id, started_at, summary, intent, ai_meta, follow_up_assignee, follow_up_due')
+      .eq('needs_follow_up', true).is('handled_at', null).eq('answered_by_bot', false).not('callback_chosen_at', 'is', null)
+      .lte('follow_up_due', new Date(nowMs).toISOString()).gte('follow_up_due', new Date(nowMs - CHOSEN_LOOKBACK_DAYS * 86_400_000).toISOString()),
+  ]);
   if (error) throw error;
-  const calls = rows ?? [];
+  if (chosenError) throw chosenError;
+  const calls = [...(rows ?? []).map(c => ({ ...c, chosen: false })), ...(chosenRows ?? []).map(c => ({ ...c, chosen: true }))];
   if (!calls.length) return { checked: 0, sent: 0, results: [] };
 
   const { data: profileRows } = await db.from('crm_profiles').select('id, email, first_name, last_name, role');
@@ -43,14 +60,16 @@ export async function runCallbackSla(db: SupabaseClient): Promise<{ checked: num
   let sent = 0;
 
   for (const c of calls) {
-    const mins = businessMinutesSince(c.started_at);
-    const level = mins >= ESCALATE_MIN ? 2 : mins >= NUDGE_MIN ? 1 : 0;
+    // Chosen time: the reminder is due the moment it arrives (no business-hours gate); escalation counts from it.
+    const mins = businessMinutesSince(c.chosen ? c.follow_up_due : c.started_at);
+    const level = c.chosen ? (mins >= ESCALATE_MIN ? 4 : 3) : mins >= ESCALATE_MIN ? 2 : mins >= NUDGE_MIN ? 1 : 0;
+    const escalated = level === 2 || level === 4;
     if (!level) { results.push({ id: c.id, status: `waiting ${mins}m` }); continue; }
     const { data: already } = await db.from('crm_call_sla_alerts').select('level').eq('call_id', c.id).eq('level', level).maybeSingle();
     if (already) { results.push({ id: c.id, status: `level${level}-already-sent` }); continue; }
 
     const owner = (c.follow_up_assignee ? byId.get(c.follow_up_assignee) : undefined) ?? zackProfile(profiles);
-    const backup = level === 2 ? byId.get(backupFor(owner?.id ?? null, profiles) ?? '') : undefined;
+    const backup = escalated ? byId.get(backupFor(owner?.id ?? null, profiles) ?? '') : undefined;
     const to = Array.from(new Set([inbox(owner), inbox(backup)].filter((e): e is string => !!e)));
     const commercial = c.business_unit === 'commercial';
     const key = (commercial ? process.env.RESEND_API_KEY_COMMERCIAL : process.env.RESEND_API_KEY) || process.env.RESEND_API_KEY;
@@ -67,16 +86,25 @@ export async function runCallbackSla(db: SupabaseClient): Promise<{ checked: num
     const property = (c.ai_meta as Record<string, unknown> | null)?.property as string | undefined;
     const ownerName = owner?.first_name?.split(' ')[0] || 'the owner';
     const what = c.kind === 'voicemail' ? 'left a voicemail' : c.source === 'voicebot' ? 'talked to the AI receptionist' : 'called and didn’t reach anyone';
-    const subject = level === 2
-      ? `⚠️ Call-back waiting ${span(mins)}: ${who}${c.intent ? ` — ${c.intent}` : ''} (${ownerName} + backup)`
-      : `📞 Call-back waiting ${span(mins)}: ${who}${c.intent ? ` — ${c.intent}` : ''}`;
+    const dueAt = c.chosen ? `${chicagoFormat(new Date(c.follow_up_due), { weekday: 'short', hour: 'numeric', minute: '2-digit' })} CT` : '';
+    const subject = c.chosen
+      ? (escalated
+        ? `⚠️ Scheduled call-back still waiting: ${who}${c.intent ? ` — ${c.intent}` : ''} (${ownerName} + backup)`
+        : `⏰ Call-back time: ${who}${c.intent ? ` — ${c.intent}` : ''}`)
+      : escalated
+        ? `⚠️ Call-back waiting ${span(mins)}: ${who}${c.intent ? ` — ${c.intent}` : ''} (${ownerName} + backup)`
+        : `📞 Call-back waiting ${span(mins)}: ${who}${c.intent ? ` — ${c.intent}` : ''}`;
+    const headline = c.chosen ? (escalated ? 'Escalation: scheduled call-back still waiting' : 'Call-back time') : escalated ? 'Escalation: call-back still waiting' : 'Call-back reminder';
+    const bodyLine = c.chosen
+      ? `<strong>${esc(who)}</strong> ${what}. ${escalated ? `The call-back set for ${esc(dueAt)} still hasn't happened (${span(mins)} of business time since). ${esc(ownerName)} has it; this goes to the backup too so someone calls today.` : `You set this call-back for ${esc(dueAt)}.`}`
+      : `<strong>${esc(who)}</strong> ${what} ${span(mins)} ago (business hours) and hasn't been called back.${escalated ? ` ${esc(ownerName)} has it; this goes to the backup too so someone calls today.` : ''}`;
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#1A1A1A">
         <div style="background:#1A1A1A;color:#fff;padding:16px 20px;border-bottom:3px solid #C9922C">
-          <strong style="font-size:16px">${level === 2 ? 'Escalation: call-back still waiting' : 'Call-back reminder'}</strong>
+          <strong style="font-size:16px">${headline}</strong>
         </div>
         <div style="padding:20px;border:1px solid #E8E5E0;border-top:0">
-          <p style="margin:0 0 12px"><strong>${esc(who)}</strong> ${what} ${span(mins)} ago (business hours) and hasn't been called back.${level === 2 ? ` ${esc(ownerName)} has it; this goes to the backup too so someone calls today.` : ''}</p>
+          <p style="margin:0 0 12px">${bodyLine}</p>
           ${num ? `<p style="margin:0 0 12px"><a href="tel:${esc(num)}" style="display:inline-block;padding:10px 18px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">📞 Call ${esc(prettyPhone(num))}</a></p>` : ''}
           ${property ? `<p style="margin:0 0 8px;font-size:14px;color:#555">Asked about: <strong>${esc(property)}</strong></p>` : ''}
           ${c.summary ? `<p style="margin:0 0 16px;padding:12px;background:#FAFAF8;border:1px solid #E8E5E0;font-size:14px;white-space:pre-wrap">${esc(String(c.summary).slice(0, 600))}</p>` : ''}

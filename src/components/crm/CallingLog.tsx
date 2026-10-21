@@ -7,6 +7,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 import WrapUpQueue from '@/components/crm/WrapUpQueue';
+import CallbackTimeMenu from '@/components/crm/CallbackTimeMenu';
+import { formatCentral } from '@/lib/callback-time';
 import { useRememberedState } from '@/lib/view-memory';
 
 export interface CallRow {
@@ -141,6 +143,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [showSetup, setShowSetup] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [cbMenu, setCbMenu] = useState<string | null>(null);   // call id whose 🔔 time menu is open
   const [settings, setSettings] = useState<Settings | null>(null);
   const [conn, setConn] = useState<Connection | null>(null);
   const [knowledge, setKnowledge] = useState<{ configured: boolean; count: number; titles: string[] } | null>(null);
@@ -218,8 +221,14 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     await patch(c, { follow_up_assignee: agentId || null }, agentId ? `Assigned to ${agentName(agentId)} ✓` : 'Unassigned');
   }
   // Set (or clear) when the call-back is due.
+  // A time an agent picks is a chosen call-back time: the reminder fires then, not on the 30-min / 2-hr cadence.
   async function setDue(c: CallRow, iso: string | null) {
-    await patch(c, { follow_up_due: iso }, iso ? 'Call-back scheduled ✓' : 'Due time cleared');
+    await patch(c, { follow_up_due: iso, callback_chosen: !!iso }, iso ? 'Call-back scheduled ✓' : 'Due time cleared');
+  }
+  // 🔔 menu pick: flag the call as a call-back and, unless "no time", set when to be reminded.
+  async function flagWithTime(c: CallRow, iso: string | null) {
+    setCbMenu(null);
+    await patch(c, iso ? { needs_follow_up: true, follow_up_due: iso, callback_chosen: true } : { needs_follow_up: true }, iso ? `Reminder set for ${formatCentral(iso)} ✓` : 'Flagged for a call back ✓');
   }
 
   async function toggleOpen(c: CallRow) {
@@ -605,7 +614,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         {c.contact && onOpenContact && <button onClick={() => onOpenContact(c.contact!.id)} style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{c.contact.type ? ` · ${c.contact.type}` : ''}</button>}
                         <span style={{ fontSize: 11, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.text}</span>
                         {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
-                        {pending && di && <span style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? '#b91c1c' : '#a06a12', background: di.overdue ? '#fee2e2' : '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
+                        {pending && di && <span title={c.follow_up_due ? formatCentral(c.follow_up_due) : undefined} style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? '#b91c1c' : '#a06a12', background: di.overdue ? '#fee2e2' : '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
                         {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? '#b91c1c' : aH >= 24 ? '#a06a12' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
                         {pending && c.assignee_name && <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', background: '#e0e7ff', borderRadius: 6, padding: '2px 7px' }}>→ {c.assignee_name}</span>}
                         {c.handled_at && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ Handled{c.handled_by_name ? ` by ${c.handled_by_name}` : ''}</span>}
@@ -640,7 +649,10 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                       {pending
                         ? <button onClick={() => patch(c, { handled: true }, 'Marked as handled ✓')} disabled={busy === c.id} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none' }}>✓ Handled</button>
                         : c.handled_at ? <button onClick={() => patch(c, { handled: false, needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Put it back in the queue">↩</button>
-                        : <button onClick={() => patch(c, { needs_follow_up: true })} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a call back">🔔</button>}
+                        : <span style={{ position: 'relative', display: 'inline-flex' }}>
+                            <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
+                            {cbMenu === c.id && <CallbackTimeMenu busy={busy === c.id} onPick={iso => flagWithTime(c, iso)} onClose={() => setCbMenu(null)} />}
+                          </span>}
                       {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={mini} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }} title="Delete this record">✕</button>}
                     </div>
