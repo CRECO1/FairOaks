@@ -52,3 +52,8 @@ drop policy if exists crm_blocked_numbers_staff_delete on crm_blocked_numbers;
 create policy crm_blocked_numbers_staff_delete on crm_blocked_numbers
   for delete to authenticated using (public.crm_blocklist_is_staff());
 -- No UPDATE policy for authenticated: hit counters are bumped by the service role only.
+
+-- Supabase grants every table to anon/authenticated by default. RLS already blocks anon, but TRUNCATE is
+-- not subject to RLS, so keep the grants to exactly what the policies allow.
+revoke all on crm_blocked_numbers from anon, authenticated;
+grant select, insert, delete on crm_blocked_numbers to authenticated;
