@@ -249,6 +249,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ? [contactEmail(agent?.email), contactEmail(coAgent?.email), agent?.phone || coAgent?.phone]
     : [contactEmail(agent?.email), agent?.phone, web]).filter(Boolean) as string[];
 
+  // Cover overlay: the listing's headline + (when it has them) the trade-area numbers, over a raster fade.
+  const coverHeadline = stripInlineTags(String(L.flyer_headline ?? '')).trim() || null;
+  const coverKicker = [L.type && L.type !== 'Other' ? String(L.type) : '', [L.city, L.state].filter(Boolean).join(', ')].filter(Boolean).join('  ·  ') || null;
+  const coverStats = Array.isArray(L.trade_area?.tiles) ? (L.trade_area.tiles as Array<{ value?: unknown; label?: unknown }>).slice(0, 4).map(t => ({ value: String(t.value ?? ''), label: String(t.label ?? '') })).filter(t => t.value && t.label) : [];
+  let coverShade: Uint8Array | null = null;
+  if (hero && (coverHeadline || coverStats.length)) {
+    // 8 x 270 RGBA, fully clear at the top rising to 88% black at the foot — drawn stretched across the cover.
+    const rows = 270, px = Buffer.alloc(8 * rows * 4);
+    for (let y = 0; y < rows; y++) { const t = Math.max(0, (y - 10) / (rows - 10)); const a = Math.round(255 * 0.92 * Math.pow(t, 1.15)); for (let x = 0; x < 8; x++) { const i = (y * 8 + x) * 4; px[i] = 12; px[i + 1] = 12; px[i + 2] = 14; px[i + 3] = a; } }
+    coverShade = new Uint8Array(await sharp(px, { raw: { width: 8, height: rows, channels: 4 } }).png().toBuffer());
+  }
+
   const bytes = await renderFlyer({
     badge, address,
     description: publicSafeText(L.description || L.notes || ''),
@@ -260,6 +272,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       : null,
     statPrice, statSize, statLot, statZoning,
     mapCredit, aerialCredit,
+    headline: coverHeadline, kicker: coverKicker, coverStats, coverShade,
     siteAerials,
     agentNames,
     contacts,

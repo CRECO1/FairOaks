@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   if (!ctx) return unauthorized();
   const body = await req.json().catch(() => null);
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  const { name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, year_built, description, notes, highlights, zoning, elevator, grade_level_doors, dock_high_doors, flyer_type, co_agent_id, listing_agent_id, assigned_agent_ids, is_restricted, business_unit } = body;
+  const { name, address, city, state, zip, type, status, asking_price, sq_ft, lot_size, year_built, description, notes, highlights, flyer_headline, zoning, elevator, grade_level_doors, dock_high_doors, flyer_type, co_agent_id, listing_agent_id, assigned_agent_ids, is_restricted, business_unit } = body;
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_listings').insert({
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     type: type || 'Retail', status: status || 'active',
     asking_price: asking_price || null, sq_ft: sq_ft || null,
     lot_size: lot_size || null, year_built: year_built || null,
-    description: description || null, notes: notes || null, highlights: highlights || null,
+    description: description || null, notes: notes || null, highlights: highlights || null, flyer_headline: flyer_headline || null,
     flyer_type: flyer_type || null, co_agent_id: co_agent_id || null,
     zoning: zoning || null,
     // Tri-state: unanswered stays null rather than defaulting to "No".

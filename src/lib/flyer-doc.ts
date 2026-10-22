@@ -39,6 +39,13 @@ export interface FlyerInput {
   galleryPhotos?: Array<{ bytes: Uint8Array; png: boolean }>;   // page-2 gallery (pre-cropped ~4:3)
   mapBytes?: Uint8Array | null;        // page-1 location map (PNG)
   aerialBytes?: Uint8Array | null;     // page-2 aerial map (PNG)
+  // Cover overlay (standard look; the `brand` look has its own): a one-line headline + a stat row printed over the bottom of the
+  // cover photo, on a dark fade (`coverShade`, a PNG with an alpha ramp the caller builds — a raster fade, because stacked
+  // translucent bands show seams in some viewers). All optional; nothing is drawn unless there is a headline or stats.
+  headline?: string | null;
+  kicker?: string | null;                                       // small gold caps line above the headline
+  coverStats?: Array<{ value: string; label: string }> | null;  // up to 4, e.g. traffic / population / income
+  coverShade?: Uint8Array | null;
   mapCredit?: string | null;           // credit line to print on the page-1 map (OSM tiles require one)
   aerialCredit?: string | null;        // credit line to print on the page-2 aerial map
   // Street names to draw over the aerial (USGS imagery has none). Image pixels from the
@@ -302,6 +309,39 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
     const bSize = 30, bW = osw.widthOfTextAtSize(badge, bSize);
     p1.drawRectangle({ x: 0, y: H - 62, width: bW + 30, height: 62, color: BLACK, opacity: 0.82 });
     p1.drawText(badge, { x: 15, y: H - 45, size: bSize, font: osw, color: WHITE });
+
+    // Cover overlay: kicker + headline + stat row, bottom-left of the photo, on a dark fade.
+    const stats = (input.coverStats || []).filter(t => t && t.value && t.label).slice(0, 4);
+    const headline = sanitize(input.headline || '').trim();
+    if (hero && (headline || stats.length)) {
+      const shade = await embedPng(input.coverShade);
+      if (shade) p1.drawImage(shade, { x: 0, y: heroY, width: W, height: 270 });
+      let baseY = heroY + 14;
+      if (stats.length) {
+        const colW = (W - 60) / stats.length;
+        stats.forEach((t, i) => {
+          const x = 30 + i * colW;
+          p1.drawText(sanitize(t.value), { x, y: baseY + 14, size: 21, font: osw, color: gold });
+          // label: shrink to fit its column rather than cut it off
+          const lab = sanitize(t.label).toUpperCase();
+          const ls = fitSize(lab, labelFont, colW - 22, 6.6, 4.6);
+          p1.drawText(lab, { x, y: baseY + 2, size: ls, font: labelFont, color: rgb(0.9, 0.91, 0.92) });
+          if (i > 0) p1.drawRectangle({ x: x - 12, y: baseY, width: 0.8, height: 32, color: rgb(1, 1, 1), opacity: 0.35 });
+        });
+        baseY += 50;
+      }
+      if (headline) {
+        let hs = 30, lines = wrapText(headline, osw, hs, W - 70);
+        while (lines.length > 2 && hs > 18) { hs -= 1; lines = wrapText(headline, osw, hs, W - 70); }
+        // balance a two-line headline so it never ends on one orphaned word
+        if (lines.length === 2) for (let w = W - 80; w > 200; w -= 10) { const t = wrapText(headline, osw, hs, w); if (t.length > 2) break; lines = t; }
+        const lead = hs * 1.12;
+        lines.slice(0, 2).reverse().forEach((ln, i) => p1.drawText(ln, { x: 30, y: baseY + i * lead, size: hs, font: osw, color: WHITE }));
+        baseY += Math.min(lines.length, 2) * lead + 6;
+      }
+      const kick = sanitize(input.kicker || '').toUpperCase().trim();
+      if (kick) drawSpaced(p1, kick, 30, baseY, 9, labelFont, rgb(0.95, 0.78, 0.47), 2);
+    }
   }
 
   // Address banner (black bar, gold text)

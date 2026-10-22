@@ -39,6 +39,7 @@ interface Listing {
   description?: string;
   notes?: string;
   highlights?: string | null;
+  flyer_headline?: string | null;
   zoning?: string | null;
   elevator?: boolean | null;
   grade_level_doors?: boolean | null;
@@ -176,7 +177,7 @@ function fmtBytes(n?: number | null) {
 const BLANK_FORM = {
   name: '', address: '', city: '', state: 'TX', zip: '',
   type: 'Retail', status: 'active', asking_price: '', sq_ft: '',
-  lot_size: '', year_built: '', description: '', notes: '', highlights: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
+  lot_size: '', year_built: '', description: '', notes: '', highlights: '', flyer_headline: '', listing_agent_id: '', co_agent_id: '', flyer_type: '', map_pin: '',
   zoning: '', elevator: '', grade_level_doors: '', dock_high_doors: '',
 };
 
@@ -440,7 +441,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
       status: l.status ?? 'active', asking_price: l.asking_price != null ? String(l.asking_price) : '',
       sq_ft: l.sq_ft != null ? String(l.sq_ft) : '',
       lot_size: l.lot_size ?? '', year_built: l.year_built ?? '',
-      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '',
+      description: l.description ?? '', notes: l.notes ?? '', highlights: l.highlights ?? '', flyer_headline: l.flyer_headline ?? '',
       co_agent_id: l.co_agent_id ?? '', flyer_type: l.flyer_type ?? '',
       zoning: l.zoning ?? '',
       elevator: l.elevator == null ? '' : String(l.elevator),
@@ -1128,6 +1129,11 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
           </div>
         </div>
         <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: -6 }}>Map pin: right-click the spot in Google Maps → click the coordinates to copy → paste here. Leave blank to auto-locate from the address.</div>
+        <div>
+          {LBL('Flyer Headline (optional)')}
+          <input style={INP} value={form.flyer_headline} onChange={e => set('flyer_headline', e.target.value)} maxLength={90} placeholder="Built-to-suit retail in the heart of Fair Oaks Ranch" />
+          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>One line printed over the flyer's cover photo. Leave blank for none.</div>
+        </div>
         <div>
           {LBL('Flyer Description')}
           <textarea style={{ ...INP, minHeight: 90, resize: 'vertical' }} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Property highlights, features, zoning…" />
