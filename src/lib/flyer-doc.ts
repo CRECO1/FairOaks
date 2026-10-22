@@ -180,6 +180,23 @@ function photoGridHeight(n: number, w: number) {
   const rows = Math.ceil(n / cols), g = 6;
   return rows * (((w - (cols - 1) * g) / cols) * 0.75) + (rows - 1) * g;
 }
+/**
+ * Height/width for the page-2 area map so it fills what the other blocks leave, edge to
+ * edge. A fixed 700x540 map either left a hole under it (short gallery) or was shrunk to
+ * a narrow centred strip (tall gallery). Mirrors the page-2 layout math below; with a
+ * floor plan or a hand-made aerial the plan stretches instead, so the default stands.
+ */
+export function areaMapAspect(o: { gallery: number; trade: boolean; floor: boolean; siteAerial: boolean }): number {
+  const DEFAULT = 540 / 700;
+  if (o.floor || o.siteAerial) return DEFAULT;
+  const boxW = W - 36, titleH = 18, gap = 16;
+  const avail = (H - 72 - gap) - (54 + 14);
+  let used = titleH, blocks = 1;
+  if (o.trade) { used += titleH + 77; blocks++; }
+  if (o.gallery) { used += titleH + photoGridHeight(o.gallery, boxW); blocks++; }
+  const mapH = avail - used - (blocks - 1) * gap - 6;
+  return Math.max(0.45, Math.min(1.1, mapH / boxW));
+}
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
 function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB): Rect {
   const n = imgs.length; if (!n) return { x, y: y + h, w: 0, h: 0 };

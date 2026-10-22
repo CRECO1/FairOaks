@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
-import { renderFlyer } from '@/lib/flyer-doc';
+import { renderFlyer, areaMapAspect } from '@/lib/flyer-doc';
 import { OSWALD_BOLD_B64, CRECO_LOGO_PNG_B64 } from '@/lib/flyer-assets';
 import sharp from 'sharp';
 import { geocode, osmStaticMap, roadLabels, MAP_CREDIT } from '@/lib/static-map';
@@ -198,14 +198,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const mapPx = (statLot || statZoning) ? 288 : 384;
   // Google maps carry their own logo; OSM / USGS maps need their credit printed (by the PDF — see flyer-doc drawMapCredit).
   let mapCredit: string | null = null, aerialCredit: string | null = null;
+  const aerialH = Math.round(700 * areaMapAspect({
+    gallery: galleryPhotos.length, trade: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length > 0, floor: !!floorPlan, siteAerial: siteAerials.length > 0,
+  }));
   const [mapBytes, aerialBytes, aerialLabels] = await Promise.all([
     googleStaticMap({ center: address, zoom: '13', size: (statLot || statZoning) ? '272x144' : '272x192', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
       .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 13, width: 544, height: mapPx }).then(b => { if (b) mapCredit = MAP_CREDIT.street; return b; }) : null)),
-    googleStaticMap({ center: address, zoom: '16', size: '576x444', scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
-      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }).then(b => { if (b) aerialCredit = MAP_CREDIT.satellite; return b; }) : null)),
+    googleStaticMap({ center: address, zoom: '16', size: `576x${Math.round(aerialH * 576 / 700)}`, scale: '2', maptype: 'satellite', markers: `color:0xEE8A00|${address}` })
+      .then(g => g ?? (pt ? osmStaticMap({ ...pt, zoom: 16, width: 700, height: aerialH, source: 'satellite' }).then(b => { if (b) aerialCredit = MAP_CREDIT.satellite; return b; }) : null)),
     // Google's satellite tiles come labelled; the USGS ones don't, so name the roads
     // ourselves — same window as the aerial above, so the names land on their roads.
-    (process.env.GOOGLE_MAPS_SERVER_KEY || !pt) ? Promise.resolve([]) : roadLabels({ ...pt, zoom: 16, width: 700, height: 540, source: 'satellite' }),
+    (process.env.GOOGLE_MAPS_SERVER_KEY || !pt) ? Promise.resolve([]) : roadLabels({ ...pt, zoom: 16, width: 700, height: aerialH, source: 'satellite' }),
   ]);
 
   // IABS (required in TX). The disclosure names the licence holder, so the agent's
