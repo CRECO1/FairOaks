@@ -183,19 +183,26 @@ function photoGridHeight(n: number, w: number) {
 /**
  * Height/width for the page-2 area map so it fills what the other blocks leave, edge to
  * edge. A fixed 700x540 map either left a hole under it (short gallery) or was shrunk to
- * a narrow centred strip (tall gallery). Mirrors the page-2 layout math below; with a
- * floor plan or a hand-made aerial the plan stretches instead, so the default stands.
+ * a narrow centred strip (tall gallery, or a floor plan taking most of the page). Runs the
+ * same weighted allocation as the page-2 layout below, with the map as a block that can
+ * stretch. A hand-made site aerial has its own aspect, so the default stands there.
  */
-export function areaMapAspect(o: { gallery: number; trade: boolean; floor: boolean; siteAerial: boolean }): number {
+export function areaMapAspect(o: { gallery: number; trade: boolean; floorAspect: number; siteAerial: boolean }): number {
   const DEFAULT = 540 / 700;
-  if (o.floor || o.siteAerial) return DEFAULT;
+  if (o.siteAerial) return DEFAULT;
   const boxW = W - 36, titleH = 18, gap = 16;
-  const avail = (H - 72 - gap) - (54 + 14);
-  let used = titleH, blocks = 1;
-  if (o.trade) { used += titleH + 77; blocks++; }
-  if (o.gallery) { used += titleH + photoGridHeight(o.gallery, boxW); blocks++; }
-  const mapH = avail - used - (blocks - 1) * gap - 6;
-  return Math.max(0.45, Math.min(1.1, mapH / boxW));
+  const blocks: Array<{ wt: number; nat: number }> = [];
+  if (o.trade) blocks.push({ wt: 1.0, nat: 77 });
+  if (o.gallery) blocks.push({ wt: o.gallery === 1 ? 2.2 : 1.9, nat: photoGridHeight(o.gallery, boxW) });
+  if (o.floorAspect > 0) blocks.push({ wt: 2.6, nat: boxW * o.floorAspect });
+  blocks.push({ wt: 1.4, nat: Infinity });   // the map
+  const avail = ((H - 72 - gap) - (54 + 14)) - blocks.length * titleH - (blocks.length - 1) * gap;
+  const totalWt = blocks.reduce((s, b) => s + b.wt, 0);
+  const heights = blocks.map(b => avail * (b.wt / totalWt));
+  let slack = 0, stretchWt = 0;
+  blocks.forEach((b, i) => { if (b.nat < heights[i]) { slack += heights[i] - b.nat; heights[i] = b.nat; } else stretchWt += b.wt; });
+  const mapH = heights[heights.length - 1] + (stretchWt > 0 ? slack * (1.4 / stretchWt) : 0);
+  return Math.max(0.3, Math.min(1.1, (mapH - 6) / boxW));
 }
 // Lay pre-cropped (~4:3) photos into a grid filling the box.
 function drawPhotoGrid(page: PDFPage, imgs: PDFImage[], x: number, y: number, w: number, h: number, line: RGB): Rect {

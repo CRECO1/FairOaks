@@ -124,7 +124,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return blob ? Buffer.from(await blob.arrayBuffer()) : null;
   };
   const isImg = (f: { category?: string; file_type?: string }) => { const ft = (f.file_type || '').toLowerCase(); return f.category === 'photo' || ft.startsWith('image/') || ft.includes('png') || ft.includes('jpeg') || ft.includes('jpg') || ft.includes('webp'); };
-  const allPhotoRows = rows.filter(f => (f.category === 'photo' || (f.file_type || '').startsWith('image/')) && isImg(f));
+  // Floor plans, documents and brochures are filed images but never flyer photos — a floor plan
+  // used to land in the photo grid as well as its own block.
+  const NOT_PHOTO = new Set(['floor_plan', 'document', 'brochure']);
+  const allPhotoRows = rows.filter(f => !NOT_PHOTO.has(f.category || '') && (f.category === 'photo' || (f.file_type || '').startsWith('image/')) && isImg(f));
   // Hand-made aerials (lot outlined, highways marked) are maps, not photos: they go to
   // the page-2 aerial slot instead of the cover or the photo grid. Recognised by name —
   // "…aerial…" in the file the agent uploaded.
@@ -198,8 +201,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const mapPx = (statLot || statZoning) ? 288 : 384;
   // Google maps carry their own logo; OSM / USGS maps need their credit printed (by the PDF — see flyer-doc drawMapCredit).
   let mapCredit: string | null = null, aerialCredit: string | null = null;
+  let floorAspect = 0;
+  if (floorPlan) { try { const m = await sharp(Buffer.from(floorPlan.bytes)).metadata(); if (m.width && m.height) floorAspect = m.height / m.width; } catch { /* default */ } }
   const aerialH = Math.round(700 * areaMapAspect({
-    gallery: galleryPhotos.length, trade: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length > 0, floor: !!floorPlan, siteAerial: siteAerials.length > 0,
+    gallery: galleryPhotos.length, trade: Array.isArray(L.trade_area?.tiles) && L.trade_area.tiles.length > 0,
+    floorAspect: floorPlan ? (floorAspect || 0.75) : 0, siteAerial: siteAerials.length > 0,
   }));
   const [mapBytes, aerialBytes, aerialLabels] = await Promise.all([
     googleStaticMap({ center: address, zoom: '13', size: (statLot || statZoning) ? '272x144' : '272x192', scale: '2', maptype: 'roadmap', markers: `color:0xEE8A00|${address}` })
