@@ -1132,7 +1132,7 @@ export default function ListingsSection({ businessUnit, isAdmin, authToken, prof
         <div>
           {LBL('Flyer Headline (optional)')}
           <input style={INP} value={form.flyer_headline} onChange={e => set('flyer_headline', e.target.value)} maxLength={90} placeholder="Built-to-suit retail in the heart of Fair Oaks Ranch" />
-          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>One line printed over the flyer's cover photo. Leave blank for none.</div>
+          <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>One line printed over the cover photo of the flyer. Leave blank for none.</div>
         </div>
         <div>
           {LBL('Flyer Description')}
