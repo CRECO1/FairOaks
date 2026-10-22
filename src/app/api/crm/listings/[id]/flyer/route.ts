@@ -283,12 +283,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Keep it, so the next open is a download rather than a rebuild. A storage failure
   // must not lose the agent the flyer they just waited for — serve it either way.
-  const path = `${id}/flyer/current.pdf`;
+  // Every build gets its own path: overwriting one fixed path (upsert) left the storage
+  // CDN serving the previous bytes — even a prior uploaded brochure — for up to an hour
+  // after a rebuild, so the cached-flyer branch above returned a stale PDF.
+  const path = `${id}/flyer/${Date.now()}.pdf`;
   const generatedAt = new Date().toISOString();
   const { error: upErr } = await supabase.storage.from('listing-files')
-    .upload(path, Buffer.from(bytes), { contentType: 'application/pdf', upsert: true });
+    .upload(path, Buffer.from(bytes), { contentType: 'application/pdf' });
   if (upErr) console.error('[flyer] could not store flyer', upErr);
-  else await supabase.from('crm_listings').update({ flyer_path: path, flyer_generated_at: generatedAt }).eq('id', id);
+  else {
+    await supabase.from('crm_listings').update({ flyer_path: path, flyer_generated_at: generatedAt }).eq('id', id);
+    // Drop the previous generated build only — never an uploaded/custom flyer.
+    if (L.flyer_path && L.flyer_path !== path && /\/flyer\/(current|\d+)\.pdf$/.test(L.flyer_path)) {
+      await supabase.storage.from('listing-files').remove([L.flyer_path]);
+    }
+  }
 
   return serve(bytes, upErr ? null : generatedAt);
 }
