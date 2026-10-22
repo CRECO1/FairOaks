@@ -74,6 +74,8 @@ function project(lat: number, lon: number, z: number) {
 }
 
 export type MapSource = 'street' | 'satellite';
+/** The credit line each source requires on the printed map. */
+export const MAP_CREDIT: Record<MapSource, string> = { street: '© OpenStreetMap contributors', satellite: 'Imagery: USGS National Map' };
 // USGS imagery is public domain and covers the US; it tops out around z16 in most
 // areas, so callers' satellite zoom is clamped to what the source actually has.
 const SOURCES: Record<MapSource, { url: (z: number, x: number, y: number) => string; credit: string; maxZoom: number }> = {
@@ -124,19 +126,19 @@ export async function osmStaticMap(opts: { lat: number; lon: number; zoom: numbe
       width: Math.min(W, canvasW), height: Math.min(H, canvasH),
     });
 
-    // pin + attribution (OSM requires the credit)
+    // Pin only. NO <text> in this overlay: sharp rasterises SVG text with whatever fonts the server has, and a
+    // serverless runtime has none, so every glyph came out as an empty box (the credit line and the "SITE" label).
+    // The credit is printed by the PDF instead (flyer-doc.ts, see MAP_CREDIT), where the fonts are embedded.
     const pinH = 46, cx = Math.round(W / 2), cy = Math.round(H / 2);
     const overlay = Buffer.from(
       `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
       (marker
         ? `<g transform="translate(${cx - 17},${cy - pinH})">
              <path d="M17 46 C17 46 34 24 34 17 A17 17 0 1 0 0 17 C0 24 17 46 17 46 Z" fill="#EE8A00" stroke="#fff" stroke-width="2.5"/>
-             <text x="17" y="23" font-family="Helvetica,Arial,sans-serif" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">SITE</text>
+             <circle cx="17" cy="17" r="6.5" fill="#fff"/>
            </g>`
         : '') +
-      `<rect x="0" y="${H - 15}" width="${W}" height="15" fill="#ffffff" opacity="0.8"/>
-       <text x="${W - 5}" y="${H - 4}" font-family="Helvetica,Arial,sans-serif" font-size="9" fill="#4b5563" text-anchor="end">${SOURCES[source].credit}</text>
-     </svg>`);
+      `</svg>`);
     return new Uint8Array(await img.composite([{ input: overlay, left: 0, top: 0 }]).png().toBuffer());
   } catch { return null; }
 }

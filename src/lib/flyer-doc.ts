@@ -39,6 +39,8 @@ export interface FlyerInput {
   galleryPhotos?: Array<{ bytes: Uint8Array; png: boolean }>;   // page-2 gallery (pre-cropped ~4:3)
   mapBytes?: Uint8Array | null;        // page-1 location map (PNG)
   aerialBytes?: Uint8Array | null;     // page-2 aerial map (PNG)
+  mapCredit?: string | null;           // credit line to print on the page-1 map (OSM tiles require one)
+  aerialCredit?: string | null;        // credit line to print on the page-2 aerial map
   // Street names to draw over the aerial (USGS imagery has none). Image pixels from the
   // top-left + the PDF rotation that lays each name along its road — see roadLabels().
   aerialLabels?: Array<{ text: string; x: number; y: number; angle: number }> | null;
@@ -136,6 +138,15 @@ function drawContainTop(page: PDFPage, img: PDFImage, x: number, y: number, w: n
 // contained (one uniform scale), so a single factor maps them onto the page. White
 // text over a dark halo reads on any imagery — pdf-lib has no text stroke, so the
 // halo is the same text drawn eight times, nudged around, in black.
+
+/** Credit line in a map's bottom-right corner. Printed as PDF text (not baked into the image) so it always has a font. */
+function drawMapCredit(page: PDFPage, r: Rect, text: string | null | undefined, font: PDFFont) {
+  if (!text) return;
+  const size = 5.6, w = font.widthOfTextAtSize(text, size) + 6;
+  page.drawRectangle({ x: r.x + r.w - w - 1, y: r.y + 1, width: w, height: size + 4, color: rgb(1, 1, 1), opacity: 0.82 });
+  page.drawText(text, { x: r.x + r.w - w + 2, y: r.y + 3.4, size, font, color: rgb(0.29, 0.33, 0.38) });
+}
+
 function drawMapLabels(page: PDFPage, r: Rect, img: PDFImage, labels: FlyerInput['aerialLabels'], font: PDFFont) {
   if (!labels?.length || r.w <= 0) return;
   // Text is sized to the map as drawn, not to the image: a full-width map can carry
@@ -396,7 +407,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
 
   // Right: location map
   const mapTop = tilesBottom - 12, mapBottom = 140, mapH = mapTop - mapBottom;   // divider sits at 128
-  if (map) { const r = drawContain(p1, map, rightX, mapBottom, rightW, mapH); p1.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: LINE, borderWidth: 1 }); }
+  if (map) { const r = drawContain(p1, map, rightX, mapBottom, rightW, mapH); p1.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: LINE, borderWidth: 1 }); drawMapCredit(p1, r, input.mapCredit, body); }
   else { p1.drawRectangle({ x: rightX, y: mapBottom, width: rightW, height: mapH, color: rgb(0.95, 0.96, 0.97), borderColor: LINE, borderWidth: 1 }); p1.drawText('Location map', { x: rightX + rightW / 2 - 30, y: mapBottom + mapH / 2, size: 10, font: body, color: rgb(0.6, 0.63, 0.67) }); }
 
   // ── Footer — the LOI letterhead footer, on every page we generate. ──
@@ -474,6 +485,7 @@ export async function renderFlyer(input: FlyerInput): Promise<Uint8Array> {
   } else if (aerial) p2blocks.push({ title: 'AREA MAP', weight: 1.4, border: true, natural: (w) => w * (aerial.height / aerial.width), draw: (x, y, w, h) => {
     const r = drawContainTop(p2!, aerial!, x, y, w, h);
     drawMapLabels(p2!, r, aerial!, input.aerialLabels, labelFont);
+    drawMapCredit(p2!, r, input.aerialCredit, body);
     return r;
   } });
 
