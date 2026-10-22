@@ -8,6 +8,7 @@ import CallWrapUp, { outcomeMeta } from '@/components/crm/CallWrapUp';
 import MentionTextarea, { parseMentionIds } from '@/components/crm/MentionTextarea';
 import WrapUpQueue from '@/components/crm/WrapUpQueue';
 import CallbackTimeMenu from '@/components/crm/CallbackTimeMenu';
+import BlockedNumbersPanel from '@/components/crm/BlockedNumbersPanel';
 import { formatCentral } from '@/lib/callback-time';
 import { useRememberedState } from '@/lib/view-memory';
 
@@ -21,6 +22,7 @@ export interface CallRow {
   handled_at: string | null; handled_by: string | null; handled_by_name?: string | null;
   notes: string | null; ai_meta: Record<string, unknown> | null; created_at: string;
   outcome?: string | null; wrapped_at?: string | null; wrapped_by_name?: string | null; answered_by_name?: string | null; answered_by_bot?: boolean;
+  blocked?: { id: string; source: string; reason: string | null } | null;
   history?: { prior: number; first_at: string; reached: boolean; last: { at: string; label: string; by: string | null; note: string | null } } | null;
 }
 interface Agent { id: string; first_name: string; last_name: string }
@@ -71,6 +73,7 @@ function kindIcon(c: CallRow): string {
 }
 function resultBadge(c: CallRow): { text: string; bg: string; fg: string } {
   const r = c.result ?? '';
+  if (r === 'blocked') return { text: '🚫 Blocked', bg: '#fee2e2', fg: '#991b1b' };
   if (c.source === 'voicebot') return r === 'in_progress' ? { text: 'On the line', bg: '#dbeafe', fg: '#1d4ed8' } : { text: 'Bot answered', bg: '#ede9fe', fg: '#6d28d9' };
   if (c.kind === 'voicemail') return { text: 'Voicemail', bg: '#fef3c7', fg: '#92400e' };
   if (r === 'missed') return { text: 'Missed', bg: '#fee2e2', fg: '#b91c1c' };
@@ -142,6 +145,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
   const [audio, setAudio] = useState<Record<string, string>>({});      // call id → object URL
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
   const [showSetup, setShowSetup] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [cbMenu, setCbMenu] = useState<string | null>(null);   // call id whose 🔔 time menu is open
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -367,6 +371,20 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
     const a = agents.find(x => x.id === id);
     return a ? `${a.first_name ?? ''} ${a.last_name ?? ''}`.trim() || 'Agent' : null;
   }, [agents]);
+  // Block / unblock the number on a call row. A saved contact can't be blocked from here (the API says so).
+  const toggleBlock = async (c: CallRow) => {
+    setBusy(c.id);
+    try {
+      const r = c.blocked
+        ? await fetch(`/api/crm/call-blocklist?id=${c.blocked.id}`, { method: 'DELETE', headers: auth(authToken) })
+        : await fetch('/api/crm/call-blocklist', { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(authToken) }, body: JSON.stringify({ call_id: c.id, reason: c.intent ? `Blocked from a call: ${c.intent}` : 'Blocked from the Calling Log' }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { showToast?.(j.error || 'Could not update the block list'); return; }
+      showToast?.(c.blocked ? 'Unblocked' : 'Blocked — future calls from this number get a goodbye');
+      await load();
+    } finally { setBusy(null); }
+  };
+
   const light = (ok: boolean) => <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 9, background: ok ? '#22c55e' : '#ef4444', marginRight: 6, verticalAlign: 'middle' }} />;
 
   return (
@@ -377,6 +395,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         <span style={{ flex: '1 1 auto', minWidth: 0 }} />
         {conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, color: '#9ca3af' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
         <button onClick={() => setShowLog(v => !v)} style={mini}>＋ Log a call</button>
+        <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, background: showBlocked ? '#111' : '#fff', color: showBlocked ? '#fff' : '#374151' }}>🚫 Blocked numbers</button>
         {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, background: showSetup ? '#111' : '#fff', color: showSetup ? '#fff' : '#374151' }}>⚙ Setup &amp; voice bot</button>}
       </div>
       <p style={{ fontSize: 13, color: '#6b7280', marginTop: 0, marginBottom: 14 }}>
@@ -417,6 +436,8 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
           onClose={() => { setQueueOpen(false); load(); }}
         />
       )}
+
+      {showBlocked && <BlockedNumbersPanel authToken={authToken} businessUnit={businessUnit} showToast={showToast} onChanged={load} />}
 
       {/* ── Setup & voice bot (admins) ── */}
       {isAdmin && showSetup && (
@@ -613,6 +634,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                         <span style={{ fontSize: 14.5, fontWeight: 700, color: '#111' }}>{who}</span>
                         {c.contact && onOpenContact && <button onClick={() => onOpenContact(c.contact!.id)} style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: 'none', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>👤 Contact{c.contact.type ? ` · ${c.contact.type}` : ''}</button>}
                         <span style={{ fontSize: 11, fontWeight: 700, color: badge.fg, background: badge.bg, borderRadius: 6, padding: '2px 7px' }}>{badge.text}</span>
+                        {c.blocked && c.result !== 'blocked' && <span title={c.blocked.reason ?? undefined} style={{ fontSize: 11, fontWeight: 700, color: '#991b1b', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚫 Number blocked{c.blocked.source === 'auto' ? ' (auto)' : ''}</span>}
                         {urgent && <span style={{ fontSize: 11, fontWeight: 700, color: '#b91c1c', background: '#fee2e2', borderRadius: 6, padding: '2px 7px' }}>🚨 Urgent</span>}
                         {pending && di && <span title={c.follow_up_due ? formatCentral(c.follow_up_due) : undefined} style={{ fontSize: 11, fontWeight: 700, color: di.overdue ? '#b91c1c' : '#a06a12', background: di.overdue ? '#fee2e2' : '#fef3c7', borderRadius: 6, padding: '2px 7px' }}>⏰ {di.label}</span>}
                         {pending && !di && (() => { const aH = (Date.now() - new Date(c.started_at).getTime()) / 3_600_000; const col = aH >= 72 ? '#b91c1c' : aH >= 24 ? '#a06a12' : '#9ca3af'; return <span style={{ fontSize: 11, fontWeight: aH >= 24 ? 700 : 600, color: col }}>waiting {waiting(c)}</span>; })()}
@@ -653,6 +675,9 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                             <button onClick={() => setCbMenu(cbMenu === c.id ? null : c.id)} disabled={busy === c.id} style={{ ...mini, color: '#9ca3af' }} title="Flag for a call back — pick when to be reminded" aria-haspopup="menu" aria-expanded={cbMenu === c.id}>🔔</button>
                             {cbMenu === c.id && <CallbackTimeMenu busy={busy === c.id} onPick={iso => flagWithTime(c, iso)} onClose={() => setCbMenu(null)} />}
                           </span>}
+                      {c.direction !== 'outbound' && !c.contact && c.from_number && (c.blocked
+                        ? <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={mini} title="Let this number through again">Unblock</button>
+                        : <button onClick={() => toggleBlock(c)} disabled={busy === c.id} style={{ ...mini, color: '#991b1b' }} title="Hang up on this number if it calls the bot line again">🚫 Block this number</button>)}
                       {!c.contact && !needsWrap(c) && c.outcome !== 'spam' && (c.from_number || c.to_number || c.callback_number) && <button onClick={() => setWrapFor(wrapFor === c.id ? null : c.id)} disabled={busy === c.id} style={mini} title="Save this caller as a contact, or link them to one">＋ Contact</button>}
                       {isSuperAdmin && <button onClick={() => remove(c)} disabled={busy === c.id} style={{ ...mini, color: '#e5b4b4', borderColor: '#f3e4e4' }} title="Delete this record">✕</button>}
                     </div>

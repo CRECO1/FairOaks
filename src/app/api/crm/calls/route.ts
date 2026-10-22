@@ -4,6 +4,7 @@ import { settleOpenCallTasks } from '@/lib/call-task-settle';
 import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { toE164 } from '@/lib/phone';
+import { blockKey } from '@/lib/call-blocklist';
 import { buildHistory, internalNumbers, otherParty, type HistoryCall } from '@/lib/call-history';
 
 // The Calling Log: Talkroute calls + voicemails, calls the voice bot answered, and
@@ -131,8 +132,15 @@ export async function GET(req: NextRequest) {
   ]);
   const cById = new Map((contacts.data ?? []).map(c => [c.id, { id: c.id, name: `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || c.business_name || 'Contact', business_name: c.business_name, type: c.type }]));
   const pById = new Map((profiles.data ?? []).map(h => [h.id, `${h.first_name ?? ''} ${h.last_name ?? ''}`.trim() || 'Agent']));
+  // Which of these numbers are on the block list (best effort — the log still loads if the table isn't there).
+  const blockedBy = new Map<string, { id: string; source: string; reason: string | null }>();
+  try {
+    const { data: bl } = await supabase.from('crm_blocked_numbers').select('id, phone_key, source, reason, business_unit').in('business_unit', ['all', unit]);
+    for (const b of bl ?? []) blockedBy.set(b.phone_key as string, { id: b.id as string, source: b.source as string, reason: b.reason as string | null });
+  } catch { /* table not migrated yet */ }
   return NextResponse.json({ calls: rows.map(r => ({
     ...r,
+    blocked: blockedBy.get(blockKey(r.direction === 'outbound' ? r.to_number : r.from_number) ?? '') ?? null,
     contact: r.contact_id ? (cById.get(r.contact_id) ?? null) : null,
     handled_by_name: r.handled_by ? (pById.get(r.handled_by) ?? null) : null,
     assignee_name: r.follow_up_assignee ? (pById.get(r.follow_up_assignee) ?? null) : null,

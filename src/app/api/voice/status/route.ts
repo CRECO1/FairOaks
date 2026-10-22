@@ -5,6 +5,8 @@ import { callerNumberOrNull, flattenTranscript, loadSettings, notifyCallSummary,
 import { ensureContactForCall } from '@/lib/phone-lead-contact';
 import { junkKind, tidyCallLog } from '@/lib/call-routing';
 import { describeDial } from '@/lib/voice-transfer';
+import { addBlock, autoBlockVerdict } from '@/lib/call-blocklist';
+import { last10, toE164 } from '@/lib/phone';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -30,6 +32,11 @@ export async function POST(req: Request) {
 
   const { data: call } = await db.from('crm_call_log').select('id, business_unit, from_number, caller_name, contact_id, started_at, summary, ai_meta').eq('source', 'voicebot').eq('external_id', p.CallSid).maybeSingle();
   if (!call) return NextResponse.json({ ok: true, unknown: true });
+  // A call the block list turned away (voice/inbound): nothing to summarise, queue or email — just record how long it lasted.
+  if ((call.ai_meta as { blocked?: unknown } | null)?.blocked) {
+    await db.from('crm_call_log').update({ duration_sec: Number(p.CallDuration || p.Duration || 0) || null, updated_at: new Date().toISOString() }).eq('id', call.id);
+    return NextResponse.json({ ok: true, blocked: true });
+  }
   if (call.summary) return NextResponse.json({ ok: true, already: true }); // Twilio retries; do the expensive part once
 
   const duration = Number(p.CallDuration || p.Duration || 0) || null;
@@ -73,6 +80,14 @@ export async function POST(req: Request) {
     patch.needs_follow_up = talked ? false : patch.needs_follow_up !== false;
     (patch.ai_meta as Record<string, unknown>).transfer = { ...tr, note };
   }
+  // Auto-block: the bot itself labelled this a spam robocall / automated sales call. Fires on the intent label
+  // junkKind() already trusts, never on silent / wrong-number calls, and only for an unknown number (see autoBlockVerdict).
+  // Strict on purpose: the intent LABEL must say spam (not just a summary that mentions the word), and the model must
+  // also have judged it a non-lead — no follow-up needed, not hot, a vendor/other caller type.
+  if (patch.intent && junkKind({ intent: patch.intent as string }) === 'spam' && s && s.needs_follow_up === false && !s.hot && (s.lead_type === 'vendor' || s.lead_type === 'other')) {
+    try { (patch.ai_meta as Record<string, unknown>).auto_block = await autoBlockSpammer(db, call, realFrom, s, tr); }
+    catch (e) { console.warn('[voice/status] auto-block', e); }
+  }
   await db.from('crm_call_log').update(patch).eq('id', call.id);
   // Owner + due time for a real call-back; links the caller to a contact if one exists.
   try { await tidyCallLog(db, { callIds: [call.id], days: 2 }); } catch (e) { console.warn('[voice/status] tidy', e); }
@@ -90,4 +105,39 @@ export async function POST(req: Request) {
     });
   }
   return NextResponse.json({ ok: true });
+}
+
+/**
+ * Add a flagged spam caller to the block list, if it is safe to. Returns what happened, stored on the call
+ * (ai_meta.auto_block) so the Calling Log can show why a number was — or was not — blocked.
+ * When Talkroute forwarded the call with OUR line as caller ID the real number isn't on this call, so it is
+ * recovered from the matching Talkroute record — only when exactly one inbound call fits.
+ */
+async function autoBlockSpammer(
+  db: ReturnType<typeof adminClient>,
+  call: { id: string; business_unit: string; contact_id: string | null; caller_name: string | null; started_at: string },
+  realFrom: string | null,
+  s: Awaited<ReturnType<typeof summarizeCall>>,
+  tr: { to?: string } | undefined,
+): Promise<{ blocked: boolean; why?: string; number?: string }> {
+  let number = realFrom;
+  let recovered = false;
+  if (!number) {
+    const t0 = new Date(call.started_at).getTime();
+    const { data: near } = await db.from('crm_call_log').select('id, from_number, direction')
+      .eq('business_unit', call.business_unit).eq('source', 'talkroute').eq('direction', 'inbound')
+      .gte('started_at', new Date(t0 - 4 * 60_000).toISOString()).lte('started_at', new Date(t0 + 60_000).toISOString()).limit(5);
+    const nums = Array.from(new Set((near ?? []).map(r => last10(r.from_number)).filter(d => d.length === 10)));
+    if (nums.length !== 1 || (near ?? []).length !== 1) return { blocked: false, why: 'real caller number unknown' };
+    number = toE164(nums[0]); recovered = true;
+  }
+  const verdict = await autoBlockVerdict(db, {
+    business_unit: call.business_unit, number, contact_id: call.contact_id,
+    caller_name_said: !!(s?.caller_name), callback_number: s?.callback_number ?? null, transferred: !!tr?.to,
+  });
+  if (!verdict.ok) return { blocked: false, why: verdict.why, number: number ?? undefined };
+  const reason = `Auto: ${(s?.intent || 'spam robocall').slice(0, 80)}`;
+  const r = await addBlock(db, { number: number!, unit: call.business_unit, reason, source: 'auto', callId: call.id });
+  if ('error' in r) return { blocked: false, why: r.error, number: number ?? undefined };
+  return { blocked: true, number: r.row.phone_e164, why: recovered ? 'number recovered from the Talkroute record' : undefined };
 }

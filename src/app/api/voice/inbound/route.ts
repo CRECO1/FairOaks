@@ -4,6 +4,7 @@ import { gather, say, twiml, twilioConfigured, twilioParams, verifyTwilioSignatu
 import { defaultGreeting, loadSettings, matchContact, unitForNumber, multilingualEnabled, voiceGenerationFor, callerNumberOrNull } from '@/lib/voicebot';
 import { speechHints } from '@/lib/listing-knowledge';
 import { toE164 } from '@/lib/phone';
+import { BLOCKED_MESSAGE, findBlock, recordBlockedHit } from '@/lib/call-blocklist';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,23 @@ export async function POST(req: Request) {
   const settings = await loadSettings(db, unit);
   // The real caller, or null when Talkroute handed us one of OUR lines as the caller ID (the Fair Oaks line does).
   const caller = await callerNumberOrNull(db, from);
+
+  // Block list FIRST — before the greeting, the contact lookup, the recording or any transfer. A blocked number
+  // is told goodbye and hung up on: no Ava, no ring to an agent's cell, no summary email, no call-back queue.
+  // The attempt is still logged (result 'blocked') so it shows in the Calling Log. Any lookup error falls
+  // through to the normal flow (findBlock fails open). A caller ID that is really one of OUR lines is never checked.
+  const blocked = caller ? await findBlock(db, caller, unit) : null;
+  if (blocked) {
+    await db.from('crm_call_log').insert({
+      business_unit: unit, source: 'voicebot', kind: 'bot', external_id: callSid, direction: 'inbound', result: 'blocked',
+      from_number: from, to_number: to, caller_name: p.CallerName || null, started_at: new Date().toISOString(), needs_follow_up: false,
+      summary: `Blocked number — call turned away${blocked.reason ? ` (${blocked.reason})` : ''}.`, intent: 'Blocked caller',
+      raw: { From: p.From, To: p.To, ForwardedFrom: p.ForwardedFrom || null, CallerName: p.CallerName },
+      ai_meta: { blocked: { id: blocked.id, source: blocked.source, reason: blocked.reason, at: new Date().toISOString() } },
+    });
+    await recordBlockedHit(db, blocked);
+    return twiml(`${say(BLOCKED_MESSAGE)}<Hangup/>`);
+  }
   const contact = caller ? await matchContact(db, caller, unit) : null;
 
   if (!settings.enabled) {
