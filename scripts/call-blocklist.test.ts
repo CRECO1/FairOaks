@@ -1,11 +1,18 @@
 // Number matching + the auto-block safety guard. Run:  npx tsx scripts/call-blocklist.test.ts
 import assert from 'node:assert/strict';
 import { autoBlockVerdict, blockKey } from '../src/lib/call-blocklist';
+import { answererFromEvents } from '../src/lib/call-routing';
 
 // Every way a US number shows up on a caller ID or in a card is the same key.
 for (const v of ['+12105550123', '12105550123', '210-555-0123', '(210) 555-0123', '210.555.0123', ' +1 (210) 555-0123 ']) assert.equal(blockKey(v), '2105550123', v);
 assert.equal(blockKey('+442071838750'), '442071838750');          // international: full digits
 for (const v of ['', null, undefined, 'anonymous', 'Restricted', '266696687', '555-0123', '+1210555']) assert.equal(blockKey(v as string), null, String(v));
+
+// The Talkroute leg answered by the call-screen forwarding number is a screened (blocked) call, never a person or the bot.
+const ev = (who: string) => [{ description: `Call answered by _${who}_ - _1 (830) 555-0100_` }];
+assert.deepEqual(answererFromEvents(ev('Call screen'), []), { profileId: null, bot: false, screened: true });
+assert.deepEqual(answererFromEvents(ev('AI receptionist'), []), { profileId: null, bot: true });
+assert.equal(answererFromEvents(ev('Call screen'), []).bot, false);
 
 // A chainable stand-in for the supabase client: every query resolves to the rows registered for its table.
 function fakeDb(tables: Record<string, Array<Record<string, unknown>>>) {

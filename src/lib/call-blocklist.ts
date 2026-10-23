@@ -1,7 +1,8 @@
 // Call block list: numbers the inbound voice flow turns away. See supabase/20261022_call_blocklist.sql.
 // Everything here FAILS OPEN — a lookup error must never stop a real call from being answered.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { digits, toE164 } from '@/lib/phone';
+import { toE164 } from '@/lib/phone';
+import { blockKey } from '@/lib/block-key';
 import { ownLineNumbers } from '@/lib/voicebot';
 import { internalNumbers } from '@/lib/call-history';
 
@@ -11,19 +12,7 @@ export interface BlockedNumber {
   last_blocked_at: string | null; created_at: string;
 }
 
-/**
- * The matching key for a caller ID: last 10 digits for a US/Canada number (so +1, 1-, parentheses and
- * dashes all collapse), the full digits for an international one. Null for anything that isn't a real
- * number ("anonymous", "restricted", "266696687", short codes) — those are never blocked or listed.
- */
-export function blockKey(n: string | null | undefined): string | null {
-  const raw = String(n ?? '').trim();
-  const d = digits(raw);
-  if (d.length === 10) return d;
-  if (d.length === 11 && d.startsWith('1')) return d.slice(1);
-  if (raw.startsWith('+') && d.length >= 11 && d.length <= 15) return d;
-  return null;
-}
+export { blockKey };
 
 /** The block-list row that matches this caller on this line, or null (also null on any error). */
 export async function findBlock(db: SupabaseClient, number: string | null | undefined, unit: string): Promise<BlockedNumber | null> {

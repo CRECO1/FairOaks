@@ -75,9 +75,11 @@ export function backupFor(ownerId: string | null, profiles: Profile[]): string |
  * Who picked up, from Talkroute's call events ("Call answered by _Brian Blanco_ - …").
  * "Primary Forward Number" is the main line's first ring — Zack.
  */
-export function answererFromEvents(events: Array<{ description?: string }> | null | undefined, profiles: Profile[]): { profileId: string | null; bot: boolean } {
+export function answererFromEvents(events: Array<{ description?: string }> | null | undefined, profiles: Profile[]): { profileId: string | null; bot: boolean; screened?: boolean } {
   const label = (events ?? []).map(e => e.description?.match(/answered by _([^_]+)_/i)?.[1]).find(Boolean)?.trim();
   if (!label) return { profileId: null, bot: false };
+  // The call-screen forwarding number (api/voice/screen) only ever ANSWERS to turn a blocked number away.
+  if (/call screen/i.test(label)) return { profileId: null, bot: false, screened: true };
   if (/ai receptionist/i.test(label)) return { profileId: null, bot: true };
   if (/primary/i.test(label)) return { profileId: zackProfile(profiles)?.id ?? null, bot: false };
   const hit = profiles.find(p => `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim().toLowerCase() === label.toLowerCase())
@@ -175,6 +177,13 @@ export async function tidyCallLog(db: SupabaseClient, opts: { days?: number; cal
   for (const r of rows) {
     if (r.source !== 'talkroute' || r.result !== 'answered' || r.answered_by || r.answered_by_bot) continue;
     const a = answererFromEvents(r.raw?.events, profiles);
+    if (a.screened) {
+      // Turned away at the call screen: it stays in the log, tagged Blocked, but is not an "answered call with no note".
+      await write(r.id, { result: 'blocked', outcome: 'spam', needs_follow_up: false, handled_at: now, wrapped_at: now,
+        summary: r.summary ?? 'Blocked number — turned away at the call screen before any phone rang.', intent: r.intent ?? 'Blocked caller', updated_at: now });
+      r.result = 'blocked'; r.outcome = 'spam'; r.needs_follow_up = false;
+      continue;
+    }
     if (!a.profileId && !a.bot) continue;
     await write(r.id, a.bot ? { answered_by_bot: true } : { answered_by: a.profileId });
     if (a.bot) { r.answered_by_bot = true; out.bot_legs++; } else { r.answered_by = a.profileId; out.answered++; }
