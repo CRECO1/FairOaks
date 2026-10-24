@@ -155,8 +155,13 @@ async function goneListingResponse(request: NextRequest): Promise<NextResponse |
   return new NextResponse(body, { status: 410, headers });
 }
 
+// Pages that serve agent-authored HTML on the app origin: scripts and same-origin access are switched off at the browser.
+const SANDBOX_CSP = "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:";
+const SANDBOXED_PATHS = new Set(['/api/campaigns/market-report-preview']);
+
 export async function middleware(request: NextRequest, event: NextFetchEvent) {
   const res = await handle(request);
+  if (SANDBOXED_PATHS.has(request.nextUrl.pathname)) res.headers.set('Content-Security-Policy', SANDBOX_CSP);
 
   const bot = matchCrawler(request.headers.get('user-agent'));
   if (bot) {

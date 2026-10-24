@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { sanitizeHtml } from '@/lib/sanitize';
+import { stripActiveContent } from '@/lib/strip-active-content';
 import { usesMarketReport, getMarketReportMerge, applyMarketReport } from '@/lib/market-report-email';
 
 export const dynamic = 'force-dynamic';
@@ -57,8 +57,9 @@ export async function GET(req: NextRequest) {
   // admin's session lives. Two layers keep it from running script there:
   //  1. `Content-Security-Policy: sandbox` — the response is treated as a unique, script-less origin even when opened
   //     directly in a tab (the CRM's own iframes are already sandboxed; a pasted link was the hole);
-  //  2. DOMPurify strips <script>, event handlers and javascript: URLs (inline styles / tables / images survive).
-  const safe = sanitizeHtml(html, true);
+  //  2. a dependency-free strip of <script>, event handlers and javascript: URLs (inline styles / tables / images survive).
+  //     (Not DOMPurify: it needs jsdom, which can't load in the serverless runtime and took this route down.)
+  const safe = stripActiveContent(html);
   return new NextResponse(safe, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
