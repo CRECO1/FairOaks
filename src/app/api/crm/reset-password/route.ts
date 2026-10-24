@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, REDIRECT_URL } from '@/lib/supabase-admin';
 import { writeAuditLog } from '@/lib/audit';
 
+const esc = (v: unknown) => String(v ?? '').slice(0, 100).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
 /** Returns the admin user ID if valid, null otherwise. */
 async function getAdminId(req: NextRequest): Promise<string | null> {
   const authHeader = req.headers.get('authorization');
@@ -40,27 +42,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
     }
 
-    // Resetting an admin or super_admin is super-admin-only. /crm/delete-agent
-    // already draws this line ("stops an admin from deleting the super admin
-    // to seize control"); this route did not, so any admin could post the
-    // super admin's address and have a recovery link sent. The link lands in
-    // the target's own inbox rather than the caller's, so it is not a direct
-    // takeover — but info@fairoaksrealtygroup.com is a shared brokerage
-    // mailbox, and anyone who can read it could complete the reset. Same rule,
-    // same reasoning, applied to the second door into the same account.
-    const roleRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/crm_profiles?email=eq.${encodeURIComponent(String(email).trim().toLowerCase())}&select=role`,
-      { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
-    );
-    const roleRows = await roleRes.json().catch(() => []);
-    const targetRole: string | undefined = Array.isArray(roleRows) ? roleRows[0]?.role : undefined;
-    if (targetRole === 'admin' || targetRole === 'super_admin') {
-      if (!(await getCrmSuperAdmin(req))) {
-        return forbidden('Only a super admin can reset an admin’s password.');
-      }
-    }
+    if (typeof email !== 'string' || email.length > 320) return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    const targetEmail = email.trim().toLowerCase();
 
-    // Generate a password reset link via Supabase admin API (does NOT send email)
+    // Generate a password reset link via Supabase admin API (does NOT send email). It also tells us the
+    // target's auth user id, which we use for the role lookup below — looking the profile up by email
+    // string (exact, lowercase) could miss a row whose stored email differs in case and skip the check.
     const linkRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
       method: 'POST',
       headers: {
@@ -70,7 +57,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         type: 'recovery',
-        email,
+        email: targetEmail,
         redirect_to: REDIRECT_URL,
       }),
     });
@@ -82,7 +69,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to generate reset link. Verify the email exists in the system.' }, { status: 400 });
     }
 
+
     const resetLink: string = linkData.action_link;
+    const targetId: string | undefined = linkData.id ?? linkData.user?.id;
+    if (!targetId || typeof resetLink !== 'string') {
+      console.error('[reset-password] Generate link returned no user id');
+      return NextResponse.json({ error: 'Failed to generate reset link. Verify the email exists in the system.' }, { status: 400 });
+    }
+
+    // Resetting an admin or super_admin is super-admin-only. /crm/delete-agent
+    // already draws this line ("stops an admin from deleting the super admin
+    // to seize control"); this route did not, so any admin could post the
+    // super admin's address and have a recovery link sent. The link lands in
+    // the target's own inbox rather than the caller's, so it is not a direct
+    // takeover — but info@fairoaksrealtygroup.com is a shared brokerage
+    // mailbox, and anyone who can read it could complete the reset. Same rule,
+    // same reasoning, applied to the second door into the same account.
+    // The role is read by auth user id and compared case-insensitively; the link is only emailed after the check.
+    const roleRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/crm_profiles?id=eq.${encodeURIComponent(targetId)}&select=role`,
+      { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
+    );
+    if (!roleRes.ok) return NextResponse.json({ error: 'Could not verify the account. Try again.' }, { status: 500 });
+    const roleRows = await roleRes.json().catch(() => null);
+    if (!Array.isArray(roleRows)) return NextResponse.json({ error: 'Could not verify the account. Try again.' }, { status: 500 });
+    const targetRole = String(roleRows[0]?.role ?? '').trim().toLowerCase();
+    if (targetRole === 'admin' || targetRole === 'super_admin') {
+      if (!(await getCrmSuperAdmin(req))) {
+        return forbidden('Only a super admin can reset an admin’s password.');
+      }
+    }
 
     // Send the reset email via Resend
     const emailRes = await fetch('https://api.resend.com/emails', {
@@ -93,7 +109,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         from: 'CRECO / Fair Oaks Realty Group <noreply@fairoaksrealtygroup.com>',
-        to: [email],
+        to: [targetEmail],
         subject: 'Reset your CRECO password',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -104,7 +120,7 @@ export async function POST(req: NextRequest) {
               <p style="color: #6b7280; margin: 4px 0 0;">CRECO Agent Portal</p>
             </div>
 
-            <p style="color: #374151; font-size: 16px;">Hi${firstName ? ` ${firstName}` : ''},</p>
+            <p style="color: #374151; font-size: 16px;">Hi${firstName ? ` ${esc(firstName)}` : ''},</p>
 
             <p style="color: #374151; font-size: 16px;">
               Your admin has sent you a password reset for the <strong>CRECO / Fair Oaks Realty Group</strong> agent portal.
@@ -142,7 +158,7 @@ export async function POST(req: NextRequest) {
       actorId: adminId,
       action: 'reset_password',
       targetType: 'agent',
-      metadata: { email, firstName },
+      metadata: { email: targetEmail, firstName: typeof firstName === 'string' ? firstName.slice(0, 100) : null },
       req,
     });
 

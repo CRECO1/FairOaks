@@ -15,6 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildLoiDraft, missingRequired, type DraftSlot } from '@/lib/loi-autofill';
 import { renderLoi, specForForm } from '@/lib/loi-doc';
 import { leaseSpec, exhibitLetter, type LoiExhibit, type LoiPurchaseData } from '@/lib/loi-spec';
+import { isPathInsideListing } from '@/lib/listing-files-access';
 import { liveEnvelope, logDocEdit, OUT_FOR_SIGNATURE } from '@/lib/doc-edit';
 
 export interface GenerateInput {
@@ -31,6 +32,8 @@ export interface GenerateInput {
   acknowledgeDirection?: boolean;
   /** Where to fetch the letterhead from. */
   baseUrl: string;
+  /** File the new/updated document in this workspace instead of the form's own (non-admin callers: their own). */
+  fileInUnit?: string | null;
 }
 
 export type GenerateResult =
@@ -93,7 +96,7 @@ export async function generateLoi(db: SupabaseClient<any, any, any>, userId: str
   // can open, review and send from.
   const row = {
     form_id: input.formId, deal_id: draft.dealId, client_id: draft.contactId, listing_id: draft.listingId,
-    business_unit: form?.business_unit ?? businessUnit ?? 'commercial',
+    business_unit: input.fileInUnit ?? form?.business_unit ?? businessUnit ?? 'commercial',
     title: spec.title, values: sigFields, builder_data: draft.data,
     filled_path: path, status: 'saved', updated_at: new Date().toISOString(),
   };
@@ -131,11 +134,38 @@ export interface LoiEdit {
 }
 
 const EXHIBIT_BUCKET = 'listing-files';
-/** The bytes of every attached exhibit, for renderLoi. A file that can't be read is left out (and logged), never fatal. */
+
+/**
+ * Storage paths are minted server-side only: `loi-exhibits/<submission_id>/…` by the Copilot's attach tool, or a
+ * `<listing_id>/…` file already on the submission's own property. A path that is anything else (another listing,
+ * another submission, `..` tricks) is never trusted, whatever a client stored in builder_data.
+ */
+export function exhibitPathAllowed(path: unknown, submissionId: string | null, listingId: string | null): boolean {
+  if (typeof path !== 'string' || !path || path.includes('\\') || path.split('/').some(seg => seg === '' || seg === '..')) return false;
+  if (submissionId && path.startsWith(`loi-exhibits/${submissionId}/`)) return true;
+  return !!listingId && isPathInsideListing(path, listingId);
+}
+
+/**
+ * Returns builder_data with `exhibits` reduced to entries whose path passes exhibitPathAllowed (invalid ones are
+ * dropped, not errors). The caller must already have authorized `listingId`. Non-object input passes through.
+ */
+export function sanitizeBuilderExhibits<T>(builderData: T, submissionId: string | null, listingId: string | null): T {
+  if (!builderData || typeof builderData !== 'object' || Array.isArray(builderData)) return builderData;
+  const bd = builderData as Record<string, unknown>;
+  if (!('exhibits' in bd)) return builderData;
+  const list = Array.isArray(bd.exhibits) ? bd.exhibits : [];
+  const kept = list.filter(e => !!e && typeof e === 'object' && typeof (e as LoiExhibit).id === 'string'
+    && exhibitPathAllowed((e as LoiExhibit).path, submissionId, listingId));
+  return { ...bd, exhibits: kept } as T;
+}
+
+/** The bytes of every attached exhibit, for renderLoi. A file that can't be read (or whose path isn't allowed) is left out (and logged), never fatal. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function loadExhibitFiles(db: SupabaseClient<any, any, any>, exhibits: LoiExhibit[] | undefined): Promise<Map<string, Uint8Array>> {
+export async function loadExhibitFiles(db: SupabaseClient<any, any, any>, exhibits: LoiExhibit[] | undefined, submissionId: string | null, listingId: string | null): Promise<Map<string, Uint8Array>> {
   const out = new Map<string, Uint8Array>();
   for (const ex of exhibits ?? []) {
+    if (!exhibitPathAllowed(ex.path, submissionId, listingId)) { console.warn('[loi] exhibit path rejected', ex.id); continue; }
     try {
       const { data, error } = await db.storage.from(EXHIBIT_BUCKET).download(ex.path);
       if (error || !data) { console.warn('[loi] exhibit missing', ex.path, error?.message); continue; }
@@ -155,7 +185,7 @@ export type EditLoiResult =
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function editLoi(db: SupabaseClient<any, any, any>, userId: string, businessUnit: string | null, submissionId: string, edit: LoiEdit, baseUrl: string): Promise<EditLoiResult> {
   const { data: sub } = await db.from('crm_form_submissions')
-    .select('id, title, form_id, status, builder_data, business_unit').eq('id', submissionId).maybeSingle();
+    .select('id, title, form_id, status, builder_data, business_unit, listing_id').eq('id', submissionId).maybeSingle();
   if (!sub) return { ok: false, error: 'Document not found' };
   if (businessUnit && sub.business_unit !== businessUnit) return { ok: false, error: 'Document is in a different workspace' };
   if (sub.status === 'executed' || sub.status === 'completed') return { ok: false, error: 'That letter is already executed — it can no longer be edited.' };
@@ -163,7 +193,7 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
   if (!bd || !Array.isArray(bd.terms)) return { ok: false, error: 'That document is not a Letter of Intent built in the builder. For a form with fillable blanks, use fill_document instead.' };
   if (await liveEnvelope(db, submissionId)) return { ok: false, error: OUT_FOR_SIGNATURE };
 
-  const next: LoiPurchaseData = { ...bd, terms: bd.terms.map(t => ({ ...t })), sellers: (bd.sellers ?? []).map(x => ({ ...x })), exhibits: (bd.exhibits ?? []).map(x => ({ ...x })) };
+  const next: LoiPurchaseData = { ...bd, terms: bd.terms.map(t => ({ ...t })), sellers: (bd.sellers ?? []).map(x => ({ ...x })), exhibits: (bd.exhibits ?? []).filter(x => exhibitPathAllowed(x?.path, submissionId, (sub.listing_id as string | null) ?? null)).map(x => ({ ...x })) };
   const changes: string[] = [];
   const unmatched: string[] = [];
   const findTerm = (label: string) => {
@@ -247,7 +277,7 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
     const exhibit = spec.exhibit
       ? await fetch(`${baseUrl}${spec.exhibit.imagePath}`).then(r => r.ok ? r.arrayBuffer() : null).then(b => b ? new Uint8Array(b) : undefined).catch(() => undefined)
       : undefined;
-    const out = await renderLoi(next, await letterhead(baseUrl), spec, exhibit, await loadExhibitFiles(db, next.exhibits));
+    const out = await renderLoi(next, await letterhead(baseUrl), spec, exhibit, await loadExhibitFiles(db, next.exhibits, submissionId, (sub.listing_id as string | null) ?? null));
     pdfBytes = out.pdfBytes; sigFields = out.sigFields;
   } catch (e) {
     console.error('[loi-edit] render', e);
@@ -260,7 +290,8 @@ export async function editLoi(db: SupabaseClient<any, any, any>, userId: string,
     .update({ builder_data: next, values: sigFields, filled_path: path, updated_at: new Date().toISOString() })
     .eq('id', submissionId).select('id, title').single();
   if (error) { console.error('[loi-edit] save', error); return { ok: false, error: 'Could not file the edited letter.' }; }
-  if (removedPaths.length) void db.storage.from(EXHIBIT_BUCKET).remove(removedPaths);   // the removed exhibits' files, best-effort
+  const ownRemoved = removedPaths.filter(p => p.startsWith(`loi-exhibits/${submissionId}/`) && !p.split('/').includes('..'));   // never delete anything but this letter's own attachments
+  if (ownRemoved.length) void db.storage.from(EXHIBIT_BUCKET).remove(ownRemoved);   // the removed exhibits' files, best-effort
   await logDocEdit(db, { submissionId, editorId: userId, unit: sub.business_unit as string | null, summary: `Copilot: ${changes.slice(0, 4).join('; ')}${changes.length > 4 ? ` (+${changes.length - 4} more)` : ''}`, changes: { kind: 'copilot_edit_loi', changes } });
   return { ok: true, submission: { id: saved.id as string, title: (saved.title as string) ?? null }, changes, unmatched };
 }

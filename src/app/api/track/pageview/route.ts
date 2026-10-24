@@ -15,6 +15,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
+import { rateLimit } from '@/lib/ratelimit';
 import { BOT, deviceFromUA, browserFromUA, osFromUA, clip, cleanId, cleanClickIds, cleanEnv } from '@/lib/track-ingest';
 import { verifyClientToken } from '@/lib/track-link';
 
@@ -23,6 +24,8 @@ export const runtime = 'nodejs';
 const NO_CONTENT = () => new NextResponse(null, { status: 204 });
 
 export async function POST(req: NextRequest) {
+  // Per-IP budget on this anonymous service-role write. Over budget (or limiter unavailable): drop silently, still 204.
+  if (!(await rateLimit(req, 'trackPageview')).success) return new NextResponse(null, { status: 204 });
   const ua = req.headers.get('user-agent') ?? '';
   if (!ua || BOT.test(ua)) return NO_CONTENT();
 

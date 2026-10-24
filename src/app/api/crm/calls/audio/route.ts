@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { fetchRecording, twilioConfigured } from '@/lib/twilio';
 import { voicemailAudioUrl, talkrouteConfigured } from '@/lib/talkroute';
 
@@ -26,8 +27,8 @@ export async function GET(req: NextRequest) {
   if (!ctx) return unauthorized();
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-  const { data: call } = await adminClient().from('crm_call_log').select('id, business_unit, source, kind, external_id, recording_url').eq('id', id).maybeSingle();
-  if (!call || (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit)) return notFound('Call not found');
+  const { data: call } = await adminClient().from('crm_call_log').select('id, business_unit, deal_id, source, kind, external_id, recording_url').eq('id', id).maybeSingle();
+  if (!call || (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit) || !(await canAccessLinked(ctx, call))) return notFound('Call not found');
 
   if (call.recording_url?.startsWith('twilio:')) {
     if (!twilioConfigured()) return NextResponse.json({ error: 'Twilio not configured' }, { status: 503 });

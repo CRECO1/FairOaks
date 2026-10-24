@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { Resend } from 'resend';
@@ -214,9 +215,57 @@ const LEAD_SOURCES: { domain: string; source: string; business_unit: string; own
   { domain: 'noreply@fairoaksrealtygroup.com',  source: 'Website',     business_unit: 'residential', ownWebsite: true },
 ];
 
+/**
+ * The actual sender address of a From header: the LAST <addr> (a display name can itself contain
+ * "<noreply@zillow.com>" text, so the first one is attacker-chosen), or a bare address. Lower-cased.
+ * Returns '' when the header has no single plausible address.
+ */
+function senderAddress(from: string): string {
+  const angle = [...from.matchAll(/<([^<>]+)>/g)].pop()?.[1];
+  const addr = (angle ?? from).trim().toLowerCase();
+  return /^[^\s@<>,;"]+@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(addr) ? addr : '';
+}
+
+/**
+ * Match the PARSED sender against the lead sources — never a substring of the whole header, which
+ * let "Zillow <x@evil.com>" or "x@zillow.com.evil.com" pass. Entries holding a full address
+ * (our own noreply@ notifiers) match that exact address; the rest match the sender's domain or a
+ * true subdomain of it.
+ */
 function detectSource(from: string): typeof LEAD_SOURCES[0] | null {
-  const f = from.toLowerCase();
-  return LEAD_SOURCES.find(s => f.includes(s.domain)) ?? null;
+  const addr = senderAddress(from);
+  if (!addr) return null;
+  const domain = addr.slice(addr.lastIndexOf('@') + 1);
+  return LEAD_SOURCES.find(s => s.domain.includes('@')
+    ? addr === s.domain
+    : domain === s.domain || domain.endsWith('.' + s.domain)) ?? null;
+}
+
+/**
+ * Did Gmail authenticate this message's sender? Reads Gmail's OWN Authentication-Results header (authserv-id
+ * mx.google.com) — headers added by upstream senders are ignored, and so is ARC-Authentication-Results, which
+ * any sender can forge. Pass = dmarc=pass, or dkim=pass (signing domain aligned with the From domain) with spf=pass.
+ * Returns null when Gmail recorded no result at all.
+ */
+function senderAuthenticated(msg: any, fromAddr: string): boolean | null {
+  const headers: { name: string; value: string }[] = msg.payload?.headers ?? [];
+  const mine = headers
+    .filter(h => h.name.toLowerCase() === 'authentication-results' && /^\s*mx\.google\.com\s*;/i.test(h.value))
+    .map(h => h.value);
+  if (!mine.length) return null;
+  const ar = mine[0].toLowerCase();
+  if (/\bdmarc=pass\b/.test(ar)) return true;
+  const fromDomain = fromAddr.slice(fromAddr.lastIndexOf('@') + 1);
+  const d = /\bdkim=pass\b[^;]*?header\.d=([a-z0-9.-]+)/.exec(ar)?.[1];
+  const aligned = !!d && (d === fromDomain || fromDomain.endsWith('.' + d) || d.endsWith('.' + fromDomain));
+  return aligned && /\bspf=pass\b/.test(ar);
+}
+
+/** Constant-time string compare (length-checked first, which timingSafeEqual requires). */
+function safeEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
 }
 
 /**
@@ -555,8 +604,8 @@ export async function POST(req: import('next/server').NextRequest) {
   const syncSecret = process.env.INTERNAL_SYNC_SECRET;
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get('authorization');
-  const isInternal = syncSecret && internalKey === syncSecret;
-  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+  const isInternal = !!syncSecret && safeEqual(internalKey, syncSecret);
+  const isCron = !!cronSecret && safeEqual(authHeader, `Bearer ${cronSecret}`);
   if (!isInternal && !isCron) {
     return import('next/server').then(({ NextResponse }) =>
       NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -621,7 +670,16 @@ export async function POST(req: import('next/server').NextRequest) {
         if (!source) continue;
 
         // Skip billing/admin/platform emails — only process actual lead notifications
-        const fromAddress = (from.match(/<([^>]+)>/) ?? [, from])[1] ?? from;
+        const fromAddress = senderAddress(from);
+
+        // The sender must have passed Gmail's own SPF/DKIM/DMARC check — otherwise anyone can mail a
+        // "Zillow" lead (and, with auto-enroll on, make step 1 email an address of their choosing).
+        // Only our own website notifier is accepted when Gmail recorded no result at all.
+        const authed = senderAuthenticated(msg, fromAddress);
+        if (authed === false || (authed === null && !source.ownWebsite)) {
+          console.warn(`[email-leads] skipping ${messageId}: sender ${fromAddress} failed/missing authentication`);
+          continue;
+        }
         // Parse lead first so we can pass the extracted email to isLeadEmail
         const parsed = parseLeadEmail(subject, body, from);
         if (!isLeadEmail(subject, fromAddress, source.domain, parsed.email, source.ownWebsite, body)) continue;

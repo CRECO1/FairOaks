@@ -1,30 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import crypto from 'crypto';
 import { rateLimit } from '@/lib/ratelimit';
-import { createClient } from '@supabase/supabase-js';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
+import { signOAuthState } from '@/lib/oauth-state';
 
 export async function GET(req: NextRequest) {
   const rl = await rateLimit(req, 'oauth');
   if (!rl.success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
 
-  const userId = req.nextUrl.searchParams.get('userId');
-  if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-  const { data: profile } = await supabase
-    .from('crm_profiles')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (!profile) return NextResponse.json({ error: 'Invalid userId' }, { status: 403 });
-
-  const nonce = crypto.randomBytes(32).toString('hex');
+  // Logged-in CRM user, connecting to their own profile only (see facebook/route.ts).
+  const user = await getCrmProfileUser(req);
+  if (!user) return unauthorized();
+  const requested = req.nextUrl.searchParams.get('userId');
+  if (requested && requested !== user.id) return NextResponse.json({ error: 'Cannot connect an account for another user' }, { status: 403 });
+  const { state, nonce } = signOAuthState({ uid: user.id, popup: req.nextUrl.searchParams.get('popup') === '1' });
 
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID!,
@@ -33,7 +22,7 @@ export async function GET(req: NextRequest) {
     response_type: 'code',
     access_type: 'offline',
     prompt: 'consent',
-    state: `${userId}:${nonce}${req.nextUrl.searchParams.get('popup') === '1' ? ':popup' : ''}`,
+    state,
   });
 
   (await cookies()).set('yt_oauth_nonce', nonce, {

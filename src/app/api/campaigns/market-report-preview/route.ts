@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, unauthorized, notFound, isAdminRole } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { sanitizeHtml } from '@/lib/sanitize';
 import { usesMarketReport, getMarketReportMerge, applyMarketReport } from '@/lib/market-report-email';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,19 @@ export async function GET(req: NextRequest) {
   const body = sample(campaign.email_body ?? '');
   const html = body.includes('<body') ? body.replace(/<body([^>]*)>/, `<body$1>${banner}`) : banner + body;
 
-  return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow' },
+  // The body is campaign HTML authored by an agent, served here as a page on the APP origin where a logged-in
+  // admin's session lives. Two layers keep it from running script there:
+  //  1. `Content-Security-Policy: sandbox` — the response is treated as a unique, script-less origin even when opened
+  //     directly in a tab (the CRM's own iframes are already sandboxed; a pasted link was the hole);
+  //  2. DOMPurify strips <script>, event handlers and javascript: URLs (inline styles / tables / images survive).
+  const safe = sanitizeHtml(html, true);
+  return new NextResponse(safe, {
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': 'noindex, nofollow',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "sandbox; default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; font-src https: data:",
+    },
   });
 }

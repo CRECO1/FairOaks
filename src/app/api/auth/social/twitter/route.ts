@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { rateLimit } from '@/lib/ratelimit';
+
+// No built-in fallback: with the key unset the flow fails closed instead of signing state with a public constant.
+function stateKey(): string {
+  const k = process.env.TOKEN_ENCRYPTION_KEY;
+  if (!k) throw new Error('TOKEN_ENCRYPTION_KEY is not set');
+  return k;
+}
 
 function generateCodeVerifier(): string {
   return crypto.randomBytes(64).toString('base64url').substring(0, 128);
@@ -14,7 +21,7 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 }
 
 export async function GET(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser(req);
   if (!user) return unauthorized();
 
   const rl = await rateLimit(req, 'oauth');
@@ -48,7 +55,7 @@ export async function GET(req: NextRequest) {
 
   // HMAC binds userId + nonce together — swapping either one breaks the signature
   const stateHmac = crypto
-    .createHmac('sha256', process.env.TOKEN_ENCRYPTION_KEY ?? 'dev-fallback-key')
+    .createHmac('sha256', stateKey())
     .update(`${userId}:${nonce}`)
     .digest('hex');
 

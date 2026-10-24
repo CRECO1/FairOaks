@@ -17,6 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { safeEqual } from '@/lib/secret-compare';
 import { createClient } from '@supabase/supabase-js';
 import { getCrmAdmin } from '@/lib/crm-auth';
 import { ACTIVE_FILTER } from '@/lib/sabor-reso';
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
   //  (c) Admin cookie session (fallback)
   const internalKey = req.headers.get('x-internal-key');
   const syncSecret = process.env.INTERNAL_SYNC_SECRET;
-  const isInternalCron = syncSecret && internalKey === syncSecret;
+  const isInternalCron = !!syncSecret && safeEqual(internalKey, syncSecret);
 
   if (!isInternalCron) {
     let isAdmin = false;

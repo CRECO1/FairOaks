@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { publishToplatform } from '@/lib/social-publish';
 
 export async function GET(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const supabase = adminClient();
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const body = await req.json().catch(() => null);

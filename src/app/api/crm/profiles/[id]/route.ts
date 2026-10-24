@@ -24,8 +24,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const update: Record<string, string> = {};
   for (const key of allowed) {
     if (key in body && body[key] !== undefined) {
-      update[key] = body[key];
+      const v = body[key];
+      // Text fields must be strings (reject objects/arrays); nullable columns may be cleared with null.
+      if (v !== null && typeof v !== 'string') return NextResponse.json({ error: `${key} must be a string` }, { status: 400 });
+      if (typeof v === 'string' && v.length > 320) return NextResponse.json({ error: `${key} is too long` }, { status: 400 });
+      if (key === 'business_unit' && v !== 'commercial' && v !== 'residential') {
+        return NextResponse.json({ error: 'business_unit must be "commercial" or "residential"' }, { status: 400 });
+      }
+      if (v === null && (key === 'email' || key === 'business_unit')) return NextResponse.json({ error: `${key} cannot be cleared` }, { status: 400 });
+      update[key] = v as string;
     }
+  }
+
+  // An admin may edit agents but not other admins / super admins — editing their email or workspace is a
+  // step toward taking over that account. Only a super admin may edit an admin-tier profile (own profile exempt).
+  if (ctx.userId !== id && !isSuperAdminRole(ctx.role)) {
+    const { data: tgt } = await adminClient().from('crm_profiles').select('role').eq('id', id).maybeSingle();
+    if (!tgt) return notFound('Agent not found');
+    if (isAdminRole(String(tgt.role ?? '').toLowerCase())) return forbidden('Only a super admin can edit an admin\'s profile');
   }
 
   // Role change is super-admin-only and MUST run here, server-side: RLS limits

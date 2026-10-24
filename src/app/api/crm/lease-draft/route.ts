@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib/crm-auth';
 import { assertCanSeeRentRoll } from '@/lib/listing-files-access';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { buildLease, normalizeLeaseValues, type LeaseValues } from '@/lib/lease-doc';
 import { chicagoToday } from '@/lib/chicago-time';
@@ -191,9 +192,10 @@ export async function PUT(req: NextRequest) {
   let listingRow: Record<string, unknown> | null = null;
   let prior: { listing_id: string | null; builder_data: Record<string, unknown> | null } | null = null;
   if (submission_id) {
-    if (!(await assertOwnsResource('crm_form_submissions', submission_id, ctx))) return notFound('Document not found');
-    const { data } = await adminClient().from('crm_form_submissions').select('listing_id, builder_data, form_id').eq('id', submission_id).maybeSingle();
-    if (!data || data.form_id !== LEASE_FORM_ID) return notFound('Document not found');
+    // Regenerating overwrites the document, so it's the creator's (or an admin's) to do — not any agent's in the workspace.
+    if (!(await assertOwnsResource('crm_form_submissions', submission_id, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) return notFound('Document not found');
+    const { data } = await adminClient().from('crm_form_submissions').select('listing_id, deal_id, business_unit, builder_data, form_id').eq('id', submission_id).maybeSingle();
+    if (!data || data.form_id !== LEASE_FORM_ID || !(await canAccessLinked(ctx, data))) return notFound('Document not found');
     prior = { listing_id: data.listing_id ?? null, builder_data: (data.builder_data as Record<string, unknown>) ?? null };
   } else {
     if (!listing_id) return NextResponse.json({ error: 'listing_id and values required' }, { status: 400 });

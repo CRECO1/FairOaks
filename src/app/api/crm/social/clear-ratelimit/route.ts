@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
+import { safeEqual } from '@/lib/secret-compare';
 
 const ADMIN_SECRET = process.env.INTERNAL_SYNC_SECRET;
 
@@ -10,7 +11,7 @@ const ADMIN_SECRET = process.env.INTERNAL_SYNC_SECRET;
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
   const secret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!ADMIN_SECRET || secret !== ADMIN_SECRET) {
+  if (!ADMIN_SECRET || !safeEqual(secret, ADMIN_SECRET)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

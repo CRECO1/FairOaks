@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { prettyPhone } from '@/lib/phone';
 
 interface Row { id: string; phone_e164: string; business_unit: string; reason: string | null; source: 'auto' | 'manual'; hits: number; last_blocked_at: string | null; created_at: string }
-interface Props { authToken?: string; businessUnit: string; showToast?: (msg: string) => void; onChanged?: () => void }
+interface Props { authToken?: string; businessUnit: string; isAdmin?: boolean; showToast?: (msg: string) => void; onChanged?: () => void }
 
 const auth = (t?: string): Record<string, string> => (t ? { Authorization: `Bearer ${t}` } : {});
 const cell: React.CSSProperties = { fontSize: 13, color: '#374151', padding: '8px 6px', borderTop: '1px solid #f3f4f6', verticalAlign: 'top' };
@@ -12,7 +12,7 @@ const field: React.CSSProperties = { boxSizing: 'border-box', padding: '8px 10px
 const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric' }) : '—');
 
 /** The call block list: see who is blocked, add a number by hand, remove one. */
-export default function BlockedNumbersPanel({ authToken, businessUnit, showToast, onChanged }: Props) {
+export default function BlockedNumbersPanel({ authToken, businessUnit, isAdmin, showToast, onChanged }: Props) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [number, setNumber] = useState('');
   const [reason, setReason] = useState('');
@@ -60,11 +60,12 @@ export default function BlockedNumbersPanel({ authToken, businessUnit, showToast
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <input value={number} onChange={e => setNumber(e.target.value)} placeholder="(210) 555-0123" inputMode="tel" style={{ ...field, flex: '1 1 150px' }} aria-label="Phone number to block" />
         <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason (optional)" style={{ ...field, flex: '2 1 180px' }} aria-label="Reason" />
-        <select value={unit} onChange={e => setUnit(e.target.value)} style={{ ...field, flex: '0 1 150px' }} aria-label="Which line">
+        {/* Agents block on their own line only (the server enforces it); admins choose the line. */}
+        {isAdmin && <select value={unit} onChange={e => setUnit(e.target.value)} style={{ ...field, flex: '0 1 150px' }} aria-label="Which line">
           <option value="all">All lines</option>
           <option value="commercial">CRECO line only</option>
           <option value="residential">Fair Oaks line only</option>
-        </select>
+        </select>}
         <button onClick={add} disabled={busy === 'add' || !number.trim()} style={{ ...btn, background: '#111', color: '#fff', border: 'none' }}>{busy === 'add' ? 'Blocking…' : 'Block number'}</button>
       </div>
       {rows === null ? <div style={{ fontSize: 13, color: '#9ca3af' }}>Loading…</div>
@@ -86,7 +87,7 @@ export default function BlockedNumbersPanel({ authToken, businessUnit, showToast
                     </td>
                     <td style={{ ...cell, whiteSpace: 'nowrap' }}>{day(b.created_at)}</td>
                     <td style={{ ...cell, whiteSpace: 'nowrap' }}>{b.hits}{b.last_blocked_at ? ` · last ${day(b.last_blocked_at)}` : ''}</td>
-                    <td style={{ ...cell, textAlign: 'right' }}><button onClick={() => remove(b)} disabled={busy === b.id} style={btn}>{busy === b.id ? '…' : 'Unblock'}</button></td>
+                    <td style={{ ...cell, textAlign: 'right' }}>{(isAdmin || b.business_unit === businessUnit) && <button onClick={() => remove(b)} disabled={busy === b.id} style={btn}>{busy === b.id ? '…' : 'Unblock'}</button>}</td>
                   </tr>
                 ))}
               </tbody>

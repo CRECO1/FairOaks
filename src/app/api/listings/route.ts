@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimitFailOpen } from '@/lib/ratelimit';
 import {
   searchProperties,
   getMediaBatch,
@@ -64,6 +65,7 @@ function buildCityFilter(city: string): string | null {
 }
 
 export async function GET(req: NextRequest) {
+  if (!(await rateLimitFailOpen(req, 'mls')).success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   const sp = req.nextUrl.searchParams;
 
   const city     = sp.get('city') ?? '';
@@ -72,14 +74,14 @@ export async function GET(req: NextRequest) {
   const minBeds  = sp.get('minBeds')  ? Number(sp.get('minBeds'))  : null;
   const minBaths = sp.get('minBaths') ? Number(sp.get('minBaths')) : null;
   const statusParam = sp.get('status') ?? ''; // 'active' | 'under_contract' | 'coming_soon'
-  const search   = sp.get('search')   ?? '';
+  const search   = (sp.get('search') ?? '').slice(0, 200);   // cap: it goes into an upstream OData query
   const community = sp.get('community') ?? '';
   const district  = sp.get('district')  ?? '';
   const newConstruction = sp.get('newConstruction') === '1';
-  const page     = Math.max(1, Number(sp.get('page')  ?? '1'));
+  const page     = Math.max(1, Math.floor(Number(sp.get('page') ?? '1')) || 1);
   // mapMode=1 fetches a larger batch for the map view (no pagination needed)
   const isMapMode = sp.get('mapMode') === '1';
-  const limit    = isMapMode ? 200 : Math.min(48, Math.max(1, Number(sp.get('limit') ?? '24')));
+  const limit    = isMapMode ? 200 : Math.min(48, Math.max(1, Math.floor(Number(sp.get('limit') ?? '24')) || 24));
   const skip     = (page - 1) * limit;
 
   try {

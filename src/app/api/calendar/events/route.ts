@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { safeJson } from '@/lib/safe-json';
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     const days = parseInt(req.nextUrl.searchParams.get('days') ?? '90');
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
-    const caller = await getCrmUser();
+    const caller = await getCrmProfileUser();
     if (!caller) return unauthorized();
     if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 

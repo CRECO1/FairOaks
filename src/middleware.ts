@@ -59,13 +59,16 @@ const apiSessionRoutes = [
   '/api/gmail',
   '/api/attom',
   '/api/calendar',
+  // The CRM API authenticates with a Bearer token (validateCsrf lets those through untouched), but getCrmUser also
+  // falls back to the cookie session. A cookie-only, state-changing request from another site must therefore be
+  // refused here — it used to be exempt from this check entirely.
+  '/api/crm',
 ];
 
 // API routes that need session refresh but have their own auth — skip CSRF
-// (CRM routes use Bearer JWT + Supabase role check; MLS sync uses internal key)
+// (MLS sync uses an internal key)
 const apiSessionNoCsrfRoutes = [
   '/api/mls/sync',
-  '/api/crm',
 ];
 
 // Security headers applied to every response

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound, assertOwnsResource } from '@/lib/crm-auth';
+import { getCrmContext, unauthorized, notFound, assertOwnsResource, isAdminRole } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { generateLoi } from '@/lib/loi-generate';
 
@@ -37,9 +38,15 @@ export async function POST(req: NextRequest) {
   if (dealId && !(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
   if (contactId && !(await assertOwnsResource('crm_clients', contactId, ctx))) return notFound('Contact not found');
   if (listingId && !(await assertCanAccessListing(listingId, ctx))) return notFound('Property not found');
-  if (submissionId && !(await assertOwnsResource('crm_form_submissions', submissionId, ctx))) return notFound('Document not found');
-
   const db = adminClient();
+  if (submissionId) {
+    // Regenerating overwrites an existing document: it must be reachable by the caller (workspace, private deal,
+    // Restricted property) and — unless they're an admin — be one they created.
+    if (!(await assertOwnsResource('crm_form_submissions', submissionId, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) return notFound('Document not found');
+    const { data: cur } = await db.from('crm_form_submissions').select('business_unit, deal_id, listing_id').eq('id', submissionId).maybeSingle();
+    if (!cur || !(await canAccessLinked(ctx, cur))) return notFound('Document not found');
+  }
+
   const { data: prof } = await db.from('crm_profiles').select('first_name, last_name, email, phone, license').eq('id', ctx.userId).maybeSingle();
   const agent = {
     name: `${prof?.first_name ?? ''} ${prof?.last_name ?? ''}`.trim(),
@@ -51,6 +58,8 @@ export async function POST(req: NextRequest) {
     provided: (b.provided && typeof b.provided === 'object') ? b.provided as Record<string, string> : {},
     acknowledgeDirection: b.acknowledge_direction === true,
     baseUrl: req.nextUrl.origin,
+    // The client picks form_id; it must not also pick the workspace the document lands in.
+    fileInUnit: isAdminRole(ctx.role) ? undefined : ctx.businessUnit,
   });
   if (!r.ok) {
     return NextResponse.json({ error: r.error, ...(r.missingRequired ? { missingRequired: r.missingRequired } : {}), ...(r.blocked ? { blocked: r.blocked } : {}) }, { status: r.status });

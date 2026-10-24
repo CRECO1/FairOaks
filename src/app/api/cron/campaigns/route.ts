@@ -408,6 +408,8 @@ export async function GET(req: NextRequest) {
             subject: subjectRendered,
             html: renderedBody,
             replyTo: replyTo,
+            // Mail clients show an "Unsubscribe" control from this header (also a deliverability / compliance signal).
+            headers: { 'List-Unsubscribe': `<${unsubscribeUrlFor(campaign.business_unit, client.unsubscribe_token ?? '')}>` },
           });
           if (emailResult.error) {
             throw new Error(`Resend: ${emailResult.error.message ?? JSON.stringify(emailResult.error)}`);

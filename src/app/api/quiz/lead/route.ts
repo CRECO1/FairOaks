@@ -6,6 +6,7 @@ import { sendMonitored, LEAD_NOTIFY_KEY } from '@/lib/integration-alert';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
+import { contactAllowed } from '@/lib/public-form-guard';
 import { buildLeadContext } from '@/lib/lead-context';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
@@ -31,6 +32,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // Per-contact budget across all public forms (a botnet rotating IPs, or someone submitting a victim's address).
+    if (!(await contactAllowed(body.email, body.phone))) {
+      return NextResponse.json({ error: 'Too many requests — please wait a while and try again.' }, { status: 429 });
+    }
+
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
     const captcha = await verifyRecaptcha(
       body.recaptchaToken,
@@ -51,6 +57,12 @@ export async function POST(req: NextRequest) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
+    }
+
+    if (typeof name !== 'string' || name.length > 200 || email.length > 254
+      || (phone != null && (typeof phone !== 'string' || phone.length > 40))
+      || (answers != null && (typeof answers !== 'object' || JSON.stringify(answers).length > 5000))) {
+      return NextResponse.json({ error: 'One of the fields is too long or invalid.' }, { status: 400 });
     }
 
     const answerSummary = Object.entries(answers ?? {})

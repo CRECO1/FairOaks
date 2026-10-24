@@ -8,6 +8,8 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      // Explicit attributes instead of library defaults. HttpOnly can't be set: the browser client reads this session.
+      cookieOptions: { sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' },
       cookies: {
         getAll() {
           return cookieStore.getAll();

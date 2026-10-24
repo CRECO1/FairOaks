@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { escapeLike } from '@/lib/like-escape';
 import { POST as gmailSend } from '@/app/api/gmail/send/route';
 
 // "Email as attachment" for any document the CRM files in crm_form_submissions (LOI, lease,
@@ -16,13 +17,15 @@ const plainFromHtml = (s: string) => s.replace(/<[^>]*>/g, '').replace(/&nbsp;/g
 type Ctx = NonNullable<Awaited<ReturnType<typeof getCrmContext>>>;
 
 interface Loaded {
+  unit: string | null; // the document's workspace
   sub: { id: string; title: string | null; filled_path: string | null; deal_id: string | null; client_id: string | null; listing_id: string | null; builder_data: unknown; crm_forms: { name?: string } | null };
   deal: { id: string; client_id: string | null; client: string | null; client_email: string | null; property: string | null } | null;
   clientRow: { id: string; first_name: string | null; last_name: string | null; email: string | null } | null;
 }
 
 async function load(id: string, ctx: Ctx): Promise<Loaded | null> {
-  if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return null;
+  const owned = await assertOwnsResource('crm_form_submissions', id, ctx);
+  if (!owned) return null;
   const db = adminClient();
   const { data: sub } = await db.from('crm_form_submissions')
     .select('id, title, filled_path, deal_id, client_id, listing_id, builder_data, crm_forms(name)').eq('id', id).maybeSingle();
@@ -40,7 +43,7 @@ async function load(id: string, ctx: Ctx): Promise<Loaded | null> {
     const { data } = await db.from('crm_clients').select('id, first_name, last_name, email').eq('id', clientId).maybeSingle();
     clientRow = (data as Loaded['clientRow']) ?? null;
   }
-  return { sub: sub as unknown as Loaded['sub'], deal, clientRow };
+  return { unit: (owned.business_unit as string | null) ?? null, sub: sub as unknown as Loaded['sub'], deal, clientRow };
 }
 
 async function agentProfile(userId: string) {
@@ -110,7 +113,9 @@ export async function POST(req: NextRequest) {
   // Gmail logging needs a deal or a contact. A property-only document goes to a contact if the address matches one.
   let clientId = l.clientRow?.id ?? null;
   if (!l.sub.deal_id && !clientId) {
-    const { data } = await db.from('crm_clients').select('id').ilike('email', addrs[0]).limit(1).maybeSingle();
+    let cq = db.from('crm_clients').select('id').ilike('email', escapeLike(addrs[0]));
+    if (l.unit) cq = cq.eq('business_unit', l.unit);
+    const { data } = await cq.limit(1).maybeSingle();
     clientId = (data?.id as string | undefined) ?? null;
     if (!clientId) return NextResponse.json({ error: 'This document is not linked to a deal or contact, and that address is not a saved contact — add the recipient as a contact first so the email can be logged.' }, { status: 400 });
   }
@@ -151,7 +156,9 @@ export async function POST(req: NextRequest) {
   const ids = new Set<string>();
   if (clientId ?? l.deal?.client_id) ids.add((clientId ?? l.deal?.client_id) as string);
   for (const a of addrs) {
-    const { data } = await db.from('crm_clients').select('id').ilike('email', a).limit(1).maybeSingle();
+    let aq = db.from('crm_clients').select('id').ilike('email', escapeLike(a));
+    if (l.unit) aq = aq.eq('business_unit', l.unit);
+    const { data } = await aq.limit(1).maybeSingle();
     if (data?.id) ids.add(data.id as string);
   }
   if (ids.size) {

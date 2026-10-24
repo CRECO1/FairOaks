@@ -56,6 +56,12 @@ export async function POST(req: NextRequest) {
   if (status === 'active' && !isSuperAdminRole(ctx.role)) return forbidden('Only the broker can activate (send) a campaign. Save it as a draft — the broker activates it.');
 
   const supabase = adminClient();
+  const campaignUnit = isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential');
+  // The property must be in the campaign's own workspace (PATCH enforces the same).
+  if (listing_id) {
+    const { data: l } = await supabase.from('crm_listings').select('id').eq('id', listing_id).eq('business_unit', campaignUnit).maybeSingle();
+    if (!l) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
+  }
   const { data, error } = await supabase.from('crm_campaigns').insert([{
     name, description, type, frequency,
     send_date: send_date || null,
@@ -66,11 +72,12 @@ export async function POST(req: NextRequest) {
     email_body: email_body ?? null,
     sms_body: sms_body ?? null,
     created_by: ctx.userId,
-    sender_agent_id: sender_agent_id || null,
+    // Admin-only (PATCH enforces the same): the campaign's "send as" agent is ignored for everyone else.
+    sender_agent_id: isAdminRole(ctx.role) ? (sender_agent_id || null) : null,
     hold_risky_addresses: hold_risky_addresses === true,
     // The property this campaign markets — feeds that listing's Prospects tab.
     listing_id: listing_id || null,
-    business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),
+    business_unit: campaignUnit,
   }]).select().single();
 
   if (error) return dbError('api/campaigns POST', error);

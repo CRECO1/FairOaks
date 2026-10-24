@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET() {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const supabase = adminClient();
@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const body = await req.json().catch(() => null);
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const id = req.nextUrl.searchParams.get('id');

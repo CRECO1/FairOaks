@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Workspace isolation — an agent may only touch plans in their own business_unit.
   const { data: existing } = await supabase
     .from('crm_action_plans')
-    .select('status, business_unit, created_by')
+    .select('status, business_unit, created_by, trigger_type, trigger_value, completion_campaign_id, audience')
     .eq('id', id)
     .single();
   if (!existing) return notFound('Resource not found.');
@@ -57,6 +57,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // someone else via a crafted PATCH body.
   const reassignOwner = created_by !== undefined && isAdmin;
 
+  // Editing the content, trigger or audience of a LIVE plan changes what real contacts are emailed, so —
+  // like activating it — it is the plan owner's or an admin's call. (Pausing and renaming stay open.)
+  const changed = (next: unknown, cur: unknown) => next !== undefined && (next || null) !== (cur || null);
+  const touchesLiveContent = changed(trigger_type, existing.trigger_type) || changed(trigger_value, existing.trigger_value)
+    || changed(completion_campaign_id, existing.completion_campaign_id) || changed(audience, existing.audience);
+  if (existing.status === 'active' && touchesLiveContent && !isAdmin && !isOwner) {
+    return forbidden('Forbidden — only the plan owner or an admin can edit an active action plan');
+  }
+  // The sender identity (From name / address) is admin-only: a plan can otherwise be made to send "as" a
+  // broker. Non-admin input is ignored and the stored value is kept.
+
   const { data, error } = await supabase
     .from('crm_action_plans')
     .update({
@@ -66,8 +77,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(trigger_value !== undefined && { trigger_value }),
       ...(status !== undefined && { status }),
       ...(completion_campaign_id !== undefined && { completion_campaign_id: completion_campaign_id || null }),
-      ...(from_name !== undefined && { from_name: from_name || null }),
-      ...(from_email !== undefined && { from_email: from_email || null }),
+      ...(isAdmin && from_name !== undefined && { from_name: from_name || null }),
+      ...(isAdmin && from_email !== undefined && { from_email: from_email || null }),
       ...(audience !== undefined && { audience: audience || null }),
       ...(reassignOwner && { created_by }),
       updated_at: new Date().toISOString(),

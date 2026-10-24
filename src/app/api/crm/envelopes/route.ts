@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, isSuperAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { genToken, signUrl, logEvent, inviteEmail, sendEsignEmail, resendConfig, finalizeEnvelope, SIGN_BUCKET, type FinalizeSigner } from '@/lib/esign';
@@ -24,9 +25,8 @@ export async function GET(req: NextRequest) {
   // branch so the list query stays one round trip.
   const activityFor = req.nextUrl.searchParams.get('activity');
   if (activityFor) {
-    const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit').eq('id', activityFor).maybeSingle();
-    if (!env) return notFound();
-    if (!isAdminRole(ctx.role) && env.business_unit !== ctx.businessUnit) return unauthorized();
+    const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, deal_id, listing_id').eq('id', activityFor).maybeSingle();
+    if (!env || !(await canAccessLinked(ctx, env))) return notFound();
     const { data: evs } = await supabase.from('crm_envelope_events')
       .select('id, event, actor, ip, user_agent, meta, created_at, signer_id')
       .eq('envelope_id', activityFor).order('created_at', { ascending: true });
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
   const supabase = adminClient();
   if (!(await assertOwnsResource('crm_form_submissions', submission_id, ctx))) return notFound('Document not found');
   const { data: sub } = await supabase.from('crm_form_submissions').select('id, form_id, filled_path, business_unit, title, deal_id, listing_id').eq('id', submission_id).single();
-  if (!sub) return notFound('Document not found');
+  if (!sub || !(await canAccessLinked(ctx, sub))) return notFound('Document not found');
   if (!sub.filled_path) return NextResponse.json({ error: 'This document has no saved PDF yet — open it, fill it, and Save to the deal first.' }, { status: 400 });
   // Defense-in-depth: a body-supplied deal/listing link must be one the caller can
   // actually access — mirror the esign-import PUT so an envelope can't be mislinked to
@@ -247,9 +247,9 @@ export async function PATCH(req: NextRequest) {
   const action = b.action as string;
   if (!b.envelope_id) return NextResponse.json({ error: 'envelope_id required' }, { status: 400 });
   const supabase = adminClient();
-  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status, title, message, created_by').eq('id', b.envelope_id).maybeSingle();
-  if (!env) return notFound('Signature request not found');
-  if (!isAdminRole(ctx.role) && env.business_unit !== ctx.businessUnit) return notFound('Signature request not found');
+  const { data: env } = await supabase.from('crm_envelopes').select('id, business_unit, status, title, message, created_by, deal_id, listing_id').eq('id', b.envelope_id).maybeSingle();
+  // Workspace + private-deal + Restricted-property check (a signer link is a live signing URL).
+  if (!env || !(await canAccessLinked(ctx, env))) return notFound('Signature request not found');
 
   // ── Cancel (void) ──
   if (action === 'void') {
@@ -414,8 +414,8 @@ export async function DELETE(req: NextRequest) {
 
   const supabase = adminClient();
   const { data: env } = await supabase.from('crm_envelopes')
-    .select('id, title, status, executed_path, executed_clean_path').eq('id', id).maybeSingle();
-  if (!env) return notFound('Signature request not found');
+    .select('id, title, status, executed_path, executed_clean_path, business_unit, deal_id, listing_id').eq('id', id).maybeSingle();
+  if (!env || !(await canAccessLinked(ctx, env))) return notFound('Signature request not found');
 
   if (!purge) {
     const { error } = await supabase.from('crm_envelopes')
@@ -453,6 +453,8 @@ export async function PUT(req: NextRequest) {
   if (!ctx) return unauthorized();
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  const { data: cur } = await adminClient().from('crm_envelopes').select('business_unit, deal_id, listing_id').eq('id', id).maybeSingle();
+  if (!cur || !(await canAccessLinked(ctx, cur))) return notFound('Signature request not found');
   if (!(await assertOwnsResource('crm_envelopes', id, ctx))) return notFound('Signature request not found');
   const { error } = await adminClient().from('crm_envelopes')
     .update({ archived_at: null, archived_by: null, updated_at: new Date().toISOString() }).eq('id', id);

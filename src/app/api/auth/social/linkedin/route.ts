@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
+import { signOAuthState } from '@/lib/oauth-state';
 import { cookies } from 'next/headers';
-import crypto from 'crypto';
 import { rateLimit } from '@/lib/ratelimit';
 
 export async function GET(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser(req);
   if (!user) return unauthorized();
 
   const rl = await rateLimit(req, 'oauth');
@@ -16,14 +16,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Cannot initiate OAuth for another user' }, { status: 403 });
   }
 
-  const nonce = crypto.randomBytes(32).toString('hex');
+  const { state, nonce } = signOAuthState({ uid: userId });
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: process.env.LINKEDIN_CLIENT_ID!,
     redirect_uri: `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/social/linkedin/callback`,
     scope: 'r_liteprofile r_emailaddress w_member_social r_organization_social w_organization_social',
-    state: `${userId}:${nonce}`,
+    state,
   });
 
   (await cookies()).set('li_oauth_nonce', nonce, {

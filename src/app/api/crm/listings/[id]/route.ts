@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
 import { adminClient } from '@/lib/supabase-admin';
 
 const ALLOWED = ['name','address','city','state','zip','type','status','asking_price','sq_ft','lot_size','year_built','description','notes','highlights','flyer_headline','zoning','elevator','grade_level_doors','dock_high_doors','flyer_type','co_agent_id','latitude','longitude','listing_agent_id','assigned_agent_ids','is_restricted'];
 
+// Ownership / visibility fields: only an admin or the listing's own agent may change who a listing
+// belongs to, who it is shared with, or whether it is Restricted.
+const OWNER_FIELDS = new Set(['listing_agent_id', 'assigned_agent_ids', 'is_restricted', 'co_agent_id']);
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const { id } = await params;
-  if (!(await assertCanAccessListing(id, ctx))) return notFound('Listing not found');
+  const listing = await assertCanAccessListing(id, ctx);
+  if (!listing) return notFound('Listing not found');
   const body = await req.json().catch(() => null);
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  const isOwner = isAdminRole(ctx.role) || listing.listing_agent_id === ctx.userId;
+  if (!isOwner && Object.keys(body).some(k => OWNER_FIELDS.has(k))) {
+    return forbidden('Only an admin or the listing agent can change a listing\'s agents or restriction.');
+  }
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of ALLOWED) if (k in body) update[k] = body[k] !== '' ? body[k] : null;
   // Yes/No/unknown columns are booleans: anything that isn't clearly yes/no is "unknown", never a stray string.
@@ -34,7 +43,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
   const { id } = await params;
-  if (!(await assertCanAccessListing(id, ctx))) return notFound('Listing not found');
+  const listing = await assertCanAccessListing(id, ctx);
+  if (!listing) return notFound('Listing not found');
+  if (!isAdminRole(ctx.role) && listing.listing_agent_id !== ctx.userId) return forbidden('Only an admin or the listing agent can delete a listing.');
   const supabase = adminClient();
   // Remove all storage files for this listing first
   const { data: files } = await supabase.from('crm_listing_files').select('storage_path').eq('listing_id', id);

@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     if (!inv || !sub) return bad('Nothing to approve');
     const patch: Record<string, unknown> = {
       name: sub.display_name || undefined, category: sub.category || null, description: sub.description || '',
-      phone: sub.phone || null, website: sub.website || null, hours: sub.hours || null, published: true,
+      phone: sub.phone || null, website: (typeof sub.website === 'string' && /^https?:\/\//i.test(sub.website)) ? sub.website : null, hours: sub.hours || null, published: true,
     };
     if (sub.logo_data) {
       const logo = parseLogo(sub.logo_data);

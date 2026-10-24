@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse, after } from 'next/server';
 import { adminClient } from '@/lib/supabase-admin';
+import { rateLimit } from '@/lib/ratelimit';
 import { BOT, deviceFromUA, clip, cleanId } from '@/lib/track-ingest';
 import { alertKnownContact } from '@/lib/known-contact-alert';
 
@@ -17,6 +18,8 @@ const NO_CONTENT = () => new NextResponse(null, { status: 204 });
 const TYPE = /^[a-z][a-z0-9_:.-]{1,39}$/i;
 
 export async function POST(req: NextRequest) {
+  // Per-IP budget on this anonymous service-role write. Over budget (or limiter unavailable): drop silently, still 204.
+  if (!(await rateLimit(req, 'trackEvent')).success) return new NextResponse(null, { status: 204 });
   const ua = req.headers.get('user-agent') ?? '';
   if (!ua || BOT.test(ua)) return NO_CONTENT();
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { syncTalkroute, syncTexts, talkrouteConfigured, TalkrouteError } from '@/lib/talkroute';
 import { tidyCallLog } from '@/lib/call-routing';
@@ -10,6 +10,8 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
+  // A sync pulls the whole Talkroute account (both workspaces) — admins only.
+  if (!isAdminRole(ctx.role)) return forbidden();
   if (!talkrouteConfigured()) return NextResponse.json({ error: 'Talkroute is not connected yet — add TALKROUTE_API_KEY in Vercel.' }, { status: 503 });
   const days = Math.min(90, Math.max(1, Number(req.nextUrl.searchParams.get('days') ?? 2) || 2));
   try {

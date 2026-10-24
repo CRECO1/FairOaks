@@ -27,6 +27,15 @@ const LIMITS = {
   track:       { requests: 60, window: '1 m'  },
   // Quiz lead — 10 per IP per 10 minutes
   quiz:        { requests: 10, window: '10 m' },
+  // First-party analytics ingest (track/event, track/pageview) — 120 requests per IP per minute. A real visitor sends a
+  // handful of batches a minute; this exists so the anonymous service-role writes can't be looped to fill the tables.
+  trackEvent:    { requests: 120, window: '1 m' },
+  trackPageview: { requests: 120, window: '1 m' },
+  // Listing-alert sign-ups get their own bucket (they used to share `leads`, so one form could exhaust the other).
+  'listing-alerts': { requests: 5, window: '10 m' },
+  // Public MLS-backed reads (/api/listings, /api/mls/search): every call is an upstream SABOR request. 120/min/IP is far above a
+  // person filtering a map and far below a scraper. Used with rateLimitFailOpen (read-only; a Redis hiccup must not break search).
+  mls:           { requests: 120, window: '1 m' },
   // Webhook — 30 per IP per minute (Zapier/Make can burst)
   webhook:     { requests: 30, window: '1 m'  },
   // ATTOM property intel — paid external API, limit aggressive lookups

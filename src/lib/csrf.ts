@@ -70,6 +70,13 @@ export function validateCsrf(req: NextRequest): string | NextResponse | null {
     return new NextResponse('CSRF check failed — NEXT_PUBLIC_SERVER_URL not configured', { status: 403 });
   }
 
+  // Browsers label every request with Sec-Fetch-Site. A state-changing request that the browser itself says came from
+  // another site is rejected outright — this also closes the gap below where a request with neither Origin nor Referer
+  // used to be waved through.
+  if (req.headers.get('sec-fetch-site') === 'cross-site') {
+    return "CSRF: cross-site request";
+  }
+
   const origin = req.headers.get('origin');
   const referer = req.headers.get('referer');
 

@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, unauthorized, forbidden, notFound } from '@/lib/crm-auth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { chicagoToday } from '@/lib/chicago-time';
-import { attachmentParam, encodeHeader, formatAddress } from '@/lib/mime-header';
+import { attachmentParam, encodeHeader, formatAddress, stripLineBreaks } from '@/lib/mime-header';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MIME_TYPE_RE = /^[\w.+-]+\/[\w.+-]+$/;
+const MESSAGE_ID_RE = /^<[^<>\s]+>$/;
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+const MAX_ATTACHMENTS = 10;
+const MAX_ATTACHMENT_B64 = 20_000_000;   // per file, base64 chars (~15 MB)
+const MAX_TOTAL_B64 = 33_000_000;        // all files together (~25 MB, Gmail's message limit)
+
 interface GmailConnection {
+  id: string;
   access_token: string;
   refresh_token: string;
   expires_at: string;
@@ -20,7 +29,7 @@ async function getValidConnection(
   anonKey: string,
   serviceRoleKey: string
 ): Promise<{ accessToken: string; agentEmail: string | null } | null> {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${encodeURIComponent(userId)}`, {
     headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` },
   });
   const rows: GmailConnection[] = await res.json();
@@ -48,7 +57,9 @@ async function getValidConnection(
     accessToken = refreshed.access_token;
     const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
 
-    await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+    // Scoped to the exact row we read: a user can hold several Gmail connections, and patching by
+    // user_id alone wrote this account's token over all of them.
+    await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${encodeURIComponent(conn.id)}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -69,7 +80,7 @@ async function getValidConnection(
         const profile = await profileRes.json();
         agentEmail = profile.emailAddress ?? null;
         if (agentEmail) {
-          await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+          await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${encodeURIComponent(conn.id)}`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -138,10 +149,11 @@ export async function POST(req: NextRequest) {
     // getCrmUser(req), not getCrmUser(): the copilot calls this route server-to-server
     // with the agent's Bearer token and no cookies, so the cookie-only form could never
     // authenticate it — send_email failed with a misleading "connect Gmail in Settings".
-    const caller = await getCrmUser(req);
-    if (!caller) return unauthorized();
+    const ctx = await getCrmContext(req);
+    if (!ctx) return unauthorized();
+    const caller = { id: ctx.userId };
 
-    const { userId, dealId, clientId, to: toRaw, cc: ccRaw, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId, inReplyTo, attachments } = await req.json();
+    const { userId, dealId, clientId, to: toRaw, cc: ccRaw, individual: individualRaw, subject, body, agentName, ccAgentIds, threadId: threadIdRaw, inReplyTo: inReplyToRaw, attachments } = await req.json();
     // One group email: any number of To and Cc people on the same message, so everyone
     // sees the thread and can reply-all. Per-person open tracking isn't possible then —
     // the single pixel can't say which recipient loaded it.
@@ -159,7 +171,39 @@ export async function POST(req: NextRequest) {
     }
     if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
-    const attList: Attachment[] = Array.isArray(attachments) ? attachments : [];
+    // dealId / clientId go into a service-role REST URL and onto the logged row: they must be real UUIDs,
+    // and the deal / client must be in the caller's workspace (and the deal visible to them).
+    if (dealId && (typeof dealId !== 'string' || !UUID_RE.test(dealId))) return NextResponse.json({ error: 'dealId is invalid' }, { status: 400 });
+    if (clientId && (typeof clientId !== 'string' || !UUID_RE.test(clientId))) return NextResponse.json({ error: 'clientId is invalid' }, { status: 400 });
+    if (dealId && !(await assertOwnsResource('crm_deals', dealId, ctx))) return notFound('Deal not found');
+    if (clientId && !(await assertOwnsResource('crm_clients', clientId, ctx))) return notFound('Client not found');
+
+    // Threading headers come from the client: keep only well-formed Message-IDs (no whitespace or CR/LF,
+    // so a crafted value can't add a Bcc: or other header).
+    const refIds = (Array.isArray(inReplyToRaw) ? inReplyToRaw.map(String) : typeof inReplyToRaw === 'string' ? stripLineBreaks(inReplyToRaw).split(/\s+/) : [])
+      .filter(Boolean).slice(0, 20)
+      .map(id => (/^[^<>\s]+$/.test(id) ? `<${id}>` : id))
+      .filter(id => MESSAGE_ID_RE.test(id) && id.length <= 998);
+    const inReplyTo = refIds.length ? refIds[refIds.length - 1] : '';
+    const threadId = typeof threadIdRaw === 'string' && /^[\w-]{1,64}$/.test(threadIdRaw) ? threadIdRaw : undefined;
+
+    // Attachments: validated type, base64 payload, capped size. Names are stripped of line breaks
+    // (attachmentParam also quotes them).
+    if (attachments !== undefined && attachments !== null && !Array.isArray(attachments)) return NextResponse.json({ error: 'attachments is invalid' }, { status: 400 });
+    if (Array.isArray(attachments) && attachments.length > MAX_ATTACHMENTS) return NextResponse.json({ error: `Too many attachments (${MAX_ATTACHMENTS} max)` }, { status: 400 });
+    const attList: Attachment[] = [];
+    let totalB64 = 0;
+    for (const a of (Array.isArray(attachments) ? attachments : []) as Partial<Attachment>[]) {
+      const data = typeof a?.data === 'string' ? a.data.replace(/\s+/g, '') : '';
+      if (!data || data.length % 4 !== 0 || !BASE64_RE.test(data)) return NextResponse.json({ error: 'An attachment is not valid base64 data' }, { status: 400 });
+      totalB64 += data.length;
+      if (data.length > MAX_ATTACHMENT_B64 || totalB64 > MAX_TOTAL_B64) return NextResponse.json({ error: 'Attachments are too large' }, { status: 413 });
+      attList.push({
+        name: stripLineBreaks(String(a?.name ?? 'attachment')).slice(0, 255) || 'attachment',
+        mimeType: typeof a?.mimeType === 'string' && MIME_TYPE_RE.test(a.mimeType) ? a.mimeType : 'application/octet-stream',
+        data,
+      });
+    }
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -180,7 +224,7 @@ export async function POST(req: NextRequest) {
     {
       const incomingPlain = String(body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
       const sinceIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const scope = dealId ? `deal_id=eq.${dealId}` : `client_id=eq.${clientId}`;
+      const scope = dealId ? `deal_id=eq.${encodeURIComponent(dealId)}` : `client_id=eq.${encodeURIComponent(clientId)}`;
       const recentRes = await fetch(
         `${SUPABASE_URL}/rest/v1/crm_deal_emails?${scope}&direction=eq.sent&created_at=gte.${sinceIso}&select=to_email,subject,body`,
         { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
@@ -214,7 +258,10 @@ export async function POST(req: NextRequest) {
     const sigDb = createClient(SUPABASE_URL, serviceRoleKey);
     const outBody = withSignature(body, await resolveSignature(sigDb, { agentId: userId }));
 
-    const fromLine = formatAddress(agentName, gmailEmail);
+    // The display name is the caller's own CRM profile name, never a body value (it could spoof anyone).
+    const { data: prof } = await sigDb.from('crm_profiles').select('first_name, last_name').eq('id', userId).maybeSingle();
+    const profileName = `${prof?.first_name ?? ''} ${prof?.last_name ?? ''}`.trim();
+    const fromLine = formatAddress(profileName || (typeof agentName === 'string' ? agentName : ''), gmailEmail);
     const plainBody = body.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 4000);
     const emailDate = chicagoToday();
 
@@ -231,7 +278,7 @@ export async function POST(req: NextRequest) {
         `Subject: ${encodeHeader(finalSubject)}`,
         'MIME-Version: 1.0',
         'Content-Type: text/html; charset=utf-8',
-        ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+        ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${refIds.join(' ')}`] : []),
       ];
       const encoded = Buffer.from(buildMimeEmail(headerLines, html, attList)).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
       const sendBody: Record<string, string> = { raw: encoded };

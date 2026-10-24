@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import Anthropic from '@anthropic-ai/sdk';
 import { rateLimit } from '@/lib/ratelimit';
 
@@ -14,7 +14,7 @@ const platformGuides: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const rl = await rateLimit(req, 'caption');

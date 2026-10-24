@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, unauthorized, forbidden, assertOwnsResource, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { guardRead } from '@/lib/crm-read-guard';
 
@@ -41,6 +41,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ commissions: data ?? [] });
 }
 
+const COMMISSION_STATUSES = ['pending', 'paid', 'disputed'];
+const MAX_MONEY = 1e11;
+const isDateStr = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) && !isNaN(Date.parse(v));
+
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -67,9 +71,29 @@ export async function POST(req: NextRequest) {
   const split = Number(agent_split ?? 70);
   const ref   = Number(referral_fee ?? 0);
   const txFee = Number(transaction_fee ?? 0);
-  // gross_commission, agent_net, brokerage_net are generated columns — DB computes them automatically
+  const inRange = (n: number, max: number) => Number.isFinite(n) && n >= 0 && n <= max;
+  if (!inRange(sp, MAX_MONEY) || !inRange(ref, MAX_MONEY) || !inRange(txFee, MAX_MONEY)) {
+    return NextResponse.json({ error: 'sale_price, referral_fee and transaction_fee must be non-negative numbers' }, { status: 400 });
+  }
+  if (!inRange(rate, 100) || !inRange(split, 100)) {
+    return NextResponse.json({ error: 'commission_rate and agent_split must be between 0 and 100' }, { status: 400 });
+  }
+  if (status != null && !COMMISSION_STATUSES.includes(status)) return NextResponse.json({ error: 'invalid status' }, { status: 400 });
+  if ((close_date != null && close_date !== '' && !isDateStr(close_date)) || (paid_date != null && paid_date !== '' && !isDateStr(paid_date))) {
+    return NextResponse.json({ error: 'invalid date' }, { status: 400 });
+  }
+  if ([deal_type, referral_to, notes].some(v => v != null && typeof v !== 'string')) return NextResponse.json({ error: 'invalid text field' }, { status: 400 });
 
   const supabase = adminClient();
+  // Non-admins may only CREATE the first commission on a deal they own — never overwrite an
+  // existing row (the split/rate/status/paid_date are admin-controlled once a row exists).
+  if (!isAdminRole(ctx.role)) {
+    if (!(await assertOwnsResource('crm_deals', deal_id, ctx, { ownerColumns: ['agent_id'], requireOwner: true }))) return notFound('Deal not found');
+    const { data: existing } = await supabase.from('crm_commissions').select('id').eq('deal_id', deal_id).limit(1).maybeSingle();
+    if (existing) return forbidden('A commission already exists for this deal — only an admin can change it.');
+  }
+  // gross_commission, agent_net, brokerage_net are generated columns — DB computes them automatically
+
   const { data, error } = await supabase
     .from('crm_commissions')
     .upsert({
@@ -85,8 +109,8 @@ export async function POST(req: NextRequest) {
       referral_to:     referral_to  ?? null,
       transaction_fee: txFee,
       status:          status       ?? 'pending',
-      close_date:      close_date   ?? null,
-      paid_date:       paid_date    ?? null,
+      close_date:      close_date   || null,
+      paid_date:       paid_date    || null,
       notes:           notes        ?? null,
       created_by:      ctx.userId,
     }, { onConflict: 'deal_id', ignoreDuplicates: false })

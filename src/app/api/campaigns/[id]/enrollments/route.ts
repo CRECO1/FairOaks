@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, isSuperAdminRole, unauthorized, forbidden, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isAdminRole, isSuperAdminRole, unauthorized, forbidden, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { chicagoLocalToUTC } from '@/lib/chicago-time';
 
@@ -24,6 +24,8 @@ function computeNextSend(frequency: string, sendDate?: string | null, sendTime?:
   }
   return now.toISOString();
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
@@ -55,9 +57,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!ctx) return unauthorized();
 
   const { id } = await params;
-  if (!(await assertOwnsResource('crm_campaigns', id, ctx))) return notFound('Campaign not found');
+  const owned = await assertOwnsResource('crm_campaigns', id, ctx);
+  if (!owned) return notFound('Campaign not found');
   const { client_ids } = await req.json();
   if (!client_ids?.length) return NextResponse.json({ error: 'client_ids required' }, { status: 400 });
+  if (!Array.isArray(client_ids) || !client_ids.every((c: unknown) => typeof c === 'string' && UUID_RE.test(c))) {
+    return NextResponse.json({ error: 'client_ids must be a list of client ids' }, { status: 400 });
+  }
 
   const supabase = adminClient();
   // Get campaign details including send_date and send_time for one-time campaigns
@@ -70,7 +76,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? computeNextSend(campaign.frequency, campaign.send_date, campaign.send_time)
     : null;
 
-  const rows = (client_ids as string[]).map((client_id) => ({
+  // Only clients in the campaign's workspace can be enrolled (admins: any existing client); ids that
+  // aren't found, and unsubscribed clients, are dropped. Chunked to keep the PostgREST URL short.
+  const ids = Array.from(new Set(client_ids as string[]));
+  const eligible: string[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    let q = supabase.from('crm_clients').select('id, unsubscribed_at').in('id', ids.slice(i, i + 200));
+    if (!isAdminRole(ctx.role)) q = q.eq('business_unit', owned.business_unit as string);
+    const { data: found, error: findErr } = await q;
+    if (findErr) return dbError('api/campaigns/[id]/enrollments', findErr);
+    for (const c of found ?? []) if (!c.unsubscribed_at) eligible.push(c.id as string);
+  }
+
+  // The old upsert flipped every row back to active — including people who had unsubscribed or finished.
+  // Now: new clients are inserted; an enrollment that is switched off is reactivated (client already
+  // checked as not unsubscribed above); one that is still active is left exactly as it is.
+  const existing: { client_id: string; active: boolean }[] = [];
+  for (let i = 0; i < eligible.length; i += 200) {
+    const { data: ex } = await supabase.from('crm_campaign_enrollments').select('client_id, active')
+      .eq('campaign_id', id).in('client_id', eligible.slice(i, i + 200));
+    existing.push(...((ex ?? []) as typeof existing));
+  }
+  const exMap = new Map(existing.map(e => [e.client_id, e]));
+  const toWrite = eligible.filter(cid => { const e = exMap.get(cid); return !e || !e.active; });
+  if (!toWrite.length) return NextResponse.json({ enrolled: 0, skipped: ids.length });
+
+  const rows = toWrite.map((client_id) => ({
     campaign_id: id,
     client_id,
     enrolled_by: ctx.userId,
@@ -85,7 +116,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .select();
 
   if (error) return dbError('api/campaigns/[id]/enrollments', error);
-  return NextResponse.json({ enrolled: data?.length ?? 0 });
+  return NextResponse.json({ enrolled: data?.length ?? 0, skipped: ids.length - (data?.length ?? 0) });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { encryptToken } from '@/lib/token-crypto';
-import { randomUUID } from 'crypto';
+import { getCrmProfileUser } from '@/lib/crm-auth';
+import { nonceMatches, signOAuthState, verifyOAuthState } from '@/lib/oauth-state';
 
 const BASE_URL     = (process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.fairoaksrealtygroup.com').replace(/[\r\n\s]+$/, '');
 const REDIRECT_URI = `${BASE_URL}/api/gmail/callback`;
@@ -60,25 +61,30 @@ export async function GET(req: NextRequest) {
     return page('Could not connect', `Google Analytics was not connected: ${res.reason.replace(/[<>&]/g, '')}. You can tap Connect Google Analytics again on the Lead Attribution page.`, false);
   }
 
-  // State is "userId|bu|retryFlag|nonce" (bu / retryFlag may be empty)
-  const stateParts  = (stateRaw ?? '').split('|');
-  const stateUserId = stateParts[0];
-  const stateBu     = stateParts[1] ?? '';
-  const isRetry     = stateParts[2] === 'retry';
-  const stateNonce  = stateParts[3] ?? '';
+  // `state` is an HMAC-signed, expiring blob minted by /api/gmail/auth for the logged-in user (see lib/oauth-state).
+  // Three independent checks must all pass before any token is stored:
+  //   1. the signature + expiry are valid (so userId/bu/retry can't be forged or edited);
+  //   2. the nonce in it matches the HttpOnly cookie set at the start of THIS browser's flow;
+  //   3. the person logged in right now IS the user the state was minted for.
+  // Check 3 is the one that stops account-linking: a forged callback can supply its own state and cookie, but it
+  // cannot make the victim's session appear in the attacker's browser.
+  const st = verifyOAuthState(stateRaw);
+  const stateUserId = st?.uid ?? '';
+  const stateBu     = st?.bu === 'commercial' || st?.bu === 'residential' ? st.bu : '';
+  const isRetry     = st?.retry === true;
   const returnBase  = stateBu ? `${CRM_URL}/${stateBu}` : CRM_URL;
 
   if (error || !code || !stateUserId) {
-    console.error('[gmail/callback] Missing params or error:', { error, code: !!code, stateUserId });
-    return NextResponse.redirect(`${returnBase}?gmail=error&reason=oauth_denied`);
+    console.error('[gmail/callback] Missing params, bad state, or error:', { error, code: !!code, validState: !!st });
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=${st ? 'oauth_denied' : 'bad_state'}`);
   }
-
-  // CSRF: the nonce echoed in `state` must match the HttpOnly cookie the auth
-  // route (or a prior retry) set on this browser. Blocks account-linking CSRF —
-  // an attacker can't forge a callback that binds a Gmail account to another userId.
-  const cookieNonce = req.cookies.get('gmail_oauth_nonce')?.value ?? '';
-  if (!stateNonce || !cookieNonce || stateNonce !== cookieNonce) {
+  if (!nonceMatches(st!.nonce, req.cookies.get('gmail_oauth_nonce')?.value)) {
     console.error('[gmail/callback] OAuth state nonce mismatch — possible CSRF');
+    return NextResponse.redirect(`${returnBase}?gmail=error&reason=bad_state`);
+  }
+  const sessionUser = await getCrmProfileUser(req);
+  if (!sessionUser || sessionUser.id !== stateUserId) {
+    console.error('[gmail/callback] Session user does not match the user this flow was started for');
     return NextResponse.redirect(`${returnBase}?gmail=error&reason=bad_state`);
   }
 
@@ -117,7 +123,7 @@ export async function GET(req: NextRequest) {
   const tokens = await tokenRes.json();
 
   if (!tokenRes.ok || !tokens.access_token) {
-    console.error('[gmail/callback] Token exchange failed:', tokens);
+    console.error('[gmail/callback] Token exchange failed:', { status: tokenRes.status, error: tokens?.error, description: tokens?.error_description });
     return NextResponse.redirect(`${returnBase}?gmail=error&reason=token_exchange`);
   }
 
@@ -177,7 +183,7 @@ export async function GET(req: NextRequest) {
 
       // Auto-retry: go directly to Google OAuth (skip auth route to avoid session-cookie dependency).
       // After revocation, Google MUST issue a new refresh_token on the next consent.
-      const retryNonce = randomUUID();
+      const { state: retryState, nonce: retryNonce } = signOAuthState({ uid: stateUserId, bu: stateBu, retry: true });
       const googleUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
       googleUrl.searchParams.set('client_id',     process.env.GOOGLE_CLIENT_ID!);
       googleUrl.searchParams.set('redirect_uri',  REDIRECT_URI);
@@ -187,7 +193,7 @@ export async function GET(req: NextRequest) {
       googleUrl.searchParams.set('prompt',        'consent');
       googleUrl.searchParams.set('login_hint',    gmailEmail);
       // Carry the retry flag + a fresh nonce so the retry's callback passes the CSRF check
-      googleUrl.searchParams.set('state', `${stateUserId}|${stateBu}|retry|${retryNonce}`);
+      googleUrl.searchParams.set('state', retryState);
       const retryRes = NextResponse.redirect(googleUrl.toString());
       retryRes.cookies.set('gmail_oauth_nonce', retryNonce, {
         httpOnly: true, secure: true, sameSite: 'lax', path: '/api/gmail', maxAge: 600,

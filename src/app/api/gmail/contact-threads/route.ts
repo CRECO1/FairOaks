@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
@@ -17,7 +17,7 @@ async function getValidToken(conn: { id: string; access_token: string; refresh_t
 }
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
+  const caller = await getCrmProfileUser();
   if (!caller) return unauthorized();
   const contactEmail = req.nextUrl.searchParams.get('contactEmail');
   if (!contactEmail) return NextResponse.json({ threads: [] });

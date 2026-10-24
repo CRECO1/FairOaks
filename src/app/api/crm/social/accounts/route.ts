@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET() {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const supabase = adminClient();
 
   const { data, error } = await supabase
     .from('social_connections')
-    .select('*')
+    // Explicit columns: access_token / refresh_token / token_secret (even encrypted) never go to the browser.
+    .select('id, agent_id, platform, platform_account_id, account_name, account_handle, account_avatar, account_type, expires_at, page_id, scopes, is_active, followers_count, created_at, updated_at')
     .eq('agent_id', user.id)
     .eq('is_active', true)
     .order('created_at', { ascending: false });
@@ -22,7 +23,7 @@ export async function GET() {
 
 // Manual connection — for platforms (e.g. Instagram) that can't be auto-discovered via OAuth
 export async function POST(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const { platform, account_name, page_id } = await req.json();
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   const body = await req.json().catch(() => null);

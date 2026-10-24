@@ -7,6 +7,7 @@ import { fetchAll } from '@/lib/campaign-engagement';
 import { chicagoLocalToUTC } from '@/lib/chicago-time';
 import { marketingDailyCap } from '@/lib/email-volume';
 import { MARKET_REPORT_TOKENS } from '@/lib/market-report-email';
+import { safeFetch } from '@/lib/safe-url';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -40,10 +41,13 @@ const sample = (xs: string[], n = 8) => (xs.length > n ? [...xs.slice(0, n), `â€
 
 async function checkUrl(url: string): Promise<{ ok: boolean; blocked?: boolean; status?: number }> {
   try {
-    const r = await fetch(url, {
-      method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(7000),
+    // Campaign content is user-authored: only public http(s) hosts are fetched (SSRF guard), redirects
+    // re-checked per hop. A refused URL reads as "doesn't load", same as an unreachable one.
+    const r = await safeFetch(url, {
+      method: 'GET', signal: AbortSignal.timeout(7000),
       headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129 Safari/537.36 CRECO-link-check' },
     });
+    if (!r) return { ok: false };
     r.body?.cancel().catch(() => {});
     if (r.status < 400) return { ok: true, status: r.status };
     // Bot walls answer a script with 401/403/429 while working fine in a browser.

@@ -45,6 +45,11 @@ export async function POST(req: NextRequest) {
   if (!b.client || !String(b.client).trim()) return NextResponse.json({ error: 'client required' }, { status: 400 });
   const supabase = adminClient();
   if (b.listing_id && !(await assertCanAccessListing(b.listing_id, ctx))) return notFound('Listing not found');
+  const DEAL_STAGES = ['Prospect', 'Active', 'LOI', 'In Contract', 'Closed', 'Lost'];
+  const DEAL_TYPES = ['Buyer Purchase', 'Tenant Lease', 'Seller Listing', 'Landlord Listing'];
+  if (b.stage && !DEAL_STAGES.includes(b.stage)) return NextResponse.json({ error: 'invalid stage' }, { status: 400 });
+  if (b.type && !DEAL_TYPES.includes(b.type)) return NextResponse.json({ error: 'invalid type' }, { status: 400 });
+  if (b.client_id && !(await assertOwnsResource('crm_clients', String(b.client_id), ctx))) return notFound('Client not found');
   const unit = isAdminRole(ctx.role) ? (b.business_unit || ctx.businessUnit || 'commercial') : (ctx.businessUnit ?? 'commercial');
   const row = {
     client: String(b.client).trim(),
@@ -55,7 +60,8 @@ export async function POST(req: NextRequest) {
     property: b.property || '',
     value: b.value != null && b.value !== '' ? Number(b.value) : 0,
     stage: b.stage || 'Prospect',
-    agent_id: b.agent_id || ctx.userId,
+    // Only admins may create a deal owned by someone else.
+    agent_id: isAdminRole(ctx.role) ? (b.agent_id || ctx.userId) : ctx.userId,
     listing_id: b.listing_id || null,
     business_unit: unit,
     last_touch: chicagoToday(),

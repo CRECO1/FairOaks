@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { dbError } from '@/lib/crm-auth';
 
 function makeClient() {
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ connected: false, accounts: [] });
 
-  const caller = await getCrmUser();
+  const caller = await getCrmProfileUser();
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 
@@ -47,7 +47,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'connectionId and userId required' }, { status: 400 });
   }
 
-  const caller = await getCrmUser();
+  const caller = await getCrmProfileUser();
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 

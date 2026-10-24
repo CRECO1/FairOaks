@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { getCrmProfileUser } from '@/lib/crm-auth';
 import { encryptToken } from '@/lib/token-crypto';
 import crypto from 'crypto';
 import { safeJson } from '@/lib/safe-json';
 
 const CRM_BASE = 'https://crm.vultstack.com/crm/residential';
+
+// No built-in fallback: with the key unset the flow fails closed (see twitter/route.ts).
+function stateKey(): string {
+  const k = process.env.TOKEN_ENCRYPTION_KEY;
+  if (!k) throw new Error('TOKEN_ENCRYPTION_KEY is not set');
+  return k;
+}
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -13,7 +21,7 @@ export async function GET(req: NextRequest) {
   const error = req.nextUrl.searchParams.get('error');
 
   if (error || !code || !stateParam) {
-    console.error('[twitter/callback] OAuth error:', { error, code: !!code, stateParam });
+    console.error('[twitter/callback] OAuth error:', { error, code: !!code, hasState: !!stateParam });
     return NextResponse.redirect(`${CRM_BASE}?social=error&platform=twitter&reason=oauth_denied`);
   }
 
@@ -40,16 +48,21 @@ export async function GET(req: NextRequest) {
 
   // 2. Validate HMAC (proves userId wasn't tampered with after nonce issuance)
   const expectedHmac = crypto
-    .createHmac('sha256', process.env.TOKEN_ENCRYPTION_KEY ?? 'dev-fallback-key')
+    .createHmac('sha256', stateKey())
     .update(`${userId}:${stateNonce}`)
     .digest('hex');
-  const hmacValid = stateHmac?.length === expectedHmac.length &&
+  const hmacValid = /^[0-9a-f]+$/i.test(stateHmac ?? '') && stateHmac?.length === expectedHmac.length &&
     crypto.timingSafeEqual(Buffer.from(stateHmac, 'hex'), Buffer.from(expectedHmac, 'hex'));
   if (!hmacValid) {
     console.error('[twitter/callback] State HMAC invalid — possible userId tampering');
     return NextResponse.redirect(`${CRM_BASE}?social=error&platform=twitter&reason=invalid_state`);
   }
 
+  // The logged-in user must be the user the flow was started for (the HMAC only proves the state wasn't edited).
+  const sessionUser = await getCrmProfileUser(req);
+  if (!sessionUser || sessionUser.id !== userId) {
+    return NextResponse.redirect(`${CRM_BASE}?social=error&platform=twitter&reason=invalid_state`);
+  }
   cookieStore.delete('twitter_oauth_nonce');
 
   const supabase = createClient(

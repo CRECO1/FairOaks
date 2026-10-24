@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized, forbidden } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 // The reusable fillable-field template for a form (crm_form_fields).
 // GET: any signed-in user (agents fill). PUT: admin only (defines the template).
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const caller = await getCrmUser(req);
-  if (!caller) return unauthorized();
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
   const { id } = await params;
   const supabase = adminClient();
+  // The form must belong to the caller's workspace (admins: any). Shared templates with no workspace stay open.
+  if (!isAdminRole(ctx.role)) {
+    const { data: form } = await supabase.from('crm_forms').select('business_unit').eq('id', id).maybeSingle();
+    if (!form || (form.business_unit && form.business_unit !== ctx.businessUnit)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   const { data, error } = await supabase
     .from('crm_form_fields').select('*').eq('form_id', id).order('sort', { ascending: true });
   if (error) { console.error('[api/form-fields] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }

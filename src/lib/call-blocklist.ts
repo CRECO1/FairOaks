@@ -38,12 +38,13 @@ export async function recordBlockedHit(db: SupabaseClient, b: Pick<BlockedNumber
 export async function isOurNumber(db: SupabaseClient, number: string): Promise<boolean> {
   const key = blockKey(number);
   if (!key) return false;
-  const [own, internal] = await Promise.all([ownLineNumbers(db), internalNumbers(db, 'commercial')]);
-  return own.has(key) || internal.has(key);
+  // Both workspaces' team phones / forwarding targets: blocking either would cut a line off from its own team.
+  const [own, a, b] = await Promise.all([ownLineNumbers(db), internalNumbers(db, 'commercial'), internalNumbers(db, 'residential')]);
+  return own.has(key) || a.has(key) || b.has(key);
 }
 
 /** Is this number on a saved contact's card (any workspace, phone or cell)? */
-async function belongsToContact(db: SupabaseClient, key: string): Promise<boolean> {
+export async function belongsToContact(db: SupabaseClient, key: string): Promise<boolean> {
   const tail = key.slice(-4);
   const { data, error } = await db.from('crm_clients').select('phone, cell_phone').or(`phone.ilike.%${tail}%,cell_phone.ilike.%${tail}%`).limit(200);
   if (error) throw error; // can't prove it's safe → caller treats as unsafe
@@ -88,7 +89,8 @@ export async function addBlock(db: SupabaseClient, o: {
     // Lost a race with another insert for the same key → it exists now.
     const { data: again } = await db.from('crm_blocked_numbers').select('*').eq('phone_key', key).eq('business_unit', unit).maybeSingle();
     if (again) return { row: again as BlockedNumber, created: false };
-    return { error: error?.message ?? 'Could not save the block.' };
+    console.error('[call-blocklist] insert failed', error);
+    return { error: 'Could not save the block.' };
   }
   return { row: data as BlockedNumber, created: true };
 }

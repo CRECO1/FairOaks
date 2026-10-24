@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, isAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
-import { addBlock, blockKey, isOurNumber } from '@/lib/call-blocklist';
+import { addBlock, belongsToContact, blockKey, isOurNumber } from '@/lib/call-blocklist';
 
 // The call block list (supabase/20261022_call_blocklist.sql): numbers the inbound voice flow turns away.
 // Admins and agents manage it; an agent is confined to their own workspace plus the all-lines rows.
@@ -9,8 +9,12 @@ import { addBlock, blockKey, isOurNumber } from '@/lib/call-blocklist';
 const STAFF = ['agent', 'admin', 'super_admin'];
 const UNITS = ['all', 'commercial', 'residential'];
 
+// Who may change which rows:
+//  - admins: any line, including the all-lines rows;
+//  - agents: only rows for THEIR OWN line. An 'all lines' block (and the other brokerage's rows) is admin-only, so one
+//    agent can't silence a number across the whole company or undo a colleague's block on the other line.
 function mayTouch(ctx: { role: string | null; businessUnit: string | null }, unit: string): boolean {
-  return isAdminRole(ctx.role) || unit === 'all' || unit === ctx.businessUnit;
+  return isAdminRole(ctx.role) || unit === ctx.businessUnit;
 }
 
 // GET /api/crm/call-blocklist → { blocked: [...] }
@@ -32,7 +36,8 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}));
   const db = adminClient();
   let number = typeof b.number === 'string' ? b.number : '';
-  let unit = typeof b.business_unit === 'string' && UNITS.includes(b.business_unit) ? b.business_unit : 'all';
+  // Agents always block on their own line; only admins may choose 'all' or the other line.
+  let unit = isAdminRole(ctx.role) ? (typeof b.business_unit === 'string' && UNITS.includes(b.business_unit) ? b.business_unit : 'all') : (ctx.businessUnit ?? 'commercial');
   let callId: string | null = null;
 
   if (b.call_id) {
@@ -46,9 +51,17 @@ export async function POST(req: NextRequest) {
   if (!blockKey(number)) return NextResponse.json({ error: 'Enter a valid phone number (10 digits, or + and the country code).' }, { status: 400 });
   if (!mayTouch(ctx, unit)) return NextResponse.json({ error: 'Not your workspace' }, { status: 403 });
   if (await isOurNumber(db, number)) return NextResponse.json({ error: 'That is one of our own or a team number — blocking it would cut us off.' }, { status: 409 });
+  // Never block a saved contact's number — on ANY path (the call_id path above already refuses a call linked to a
+  // contact, but a typed-in number could still be a client's cell). If the lookup itself fails, refuse rather than guess.
+  try {
+    if (await belongsToContact(db, blockKey(number)!)) return NextResponse.json({ error: 'That number belongs to a saved contact — remove or edit the contact instead of blocking them.' }, { status: 409 });
+  } catch (e) {
+    console.error('[call-blocklist] contact check failed', e);
+    return NextResponse.json({ error: 'Could not verify the number is not a saved contact. Try again.' }, { status: 503 });
+  }
 
   const r = await addBlock(db, { number, unit, reason: typeof b.reason === 'string' ? b.reason : null, source: 'manual', createdBy: ctx.userId, callId });
-  if ('error' in r) return NextResponse.json({ error: r.error }, { status: 500 });
+  if ('error' in r) return NextResponse.json({ error: r.error }, { status: 500 });   // generic text only (addBlock logs the detail)
   return NextResponse.json({ blocked: r.row, created: r.created });
 }
 

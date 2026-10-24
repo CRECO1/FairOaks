@@ -8,6 +8,7 @@ import { sendMonitored, recordIntegrationFailure, recordIntegrationSuccess, LEAD
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
+import { contactAllowed } from '@/lib/public-form-guard';
 import { buildLeadContext } from '@/lib/lead-context';
 
 const NOTIFICATION_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL ?? 'info@crecotx.com';
@@ -32,6 +33,11 @@ export async function POST(req: NextRequest) {
     // nothing is stored.
     if (screenSubmission(body, { route: 'leads', browserForm: true, names: [body.name], email: body.email })) {
       return NextResponse.json({ success: true, message: 'Lead received' });
+    }
+
+    // Per-contact budget across all public forms (a botnet rotating IPs, or someone submitting a victim's address).
+    if (!(await contactAllowed(body.email, body.phone))) {
+      return NextResponse.json({ error: 'Too many requests — please wait a while and try again.' }, { status: 429 });
     }
 
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, hiddenDealIds } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 
 // Load one submission for re-editing: its saved values + a signed URL to the
 // blank form PDF (to re-render the pages) and to the previously generated PDF.
@@ -17,6 +18,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .eq('id', id).single();
   if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if ((data as { deal_id?: string | null }).deal_id && (await hiddenDealIds(ctx)).includes((data as { deal_id: string }).deal_id)) return notFound();
+  // ...and a document on a Restricted property the caller isn't on.
+  if (!(await canAccessLinked(ctx, data as { business_unit?: string | null; deal_id?: string | null; listing_id?: string | null }))) return notFound();
 
   const form = (data as { crm_forms?: { storage_path?: string } }).crm_forms;
   let blankUrl: string | null = null, filledUrl: string | null = null;
@@ -64,7 +67,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (hasTitle && !title) return NextResponse.json({ error: 'Give the document a name.' }, { status: 400 });
 
   const supabase = adminClient();
-  const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit, title').eq('id', id).maybeSingle();
+  const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit, title, deal_id, listing_id').eq('id', id).maybeSingle();
+  if (!cur || !(await canAccessLinked(ctx, cur))) return notFound();
   const { error } = await supabase.from('crm_form_submissions')
     .update({
       ...(hasValues ? { values: body.values } : {}),

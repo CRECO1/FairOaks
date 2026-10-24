@@ -18,11 +18,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimitFailOpen } from '@/lib/ratelimit';
 import { searchProperties, statusFilter } from '@/lib/sabor-reso';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  if (!(await rateLimitFailOpen(req, 'mls')).success) return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
   try {
     const sp = req.nextUrl.searchParams;
 
@@ -80,7 +82,9 @@ export async function GET(req: NextRequest) {
     // City is an enum in SABOR — use contains() on StreetName or SubdivisionName instead
     if (city && city !== 'All Areas') {
       // Store city names in title case but SABOR returns them upper-case
-      filters.push(`contains(SubdivisionName,'${city.replace(/'/g, "''")}') or contains(PostalCode,'${city.replace(/'/g, "''")}')`);
+      // Parenthesised: `and` binds tighter than `or` in OData, so without the parentheses the first `or` branch escaped
+      // every other clause (status, price, and the agent/office restriction below) and returned the whole feed.
+      filters.push(`(contains(SubdivisionName,'${city.replace(/'/g, "''")}') or contains(PostalCode,'${city.replace(/'/g, "''")}'))`);
     }
     if (minPrice !== null) filters.push(`ListPrice ge ${minPrice}`);
     if (maxPrice !== null) filters.push(`ListPrice le ${maxPrice}`);

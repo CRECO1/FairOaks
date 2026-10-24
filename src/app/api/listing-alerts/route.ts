@@ -6,6 +6,7 @@ import { recordIntegrationFailure, recordIntegrationSuccess, LEAD_NOTIFY_KEY } f
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
+import { contactAllowed } from '@/lib/public-form-guard';
 import { buildLeadContext } from '@/lib/lead-context';
 import crypto from 'crypto';
 import { chicagoToday } from '@/lib/chicago-time';
@@ -19,7 +20,7 @@ function esc(s: string | null | undefined): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const rl = await rateLimit(req, 'leads');
+    const rl = await rateLimit(req, 'listing-alerts');
     if (!rl.success) {
       return NextResponse.json({ error: 'Too many requests — please wait a few minutes.' }, { status: 429 });
     }
@@ -31,6 +32,11 @@ export async function POST(req: NextRequest) {
     // successful to the bot; nothing is stored.
     if (screenSubmission(body, { route: 'listing-alerts', browserForm: true, names: [body.name], email: body.email })) {
       return NextResponse.json({ ok: true });
+    }
+
+    // Per-address budget across all public forms: someone can't use this form to mail-bomb one victim from many IPs.
+    if (!(await contactAllowed(body.email, null))) {
+      return NextResponse.json({ error: 'Too many requests — please wait a while and try again.' }, { status: 429 });
     }
 
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
@@ -51,6 +57,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
+    }
+    if (typeof email !== 'string' || email.length > 254) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
     if (typeof name === 'string' && name.length > 200) {
@@ -80,21 +89,42 @@ export async function POST(req: NextRequest) {
 
     const safeSearch = typeof search === 'string' ? search.slice(0, 200).trim() : null;
 
-    const { error: dbErr } = await supabase.from('listing_alerts').insert([{
+    // Double opt-in. The address is NOT subscribed until its owner clicks the link we mail them: anyone could otherwise
+    // type a victim's address here and have the brand mail them daily. One row per address (unique index), and a
+    // confirmed subscription is never changed by an anonymous form post.
+    const alertEmail = email.toLowerCase().trim();
+    const criteriaRow = {
       name: typeof name === 'string' ? name.trim() : '',
-      email: email.toLowerCase().trim(),
       cities: safeCities,
       min_price: min_price ?? null,
       max_price: max_price ?? null,
       min_beds: min_beds ?? null,
       min_baths: min_baths ?? null,
       search: safeSearch || null,
-    }]);
-
-    if (dbErr) {
-      console.error('listing_alerts insert error:', dbErr.message);
+    };
+    let confirmToken: string | null = null;   // set when a confirmation email should go out
+    let isNewAlert = false;
+    const { data: prior, error: priorErr } = await supabase.from('listing_alerts').select('id, confirmed_at, confirm_token').eq('email', alertEmail).maybeSingle();
+    if (priorErr && (priorErr as { code?: string }).code === '42703') {
+      // Migration 20261024_security_audit_2026_10.sql not applied yet: behave exactly as before rather than break sign-ups.
+      const { error: legacyErr } = await supabase.from('listing_alerts').insert([{ ...criteriaRow, email: alertEmail }]);
+      if (legacyErr) { console.error('listing_alerts insert error:', legacyErr.message); return NextResponse.json({ error: 'Internal server error' }, { status: 500 }); }
+      isNewAlert = true;
+    } else if (priorErr) {
+      console.error('listing_alerts lookup error:', priorErr.message);
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    } else if (!prior) {
+      const { data: ins, error: dbErr } = await supabase.from('listing_alerts').insert([{ ...criteriaRow, email: alertEmail }]).select('confirm_token').single();
+      if (dbErr || !ins) {
+        console.error('listing_alerts insert error:', dbErr?.message);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      }
+      confirmToken = ins.confirm_token as string; isNewAlert = true;
+    } else if (!prior.confirmed_at) {
+      await supabase.from('listing_alerts').update(criteriaRow).eq('id', prior.id);   // still waiting for the click
+      confirmToken = prior.confirm_token as string;
     }
+    // else: already a confirmed subscriber — leave it alone (same response, nothing sent).
 
     // ── Also register the signup as a CRM lead ───────────────────────────────
     // Someone asking to be told about new homes matching a price, bed count and
@@ -213,35 +243,37 @@ export async function POST(req: NextRequest) {
         min_baths ? `${min_baths}+ baths` : null,
       ].filter(Boolean).join(' · ');
 
-      await resend.emails.send({
-        from: `Fair Oaks Realty Group <${FROM_EMAIL}>`,
-        to: email,
-        subject: '🔔 Your listing alert is set up!',
-        html: `
+      if (confirmToken) {
+        const confirmUrl = `https://www.fairoaksrealtygroup.com/api/listing-alerts/manage?action=confirm&token=${encodeURIComponent(confirmToken)}`;
+        await resend.emails.send({
+          from: `Fair Oaks Realty Group <${FROM_EMAIL}>`,
+          to: alertEmail,
+          subject: 'Please confirm your listing alert',
+          html: `
           <div style="font-family: Georgia, serif; max-width: 560px; margin: 0 auto; padding: 40px 24px; color: #1a1a2e;">
             <div style="margin-bottom: 32px; border-bottom: 2px solid #c9a84c; padding-bottom: 24px;">
               <p style="font-size: 22px; font-weight: bold; margin: 0;">Fair Oaks <span style="color: #c9a84c;">Realty Group</span></p>
             </div>
-            <h1 style="font-size: 22px; font-weight: bold; margin: 0 0 8px;">You&rsquo;re all set${name?.trim() ? `, ${esc(name.trim())}` : ''}!</h1>
-            <p style="color: #666; margin: 0 0 24px;">We&rsquo;ll email you the moment a new listing matches your search:</p>
+            <h1 style="font-size: 22px; font-weight: bold; margin: 0 0 8px;">One more step${name?.trim() ? `, ${esc(name.trim())}` : ''}</h1>
+            <p style="color: #666; margin: 0 0 24px;">Someone asked us to email new listings matching this search to this address. Please confirm it was you:</p>
             <div style="background: #f8f5ee; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; font-weight: 600;">
               ${esc(filterParts)}
             </div>
-            <p style="color: #666; font-size: 14px; margin: 0 0 32px;">
-              You&rsquo;ll only hear from us when there&rsquo;s a match — no spam, ever.
-              To unsubscribe at any time, simply reply to this email.
+            <a href="${confirmUrl}" style="display: inline-block; background: #1a1a2e; color: #fff; text-decoration: none; border-radius: 8px; padding: 12px 24px; font-weight: bold;">Yes, send me new listings</a>
+            <p style="color: #666; font-size: 14px; margin: 24px 0 0;">
+              If this wasn&rsquo;t you, ignore this email &mdash; you won&rsquo;t receive anything.
             </p>
-            <a href="https://www.fairoaksrealtygroup.com/listings" style="display: inline-block; background: #1a1a2e; color: #fff; text-decoration: none; border-radius: 8px; padding: 12px 24px; font-weight: 600; font-size: 15px;">Browse Current Listings</a>
             <p style="margin-top: 40px; font-size: 13px; color: #999;">
-              Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015<br />
+              Fair Oaks Realty Group &middot; 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015<br />
               <a href="tel:+12103909997" style="color: #c9a84c;">210-390-9997</a>
             </p>
           </div>`,
-      }).catch(e => console.error('Resend confirmation error:', e));
+        }).catch(e => console.error('Resend confirmation error:', e));
+      }
 
       // Internal notification: a listing-alert signup is a lead, and nobody was
       // told about it — the subscriber got a confirmation and that was that.
-      await resend.emails.send({
+      if (isNewAlert) await resend.emails.send({
         from: `Fair Oaks Realty Group <${FROM_EMAIL}>`,
         to: NOTIFICATION_EMAIL,
         replyTo: email,

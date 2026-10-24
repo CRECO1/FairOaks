@@ -106,10 +106,28 @@ const nextConfig = {
         hostname: '**.sabor.com',
       },
       {
-        // Catch-all for any MLS media CDN served over HTTPS
+        // The SABOR listing-photo CDN. Measured from the live listings table: every one of ~820k listing image
+        // URLs is on sabor-assets.cdn-connectmls.com — note "cdn-connectmls.com" (hyphen) is NOT matched by
+        // `**.connectmls.com` above, which is why the old catch-all below was silently doing the work.
         protocol: 'https',
-        hostname: '**',
+        hostname: '**.cdn-connectmls.com',
       },
+      {
+        // The brokerages' own sites (CRECO / Fair Oaks / Plaza) — logos, team photos.
+        protocol: 'https',
+        hostname: 'www.crecotx.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.fairoaksrealtygroup.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'fairoaksranchplaza.com',
+      },
+      // No catch-all (`hostname: '**'`): it let any visitor make /_next/image fetch and decode an image from ANY
+      // https host (cost abuse, and the parser attack surface of the image-optimizer advisories). To use a new
+      // image host with next/image, add it here explicitly.
     ],
   },
   reactStrictMode: true, // Enable for better security and debugging

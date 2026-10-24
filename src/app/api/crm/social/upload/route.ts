@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized } from '@/lib/crm-auth';
 import { adminClient, SUPABASE_URL } from '@/lib/supabase-admin';
 
 const BUCKET = 'images';
@@ -17,7 +17,7 @@ const ALLOWED_TYPES = [
  * The client then constructs the public URL from the returned path.
  */
 export async function POST(req: NextRequest) {
-  const user = await getCrmUser();
+  const user = await getCrmProfileUser();
   if (!user) return unauthorized();
 
   let body: { filename?: string; contentType?: string; size?: number };

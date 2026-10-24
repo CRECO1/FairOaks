@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/ratelimit';
 import { verifyRecaptcha, RECAPTCHA_REJECTED } from '@/lib/recaptcha';
 import { screenSubmission } from '@/lib/bot-guard';
+import { contactAllowed } from '@/lib/public-form-guard';
 import { createRecruitContact } from '@/lib/recruiting-crm';
 
 // Agent applications are recruiting mail, not sales mail, so they get their own
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
+    // Per-contact budget across all public forms (a botnet rotating IPs, or someone submitting a victim's address).
+    if (!(await contactAllowed(body.email, body.phone))) {
+      return NextResponse.json({ error: 'Too many requests — please wait a while and try again.' }, { status: 429 });
+    }
+
     // reCAPTCHA v3 — a no-op until RECAPTCHA_SECRET_KEY is set (see lib/recaptcha.ts).
     const captcha = await verifyRecaptcha(
       body.recaptchaToken,
@@ -51,6 +57,12 @@ export async function POST(req: NextRequest) {
 
     if (!name || !email || !phone) {
       return NextResponse.json({ error: 'Name, email, and phone are required' }, { status: 400 });
+    }
+    // Every field must be a string of sane length (one request used to be able to push megabytes into the CRM and
+    // the recruiting inbox, and a non-string made the HTML escaper throw → 500).
+    const CAPS: Array<[unknown, number]> = [[name, 200], [email, 254], [phone, 40], [license, 80], [experience, 200], [current_brokerage, 200], [production, 200], [message, 5000]];
+    if (CAPS.some(([v, max]) => v != null && (typeof v !== 'string' || v.length > max))) {
+      return NextResponse.json({ error: 'One of the fields is too long or invalid.' }, { status: 400 });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -81,8 +81,9 @@ export async function POST(req: NextRequest) {
       completion_campaign_id: completion_campaign_id || null,
       // Optional per-plan sender override (e.g. send as a specific broker). Only honored
       // at send time when the address is on the unit's verified domain — see resolveActionPlanFrom.
-      from_name: from_name || null,
-      from_email: from_email || null,
+      // Admin-only: for anyone else the sender override is ignored (the plan sends from the brand address).
+      from_name: isAdminRole(ctx.role) ? (from_name || null) : null,
+      from_email: isAdminRole(ctx.role) ? (from_email || null) : null,
       audience: audience || null, // optional client-type target for stage_change plans
 
       business_unit: isAdminRole(ctx.role) ? (business_unit ?? ctx.businessUnit ?? 'residential') : (ctx.businessUnit ?? 'residential'),

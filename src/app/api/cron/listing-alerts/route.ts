@@ -8,6 +8,8 @@ function esc(s: string | null | undefined): string {
   return (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+const unsubUrl = (token: string) => `https://www.fairoaksrealtygroup.com/api/listing-alerts/manage?action=unsubscribe&token=${encodeURIComponent(token)}`;
+
 function formatPrice(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
@@ -48,9 +50,15 @@ export async function GET(req: NextRequest) {
 
   // Fetch all alerts. (listing_alerts has no `active` column — an unsubscribe removes the row —
   // so filtering on it 500'd the whole cron on every day that had a new listing, and nobody got mail.)
-  const { data: alerts, error: alertErr } = await supabase
+  // Only CONFIRMED subscribers (double opt-in). If the opt-in migration hasn't been applied yet the column doesn't exist
+  // (42703): fall back to every row rather than silently stopping all alerts.
+  let { data: alerts, error: alertErr } = await supabase
     .from('listing_alerts')
-    .select('*');
+    .select('*')
+    .not('confirmed_at', 'is', null);
+  if (alertErr && (alertErr as { code?: string }).code === '42703') {
+    ({ data: alerts, error: alertErr } = await supabase.from('listing_alerts').select('*'));
+  }
 
   if (alertErr) {
     console.error('listing-alerts cron fetch alerts error:', alertErr.message);
@@ -104,6 +112,10 @@ export async function GET(req: NextRequest) {
       await resend.emails.send({
         from: `Fair Oaks Realty Group <${FROM_EMAIL}>`,
         to: alert.email,
+        headers: {
+          'List-Unsubscribe': `<${unsubUrl(alert.unsubscribe_token)}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
         subject: `🏠 ${matches.length} new listing${matches.length > 1 ? 's' : ''} matching your search`,
         html: `
           <div style="font-family: Georgia, serif; max-width: 560px; margin: 0 auto; padding: 40px 24px; color: #1a1a2e;">
@@ -119,7 +131,7 @@ export async function GET(req: NextRequest) {
             ${listingsHtml}
             <p style="margin-top: 32px; font-size: 13px; color: #999;">
               You&rsquo;re receiving this because you saved a search on fairoaksrealtygroup.com.<br />
-              To unsubscribe, reply to this email with &ldquo;unsubscribe&rdquo;.<br /><br />
+              <a href="${unsubUrl(alert.unsubscribe_token)}" style="color: #999;">Unsubscribe</a> at any time.<br /><br />
               Fair Oaks Realty Group · 8000 Fair Oaks Pkwy Suite 102, Fair Oaks Ranch, TX 78015 ·
               <a href="tel:+12103909997" style="color: #c9a84c;">210-390-9997</a>
             </p>

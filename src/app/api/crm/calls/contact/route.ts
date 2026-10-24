@@ -3,6 +3,8 @@ import { mirrorNotesForContact } from '@/lib/call-note-mirror';
 import { randomUUID } from 'crypto';
 import { getCrmContext, isAdminRole, unauthorized, notFound, dbError } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { canAccessLinked } from '@/lib/crm-linked-access';
+import { escapeLike } from '@/lib/like-escape';
 import { last10, toE164 } from '@/lib/phone';
 import { matchContact } from '@/lib/voicebot';
 import { backupFor, ownerFor, type Profile } from '@/lib/call-routing';
@@ -27,9 +29,9 @@ export async function POST(req: NextRequest) {
   if (!b.call_id) return NextResponse.json({ error: 'call_id required' }, { status: 400 });
   const db = adminClient();
   const { data: call } = await db.from('crm_call_log')
-    .select('id, business_unit, source, direction, from_number, to_number, callback_number, contact_id, summary, intent, ai_meta, needs_follow_up, handled_at, follow_up_assignee')
+    .select('id, business_unit, deal_id, source, direction, from_number, to_number, callback_number, contact_id, summary, intent, ai_meta, needs_follow_up, handled_at, follow_up_assignee')
     .eq('id', b.call_id).maybeSingle();
-  if (!call || (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit)) return notFound('Call not found');
+  if (!call || (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit) || !(await canAccessLinked(ctx, call))) return notFound('Call not found');
   const unit = call.business_unit as string;
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
   const callNumber = call.callback_number || (call.direction === 'outbound' ? call.to_number : call.from_number);
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest) {
     if (byPhone) {
       contact = (await db.from('crm_clients').select('id, first_name, last_name, business_name, type, agent_id').eq('id', byPhone.id).maybeSingle()).data;
     } else if (email) {
-      contact = (await db.from('crm_clients').select('id, first_name, last_name, business_name, type, agent_id').eq('business_unit', unit).ilike('email', email).limit(1).maybeSingle()).data;
+      contact = (await db.from('crm_clients').select('id, first_name, last_name, business_name, type, agent_id').eq('business_unit', unit).ilike('email', escapeLike(email)).limit(1).maybeSingle()).data;
     }
 
     if (!contact) {

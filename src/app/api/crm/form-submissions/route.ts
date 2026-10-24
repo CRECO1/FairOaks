@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, notFound, isAdminRole, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { canAccessLinked } from '@/lib/crm-linked-access';
+import { sanitizeBuilderExhibits, exhibitPathAllowed } from '@/lib/loi-generate';
+import type { LoiExhibit } from '@/lib/loi-spec';
 import { adminClient } from '@/lib/supabase-admin';
 
 // ── Builder-doc edit log (audit trail of what an agent changed on save) ──────
@@ -88,6 +91,9 @@ function summarizeDiff(d: ReturnType<typeof diffBuilder>): string {
 // These hold transaction-document PII, so every read and write is scoped to the
 // caller's business_unit (admins bypass).
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
+
 export async function GET(req: NextRequest) {
   const ctx = await getCrmContext(req);
   if (!ctx) return unauthorized();
@@ -172,7 +178,8 @@ export async function POST(req: NextRequest) {
     if (!(await assertOwnsResource('crm_form_submissions', body.copy_from, ctx))) return notFound('Document not found');
     const supabase = adminClient();
     const { data: src } = await supabase.from('crm_form_submissions').select('*').eq('id', body.copy_from).single();
-    if (!src) return notFound('Document not found');
+    // Copying is open to the workspace, but not into/out of a private deal or Restricted property.
+    if (!src || !(await canAccessLinked(ctx, src))) return notFound('Document not found');
     let filled_path: string | null = null;
     if (src.filled_path) {
       const { data: blob } = await supabase.storage.from('transaction-forms').download(src.filled_path);
@@ -187,9 +194,26 @@ export async function POST(req: NextRequest) {
       form_id: src.form_id, deal_id: src.deal_id, listing_id: src.listing_id, client_id: src.client_id ?? null, business_unit: src.business_unit,
       title: `${src.title || 'Document'} (copy)`, values: src.values ?? [], status: 'saved', filled_path, created_by: ctx.userId,
       // Carry the editable source so a copied builder doc (e.g. an LOI) stays re-editable.
-      builder_data: src.builder_data ?? null,
+      // Exhibits are re-pointed at the copy below (their files are copied), so start without any.
+      builder_data: src.builder_data ? sanitizeBuilderExhibits({ ...src.builder_data, exhibits: [] }, null, null) : null,
     }).select().single();
     if (error) { console.error('[api/form-submissions] copy', error); return NextResponse.json({ error: 'Copy failed' }, { status: 500 }); }
+    // An LOI's attached exhibits live under loi-exhibits/<submission id>/: give the copy its own files, so deleting
+    // or editing one letter's exhibits never touches the other's. Property files stay shared by path.
+    const srcExhibits = (((src.builder_data as { exhibits?: LoiExhibit[] } | null)?.exhibits) ?? [])
+      .filter(e => exhibitPathAllowed(e?.path, src.id as string, (src.listing_id as string | null) ?? null));
+    if (srcExhibits.length && copy) {
+      const kept: LoiExhibit[] = [];
+      for (const e of srcExhibits) {
+        if (!e.path.startsWith(`loi-exhibits/${src.id}/`)) { kept.push(e); continue; }
+        const np = `loi-exhibits/${copy.id}/${e.path.slice(`loi-exhibits/${src.id}/`.length)}`;
+        const { error: cpErr } = await supabase.storage.from('listing-files').copy(e.path, np);
+        if (cpErr) console.error('[api/form-submissions] copy exhibit', cpErr); else kept.push({ ...e, path: np });
+      }
+      const { data: fixed } = await supabase.from('crm_form_submissions')
+        .update({ builder_data: { ...(src.builder_data as object), exhibits: kept } }).eq('id', copy.id).select().single();
+      if (fixed) return NextResponse.json({ submission: fixed });
+    }
     return NextResponse.json({ submission: copy });
   }
 
@@ -201,9 +225,26 @@ export async function POST(req: NextRequest) {
   if (!form_id && !submission_id) return NextResponse.json({ error: 'form_id required' }, { status: 400 });
   const supabase = adminClient();
 
-  // An update may only target a submission in the caller's workspace.
-  if (submission_id && !(await assertOwnsResource('crm_form_submissions', submission_id, ctx))) {
+  if (form_id !== undefined && form_id !== null && (typeof form_id !== 'string' || !UUID_RE.test(form_id))) {
+    return NextResponse.json({ error: 'invalid form_id' }, { status: 400 });
+  }
+  if (submission_id !== undefined && submission_id !== null && (typeof submission_id !== 'string' || !UUID_RE.test(submission_id))) {
+    return NextResponse.json({ error: 'invalid submission_id' }, { status: 400 });
+  }
+  // An update may only target a submission in the caller's workspace — and, since it overwrites the document, a
+  // non-admin may only overwrite one they created (reading and copying a colleague's stays open).
+  if (submission_id && !(await assertOwnsResource('crm_form_submissions', submission_id, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) {
     return notFound('Submission not found');
+  }
+  // ...and not one filed on a private deal / Restricted property the caller can't see.
+  if (submission_id) {
+    const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit, deal_id, listing_id').eq('id', submission_id).maybeSingle();
+    if (!cur || !(await canAccessLinked(ctx, cur))) return notFound('Submission not found');
+  }
+  // A form_id becomes part of a storage path and a foreign key: it must be a real form in the caller's workspace.
+  if (form_id) {
+    const { data: f } = await supabase.from('crm_forms').select('id, business_unit').eq('id', form_id).maybeSingle();
+    if (!f || (!isAdminRole(ctx.role) && f.business_unit && f.business_unit !== ctx.businessUnit)) return notFound('Form not found');
   }
   // Agents can't file a submission against another workspace's deal, listing, or unit.
   if (deal_id && (!submission_id || relinkDeal) && !(await assertOwnsResource('crm_deals', deal_id, ctx))) {
@@ -218,9 +259,15 @@ export async function POST(req: NextRequest) {
 
   let filled_path: string | null = null;
   if (pdfBase64) {
+    if (typeof pdfBase64 !== 'string' || pdfBase64.length > Math.ceil(MAX_PDF_BYTES * 4 / 3) + 8) {
+      return NextResponse.json({ error: 'PDF too large or invalid' }, { status: 400 });
+    }
     const bytes = Buffer.from(pdfBase64, 'base64');
+    if (!bytes.length || bytes.length > MAX_PDF_BYTES || !bytes.subarray(0, 1024).includes('%PDF-')) {
+      return NextResponse.json({ error: 'That file is not a PDF' }, { status: 400 });
+    }
     const stamp = `${Date.now()}_${Math.round(Math.random() * 1e6)}`;
-    const path = `submissions/${form_id ?? 'imported'}/${stamp}.pdf`;
+    const path = `submissions/${form_id ?? 'imported'}/${stamp}.pdf`;   // form_id is a validated UUID here
     const { error: upErr } = await supabase.storage.from('transaction-forms').upload(path, bytes, { contentType: 'application/pdf', upsert: true });
     if (upErr) console.error('[api/form-submissions] upload', upErr);
     else filled_path = path;
@@ -262,7 +309,9 @@ export async function POST(req: NextRequest) {
     ...(filled_path ? { filled_path } : {}),
     // Editable source for builder-style docs (e.g. the LOI to Purchase term list),
     // so the doc can be reopened and regenerated. Plain overlay forms never send it.
-    ...(builder_data !== undefined ? { builder_data } : {}),
+    // Exhibit paths are server-minted: anything the client sends that isn't under this document's own attachments
+    // or its property's files is dropped (see sanitizeBuilderExhibits).
+    ...(builder_data !== undefined ? { builder_data: sanitizeBuilderExhibits(builder_data, submission_id ?? null, listing_id || priorLinks?.listing_id || null) } : {}),
   };
 
   const res = submission_id
@@ -279,7 +328,7 @@ export async function POST(req: NextRequest) {
       let summary = 'Created'; let changes: unknown = {};
       if (submission_id) {
         if (builder_data !== undefined) {
-          if (priorBuilder) { const d = diffBuilder(priorBuilder, builder_data as LoiData); summary = summarizeDiff(d); changes = d; }
+          if (priorBuilder) { const d = diffBuilder(priorBuilder, (base.builder_data ?? {}) as LoiData); summary = summarizeDiff(d); changes = d; }
           else { summary = 'Created in the builder'; }   // first builder save: nothing to diff against
         }
         else { const d = diffOverlay(priorValues, values ?? []); summary = summarizeOverlay(d); changes = d; }
@@ -296,8 +345,11 @@ export async function DELETE(req: NextRequest) {
   if (!ctx) return unauthorized();
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-  if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound('Document not found');
+  // Deleting a colleague's document is the creator's (or an admin's) call; reading and copying stay workspace-wide.
+  if (!(await assertOwnsResource('crm_form_submissions', id, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) return notFound('Document not found');
   const supabase = adminClient();
+  const { data: cur } = await supabase.from('crm_form_submissions').select('business_unit, deal_id, listing_id').eq('id', id).maybeSingle();
+  if (!cur || !(await canAccessLinked(ctx, cur))) return notFound('Document not found');
 
   // A document that has been signed is a business record, and the envelope carries
   // the only proof of it: the executed PDF, each signer's signature image, the

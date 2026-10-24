@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { getCrmProfileUser } from '@/lib/crm-auth';
+import { nonceMatches, verifyOAuthState } from '@/lib/oauth-state';
 import { encryptToken } from '@/lib/token-crypto';
 import { safeJson } from '@/lib/safe-json';
 
@@ -12,10 +14,11 @@ export async function GET(req: NextRequest) {
   const stateParam = req.nextUrl.searchParams.get('state');
   const error = req.nextUrl.searchParams.get('error');
 
-  const stateParts = (stateParam ?? '').split(':');
-  const userId = stateParts[0];
-  const stateNonce = stateParts[1];
-  const isPopup = stateParts[2] === 'popup';
+  // Signed, expiring state minted by the init route for the logged-in user (lib/oauth-state). The session user at THIS
+  // callback must be that same user, so a forged callback can't bind someone else's account to a CRM user.
+  const st = verifyOAuthState(stateParam);
+  const userId = st?.uid ?? '';
+  const isPopup = st?.popup === true;
 
   const done = (qs: string) =>
     isPopup
@@ -33,13 +36,16 @@ export async function GET(req: NextRequest) {
   }
 
   const cookieStore = await cookies();
-  const storedNonce = cookieStore.get('fb_oauth_nonce')?.value;
-
-  if (!storedNonce || storedNonce !== stateNonce) {
-    console.error('[facebook/callback] Nonce mismatch');
+  if (!st || !nonceMatches(st.nonce, cookieStore.get('fb_oauth_nonce')?.value)) {
+    console.error('[facebook/callback] Invalid or expired state');
     return done('social=error&platform=facebook&reason=invalid_state');
   }
   cookieStore.delete('fb_oauth_nonce');
+  const sessionUser = await getCrmProfileUser(req);
+  if (!sessionUser || sessionUser.id !== userId) {
+    console.error('[facebook/callback] Session user does not match the user this flow was started for');
+    return done('social=error&platform=facebook&reason=invalid_state');
+  }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

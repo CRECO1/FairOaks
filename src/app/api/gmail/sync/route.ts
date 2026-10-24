@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCrmContext, assertOwnsResource, unauthorized, forbidden } from '@/lib/crm-auth';
+import { adminClient } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { chicagoToday } from '@/lib/chicago-time';
 
@@ -122,7 +123,7 @@ function cleanBody(raw: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { dealId, clientId, clientEmail } = await req.json();
+    let { dealId, clientId, clientEmail } = await req.json();
     if ((!dealId && !clientId) || !clientEmail) {
       return NextResponse.json({ error: '(dealId or clientId) and clientEmail required' }, { status: 400 });
     }
@@ -130,38 +131,49 @@ export async function POST(req: NextRequest) {
     const ctx = await getCrmContext(req);
     if (!ctx) return unauthorized();
 
-    // Authorize by DEAL/CONTACT access, not Gmail ownership. Anyone who can READ a
-    // deal's emails (its agent, same-workspace teammates, or an admin — the same set
-    // RLS grants SELECT to) may refresh them. The mailbox we actually search — the
-    // deal/contact owner's, which holds the thread with the client — is derived from
-    // the row itself, never trusted from the request. The Gmail query is scoped to
-    // from:/to: the client, so no unrelated mail is ever exposed.
-    let ownerId: string;
+    // Authorize by DEAL/CONTACT access (workspace + Restricted-deal rules), and then search ONLY THE CALLER'S OWN
+    // Gmail. The mailbox used to be the deal owner's, so any teammate could pull the owner's mail through this route;
+    // and the address searched came from the request, so a teammate could also type any address (or "gmail.com") and
+    // have up to 100 matching messages from that mailbox copied into the deal. Now: own mailbox only, and the address
+    // must be one that is actually on the deal's / contact's record.
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if ((dealId && !UUID.test(String(dealId))) || (clientId && !UUID.test(String(clientId)))) {
+      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
+    const emailsOf = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;\s]+/) : [])
+      .map(x => String(x).trim().toLowerCase()).filter(Boolean);
+    let knownEmails: string[] = [];
     if (dealId) {
       const deal = await assertOwnsResource('crm_deals', dealId, ctx, { ownerColumns: ['agent_id'], requireOwner: false });
       if (!deal) return forbidden('You do not have access to this deal');
-      ownerId = (deal.agent_id as string | null) ?? ctx.userId;
+      const { data: d } = await adminClient().from('crm_deals').select('client_email, client_id').eq('id', dealId).maybeSingle();
+      knownEmails = emailsOf(d?.client_email);
+      if (d?.client_id) {
+        const { data: c } = await adminClient().from('crm_clients').select('email, extra_emails').eq('id', d.client_id).maybeSingle();
+        knownEmails.push(...emailsOf(c?.email), ...emailsOf(c?.extra_emails));
+      }
     } else {
       const client = await assertOwnsResource('crm_clients', clientId, ctx, { ownerColumns: ['agent_id'], requireOwner: false });
       if (!client) return forbidden('You do not have access to this contact');
-      ownerId = (client.agent_id as string | null) ?? ctx.userId;
+      const { data: c } = await adminClient().from('crm_clients').select('email, extra_emails').eq('id', clientId).maybeSingle();
+      knownEmails = [...emailsOf(c?.email), ...emailsOf(c?.extra_emails)];
     }
+    const wanted = String(clientEmail).trim().toLowerCase();
+    if (!/^[^\s@<>"',;:()]+@[^\s@<>"',;:()]+\.[^\s@<>"',;:()]{2,}$/.test(wanted) || !knownEmails.includes(wanted)) {
+      return NextResponse.json({ error: 'That email address is not on this record.' }, { status: 400 });
+    }
+    clientEmail = wanted;
     const callerId = ctx.userId;
 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-    // Search the deal/contact owner's Gmail (holds the client thread), plus — when the
-    // caller is a teammate rather than the owner — the caller's own accounts too, in
-    // case they also corresponded with the client directly.
-    const ownerConns = await getAllConnections(ownerId, anonKey, serviceRoleKey);
-    const callerConns = callerId !== ownerId ? await getAllConnections(callerId, anonKey, serviceRoleKey) : [];
-    const allConns = [...ownerConns, ...callerConns];
+    // The caller's own connected Gmail account(s) only.
+    const allConns = await getAllConnections(callerId, anonKey, serviceRoleKey);
     if (allConns.length === 0) {
       // Distinguish "never connected" from "connected but token expired/revoked" so the
       // toast tells the user to reconnect rather than showing a confusing generic error.
-      const rawRows = await countConnections(ownerId, anonKey, serviceRoleKey)
-        + (callerId !== ownerId ? await countConnections(callerId, anonKey, serviceRoleKey) : 0);
+      const rawRows = await countConnections(callerId, anonKey, serviceRoleKey);
       return NextResponse.json({
         error: rawRows > 0
           ? 'Gmail connection expired — reconnect your Google account in Settings, then sync again.'

@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 interface GmailConnection {
+  id: string;
   access_token: string;
   refresh_token: string;
   expires_at: string;
 }
 
 async function getValidToken(userId: string, anonKey: string, serviceKey: string): Promise<string | null> {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${encodeURIComponent(userId)}`, {
     headers: { 'apikey': anonKey, 'Authorization': `Bearer ${serviceKey}` },
   });
   const rows: GmailConnection[] = await res.json();
@@ -35,7 +36,8 @@ async function getValidToken(userId: string, anonKey: string, serviceKey: string
     if (!refreshRes.ok || !refreshed.access_token) return null;
     accessToken = refreshed.access_token;
     const newExpiry = new Date(Date.now() + refreshed.expires_in * 1000).toISOString();
-    await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?user_id=eq.${userId}`, {
+    // Scoped to the row we read — a user can hold several Gmail connections.
+    await fetch(`${SUPABASE_URL}/rest/v1/gmail_connections?id=eq.${encodeURIComponent(conn.id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'apikey': anonKey, 'Authorization': `Bearer ${serviceKey}` },
       body: JSON.stringify({ access_token: encryptToken(accessToken), expires_at: newExpiry }),
@@ -51,7 +53,7 @@ export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
-  const caller = await getCrmUser();
+  const caller = await getCrmProfileUser();
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot access another user\'s Gmail connection');
 

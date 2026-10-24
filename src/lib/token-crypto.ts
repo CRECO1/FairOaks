@@ -29,25 +29,39 @@ function getKey(): Buffer {
 export function encryptToken(plaintext: string): string {
   if (!plaintext) return plaintext;
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(ALGORITHM, getKey(), iv);
+  const cipher = crypto.createCipheriv(ALGORITHM, getKey(), iv, { authTagLength: 16 });
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
   const authTag = cipher.getAuthTag();
   // Format: iv(32hex):authTag(32hex):encrypted(hex)
   return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted.toString('hex')}`;
 }
 
+/** The only shape encryptToken() produces: iv(32 hex) : authTag(32 hex) : ciphertext(hex). */
+const ENCRYPTED = /^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]*$/i;
+
+/**
+ * Decrypts a stored token. STRICT: a value that isn't in the encrypted format, fails authentication (wrong key or
+ * tampered), or can't be decrypted returns '' — never the input. It used to hand back whatever it was given
+ * ("handles already-plaintext tokens during migration"), which let a plaintext or garbled DB value flow straight into
+ * an Authorization header. Every token in production was verified to be encrypted (2026-10-24: 2/2 Gmail, 5/5 social)
+ * before this fallback was removed. An empty token fails at the provider like any expired one ("reconnect your account").
+ */
 export function decryptToken(ciphertext: string): string {
-  if (!ciphertext || !ciphertext.includes(':')) return ciphertext;
+  if (!ciphertext) return ciphertext;
+  if (!ENCRYPTED.test(ciphertext)) {
+    console.error('[token-crypto] stored token is not in the encrypted format — refusing to use it');
+    return '';
+  }
   try {
     const [ivHex, authTagHex, encryptedHex] = ciphertext.split(':');
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(authTagHex, 'hex');
     const encrypted = Buffer.from(encryptedHex, 'hex');
-    const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), iv);
+    const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), iv, { authTagLength: 16 });
     decipher.setAuthTag(authTag);
     return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
   } catch {
-    // Return as-is if decryption fails (handles already-plaintext tokens during migration)
-    return ciphertext;
+    console.error('[token-crypto] could not decrypt a stored token (wrong key, or the value was altered)');
+    return '';
   }
 }

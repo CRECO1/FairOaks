@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { clientId } = await req.json().catch(() => ({}));
-  if (!clientId) return NextResponse.json({ error: 'clientId required' }, { status: 400 });
+  if (!clientId || typeof clientId !== 'string') return NextResponse.json({ error: 'clientId required' }, { status: 400 });
 
   const supabase = adminClient();
 
@@ -45,6 +45,14 @@ export async function POST(req: NextRequest) {
 
   if (client.unsubscribed_at) {
     return NextResponse.json({ error: 'Client has unsubscribed from emails' }, { status: 400 });
+  }
+
+  // One ask per contact per 30 days (admins may re-send) — stops an agent mailing the same person repeatedly.
+  if (!isAdminRole(ctx.role) && client.review_requested_at) {
+    const last = new Date(client.review_requested_at as string).getTime();
+    if (!Number.isNaN(last) && Date.now() - last < 30 * 86_400_000) {
+      return NextResponse.json({ error: 'A review request was already sent to this contact in the last 30 days.' }, { status: 409 });
+    }
   }
 
   // Fetch the agent's name for a personalized sign-off

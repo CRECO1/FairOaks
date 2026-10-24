@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, getCrmAdmin, unauthorized } from '@/lib/crm-auth';
+import { getCrmContext, getCrmAdmin, isAdminRole, unauthorized } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(req: NextRequest) {
-  const caller = await getCrmUser();
-  if (!caller) return unauthorized();
-  const unit = req.nextUrl.searchParams.get('unit') ?? 'commercial';
+  const ctx = await getCrmContext(req);
+  if (!ctx) return unauthorized();
+  // Admins may look at either workspace's rules; everyone else only their own.
+  const unit = isAdminRole(ctx.role) ? (req.nextUrl.searchParams.get('unit') ?? ctx.businessUnit ?? 'commercial') : (ctx.businessUnit ?? 'commercial');
   const supabase = adminClient();
   const { data } = await supabase.from('lead_routing_rules')
     .select('*, agent:crm_profiles!assign_to_agent_id(id,first_name,last_name)')

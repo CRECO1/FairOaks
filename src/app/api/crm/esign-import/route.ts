@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument } from 'pdf-lib';
-import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, notFound, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { assertCanAccessListing } from '@/lib/listing-files-access';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { adminClient } from '@/lib/supabase-admin';
 
 // Import a one-off document to be signed — a lease addendum, a vendor agreement,
@@ -18,6 +19,14 @@ import { adminClient } from '@/lib/supabase-admin';
 const BUCKET = 'transaction-forms';
 const DEAL_BUCKET = 'deal-docs';     // where a deal's own attachments live
 const MAX_SIZE = 25 * 1024 * 1024;   // 25 MB — well past a normal contract scan
+
+const IMPORT_FILE_RE = /^[A-Za-z0-9._-]{1,500}$/;
+function isSafeImportPath(p: string, uid: string): boolean {
+  const prefix = `imports/${uid}/`;
+  if (!p.startsWith(prefix) || p.includes('\\')) return false;
+  const rest = p.slice(prefix.length);
+  return IMPORT_FILE_RE.test(rest) && !rest.includes('..');
+}
 
 export async function POST(req: NextRequest) {
   const ctx = await getCrmContext(req);
@@ -96,7 +105,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That file is over 25 MB — try a smaller scan.' }, { status: 400 });
   }
 
-  const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+  // No `..` anywhere in the name: PUT refuses it, so never mint one.
+  const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '.');
   const storagePath = `imports/${ctx.userId}/${Date.now()}_${safe}`;
   const { data, error } = await adminClient().storage.from(BUCKET).createSignedUploadUrl(storagePath);
   if (error || !data) {
@@ -111,8 +121,9 @@ export async function PUT(req: NextRequest) {
   if (!ctx) return unauthorized();
   const { storage_path, title, deal_id, listing_id, business_unit } = await req.json().catch(() => ({}));
   if (!storage_path) return NextResponse.json({ error: 'storage_path required' }, { status: 400 });
-  // Only the uploader's own import prefix — a caller can't confirm a path they didn't get.
-  if (!String(storage_path).startsWith(`imports/${ctx.userId}/`)) return notFound('Upload not found');
+  // Only the uploader's own import prefix — a caller can't confirm a path they didn't get. The remainder must be
+  // a single plain filename (POST mints `<ts>_<sanitised name>`): no `..`, backslash, empty or nested segments.
+  if (typeof storage_path !== 'string' || !isSafeImportPath(storage_path, ctx.userId)) return notFound('Upload not found');
   if (deal_id && !(await assertOwnsResource('crm_deals', deal_id, ctx))) return notFound('Deal not found');
   if (listing_id && !(await assertCanAccessListing(listing_id, ctx))) return notFound('Listing not found');
 
@@ -186,8 +197,15 @@ export async function GET(req: NextRequest) {
     .order('updated_at', { ascending: false })
     .limit(50);
   if (!isAdminRole(ctx.role)) q = q.eq('business_unit', ctx.businessUnit);
-  const { data, error } = await q;
+  q = excludeHiddenDeals(q, await hiddenDealIds(ctx));   // private deals' imports stay private
+  const { data: rawData, error } = await q;
   if (error) { console.error('[esign-import] GET', error); return NextResponse.json({ error: 'Internal error' }, { status: 500 }); }
+  // ...and so do imports filed on a Restricted property the caller isn't on.
+  const listingOk = new Map<string, boolean>();
+  for (const lid of new Set((rawData ?? []).map(s => s.listing_id).filter(Boolean) as string[])) {
+    listingOk.set(lid, !!(await assertCanAccessListing(lid, ctx)));
+  }
+  const data = (rawData ?? []).filter(s => !s.listing_id || listingOk.get(s.listing_id));
 
   const ids = (data ?? []).map(s => s.id);
   const envBySub = new Map<string, { id: string; status: string; created_at: string }>();
@@ -212,16 +230,20 @@ export async function DELETE(req: NextRequest) {
   if (!ctx) return unauthorized();
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-  if (!(await assertOwnsResource('crm_form_submissions', id, ctx))) return notFound('Document not found');
+  // Deleting a colleague's document is the uploader's (or an admin's) call, not any agent's.
+  if (!(await assertOwnsResource('crm_form_submissions', id, ctx, { ownerColumns: ['created_by'], requireOwner: true }))) return notFound('Document not found');
   const supabase = adminClient();
-  const { data: sub } = await supabase.from('crm_form_submissions').select('form_id, source_path, filled_path').eq('id', id).maybeSingle();
+  const { data: sub } = await supabase.from('crm_form_submissions').select('form_id, source_path, filled_path, business_unit, deal_id, listing_id').eq('id', id).maybeSingle();
   if (!sub) return notFound('Document not found');
+  if (!(await canAccessLinked(ctx, sub))) return notFound('Document not found');
   if (sub.form_id) return NextResponse.json({ error: 'That is a library form, not an import.' }, { status: 400 });
   // Refuse to pull the source out from under a document that is already out for signature.
   const { count } = await supabase.from('crm_envelopes').select('id', { count: 'exact', head: true }).eq('submission_id', id);
   if (count) return NextResponse.json({ error: 'This document has already been sent — void the signature request first.' }, { status: 400 });
 
-  const paths = Array.from(new Set([sub.source_path, sub.filled_path].filter(Boolean) as string[]));
+  // Only ever remove files under the caller-visible import area (the row's paths are server-written, but be strict).
+  const paths = Array.from(new Set([sub.source_path, sub.filled_path].filter(Boolean) as string[]))
+    .filter(p => p.startsWith('imports/') && !p.split('/').includes('..'));
   if (paths.length) await supabase.storage.from(BUCKET).remove(paths);
   const { error } = await supabase.from('crm_form_submissions').delete().eq('id', id);
   if (error) { console.error('[esign-import] DELETE', error); return NextResponse.json({ error: 'Could not remove the document' }, { status: 500 }); }

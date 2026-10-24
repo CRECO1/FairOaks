@@ -25,6 +25,12 @@ interface CallPayload { datetime?: string; call_result?: string; direction?: str
 interface TextPayload { datetime?: string; direction?: string; from_number?: string; to_number?: string; body?: string }
 interface VmPayload { datetime?: string; call_result?: string; duration?: number; called_number?: string; caller_number?: string; transcription?: string; mailbox_name?: string }
 
+/** ISO time from a webhook-supplied value; a malformed date falls back to now instead of throwing a RangeError. */
+function safeIso(v: unknown): string {
+  const d = v ? new Date(String(v)) : new Date();
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
+
 function keyed(secret: string, req: NextRequest): boolean {
   const got = req.nextUrl.searchParams.get('key') ?? '';
   const a = Buffer.from(got), b = Buffer.from(secret);
@@ -49,7 +55,7 @@ export async function POST(req: NextRequest) {
     const ours = toE164(p.called_number), theirs = toE164(p.caller_number);
     const unit = await unitForNumber(db, ours);
     const contact = await matchContact(db, theirs, unit);
-    const at = p.datetime ? new Date(p.datetime).toISOString() : new Date().toISOString();
+    const at = safeIso(p.datetime);
     const row: CallRow = {
       business_unit: unit, source: 'talkroute', kind: 'call', external_id: `push:${ours ?? ''}:${theirs ?? ''}:${at.slice(0, 16)}`,
       direction: inbound ? 'inbound' : 'outbound', result: p.call_result ?? null,
@@ -73,7 +79,7 @@ export async function POST(req: NextRequest) {
     const ours = toE164(p.called_number), theirs = toE164(p.caller_number);
     const unit = await unitForNumber(db, ours);
     const contact = await matchContact(db, theirs, unit);
-    const at = p.datetime ? new Date(p.datetime).toISOString() : new Date().toISOString();
+    const at = safeIso(p.datetime);
     const row: CallRow = {
       business_unit: unit, source: 'talkroute', kind: 'voicemail', external_id: `pushvm:${ours ?? ''}:${theirs ?? ''}:${at.slice(0, 16)}`,
       direction: 'inbound', result: 'voicemail', from_number: theirs, to_number: ours,
@@ -96,7 +102,7 @@ export async function POST(req: NextRequest) {
     const ours = incoming ? to : from, theirs = incoming ? from : to;
     const unit = await unitForNumber(db, ours);
     const contact = await matchContact(db, theirs, unit);
-    const at = p.datetime ? new Date(p.datetime).toISOString() : new Date().toISOString();
+    const at = safeIso(p.datetime);
     const cid = `${(ours || '').replace(/\D/g, '')}-${(theirs || '').replace(/\D/g, '')}`;
     const row: TextRow = {
       business_unit: unit, source: 'talkroute', external_id: `push:${cid}:${at}:${(p.body || '').slice(0, 40)}`, conversation_id: cid,

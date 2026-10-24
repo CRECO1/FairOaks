@@ -72,7 +72,11 @@ export async function POST(req: NextRequest) {
   const rec: Record<string, unknown> = {};
   for (const k of WRITABLE_TEXT) {
     const v = body[k];
-    if (typeof v === 'string' && v.trim()) rec[k] = v.trim();
+    if (typeof v === 'string' && v.trim()) {
+      // These columns are rendered as links: only http(s) URLs, never javascript:/data: (stored-XSS via href).
+      if (k.endsWith('_url') && !/^https?:\/\//i.test(v.trim())) continue;
+      rec[k] = v.trim();
+    }
   }
   for (const k of WRITABLE_NUM) {
     const raw = body[k];

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { getCrmProfileUser, unauthorized, forbidden } from '@/lib/crm-auth';
 import { SUPABASE_URL } from '@/lib/supabase-admin';
 import { decryptToken, encryptToken } from '@/lib/token-crypto';
 import { safeJson } from '@/lib/safe-json';
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   try {
     // Bearer-aware for the same reason as /api/gmail/send: the copilot has a token,
     // not a cookie jar.
-    const caller = await getCrmUser(req);
+    const caller = await getCrmProfileUser(req);
     if (!caller) return unauthorized();
 
     const { title, due_date, notes, client_name, task_type, userId } = await req.json();

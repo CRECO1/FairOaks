@@ -25,6 +25,10 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     }
+    // userId is interpolated into PostgREST / Auth admin URLs below — it must be a plain UUID.
+    if (typeof userId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      return NextResponse.json({ error: 'userId must be a valid id' }, { status: 400 });
+    }
 
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -43,7 +47,7 @@ export async function POST(req: NextRequest) {
       { headers: { apikey: anonKey, Authorization: `Bearer ${serviceRoleKey}` } },
     );
     const targetRows = await targetRes.json().catch(() => []);
-    const targetRole: string | undefined = Array.isArray(targetRows) ? targetRows[0]?.role : undefined;
+    const targetRole = String(Array.isArray(targetRows) ? targetRows[0]?.role ?? '' : '').toLowerCase();
     if (targetRole === 'admin' || targetRole === 'super_admin') {
       if (!(await getCrmSuperAdmin())) return forbidden('Only a super admin can remove an admin.');
     }

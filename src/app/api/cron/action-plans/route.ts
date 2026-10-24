@@ -188,6 +188,7 @@ export async function GET(req: NextRequest) {
             to: client.email,
             subject: emailSubject,
             html: body,
+            headers: { 'List-Unsubscribe': `<${unsubscribeUrlFor(plan.business_unit, client.unsubscribe_token ?? '')}>` },
           });
           if (emailResult.error) throw new Error(emailResult.error.message || 'Resend rejected the send');
           providerId = emailResult.data?.id ?? null;

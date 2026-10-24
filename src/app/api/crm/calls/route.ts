@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mirrorCallNote } from '@/lib/call-note-mirror';
 import { settleOpenCallTasks } from '@/lib/call-task-settle';
-import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, notFound, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
+import { getCrmContext, isAdminRole, isSuperAdminRole, unauthorized, forbidden, notFound, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { canAccessLinked } from '@/lib/crm-linked-access';
 import { toE164 } from '@/lib/phone';
 import { blockKey } from '@/lib/call-blocklist';
 import { buildHistory, internalNumbers, otherParty, type HistoryCall } from '@/lib/call-history';
@@ -38,8 +39,8 @@ export async function GET(req: NextRequest) {
 
   const turnsFor = sp.get('turns');
   if (turnsFor) {
-    const { data: call } = await supabase.from('crm_call_log').select('id, business_unit').eq('id', turnsFor).maybeSingle();
-    if (!call || (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit)) return notFound('Call not found');
+    const { data: call } = await supabase.from('crm_call_log').select('id, business_unit, deal_id').eq('id', turnsFor).maybeSingle();
+    if (!call || (!isAdminRole(ctx.role) && call.business_unit !== ctx.businessUnit) || !(await canAccessLinked(ctx, call))) return notFound('Call not found');
     const { data, error } = await supabase.from('crm_call_turns').select('id, role, text, created_at').eq('call_id', turnsFor).order('created_at');
     if (error) return dbError('api/crm/calls turns', error);
     return NextResponse.json({ turns: data ?? [] });
@@ -175,10 +176,16 @@ export async function POST(req: NextRequest) {
     const { data: c } = await supabase.from('crm_clients').select('id').eq('id', b.contact_id).eq('business_unit', unit).maybeSingle();
     if (!c) return notFound('Contact not found');
   }
+  if (b.deal_id) {
+    // Must be a deal the caller can see (not a Restricted deal that isn't theirs) in this workspace.
+    const d = await assertOwnsResource('crm_deals', String(b.deal_id), ctx);
+    if (!d || d.business_unit !== unit) return notFound('Deal not found');
+  }
   let resolves: { id: string; contact_id: string | null } | null = null;
   if (b.resolves_call_id) {
-    const { data: r } = await supabase.from('crm_call_log').select('id, contact_id').eq('id', b.resolves_call_id).eq('business_unit', unit).maybeSingle();
-    resolves = r ?? null;
+    const { data: r } = await supabase.from('crm_call_log').select('id, contact_id, deal_id').eq('id', b.resolves_call_id).eq('business_unit', unit).maybeSingle();
+    if (r && !(await canAccessLinked(ctx, { business_unit: unit, deal_id: r.deal_id }))) return notFound('Call not found');
+    resolves = r ? { id: r.id, contact_id: r.contact_id } : null;
   }
   let retry: string | null = null;
   if (b.retry_at) { const d = new Date(b.retry_at); if (!Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 60_000) retry = d.toISOString(); }
@@ -228,6 +235,7 @@ export async function PATCH(req: NextRequest) {
   // Calls older than N days that never got a note are marked done as "not documented", so the
   // record keeps the call and says plainly that it has no note (nothing is invented or deleted).
   if (req.nextUrl.searchParams.get('bulk') === 'skip_old') {
+    if (!isAdminRole(ctx.role)) return forbidden();
     const days = Math.min(365, Math.max(7, Number(req.nextUrl.searchParams.get('days') ?? 14) || 14));
     const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
     const supa = adminClient();
@@ -246,8 +254,8 @@ export async function PATCH(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   const supabase = adminClient();
-  const { data: existing } = await supabase.from('crm_call_log').select('id, business_unit, contact_id, direction, needs_follow_up, handled_at, summary').eq('id', id).maybeSingle();
-  if (!existing || (!isAdminRole(ctx.role) && existing.business_unit !== ctx.businessUnit)) return notFound('Call not found');
+  const { data: existing } = await supabase.from('crm_call_log').select('id, business_unit, contact_id, deal_id, direction, needs_follow_up, handled_at, summary').eq('id', id).maybeSingle();
+  if (!existing || (!isAdminRole(ctx.role) && existing.business_unit !== ctx.businessUnit) || !(await canAccessLinked(ctx, existing))) return notFound('Call not found');
   const b = await req.json().catch(() => ({}));
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (b.handled === true) { patch.handled_at = new Date().toISOString(); patch.handled_by = ctx.userId; }
@@ -273,8 +281,8 @@ export async function PATCH(req: NextRequest) {
   }
   if (b.deal_id !== undefined) {
     if (b.deal_id) {
-      const { data: d } = await supabase.from('crm_deals').select('id').eq('id', b.deal_id).eq('business_unit', existing.business_unit).maybeSingle();
-      if (!d) return notFound('Deal not found');
+      const d = await assertOwnsResource('crm_deals', String(b.deal_id), ctx);
+      if (!d || d.business_unit !== existing.business_unit) return notFound('Deal not found');
     }
     patch.deal_id = b.deal_id || null;
   }

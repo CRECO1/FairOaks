@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmUser, unauthorized, forbidden } from '@/lib/crm-auth';
-import { randomUUID } from 'crypto';
+import { getCrmProfileUser, unauthorized, forbidden } from '@/lib/crm-auth';
+import { signOAuthState } from '@/lib/oauth-state';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -13,12 +13,13 @@ const SCOPES = [
 export async function GET(req: NextRequest) {
   const userId = req.nextUrl.searchParams.get('userId');
   const hint   = req.nextUrl.searchParams.get('hint') ?? ''; // specific Gmail address to connect
-  const bu     = req.nextUrl.searchParams.get('bu') ?? '';   // business unit to return to
+  const buRaw  = req.nextUrl.searchParams.get('bu') ?? '';   // business unit to return to
+  const bu     = buRaw === 'commercial' || buRaw === 'residential' ? buRaw : ''; // allow-listed: it becomes part of a redirect path
   const retry  = req.nextUrl.searchParams.get('retry') === '1'; // auto-retry after no_refresh_token
   if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
 
   // Only the authenticated agent can initiate their own OAuth flow
-  const caller = await getCrmUser();
+  const caller = await getCrmProfileUser();
   if (!caller) return unauthorized();
   if (caller.id !== userId) return forbidden('Cannot initiate OAuth for another user');
 
@@ -35,12 +36,10 @@ export async function GET(req: NextRequest) {
   // Always force the account picker so the user can choose which Gmail to connect.
   // 'select_account consent' shows the chooser AND ensures a refresh_token is issued.
   url.searchParams.set('prompt', 'select_account consent');
-  // CSRF: bind this OAuth round-trip to the initiating session with a one-time
-  // nonce. The same value is echoed in `state` and set as an HttpOnly cookie;
-  // the callback rejects any response whose state nonce doesn't match the cookie.
-  const nonce = randomUUID();
-  // Encode userId + business unit + retry flag + nonce into state (4 positional fields)
-  const state = `${userId}|${bu}|${retry ? 'retry' : ''}|${nonce}`;
+  // CSRF / account-linking: `state` is an HMAC-signed, expiring blob carrying the initiating user's id, and the
+  // callback additionally requires the logged-in session to be that same user. (The old "nonce also in a cookie"
+  // check proved nothing: both values came from the requester's own browser, so a forged callback passed.)
+  const { state, nonce } = signOAuthState({ uid: userId, bu, retry });
   url.searchParams.set('state', state);
   // login_hint pre-selects the target account in the picker
   if (hint) url.searchParams.set('login_hint', hint);

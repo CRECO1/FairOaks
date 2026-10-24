@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCrmContext, assertOwnsResource, unauthorized, notFound, dbError } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isAdminRole, unauthorized, forbidden, notFound, dbError, type CrmContext } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
 
 const VALID_TYPES = ['email', 'sms', 'task', 'note'] as const;
@@ -11,6 +11,19 @@ type StepInput = {
   subject?: string;
   body: string;
 };
+
+/**
+ * Editing a LIVE plan's steps changes what real contacts are emailed next, so on an active plan only its
+ * owner (created_by) or an admin may do it. Returns a response to send back, or null to proceed.
+ * (Paused/draft plans stay editable by anyone in the workspace.)
+ */
+async function liveEditGate(planId: string, ctx: CrmContext): Promise<NextResponse | null> {
+  const { data: plan } = await adminClient().from('crm_action_plans').select('status, created_by').eq('id', planId).maybeSingle();
+  if (plan?.status === 'active' && !isAdminRole(ctx.role) && plan.created_by !== ctx.userId) {
+    return forbidden('Forbidden — only the plan owner or an admin can edit the steps of an active action plan');
+  }
+  return null;
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await getCrmContext(req);
@@ -38,6 +51,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => null);
   if (body === null) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   const { step_order, type, delay_days, subject, body: stepBody } = body;
+  const blocked = await liveEditGate(id, ctx);
+  if (blocked) return blocked;
 
   if (!type || !VALID_TYPES.includes(type)) {
     return NextResponse.json(
@@ -83,6 +98,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (steps.length > 100) {
     return NextResponse.json({ error: 'Action plans may not have more than 100 steps' }, { status: 400 });
   }
+  if (!(steps as StepInput[]).every(s => s && typeof s === 'object' && VALID_TYPES.includes(s.type as (typeof VALID_TYPES)[number]))) {
+    return NextResponse.json({ error: `type must be one of: ${VALID_TYPES.join(', ')}` }, { status: 400 });
+  }
+  const blocked = await liveEditGate(id, ctx);
+  if (blocked) return blocked;
 
   const supabase = adminClient();
 
@@ -92,7 +112,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     .delete()
     .eq('plan_id', id);
 
-  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  if (deleteError) return dbError('api/action-plans/[id]/steps', deleteError);
 
   if (steps.length === 0) {
     return NextResponse.json({ steps: [] });
@@ -127,6 +147,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!(await assertOwnsResource('crm_action_plans', id, ctx))) return notFound('Plan not found');
   const { searchParams } = new URL(req.url);
   const stepId = searchParams.get('stepId');
+  const blocked = await liveEditGate(id, ctx);
+  if (blocked) return blocked;
 
   if (!stepId) {
     return NextResponse.json({ error: 'stepId query param is required' }, { status: 400 });

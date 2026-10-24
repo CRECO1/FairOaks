@@ -393,7 +393,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         <h2 style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 26, fontWeight: 700, margin: 0, color: '#111', whiteSpace: 'nowrap' }}>📞 Calling Log</h2>
         <span style={{ fontSize: 13, color: '#9ca3af' }}>{loading ? '' : `${list.length} ${filter === 'follow_up' ? 'waiting on a call back' : filter === 'all' ? `calls · last ${days} days` : 'calls'}`}</span>
         <span style={{ flex: '1 1 auto', minWidth: 0 }} />
-        {conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, color: '#9ca3af' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
+        {isAdmin && conn?.talkroute && <button onClick={syncNow} disabled={busy === 'sync'} style={{ ...mini, color: '#9ca3af' }}>{busy === 'sync' ? '⏳ Syncing…' : '⟳ Sync Talkroute'}</button>}
         <button onClick={() => setShowLog(v => !v)} style={mini}>＋ Log a call</button>
         <button onClick={() => setShowBlocked(v => !v)} style={{ ...mini, background: showBlocked ? '#111' : '#fff', color: showBlocked ? '#fff' : '#374151' }}>🚫 Blocked numbers</button>
         {isAdmin && <button onClick={() => setShowSetup(v => !v)} style={{ ...mini, background: showSetup ? '#111' : '#fff', color: showSetup ? '#fff' : '#374151' }}>⚙ Setup &amp; voice bot</button>}
@@ -437,7 +437,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
         />
       )}
 
-      {showBlocked && <BlockedNumbersPanel authToken={authToken} businessUnit={businessUnit} showToast={showToast} onChanged={load} />}
+      {showBlocked && <BlockedNumbersPanel authToken={authToken} businessUnit={businessUnit} isAdmin={isAdmin} showToast={showToast} onChanged={load} />}
 
       {/* ── Setup & voice bot (admins) ── */}
       {isAdmin && showSetup && (
@@ -613,7 +613,7 @@ export default function CallingLog({ authToken, showToast, isAdmin, isSuperAdmin
                   <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>Step through them one at a time — one tap each — or clear the old ones nobody can remember.</div>
                 </div>
                 <button onClick={() => setQueueOpen(true)} style={{ ...mini, background: '#c9922c', color: '#fff', border: 'none', minHeight: 44, flex: '1 1 150px' }}>▶ Start wrap-up queue</button>
-                <button onClick={skipOld} disabled={busy === 'skipold'} style={{ ...mini, minHeight: 44, flex: '1 1 150px' }} title="Marks calls older than 14 days as done without a note. Nothing is deleted.">{busy === 'skipold' ? 'Working…' : 'Clear ones older than 14 days'}</button>
+                {isAdmin && <button onClick={skipOld} disabled={busy === 'skipold'} style={{ ...mini, minHeight: 44, flex: '1 1 150px' }} title="Marks calls older than 14 days as done without a note. Nothing is deleted.">{busy === 'skipold' ? 'Working…' : 'Clear ones older than 14 days'}</button>}
               </div>
             )}
             {list.map(c => {

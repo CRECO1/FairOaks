@@ -35,6 +35,21 @@ export async function getCrmUser(req?: NextRequest) {
   return user;
 }
 
+/**
+ * Like getCrmUser(), but fails closed: the login must ALSO have a crm_profiles row.
+ *
+ * getCrmUser() accepts any Supabase login, and Supabase sign-up is open, so a stranger who registers an
+ * account is "authenticated". Any route that spends money (ATTOM, Anthropic), stores files or sends mail,
+ * or that touches CRM data, must use this (or getCrmContext) instead. Drop-in replacement: returns the same
+ * Supabase user object.
+ */
+export async function getCrmProfileUser(req?: NextRequest) {
+  const user = await getCrmUser(req);
+  if (!user) return null;
+  const { data } = await adminClient().from('crm_profiles').select('id').eq('id', user.id).maybeSingle();
+  return data ? user : null;
+}
+
 /** Role tiers, most-privileged first. super_admin ⊃ admin ⊃ agent. */
 export const ADMIN_ROLES = ['admin', 'super_admin'] as const;
 

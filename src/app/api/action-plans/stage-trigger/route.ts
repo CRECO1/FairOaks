@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { resolveSignature, withSignature } from '@/lib/agent-signature';
 import { Resend } from 'resend';
-import { getCrmUser } from '@/lib/crm-auth';
+import { getCrmContext, assertOwnsResource, isAdminRole } from '@/lib/crm-auth';
 import { resolveActionPlanFrom } from '@/lib/action-plan-from';
 import { newTrackingId, withOpenPixel, unsubscribeUrlFor } from '@/lib/email-tracking';
 
@@ -14,27 +14,31 @@ function resendClient(bu: string) {
 function fromAddress(bu: string) {
   return bu === 'commercial' ? 'CRECO <zack@crecotx.com>' : 'Fair Oaks Realty Group <info@fairoaksrealtygroup.com>';
 }
-function applyMergeFields(t: string, ctx: any, businessUnit?: string): string {
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+// `html` HTML-escapes the person-supplied merge values (the body is HTML); the subject is plain text and is not.
+function applyMergeFields(t: string, ctx: any, businessUnit?: string, html = false): string {
+  const v = (s: string) => (html ? escapeHtml(s) : s);
   return t
-    .replaceAll('{{first_name}}', ctx.client.first_name || '')
-    .replaceAll('{{last_name}}', ctx.client.last_name || '')
-    .replaceAll('{{full_name}}', `${ctx.client.first_name} ${ctx.client.last_name}`.trim())
-    .replaceAll('{{email}}', ctx.client.email || '')
-    .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
-    .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
-    .replaceAll('{{brokerage}}', ctx.agent.brokerage || 'CRECO Commercial Real Estate Company')
+    .replaceAll('{{first_name}}', v(ctx.client.first_name || ''))
+    .replaceAll('{{last_name}}', v(ctx.client.last_name || ''))
+    .replaceAll('{{full_name}}', v(`${ctx.client.first_name} ${ctx.client.last_name}`.trim()))
+    .replaceAll('{{email}}', v(ctx.client.email || ''))
+    .replaceAll('{{agent_name}}', v(`${ctx.agent.first_name} ${ctx.agent.last_name}`.trim()))
+    .replaceAll('{{agent_email}}', v(ctx.agent.email || ''))
+    .replaceAll('{{agent_phone}}', v(ctx.agent.phone || '210-817-3443'))
+    .replaceAll('{{brokerage}}', v(ctx.agent.brokerage || 'CRECO Commercial Real Estate Company'))
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token || ''));
 }
 
 // POST /api/action-plans/stage-trigger
 // Called when a deal stage changes — enrolls the contact in any matching stage_change action plans
 export async function POST(req: NextRequest) {
-  const caller = await getCrmUser();
+  const caller = await getCrmContext(req);
   if (!caller) return NextResponse.json({ enrolled: 0 }, { status: 401 });
 
   try {
-    const { stage, clientId, agentId, businessUnit } = await req.json();
+    const { stage, clientId, agentId: bodyAgentId, businessUnit: bodyBusinessUnit } = await req.json();
     if (!stage || !clientId) return NextResponse.json({ enrolled: 0 });
     // A closed deal's congratulations / review-request email is the AGENT's to send — they press
     // Enroll in the "Deal Closed!" popup. It must never go out on its own when a card moves
@@ -43,16 +47,27 @@ export async function POST(req: NextRequest) {
 
     const supabase = db();
 
+    // The client must be in the caller's workspace. Workspace and acting agent come from the
+    // client row / the session, never from the request body (admins may name the agent).
+    const owned = await assertOwnsResource('crm_clients', String(clientId), caller);
+    if (!owned) return NextResponse.json({ enrolled: 0 }, { status: 404 });
+    const businessUnit = (owned.business_unit as string | null) ?? bodyBusinessUnit;
+    const agentId: string = isAdminRole(caller.role) && bodyAgentId ? bodyAgentId : caller.userId;
+
     // Find active action plans with trigger_type=stage_change and trigger_value=stage
     const { data: plans } = await supabase
       .from('crm_action_plans')
-      .select('id, name, business_unit, audience, from_name, from_email')
+      .select('id, name, business_unit, audience, from_name, from_email, trigger_value')
       .eq('trigger_type', 'stage_change')
       .eq('status', 'active')
-      .eq('business_unit', businessUnit ?? 'commercial')
-      .ilike('trigger_value', stage);
+      .eq('business_unit', businessUnit ?? 'commercial');
 
-    if (!plans?.length) return NextResponse.json({ enrolled: 0 });
+    // Exact (case-insensitive, trimmed) stage match done here rather than with ilike, where a
+    // caller-supplied "%" or "_" acted as a wildcard and fired every stage-change plan.
+    const wantStage = String(stage).trim().toLowerCase();
+    const stagePlans = (plans ?? []).filter(p => String(p.trigger_value ?? '').trim().toLowerCase() === wantStage);
+
+    if (!stagePlans.length) return NextResponse.json({ enrolled: 0 });
 
     // Get client + agent
     const [{ data: client }, { data: agent }] = await Promise.all([
@@ -67,7 +82,7 @@ export async function POST(req: NextRequest) {
     // type, so Buyer / Seller / Tenant "Closed & Won" plans that all sit on the "Closed"
     // stage don't cross-fire. Null/empty audience = fires for any type.
     const clientType = (client.type || '').toLowerCase();
-    const matchedPlans = (plans ?? []).filter(p =>
+    const matchedPlans = stagePlans.filter(p =>
       !p.audience || String(p.audience).split(',').map(s => s.trim().toLowerCase()).filter(Boolean).includes(clientType));
     if (!matchedPlans.length) return NextResponse.json({ enrolled: 0 });
 
@@ -99,7 +114,7 @@ export async function POST(req: NextRequest) {
       if (step.type === 'email') {
         const subject = applyMergeFields(step.subject || `Stage Update: ${stage}`, ctx, bu);
         const trackingId = newTrackingId();
-        const body = withSignature(withOpenPixel(applyMergeFields(step.body || '', ctx, bu), trackingId), await resolveSignature(supabase, { fromEmail: plan.from_email, agentId })); // open-tracking pixel + agent's Gmail signature
+        const body = withSignature(withOpenPixel(applyMergeFields(step.body || '', ctx, bu, true), trackingId), await resolveSignature(supabase, { fromEmail: plan.from_email, agentId })); // open-tracking pixel + agent's Gmail signature
         const sendRes = await resendClient(bu).emails.send({ from: resolveActionPlanFrom(bu, plan.from_name, plan.from_email, fromAddress(bu)), to: client.email, subject, html: body }).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } }));
         const providerId = sendRes?.data?.id ?? null;
         // provider_id is what lets the Resend webhook tie a bounce/complaint back to this send.

@@ -20,21 +20,25 @@ function resendClient(businessUnit?: string) {
   return new Resend(key);
 }
 
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
+// `html` HTML-escapes the merge values (for the email body); subject and activity-log text stay plain.
 function applyMergeFields(template: string, ctx: {
   client: { first_name: string; last_name: string; email: string; type: string; unsubscribe_token: string };
   agent: { first_name: string; last_name: string; email: string; phone?: string };
-}, businessUnit?: string): string {
+}, businessUnit?: string, html = false): string {
+  const v = (s: string) => (html ? escapeHtml(s) : s);
   // CRECO (commercial) emails unsubscribe on crecotx.com; this used to hard-code the Fair Oaks URL.
   const unsubscribeUrl = unsubscribeUrlFor(businessUnit, ctx.client.unsubscribe_token);
   return template
-    .replaceAll('{{first_name}}', ctx.client.first_name || '')
-    .replaceAll('{{last_name}}', ctx.client.last_name || '')
-    .replaceAll('{{full_name}}', `${ctx.client.first_name} ${ctx.client.last_name}`.trim())
-    .replaceAll('{{email}}', ctx.client.email || '')
-    .replaceAll('{{client_type}}', ctx.client.type || '')
-    .replaceAll('{{agent_name}}', `${ctx.agent.first_name} ${ctx.agent.last_name}`.trim())
-    .replaceAll('{{agent_email}}', ctx.agent.email || '')
-    .replaceAll('{{agent_phone}}', ctx.agent.phone || '210-817-3443')
+    .replaceAll('{{first_name}}', v(ctx.client.first_name || ''))
+    .replaceAll('{{last_name}}', v(ctx.client.last_name || ''))
+    .replaceAll('{{full_name}}', v(`${ctx.client.first_name} ${ctx.client.last_name}`.trim()))
+    .replaceAll('{{email}}', v(ctx.client.email || ''))
+    .replaceAll('{{client_type}}', v(ctx.client.type || ''))
+    .replaceAll('{{agent_name}}', v(`${ctx.agent.first_name} ${ctx.agent.last_name}`.trim()))
+    .replaceAll('{{agent_email}}', v(ctx.agent.email || ''))
+    .replaceAll('{{agent_phone}}', v(ctx.agent.phone || '210-817-3443'))
     .replaceAll('{{brokerage}}', 'CRECO Commercial Real Estate Company')
     .replaceAll('{{unsubscribe_url}}', unsubscribeUrl);
 }
@@ -166,7 +170,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const subject = applyMergeFields(step.subject || `Step ${stepOrder} from ${plan.name}`, ctx, plan.business_unit);
       trackingId = newTrackingId();
       sentSubject = subject;
-      const body = withSignature(withOpenPixel(tagCampaignLinks(applyMergeFields(step.body || '', ctx, plan.business_unit), `plan-${campaignSlug(plan.name, plan.id)}`, client_id), trackingId), await resolveSignature(supabase, { agentId: agentLookupId }));   // utm + signed contact token, then open tracking
+      const body = withSignature(withOpenPixel(tagCampaignLinks(applyMergeFields(step.body || '', ctx, plan.business_unit, true), `plan-${campaignSlug(plan.name, plan.id)}`, client_id), trackingId), await resolveSignature(supabase, { agentId: agentLookupId }));   // utm + signed contact token, then open tracking
       const result = await resendClient(plan.business_unit).emails.send({
         // Sends as the plan's named sender (e.g. Brian Blanco) when one is set, else the brand address.
         from: resolveActionPlanFrom(plan.business_unit, plan.from_name, plan.from_email, fromAddress(plan.business_unit)),

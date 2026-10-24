@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notifyAssignment, senderName } from '@/lib/notify';
 import { getCrmContext, isAdminRole, unauthorized, assertOwnsResource, dbError, hiddenDealIds, excludeHiddenDeals } from '@/lib/crm-auth';
 import { adminClient } from '@/lib/supabase-admin';
+import { validAssignee } from '@/lib/crm-assignee';
 
 const VALID_UNITS = ['residential', 'commercial'] as const;
 type BusinessUnit = typeof VALID_UNITS[number];
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
   // A linked client/deal must be in the caller's workspace (the GET join returns client PII).
   if (client_id && !(await assertOwnsResource('crm_clients', String(client_id), ctx))) return NextResponse.json({ error: 'Invalid client_id' }, { status: 400 });
   if (deal_id && !(await assertOwnsResource('crm_deals', String(deal_id), ctx))) return NextResponse.json({ error: 'Invalid deal_id' }, { status: 400 });
+  if (assigned_to && !(await validAssignee(String(assigned_to), ctx))) return NextResponse.json({ error: 'Invalid assigned_to' }, { status: 400 });
   if (!title) return NextResponse.json({ error: 'title required' }, { status: 400 });
   const supabase = adminClient();
   const { data, error } = await supabase.from('crm_tasks').insert({

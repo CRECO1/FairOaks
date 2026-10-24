@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { getCrmProfileUser } from '@/lib/crm-auth';
+import { nonceMatches, verifyOAuthState } from '@/lib/oauth-state';
 import { encryptToken } from '@/lib/token-crypto';
 import { safeJson } from '@/lib/safe-json';
 
@@ -12,17 +14,22 @@ export async function GET(req: NextRequest) {
   const error = req.nextUrl.searchParams.get('error');
 
   if (error || !code || !stateParam) {
-    console.error('[linkedin/callback] OAuth error:', { error, code: !!code, stateParam });
+    console.error('[linkedin/callback] OAuth error:', { error, code: !!code, hasState: !!stateParam });
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=linkedin&reason=oauth_denied`);
   }
 
-  const [userId, stateNonce] = (stateParam ?? '').split(':');
+  // Signed, expiring state (lib/oauth-state) + the logged-in session must be the user it was minted for.
+  const st = verifyOAuthState(stateParam);
+  const userId = st?.uid ?? '';
   const cookieStore = await cookies();
-  const storedNonce = cookieStore.get('li_oauth_nonce')?.value;
-  if (!storedNonce || storedNonce !== stateNonce) {
+  if (!st || !nonceMatches(st.nonce, cookieStore.get('li_oauth_nonce')?.value)) {
     return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=linkedin&reason=invalid_state`);
   }
   cookieStore.delete('li_oauth_nonce');
+  const sessionUser = await getCrmProfileUser(req);
+  if (!sessionUser || sessionUser.id !== userId) {
+    return NextResponse.redirect(`${CRM_RETURN}?social=error&platform=linkedin&reason=invalid_state`);
+  }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

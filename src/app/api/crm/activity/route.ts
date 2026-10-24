@@ -113,6 +113,17 @@ export async function POST(req: NextRequest) {
   } = body;
 
   if (!log_date) return NextResponse.json({ error: 'log_date required' }, { status: 400 });
+  // ISO date within a sane window (a year back to a week ahead), and well-formed counters.
+  const dMs = typeof log_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(log_date) ? Date.parse(log_date) : NaN;
+  if (Number.isNaN(dMs) || dMs < Date.now() - 366 * 86_400_000 || dMs > Date.now() + 7 * 86_400_000) {
+    return NextResponse.json({ error: 'log_date must be a valid recent date (YYYY-MM-DD)' }, { status: 400 });
+  }
+  for (const [k, v] of Object.entries({ prospecting_calls, conversations, door_touches, tours_meetings, opportunities_created, pitch_appointments, listings_won, deals_closed })) {
+    if (v == null || v === '') continue;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 10000) return NextResponse.json({ error: `${k} must be a number between 0 and 10000` }, { status: 400 });
+  }
+  if (notes != null && (typeof notes !== 'string' || notes.length > 5000)) return NextResponse.json({ error: 'notes must be text up to 5000 characters' }, { status: 400 });
 
   const supabase = adminClient();
   const { data, error } = await supabase
