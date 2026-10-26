@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import { createLeadFollowUpTask } from '@/lib/lead-followup';
 import { sendMonitored } from '@/lib/integration-alert';
@@ -34,8 +34,17 @@ const CRM_URL = process.env.NEXT_PUBLIC_CRM_URL ?? 'https://crm.vultstack.com';
 const SLA_START = '2026-10-05T00:00:00Z';
 const NUDGE_MIN = 30;
 const ESCALATE_MIN = 120;
-/** Past this, a lead is no longer "new" — stop checking it. */
+/** Past this, a lead is no longer "new" — stop nudging about it (the aging backstop below takes over, tasks only). */
 const LOOKBACK_HOURS = 72;
+/** How far back the aging backstop looks for leads nobody ever touched. */
+const AGED_MAX_DAYS = 120;
+/**
+ * Newsletter / report-download captures are not sales leads, and neither are contacts the Gmail importer
+ * made from an email thread ("Property: Re: Signed Lease and Checks") — none of them gets an aging task.
+ */
+const NOT_A_SALES_LEAD = /^\s*(Subscription:|Guide \/ report:|Subscribed to|Property:)/i;
+/** A real site form: the crecotx.com forms, or the residential site's "📩 Website lead" notes. */
+const isSiteForm = (l: Lead) => /^creco website/i.test(l.lead_source ?? '') || /^\s*📩 Website lead/.test(l.notes ?? '');
 
 /** Activity types that mean a person reached out (deal_update is not contact). */
 const CONTACT_ACTIVITY_TYPES = ['call', 'email', 'note', 'meeting'];
@@ -80,6 +89,62 @@ function ago(createdAt: string): string {
   return min < 120 ? `${min} min` : `${Math.round(min / 60)} hours`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyDb = SupabaseClient<any, any, any>;
+
+/** Has a person reached this lead since it arrived — a logged call/email/note, or a Talkroute call to/from the number? */
+async function wasContacted(db: AnyDb, lead: Pick<Lead, 'id' | 'phone' | 'created_at'>): Promise<boolean> {
+  const { data: acts } = await db.from('crm_client_activities').select('id').eq('client_id', lead.id)
+    .gte('created_at', lead.created_at).in('type', CONTACT_ACTIVITY_TYPES).limit(1);
+  if ((acts?.length ?? 0) > 0) return true;
+  const digits = (lead.phone ?? '').replace(/\D/g, '').slice(-10);
+  const { data: calls } = await db.from('crm_call_log').select('id')
+    .gte('started_at', lead.created_at)
+    .or(digits.length === 10 ? `contact_id.eq.${lead.id},from_number.ilike.*${digits},to_number.ilike.*${digits}` : `contact_id.eq.${lead.id}`)
+    .limit(1);
+  return (calls?.length ?? 0) > 0;
+}
+
+/**
+ * Aging backstop. The window above stops looking at a lead after 72 hours, and nothing before the SLA
+ * existed was ever checked — so a lead nobody got to in those first days was simply forgotten (a seller
+ * valuation request from August and a multi-state lease-restructuring inquiry were found two months on).
+ * Any inbound web lead up to AGED_MAX_DAYS old that has no logged contact and no call/follow-up task
+ * gets one, once. Tasks only: no emails, so switching it on cannot flood anyone's inbox.
+ */
+async function agedLeadBackstop(db: AnyDb): Promise<{ checked: number; created: number }> {
+  const now = Date.now();
+  const { data: rows, error } = await db.from('crm_clients')
+    .select('id, first_name, last_name, email, phone, created_at, agent_id, assigned_agent_ids, lead_hold, lead_source, lead_site, channel, utm_campaign, notes')
+    .gte('created_at', new Date(now - AGED_MAX_DAYS * 86_400_000).toISOString())
+    .lte('created_at', new Date(now - LOOKBACK_HOURS * 3_600_000).toISOString())
+    .is('unsubscribed_at', null).limit(500);
+  if (error) throw new Error(error.message);
+  const leads = (rows as Lead[]).filter(l => isInboundWebLead(l) && isSiteForm(l) && (l.notes ?? '').trim() !== '' && !NOT_A_SALES_LEAD.test(l.notes ?? ''));
+  if (!leads.length) return { checked: 0, created: 0 };
+
+  // One query for who already has a call-back / follow-up task; only the rest are looked at further.
+  const { data: taskRows } = await db.from('crm_tasks').select('client_id').in('client_id', leads.map(l => l.id)).in('type', ['call', 'follow_up']);
+  const hasTask = new Set((taskRows ?? []).map(t => t.client_id as string));
+  let created = 0;
+  for (const lead of leads.filter(l => !hasTask.has(l.id))) {
+    const name = `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.trim() || lead.email || 'New lead';
+    const { data: isTest } = await db.rpc('lead_is_test', { p_name: name, p_email: lead.email ?? '' });
+    if (isTest === true) continue;
+    if (await wasContacted(db, lead)) continue;
+    await createLeadFollowUpTask(db, {
+      clientId: lead.id, name, email: lead.email, phone: lead.phone,
+      channel: lead.channel, leadSite: lead.lead_site, campaign: lead.utm_campaign,
+      source: lead.lead_source, businessUnit: 'commercial',
+      detail: lead.notes ? lead.notes.slice(0, 600) : null,
+      ownerId: lead.agent_id,
+      ageDays: Math.round((now - new Date(lead.created_at).getTime()) / 86_400_000),
+    });
+    created++;
+  }
+  return { checked: leads.length, created };
+}
+
 export async function GET(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
@@ -90,6 +155,9 @@ export async function GET(req: NextRequest) {
   // Phone call-backs get the same 30-min / 2-hour treatment (lib/call-sla.ts).
   let calls: unknown;
   try { calls = await runCallbackSla(db); } catch (e) { calls = { error: e instanceof Error ? e.message : String(e) }; console.error('[lead-sla] calls', e); }
+  // Leads that slipped past the 72-hour window with nobody ever reaching out (tasks only, no email).
+  let aged: unknown;
+  try { aged = await agedLeadBackstop(db); } catch (e) { aged = { error: e instanceof Error ? e.message : String(e) }; console.error('[lead-sla] aged', e); }
   const now = Date.now();
   const since = new Date(Math.max(new Date(SLA_START).getTime(), now - LOOKBACK_HOURS * 3600_000)).toISOString();
   const nudgeBefore = new Date(now - NUDGE_MIN * 60_000).toISOString();
@@ -106,7 +174,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'fetch failed' }, { status: 500 });
   }
   const leads = (rows as Lead[]).filter(isInboundWebLead);
-  if (!leads.length) return NextResponse.json({ checked: 0, sent: 0, calls });
+  if (!leads.length) return NextResponse.json({ checked: 0, sent: 0, calls, aged });
 
   const { data: profileRows } = await db.from('crm_profiles').select('id, email, first_name, last_name, role');
   const profiles = new Map((profileRows as Profile[] ?? []).map(p => [p.id, p]));
@@ -130,21 +198,10 @@ export async function GET(req: NextRequest) {
     if (testErr || isTest === true) { results.push({ id: lead.id, status: 'test/skip' }); continue; }
 
     // ── Contacted yet? ────────────────────────────────────────────────────
-    const [{ data: acts }, { data: tasks }] = await Promise.all([
-      db.from('crm_client_activities').select('id').eq('client_id', lead.id)
-        .gte('created_at', lead.created_at).in('type', CONTACT_ACTIVITY_TYPES).limit(1),
-      db.from('crm_tasks').select('id, completed_at, status, type').eq('client_id', lead.id),
-    ]);
-    let contacted = (acts?.length ?? 0) > 0
-      || (tasks ?? []).some(t => ['call', 'follow_up'].includes(t.type) && (t.completed_at || ['done', 'completed'].includes(t.status)));
+    const { data: tasks } = await db.from('crm_tasks').select('id, completed_at, status, type').eq('client_id', lead.id);
+    const contacted = (tasks ?? []).some(t => ['call', 'follow_up'].includes(t.type) && (t.completed_at || ['done', 'completed'].includes(t.status)))
+      || await wasContacted(db, lead);
     const digits = (lead.phone ?? '').replace(/\D/g, '').slice(-10);
-    if (!contacted && digits.length === 10) {
-      const { data: calls } = await db.from('crm_call_log').select('id')
-        .gte('started_at', lead.created_at)
-        .or(`contact_id.eq.${lead.id},from_number.ilike.*${digits},to_number.ilike.*${digits}`)
-        .limit(1);
-      contacted = (calls?.length ?? 0) > 0;
-    }
     if (contacted) { results.push({ id: lead.id, status: 'contacted' }); continue; }
 
     // ── Backstop: make sure the owner has a call-back task ────────────────
@@ -204,5 +261,5 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(`[lead-sla] checked ${leads.length}, sent ${sent}`, JSON.stringify(results));
-  return NextResponse.json({ checked: leads.length, sent, results, calls });
+  return NextResponse.json({ checked: leads.length, sent, results, calls, aged });
 }

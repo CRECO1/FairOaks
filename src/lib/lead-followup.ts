@@ -46,6 +46,8 @@ export interface LeadFollowUpInput {
   businessUnit?: string | null;
   /** Message or search criteria — what they actually asked for. */
   detail?: string | null;
+  /** Set when the lead has already waited this many days with no contact (the aging backstop in cron/lead-sla). */
+  ageDays?: number | null;
   /**
    * Who the call-back belongs to: the contact's owner (Zack for his own
    * listings, Brian for the rest). Falls back to the super_admin when unset.
@@ -101,11 +103,15 @@ export async function createLeadFollowUpTask(db: SupabaseClient<any, any, any>, 
     const site = input.leadSite || 'the website';
     const channel = input.channel || 'web';
     const who = (input.name || input.email || 'New lead').trim();
+    const aged = input.ageDays != null && input.ageDays >= 3;
     const title = `Call ${who} — ${channel} lead from ${site}`
-      + (input.campaign ? ` (${input.campaign})` : '');
+      + (input.campaign ? ` (${input.campaign})` : '')
+      + (aged ? ` — waiting ${input.ageDays} days` : '');
 
     const notes = [
-      `🔔 New inbound lead — call within 15 minutes. If you can't reach them, log the attempt (or complete this task) so the lead-SLA reminder stops.`,
+      aged
+        ? `⏳ This lead has waited ${input.ageDays} days with no call, email or note logged — it slipped past the same-day follow-up. Reach out now, or complete this task if it was already handled outside the CRM.`
+        : `🔔 New inbound lead — call within 15 minutes. If you can't reach them, log the attempt (or complete this task) so the lead-SLA reminder stops.`,
       input.email ? `Email: ${input.email}` : '',
       input.phone ? `Phone: ${input.phone}` : '',
       input.source ? `Source: ${input.source}` : '',
