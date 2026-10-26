@@ -346,6 +346,13 @@ const NON_LEAD_PATTERNS = [
   /📞|silent call|unknown caller|voicemail|missed call/i,
   // E-signature workflow notifications
   /please sign|signed lease|docusign/i,
+  // Our OWN lead-SLA reminders ("⚠️ Lead uncontacted for 2 hours: …", "⏱ … hasn't been contacted yet") come from
+  // noreply@crecotx.com, so they passed the own-website sender check and were re-imported as leads, named from the
+  // address ("Atorres6298"). They are an alert about a lead we already have.
+  /lead\s+uncontacted|hasn'?t\s+been\s+contacted/i,
+  // Agent applications are recruiting, which lives on contacts (api/agent-apply → lib/recruiting-crm) — never a sales-pipeline
+  // deal. Each one used to land in Prospect and distort the board.
+  /agent\s+application/i,
 ];
 
 // Our own internal domains — parsed lead emails from these should be skipped
